@@ -97,8 +97,63 @@ def name_ok(n):
     return n.lower() not in SENTENCE_WORDS
 
 
+_STR = re.compile(r"""[rRbBuUfF]{0,2}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""")
+# Phrases the sentence translator would rewrite if they appeared in plain code.
+_TRIGGERS = re.compile(
+    r"\b(the|is|plus|minus|times|mod|modulo|otherwise|then|afterwards|squared|cubed|rounded|contains|equals|"
+    r"divided by|multiplied by|added to|joined (?:with|to)|followed by|to the power of|length of|size of|sum of|total of|"
+    r"how many|number of items|item \S+ (?:of|in|from)|first item|last item|pairs (?:of|in)|as (?:a )?(?:whole )?number|"
+    r"as (?:a )?decimal|as text|in (?:capitals|capital letters|uppercase|upper case|lowercase|lower case|small letters)|"
+    r"is (?:even|odd)|random (?:whole )?number|random (?:item|choice|one|pick|thing|decimal|fraction)|"
+    r"(?:biggest|largest|highest|maximum|max|smallest|lowest|minimum|min) (?:of|in)|square root|absolute|sorted \S|"
+    r"empty (?:list|text|dictionary)|wait for|yes|no|please|kindly|just|simply|basically|really|actually|quickly|"
+    r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|fifty|hundred)\b", re.I)
+
+
+def safe_code(e):
+    """Can this expression sit, as plain Python, inside a sentence and come back unchanged?"""
+    for n in ast.walk(e):
+        if isinstance(n, ast.Name) and not name_ok(n.id):
+            return False
+        if isinstance(n, ast.Compare) and any(isinstance(o, (ast.Is, ast.IsNot)) for o in n.ops):
+            return False
+    text = ast.unparse(e)
+    if "\n" in text or ";" in text:
+        return False
+    bare = _STR.sub("''", text)
+    if '"' in bare:
+        return False
+    return not _TRIGGERS.search(bare)
+
+
+def top_level_split(text):
+    """Would the sentence translator split this at a comma or ' and '? (Outside brackets and quotes.)"""
+    bare = _STR.sub("''", text)
+    depth = 0
+    for i, c in enumerate(bare):
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif depth == 0 and (c == "," or bare.startswith(" and ", i)):
+            return True
+    return False
+
+
+def dotted_name(e):
+    """a / a.b / a.b.c -> the text, else None."""
+    parts = []
+    while isinstance(e, ast.Attribute):
+        parts.append(e.attr)
+        e = e.value
+    if isinstance(e, ast.Name):
+        return ".".join([e.id] + parts[::-1])
+    return None
+
+
 class Words:
-    """Turns expressions into words. strict=True refuses anything that might not round-trip exactly."""
+    """Turns expressions into words. strict=True refuses anything that might not round-trip exactly;
+    `expr` then falls back to plain Python inside the sentence when that is safe."""
 
     def __init__(self, strict, tools=(), lists=()):
         self.strict = strict
@@ -106,9 +161,15 @@ class Words:
         self.lists = set(lists)
 
     def raw(self, e):
-        if self.strict:
+        if self.strict and not safe_code(e):
             raise Unwordable()
         return ast.unparse(e)
+
+    def expr(self, e):
+        try:
+            return self.w(e)
+        except Unwordable:
+            return self.raw(e)
 
     def w(self, e, top=True):
         if isinstance(e, ast.Constant):
@@ -120,16 +181,17 @@ class Words:
             if v is None:
                 return "nothing"
             if isinstance(v, str):
-                return q(v) if self.strict else (q(v) if '"' not in v and "\n" not in v and "{" not in v else repr(v))
+                if '"' in v or "\\" in v or "\n" in v or "{" in v or "}" in v:
+                    return self.raw(e)
+                return '"' + v + '"'
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 if v < 0:
-                    raise Unwordable()
+                    return self.raw(e)
                 return repr(v)
             return self.raw(e)
         if isinstance(e, ast.Name):
-            if not name_ok(e.id):
-                if self.strict:
-                    raise Unwordable()
+            if not name_ok(e.id) and self.strict:
+                raise Unwordable()
             return e.id
         if isinstance(e, ast.BinOp):
             ops = {ast.Add: "plus", ast.Sub: "minus", ast.Mult: "times", ast.Div: "divided by", ast.Mod: "mod"}
@@ -152,16 +214,19 @@ class Words:
         if isinstance(e, ast.Compare):
             if len(e.ops) != 1:
                 return self.raw(e)
+            op = type(e.ops[0])
+            right = e.comparators[0]
+            if op in (ast.Is, ast.IsNot):
+                if isinstance(right, ast.Constant) and right.value is None:
+                    return f"{self.wrap(e.left)} {'is' if op is ast.Is else 'is not'} nothing"
+                raise Unwordable()
             words = {ast.Eq: "is", ast.NotEq: "is not", ast.Lt: "is less than", ast.Gt: "is more than",
                      ast.LtE: "is at most", ast.GtE: "is at least", ast.In: "is in", ast.NotIn: "is not in"}
-            op = type(e.ops[0])
-            if op in (ast.Is, ast.IsNot):
-                if self.strict:
-                    raise Unwordable()
-                word = "is" if op is ast.Is else "is not"
-            else:
-                word = words[op]
-            return f"{self.wrap(e.left)} {word} {self.wrap(e.comparators[0])}"
+            return f"{self.wrap(e.left)} {words[op]} {self.wrap(right)}"
+        if isinstance(e, ast.IfExp):
+            return f"{self.wrap(e.body)} if {self.wrap(e.test)} otherwise {self.wrap(e.orelse)}"
+        if isinstance(e, ast.Await):
+            return f"wait for {self.expr(e.value)}"
         if isinstance(e, ast.Call):
             return self.call(e)
         if isinstance(e, ast.Subscript) and not isinstance(e.slice, ast.Slice):
@@ -182,19 +247,11 @@ class Words:
                         return self.raw(e)
                     parts.append(v.value)
                 elif isinstance(v, ast.FormattedValue):
-                    if v.conversion != -1 or v.format_spec is not None:
-                        return self.raw(e)
                     inner = ast.unparse(v.value)
-                    if self.strict and not re.fullmatch(r"[A-Za-z_]\w*", inner):
-                        raise Unwordable()
-                    if self.strict and not name_ok(inner):
-                        raise Unwordable()
+                    if v.conversion != -1 or v.format_spec is not None or not re.fullmatch(r"[A-Za-z_]\w*", inner) or not name_ok(inner):
+                        return self.raw(e)
                     parts.append("{" + inner + "}")
             return '"' + "".join(parts) + '"'
-        if isinstance(e, (ast.List, ast.Tuple)) and not self.strict:
-            return ast.unparse(e)
-        if isinstance(e, ast.List):
-            return "[" + ", ".join(self.w(x) for x in e.elts) + "]"
         return self.raw(e)
 
     def _chain(self, left, op):
@@ -202,7 +259,7 @@ class Words:
 
     def wrap(self, e):
         text = self.w(e, False)
-        if isinstance(e, (ast.BinOp, ast.BoolOp, ast.Compare)):
+        if isinstance(e, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp)):
             if self.strict:
                 raise Unwordable()
             return f"({text})"
@@ -240,8 +297,11 @@ class Words:
             return f"random item from {self.simple(args[0])}"
         if fname == "math.sqrt" and one and isinstance(args[0], (ast.Constant, ast.Name)):
             return f"square root of {self.w(args[0])}"
-        if isinstance(f, ast.Attribute) and not args and f.attr in ("upper", "lower") and isinstance(f.value, ast.Name):
-            return f"{self.w(f.value)} in {'capitals' if f.attr == 'upper' else 'lowercase'}"
+        if isinstance(f, ast.Attribute) and not args and isinstance(f.value, ast.Name) and name_ok(f.value.id):
+            if f.attr in ("upper", "lower"):
+                return f"{self.w(f.value)} in {'capitals' if f.attr == 'upper' else 'lowercase'}"
+            if f.attr == "items":
+                return f"pairs of {self.w(f.value)}"
         return self.raw(e)
 
 
@@ -249,24 +309,42 @@ class Words:
 # Statements -> sentences
 # --------------------------------------------------------------------------
 
+HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+
 class Sentences:
     """Writes statements as IntuiCode sentences. Anything that can't be said exactly becomes a `python:` line."""
 
-    def __init__(self, strict, tools=(), lists=()):
+    def __init__(self, strict, tools=(), lists=(), known=(), comments=None, force_raw=(), classes=()):
         self.strict = strict
+        self.classes = set(classes)
         self.words = Words(strict, tools, lists)
         self.tools = set(tools)
         self.lists = set(lists)
-        self.imported = set()
+        self.known = set(tools) | set(known) | BUILTIN_CALLS
+        self.comments = comments or {}
+        self.force_raw = set(force_raw)
+        self.last = 0
+
+    def notes_before(self, line, level):
+        """Full-line comments between the previous statement and this line, as notes."""
+        out = []
+        for ln in sorted(k for k in self.comments if self.last < k < line):
+            out.append("    " * level + "note: " + self.comments[ln])
+        if out:
+            self.last = max(k for k in self.comments if self.last < k < line)
+        return out
 
     def block(self, body, level):
         out = []
         for i, node in enumerate(body):
+            out.extend(self.notes_before(start_line(node), level))
             if i == 0 and is_docstring(node):
                 first = node.value.value.strip().splitlines()[0] if node.value.value.strip() else ""
                 out.append(("    " * level) + "note: " + first)
-                continue
-            out.extend(self.stmt(node, level))
+            else:
+                out.extend(self.stmt(node, level))
+            self.last = max(self.last, getattr(node, "end_lineno", node.lineno))
         return out
 
     def raw_lines(self, node, level):
@@ -278,14 +356,81 @@ class Sentences:
         return ["    " * level + text]
 
     def stmt(self, n, level):
+        if level == 0 and hasattr(n, "lineno") and (n.lineno in self.force_raw or start_line(n) in self.force_raw):
+            return self.raw_lines(n, level)
         try:
             return self._stmt(n, level)
         except Unwordable:
             return self.raw_lines(n, level)
 
+    # -- pieces ---------------------------------------------------------------
+    def E(self, e):
+        return self.words.expr(e)
+
+    def arg(self, e):
+        text = self.E(e)
+        if top_level_split(text) or isinstance(e, (ast.BoolOp,)):
+            raise Unwordable()
+        return text
+
+    def args(self, call):
+        parts = [self.arg(a) for a in call.args]
+        for k in call.keywords:
+            if k.arg is None:
+                raise Unwordable()
+            parts.append(f"{k.arg}={self.arg(k.value)}")
+        return ", ".join(parts)
+
+    def target(self, t):
+        """Something that can be set or increased: name, a.b, or item k of name."""
+        if isinstance(t, ast.Name):
+            if not name_ok(t.id):
+                raise Unwordable()
+            return t.id
+        d = dotted_name(t)
+        if d and isinstance(t, ast.Attribute):
+            return d
+        if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and name_ok(t.value.id) \
+                and isinstance(t.slice, (ast.Constant, ast.Name)) and not isinstance(t.slice, ast.Slice):
+            return f"item {self.words.w(t.slice)} of {t.value.id}"
+        raise Unwordable()
+
+    def callable_name(self, f):
+        """Only name calls the translator will accept: known tools, imports, builtins, or dotted names."""
+        d = dotted_name(f)
+        if d is None:
+            raise Unwordable()
+        if "." not in d and d not in self.known and self.strict:
+            raise Unwordable()
+        return d
+
+    def decorator(self, d, level):
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr.upper() in HTTP_METHODS \
+                and d.func.attr.islower() and dotted_name(d.func.value) and len(d.args) == 1 \
+                and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str) and '"' not in d.args[0].value:
+            extra = ", ".join(f"{k.arg}={self.arg(k.value)}" for k in d.keywords if k.arg)
+            if len(extra.split(", ")) != len(d.keywords) and d.keywords:
+                raise Unwordable()
+            return self.say(level, f'when {dotted_name(d.func.value)} handles {d.func.attr.upper()} at "{d.args[0].value}"' + (f" with {extra}" if extra else ""))
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "route" \
+                and dotted_name(d.func.value) and len(d.args) == 1 and isinstance(d.args[0], ast.Constant) \
+                and isinstance(d.args[0].value, str) and '"' not in d.args[0].value:
+            kws = {k.arg: k.value for k in d.keywords}
+            if set(kws) <= {"methods"}:
+                methods = None
+                if "methods" in kws:
+                    m = kws["methods"]
+                    if isinstance(m, ast.List) and m.elts and all(isinstance(x, ast.Constant) and x.value in HTTP_METHODS for x in m.elts):
+                        methods = [x.value for x in m.elts]
+                    else:
+                        raise Unwordable()
+                what = " and ".join(methods) if methods else "a request"
+                return self.say(level, f'when {dotted_name(d.func.value)} gets {what} at "{d.args[0].value}"')
+        return self.say(level, f"decorate with {self.E(d)}")
+
+    # -- statements -----------------------------------------------------------
     def _stmt(self, n, level):
-        W = self.words.w
-        S = self.say
+        E, S = self.E, self.say
         if isinstance(n, ast.Assign) and len(n.targets) == 1:
             t, v = n.targets[0], n.value
             if isinstance(t, ast.Name):
@@ -294,61 +439,86 @@ class Sentences:
                 ask = asked(v)
                 if ask:
                     kind, prompt = ask
-                    p = (" " + W(prompt)) if prompt is not None else ""
+                    p = (" " + E(prompt)) if prompt is not None else ""
                     lead = {"text": "ask", "number": "ask for a number", "decimal": "ask for a decimal"}[kind]
                     return S(level, f"{lead}{p} and store in {t.id}")
-                if isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id in self.tools and not v.keywords:
-                    args = ", ".join(W(a) for a in v.args)
-                    return S(level, f"run {v.func.id}{' with ' + args if args else ''} and store in {t.id}")
-                if isinstance(v, ast.List) and self.strict:
+                if isinstance(v, ast.Call) and not isinstance(v.func, ast.Lambda):
+                    try:
+                        name = self.callable_name(v.func)
+                        args = self.args(v)
+                        if name in self.classes:
+                            return S(level, f"make a new {name}{' with ' + args if args else ''} and store in {t.id}")
+                        return S(level, f"run {name}{' with ' + args if args else ''} and store in {t.id}")
+                    except Unwordable:
+                        pass
+                if isinstance(v, ast.List) and self.strict and all(isinstance(x, (ast.Constant, ast.Name)) for x in v.elts):
                     self.lists.add(t.id)
                     self.words.lists.add(t.id)
                     if not v.elts:
                         return S(level, f"create empty list {t.id}")
-                    return S(level, f"create list {t.id} with {', '.join(W(x) for x in v.elts)}")
-                return S(level, f"set {t.id} to {W(v)}")
-            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and isinstance(t.slice, (ast.Constant, ast.Name)):
-                return S(level, f"set item {W(t.slice)} of {W(t.value)} to {W(v)}")
-            raise Unwordable()
-        if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name) and name_ok(n.target.id):
+                    return S(level, f"create list {t.id} with {', '.join(self.arg(x) for x in v.elts)}")
+                if isinstance(v, ast.Dict) and not v.keys:
+                    return S(level, f"create dictionary {t.id}")
+                return S(level, f"set {t.id} to {E(v)}")
+            return S(level, f"set {self.target(t)} to {E(v)}")
+        if isinstance(n, ast.AugAssign):
             verb = {ast.Add: "increase {t} by {v}", ast.Sub: "decrease {t} by {v}",
                     ast.Mult: "multiply {t} by {v}", ast.Div: "divide {t} by {v}"}.get(type(n.op))
-            if verb:
-                return S(level, verb.format(t=n.target.id, v=W(n.value)))
+            if not verb:
+                raise Unwordable()
+            value = E(n.value)
+            if re.search(r"\sby\s", _STR.sub("''", value)):
+                raise Unwordable()
+            return S(level, verb.format(t=self.target(n.target), v=value))
+        if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.simple:
+            value = "" if n.value is None else f" = {E(n.value)}"
+            return S(level, f"field {n.target.id}: {self.words.raw(n.annotation)}{value}")
+        if isinstance(n, ast.Global):
+            return S(level, "use the shared " + ", ".join(n.names))
+        if isinstance(n, ast.Delete) and len(n.targets) == 1:
+            return S(level, "delete " + self.target(n.targets[0]))
+        if isinstance(n, ast.Expr):
+            if isinstance(n.value, ast.Call):
+                return self.call_stmt(n.value, level)
+            if isinstance(n.value, ast.Await) and isinstance(n.value.value, ast.Call):
+                return S(level, f"wait for {self.words.raw(n.value.value)}")
             raise Unwordable()
-        if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call):
-            return self.call_stmt(n.value, level)
         if isinstance(n, ast.If):
-            out = S(level, f"if {W(n.test)}") + self.block(n.body, level + 1)
+            if not n.orelse and isinstance(n.test, ast.Compare) and dotted(n.test) == "__name__ == '__main__'":
+                return S(level, "if this file is run directly") + self.block(n.body, level + 1)
+            out = S(level, f"if {E(n.test)}") + self.block(n.body, level + 1)
             orelse = n.orelse
             while orelse:
                 if len(orelse) == 1 and isinstance(orelse[0], ast.If) and getattr(orelse[0], "_elif", False):
                     e = orelse[0]
-                    out += S(level, f"otherwise if {W(e.test)}") + self.block(e.body, level + 1)
+                    out += S(level, f"otherwise if {E(e.test)}") + self.block(e.body, level + 1)
                     orelse = e.orelse
                 else:
                     out += S(level, "otherwise") + self.block(orelse, level + 1)
                     break
             return out
-        if isinstance(n, ast.For) and not n.orelse and isinstance(n.target, ast.Name) and name_ok(n.target.id):
+        if isinstance(n, ast.For) and not n.orelse:
             it = n.iter
-            v = n.target.id
-            if isinstance(it, ast.Call) and ast.unparse(it.func) == "range" and not it.keywords:
+            names = [n.target.id] if isinstance(n.target, ast.Name) else \
+                [x.id for x in n.target.elts] if isinstance(n.target, ast.Tuple) and all(isinstance(x, ast.Name) for x in n.target.elts) else None
+            if not names or not all(name_ok(x) for x in names):
+                return self.compound(n, level)
+            v = names[0]
+            if len(names) == 1 and isinstance(it, ast.Call) and ast.unparse(it.func) == "range" and not it.keywords:
                 a = it.args
                 if len(a) == 1:
-                    head = f"repeat {W(a[0])} times" + ("" if v == "_" else f" counting with {v}")
+                    head = f"repeat {E(a[0])} times" + ("" if v == "_" else f" counting with {v}")
                     return S(level, head) + self.block(n.body, level + 1)
-                if len(a) == 2 and isinstance(a[1], ast.Constant) and isinstance(a[1].value, int) \
-                        and isinstance(a[0], ast.Constant) and isinstance(a[0].value, int) and a[1].value > a[0].value:
+                if len(a) == 2 and all(isinstance(x, ast.Constant) and isinstance(x.value, int) for x in a) and a[1].value > a[0].value:
                     return S(level, f"count {v} from {a[0].value} to {a[1].value - 1}") + self.block(n.body, level + 1)
                 if not self.strict and len(a) == 2:
-                    return S(level, f"count {v} from {W(a[0])} to {W(a[1])} minus 1") + self.block(n.body, level + 1)
-                raise Unwordable()
-            return S(level, f"for each {v} in {W(it)}") + self.block(n.body, level + 1)
+                    return S(level, f"count {v} from {E(a[0])} to {E(a[1])} minus 1") + self.block(n.body, level + 1)
+                return self.compound(n, level)
+            return S(level, f"for each {', '.join(names)} in {E(it)}") + self.block(n.body, level + 1)
         if isinstance(n, ast.While) and not n.orelse:
             if isinstance(n.test, ast.Constant) and n.test.value is True:
                 return S(level, "repeat forever") + self.block(n.body, level + 1)
-            return S(level, f"while {W(n.test)}") + self.block(n.body, level + 1)
+            return S(level, f"while {E(n.test)}") + self.block(n.body, level + 1)
         if isinstance(n, ast.Break):
             return S(level, "stop the loop")
         if isinstance(n, ast.Continue):
@@ -356,23 +526,79 @@ class Sentences:
         if isinstance(n, ast.Pass):
             return S(level, "do nothing")
         if isinstance(n, ast.Return):
-            return S(level, "give back" + (f" {W(n.value)}" if n.value is not None else ""))
-        if isinstance(n, ast.FunctionDef) and simple_args(n) and not n.decorator_list and not n.returns and name_ok(n.name):
-            params = [a.arg for a in n.args.args]
-            if not all(name_ok(p) for p in params):
+            return S(level, "give back" + (f" {E(n.value)}" if n.value is not None else ""))
+        if isinstance(n, ast.Raise):
+            if n.cause is not None:
                 raise Unwordable()
-            head = f"define {n.name}" + (f" using {', '.join(params)}" if params else "")
-            return S(level, head) + self.block(n.body, level + 1)
+            if n.exc is None:
+                return S(level, "fail again")
+            d = dotted_name(n.exc)
+            if d:
+                return S(level, f"fail with {d}")
+            if isinstance(n.exc, ast.Call) and dotted_name(n.exc.func) and (n.exc.args or n.exc.keywords):
+                return S(level, f"fail with {dotted_name(n.exc.func)}: {self.args(n.exc)}")
+            raise Unwordable()
+        if isinstance(n, ast.Assert) and n.msg is None:
+            return S(level, f"check that {E(n.test)}")
+        if isinstance(n, ast.Try):
+            out = S(level, "try") + self.block(n.body, level + 1)
+            for h in n.handlers:
+                kinds = h.type.elts if isinstance(h.type, ast.Tuple) else [h.type] if h.type is not None else []
+                names = [dotted_name(k) for k in kinds]
+                if not all(names):
+                    raise Unwordable()
+                head = "if it fails" + (" with " + " or ".join(names) if names else "") + (f" as {h.name}" if h.name else "")
+                out += S(level, head) + self.block(h.body, level + 1)
+            if n.orelse:
+                out += S(level, "if nothing failed") + self.block(n.orelse, level + 1)
+            if n.finalbody:
+                out += S(level, "in any case") + self.block(n.finalbody, level + 1)
+            return out
+        if isinstance(n, (ast.With, ast.AsyncWith)) and len(n.items) == 1:
+            item = n.items[0]
+            var = item.optional_vars
+            if var is not None and not isinstance(var, ast.Name):
+                return self.compound(n, level)
+            c = item.context_expr
+            is_async = isinstance(n, ast.AsyncWith)
+            if not is_async and var is not None and isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "open" \
+                    and not c.keywords and 1 <= len(c.args) <= 2:
+                mode = c.args[1].value if len(c.args) == 2 and isinstance(c.args[1], ast.Constant) else None
+                words = {None: "", "r": " for reading", "w": " for writing", "a": " for adding"}
+                if len(c.args) == 1 or mode in ("r", "w", "a"):
+                    return S(level, f"open the file {self.arg(c.args[0])}{words[mode]} as {var.id}") + self.block(n.body, level + 1)
+            return S(level, f"{'async ' if is_async else ''}using {E(c)}{' as ' + var.id if var is not None else ''}") + self.block(n.body, level + 1)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and simple_args(n) and not n.returns and name_ok(n.name):
+            a = n.args
+            names = [x.arg for x in a.args]
+            if not all(name_ok(p) for p in names):
+                raise Unwordable()
+            defaults = [None] * (len(names) - len(a.defaults)) + list(a.defaults)
+            params = []
+            for x_, d in zip(a.args, defaults):
+                ann = f": {self.arg(x_.annotation)}" if x_.annotation is not None else ""
+                params.append(x_.arg + ann + ("" if d is None else (" = " if ann else "=") + self.arg(d)))
+            out = []
+            for d in n.decorator_list:
+                out += self.decorator(d, level)
+            head = f"define {'async ' if isinstance(n, ast.AsyncFunctionDef) else ''}{n.name}" + (f" using {', '.join(params)}" if params else "")
+            return out + S(level, head) + self.block(n.body, level + 1)
+        if isinstance(n, ast.ClassDef) and not n.keywords:
+            bases = [dotted_name(b) for b in n.bases]
+            if not all(bases):
+                return self.compound(n, level)
+            out = []
+            for d in n.decorator_list:
+                out += self.decorator(d, level)
+            return out + S(level, f"define class {n.name}" + (f" based on {', '.join(bases)}" if bases else "")) + self.block(n.body, level + 1)
         if isinstance(n, (ast.Import, ast.ImportFrom)):
             if not self.strict:
                 mods = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or "."]
                 return S(level, "use " + ", ".join(mods))
             raise Unwordable()
-        # Compound statements we can't say in words: keep the header as Python, but still read the body.
         return self.compound(n, level)
 
     def call_stmt(self, c, level):
-        W = self.words.w
         S = self.say
         f = ast.unparse(c.func)
         kw = {k.arg: k.value for k in c.keywords}
@@ -386,36 +612,34 @@ class Sentences:
                 if end is not None:
                     raise Unwordable()
                 return S(level, "show a blank line")
-            return S(level, "show " + " and ".join(W(a) for a in c.args) + (" on the same line" if end is not None else ""))
-        if c.keywords and not (f.endswith(".sort") and list(kw) == ["reverse"]):
-            raise Unwordable()
-        if f in self.tools:
-            args = ", ".join(W(a) for a in c.args)
-            return S(level, f"run {f}" + (f" with {args}" if args else ""))
-        if f == "time.sleep" and len(c.args) == 1:
-            return S(level, f"wait {W(c.args[0])} seconds")
-        if f == "random.shuffle" and len(c.args) == 1 and isinstance(c.args[0], ast.Name):
-            return S(level, f"shuffle {W(c.args[0])}")
-        if f == "sys.exit" and not c.args:
-            return S(level, "stop the program")
-        if f == "input" and len(c.args) <= 1:
-            return S(level, "ask " + (W(c.args[0]) if c.args else '""'))
+            return S(level, "show " + " and ".join(self.arg(a) for a in c.args) + (" on the same line" if end is not None else ""))
+        if not c.keywords:
+            if f == "time.sleep" and len(c.args) == 1 and isinstance(c.args[0], ast.Constant) and isinstance(c.args[0].value, (int, float)):
+                return S(level, f"wait {c.args[0].value} seconds")
+            if f == "random.shuffle" and len(c.args) == 1 and isinstance(c.args[0], ast.Name):
+                return S(level, f"shuffle {c.args[0].id}")
+            if f == "sys.exit" and not c.args:
+                return S(level, "stop the program")
+            if f == "input" and len(c.args) <= 1:
+                return S(level, "ask " + (self.E(c.args[0]) if c.args else '""'))
         if isinstance(c.func, ast.Attribute) and isinstance(c.func.value, ast.Name) and name_ok(c.func.value.id):
             obj, meth = c.func.value.id, c.func.attr
             is_list = obj in self.lists or not self.strict
-            if meth == "append" and len(c.args) == 1 and is_list:
-                return S(level, f"add {W(c.args[0])} to {obj}")
-            if meth == "sort" and not c.args:
+            if meth == "append" and len(c.args) == 1 and not c.keywords and is_list:
+                return S(level, f"add {self.arg(c.args[0])} to {obj}")
+            if meth == "sort" and not c.args and is_list:
                 rev = kw.get("reverse")
-                if rev is None:
+                if not c.keywords:
                     return S(level, f"sort {obj}")
-                if isinstance(rev, ast.Constant) and rev.value is True:
+                if list(kw) == ["reverse"] and isinstance(rev, ast.Constant) and rev.value is True:
                     return S(level, f"sort {obj} biggest first")
-            if meth == "reverse" and not c.args:
+            if meth == "reverse" and not c.args and not c.keywords and is_list:
                 return S(level, f"reverse {obj}")
-            if meth == "remove" and len(c.args) == 1 and is_list:
-                return S(level, f"remove {W(c.args[0])} from {obj}")
-        raise Unwordable()
+            if meth == "remove" and len(c.args) == 1 and not c.keywords and is_list:
+                return S(level, f"remove {self.arg(c.args[0])} from {obj}")
+        name = self.callable_name(c.func)
+        args = self.args(c)
+        return S(level, f"run {name}" + (f" with {args}" if args else ""))
 
     def compound(self, n, level):
         pad = "    " * level
@@ -435,13 +659,11 @@ class Sentences:
             return [py(f"{kw} {', '.join(ast.unparse(i) for i in n.items)}:")] + self.block(n.body, level + 1)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             head = ast.unparse(n).splitlines()
-            # decorator lines and the def/class line itself (may wrap over several lines)
             lines, i = [], 0
             while i < len(head) and head[i].startswith("@"):
-                lines.append(py(head[i])); i += 1
+                lines.append(py(head[i]))
+                i += 1
             lines.append(py(head[i]))
-            if isinstance(n, ast.ClassDef):
-                return lines + self.block(n.body, level + 1)
             return lines + self.block(n.body, level + 1)
         if isinstance(n, (ast.For, ast.AsyncFor)) and not n.orelse:
             kw = "async for" if isinstance(n, ast.AsyncFor) else "for"
@@ -456,9 +678,14 @@ class Sentences:
         return self.raw_lines(n, level)
 
 
+BUILTIN_CALLS = {"print", "input", "len", "int", "float", "str", "bool", "list", "dict", "range", "sum", "min", "max", "abs",
+                 "round", "sorted", "reversed", "enumerate", "zip", "type", "isinstance", "any", "all", "set", "tuple",
+                 "map", "filter", "open", "super", "getattr", "setattr", "hasattr", "iter", "next", "repr", "format"}
+
+
 def simple_args(fn):
     a = fn.args
-    return not (a.posonlyargs or a.vararg or a.kwonlyargs or a.kwarg or a.defaults or any(x.annotation for x in a.args))
+    return not (a.posonlyargs or a.vararg or a.kwonlyargs or a.kwarg)
 
 
 def is_docstring(n):
@@ -1109,13 +1336,32 @@ def summarise(source, start, end):
     return s
 
 
-def to_sentences(source):
-    """The whole file as sentences. Exact where possible; everything else is kept as python: lines."""
+def full_line_comments(source):
+    """{line number: text} for comments that sit on a line of their own."""
+    import io
+    import tokenize
+    out = {}
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == tokenize.COMMENT and tok.line.strip().startswith("#"):
+                text = tok.string.lstrip("#").strip()
+                if text:
+                    out[tok.start[0]] = text
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        pass
+    return out
+
+
+def to_sentences(source, force_raw=()):
+    """The whole file as sentences. Exact where possible; everything else is kept as python: lines.
+    Comments on their own line become notes. force_raw: top-level statement lines to keep as python:."""
     tree = ast.parse(source)
     lines = source.splitlines()
     mark_elifs(tree, lines)
     alias, tools, lists = file_context(tree)
-    sent = Sentences(True, tools, [])
+    classes = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
+    sent = Sentences(True, tools, [], known=set(alias) | classes, comments=full_line_comments(source),
+                     force_raw=force_raw, classes=classes)
     out = []
     for g in group_sections(tree):
         label = {"about": "About", "imports": "Toolkits", "settings": "Settings", "tool": "Tool", "route": "Web route",
@@ -1123,8 +1369,12 @@ def to_sentences(source):
         if out:
             out.append("")
         out.append(f"note: ── {label} ──")
-        out.extend(sent.block(g["nodes"], 0) if g["kind"] != "about" else
-                   ["note: " + l for l in g["nodes"][0].value.value.strip().splitlines()[:3]])
+        if g["kind"] == "about":
+            out.extend("note: " + l for l in g["nodes"][0].value.value.strip().splitlines()[:3])
+            sent.last = max(sent.last, g["nodes"][0].end_lineno)
+        else:
+            out.extend(sent.block(g["nodes"], 0))
+    out.extend(sent.notes_before(len(lines) + 1, 0))
     return "\n".join(out) + "\n"
 
 
@@ -1528,9 +1778,9 @@ def summarise_json(source, start, end, path=""):
         _XREF = {"names": {}, "modules": {}, "roots": set(), "path": ""}
 
 
-def to_sentences_json(source):
+def to_sentences_json(source, force_raw_json="[]"):
     try:
-        return json.dumps({"ok": True, "text": to_sentences(source)})
+        return json.dumps({"ok": True, "text": to_sentences(source, set(json.loads(force_raw_json)))})
     except SyntaxError as e:
         return json.dumps({"ok": False, "error": f"Line {e.lineno}: {e.msg}"})
 

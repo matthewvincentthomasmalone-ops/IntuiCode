@@ -49,6 +49,26 @@ class SingleFile(unittest.TestCase):
         self.assertFalse(R.compare("x = 1\n", "x = 2\n")["same"])
 
 
+class Sentences(unittest.TestCase):
+    def test_comments_become_notes(self):
+        text = R.to_sentences("# set things up\nx = 1\nif x:\n    # say it\n    print(x)\n# the end\n")
+        self.assertIn("note: set things up\nset x to 1", text)
+        self.assertIn("    note: say it\n    show x", text)
+        self.assertTrue(text.rstrip().endswith("note: the end"))
+
+    def test_force_raw_keeps_exact_code(self):
+        text = R.to_sentences("x = 1\ny = 2\n", {2})
+        self.assertIn("set x to 1", text)
+        self.assertIn("python: y = 2", text)
+
+    def test_classes_errors_files(self):
+        text = R.to_sentences(read("tests/corpus/bank_account.py"))
+        for phrase in ("define class Account", "set self.balance to balance", "fail with ValueError:",
+                       "if it fails with InsufficientFunds as e", "make a new Account with"):
+            self.assertIn(phrase, text)
+        self.assertIn("open the file DATA_FILE for writing as f", R.to_sentences(read("tests/corpus/inventory_cli.py")))
+
+
 class Project(unittest.TestCase):
     def setUp(self):
         self.p = R.analyze_project(taskboard())

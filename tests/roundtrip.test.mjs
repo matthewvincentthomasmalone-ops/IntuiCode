@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadEngine, roundTrip, pyFiles, ROOT } from './helpers/engine.mjs';
 
 const { L } = loadEngine();
-const files = [...pyFiles(path.join(ROOT, 'samples')), ...pyFiles(path.join(ROOT, 'tests/corpus'))];
+const files = [...pyFiles(path.join(ROOT, 'samples')), ...pyFiles(path.join(ROOT, 'tests/corpus')), ...pyFiles(path.join(ROOT, 'tests/heldout'))];
 
 for (const r of roundTrip(L, files)) {
   test(`sentences rebuild exactly the same program: ${r.file}`, () => {

@@ -235,7 +235,7 @@ def _pb_reset():
             try { return JSON.parse(py.runPython('_reader.read_zip_json(_zip_bytes.to_py().tobytes())')); }
             finally { py.globals.delete('_zip_bytes'); }
           },
-          toSentences: (src) => JSON.parse(R.to_sentences_json(src)),
+          toSentences: (src, forceRaw) => JSON.parse(R.to_sentences_json(src, JSON.stringify(forceRaw || []))),
           compare: (a, b) => JSON.parse(R.compare_json(a, b)),
         };
       })().catch((e) => { reader = null; throw e; });

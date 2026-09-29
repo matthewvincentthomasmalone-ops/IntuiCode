@@ -19,11 +19,29 @@
   const FILE_ORDER = { settings: 0, tools: 1, main: 2 };
   const ALWAYS_KNOWN = new Set(['self', 'cls', '__name__', '__file__', 'Exception', 'ValueError', 'TypeError', 'KeyError', 'IndexError', 'open', 'dict', 'object', 'super', 'getattr', 'setattr', 'hasattr', 'isinstance', 'iter', 'next', 'repr', 'format', 'vars', 'id', 'hash', 'callable', 'exit']);
 
-  /* Names are matched ignoring case ("Score" finds score), but each keeps the spelling it was created with. */
-  class SymTable extends Map {
-    get(k) { return super.get(String(k).toLowerCase()); }
-    has(k) { return super.has(String(k).toLowerCase()); }
-    set(k, v) { return super.set(String(k).toLowerCase(), v); }
+  /* Names match exactly first. If there is no exact match, a different-case spelling is used
+     when it is the only one ("Score" finds score), because Python itself is case-sensitive:
+     a class Account and a variable account are different things. */
+  class SymTable {
+    constructor(src) { this.map = new Map(); this.lower = new Map(); if (src) for (const [k, v] of src) this.set(k, v); }
+    set(k, v) {
+      this.map.set(k, v);
+      const l = k.toLowerCase(), list = this.lower.get(l) || [];
+      if (!list.includes(k)) list.push(k);
+      this.lower.set(l, list);
+      return this;
+    }
+    get(k) {
+      k = String(k);
+      if (this.map.has(k)) return this.map.get(k);
+      const list = this.lower.get(k.toLowerCase());
+      return list && list.length === 1 ? this.map.get(list[0]) : undefined;
+    }
+    has(k) { return this.get(k) !== undefined; }
+    values() { return this.map.values(); }
+    keys() { return this.map.keys(); }
+    get size() { return this.map.size; }
+    [Symbol.iterator]() { return this.map[Symbol.iterator](); }
   }
 
   /* ------------------------------------------------------------------ */
@@ -108,6 +126,7 @@
     { re: R(String.raw`\b(OPD) as text\b`), to: 'str($1)', note: '`str()` turns a value into text, so it can be joined to other text.' },
     { re: R(String.raw`\b(OPD) in (?:capitals|capital letters|uppercase|upper case)\b`), to: '$1.upper()' },
     { re: R(String.raw`\b(OPD) in (?:lowercase|lower case|small letters)\b`), to: '$1.lower()' },
+    { re: R(String.raw`\bpairs (?:of|in) (OPD)`), to: '$1.items()', note: '`.items()` gives the key and value of each entry in a dictionary, as pairs.' },
     // Randomness
     { re: R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`), to: 'random.randint($1, $2)', use: 'random', note: '`random.randint(a, b)` can give back a or b, and anything in between. The `random` module is imported for you.' },
     { re: R(String.raw`\brandom (?:decimal|fraction)\b`), to: 'random.random()', use: 'random', note: '`random.random()` gives a decimal from 0 up to (not including) 1.' },
@@ -122,6 +141,8 @@
     { re: R(String.raw`\b(OPD) (?:does not|doesn't) contain (OPD)`), to: '$2 not in $1' },
     { re: R(String.raw`\b(OPD) contains (OPD)`), to: '$2 in $1', note: 'Python writes "list contains x" the other way round: `x in list`.' },
     // Comparisons
+    { re: /\bis not (?:nothing|none)\b/gi, to: ' ⟪!⟫ None', note: '`is not None` checks that something has a value.' },
+    { re: /\bis (?:nothing|none)\b/gi, to: ' ⟪⟫ None', note: '`is None` checks whether something has no value.' },
     { re: /\bis not (?:in|inside|one of)\b/gi, to: ' not in ' },
     { re: /\bis (?:greater|more|bigger|higher|larger) than or equal to\b|\bis at least\b/gi, to: ' >= ' },
     { re: /\bis (?:less|smaller|lower|fewer) than or equal to\b|\bis at most\b/gi, to: ' <= ' },
@@ -144,6 +165,7 @@
     { re: /\b(?:yes|true)\b/gi, to: 'True' },
     { re: /\b(?:no|false)\b/gi, to: 'False' },
     { re: /\b(?:nothing|none)\b/gi, to: 'None' },
+    { re: /\botherwise\b/gi, to: ' else ', note: '`a if condition else b` picks one of two values in a single line.' },
     { re: /\b(and|or|not)\b/gi, to: (m) => m.toLowerCase() },
   ];
 
@@ -184,7 +206,11 @@
     if (slot) { x.err(`Fill in the ${slot[0]} slot.`); return '_'; }
     // Sentence-style names with spaces become snake_case; single words keep their case (API_KEY stays API_KEY).
     let py = /\s/.test(t) ? t.toLowerCase().replace(/[\s\-]+/g, '_') : t.replace(/-/g, '_');
-    if (x.syms.has(py)) py = x.syms.get(py).py;
+    const same = x.syms.get(py);
+    if (same && same.py !== py) {
+      if (!opts.define) py = same.py;
+      else if (same.kind !== 'class' && same.kind !== 'function') x.warn(`${code(py)} and ${code(same.py)} are different names in Python, because capital letters matter.`);
+    }
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(py)) {
       x.err(`"${t}" can't be a name. Names use letters, numbers and spaces, and can't start with a number or contain quotes.`);
       return '_';
@@ -201,7 +227,7 @@
 
   function declare(x, py, display, kind, extra = {}) {
     const env = x.env;
-    let s = env.syms.get(py);
+    let s = env.syms.map.get(py);   // declaring needs the exact spelling
     if (!s) {
       s = { py, display: display.toLowerCase(), kind: kind || 'value', file: x.file, line: x.info.line, scope: x.fn ? 'local' : 'module', ...extra };
       env.syms.set(py, s);
@@ -210,8 +236,8 @@
       s.kind = kind;
     }
     if (extra.params && !s.params) s.params = extra.params;
-    const firstTime = !env.seen.has(py.toLowerCase());
-    env.seen.add(py.toLowerCase());
+    const firstTime = !env.seen.has(py);
+    env.seen.add(py);
     return firstTime;
   }
 
@@ -273,6 +299,14 @@
       x.note('In a condition, `=` was changed to `==`. In Python `=` stores a value and `==` compares two values.');
     }
 
+    // 4b. "wait for x" inside a value means await (used with async tools).
+    if (/\bwait for\b/i.test(q)) { q = q.replace(/\bwait for\b/gi, ' await '); x.note('`await` waits for an async task to finish before carrying on.'); }
+
+    // Names bound inside the expression itself (comprehensions, lambdas) are not "unknown".
+    const bound = new Set();
+    for (const m of q.matchAll(/\bfor\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+in\b/g)) m[1].split(/\s*,\s*/).forEach(n => bound.add(n));
+    for (const m of q.matchAll(/\blambda\s+([^:]*):/g)) m[1].split(/\s*,\s*/).forEach(n => bound.add(n.replace(/=.*/, '').trim()));
+
     // 5. Phrase swaps.
     for (const r of EXPR_RULES) {
       let guard = 0, prev;
@@ -288,12 +322,12 @@
     }
 
     // 6. Check every name.
-    q = q.replace(/(?<![\w.⟦])([A-Za-z_]\w*)\b/g, (m, id, off, whole) => {
-      if (PY_KEYWORDS.has(id)) return id;
+    q = q.replace(/(?<![\w.⟦⟪])([A-Za-z_]\w*)\b(?!⟫)/g, (m, id, off, whole) => {
+      if (PY_KEYWORDS.has(id) || bound.has(id)) return id;
       if (/^\s*=(?!=)/.test(whole.slice(off + m.length))) return id; // keyword argument, e.g. end=""
       const low = id.toLowerCase();
-      if (x.syms.has(low)) {
-        const s = x.syms.get(low);
+      if (x.syms.has(id)) {
+        const s = x.syms.get(id);
         if (x.pass === 2 && s.scope === 'module' && FILE_ORDER[s.file] > FILE_ORDER[x.file]) {
           x.warn(`${code(s.py)} is set in ${sectionTitle(s.file)}, which this section can't see. Set it here, or pass it into the tool as an input.`);
         }
@@ -309,6 +343,8 @@
       return id;
     });
 
+    q = q.replace(/⟪!⟫/g, 'is not').replace(/⟪⟫/g, 'is');
+
     // 7. Tidy spacing. A lone = left now is a keyword argument, like end="".
     q = q.replace(/\s*(?<![=!<>])=(?!=)\s*/g, '=');
     q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').trim();
@@ -317,7 +353,7 @@
     q = q.replace(/⟦(\d+)⟧/g, (m, i) => {
       const str = strs[+i];
       if (/^[rRbBuUfF]/.test(str)) return str; // already Python (f"…", r"…"): keep exactly
-      if (/\{[^{}]+\}/.test(str)) {
+      if (str[0] === '"' && /\{[^{}]+\}/.test(str)) {   // only double-quoted text fills in {names}; 'single' stays exact
         const inner = str.replace(/\{([^{}]+)\}/g, (mm, e) => '{' + tExpr(e, x) + '}');
         x.note('Text with {…} inside becomes an f-string (the `f` before the quotes). Python swaps in the current value of whatever is in the curly brackets.');
         return 'f' + inner;
@@ -378,6 +414,10 @@
     if (call) value = callExpr(call[1], call[2], x);
     else value = tExpr(valueRaw, x);
     if (tgt) return { py: `${tgt.py} = ${value}` };
+    if (/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(nameRaw.trim())) {
+      x.note(`Stores the value in ${code(nameRaw.trim())}, a value that belongs to an object.`);
+      return { py: `${nameRaw.trim()} = ${value}` };
+    }
     const py = toName(nameRaw, x, { define: true });
     const kind = kindOf(value, x);
     const first = declare(x, py, nameRaw.replace(/^(?:the|my)\s+/i, ''), kind);
@@ -390,16 +430,25 @@
   }
 
   function callExpr(nameRaw, argsRaw, x) {
-    const fnName = toName(nameRaw, x);
-    const s = x.syms.get(fnName);
+    const raw = nameRaw.trim();
+    const dotted = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(raw);
+    const fnName = dotted ? raw : toName(nameRaw, x);
+    const s = dotted ? null : x.syms.get(fnName);
     const args = argsRaw && !/^nothing$/i.test(argsRaw.trim()) ? splitItems(argsRaw).map(a => tExpr(a, x)) : [];
-    if (x.pass === 2) {
+    const keywords = args.some(a => /^[A-Za-z_]\w*=/.test(a));
+    if (dotted) {
+      x.note(`Runs ${code(fnName)}: a tool that belongs to ${code(raw.split('.').slice(0, -1).join('.'))}.`);
+    } else if (x.pass === 2 && !s && (BUILTINS.has(fnName) || ALWAYS_KNOWN.has(fnName))) {
+      // a Python built-in such as len or print
+    } else if (x.pass === 2 && s && ['value', 'class', 'module'].includes(s.kind)) {
+      // imported or created outside the sentences: trust it
+    } else if (x.pass === 2) {
       if (!s) {
         const guess = closest(fnName, [...x.syms.values()].filter(v => v.kind === 'function').map(v => v.py), 3);
         x.err(`There's no tool called ${code(fnName)}.` + (guess ? ` Did you mean ${code(guess)}?` : ' Make one with "define ' + fnName.replace(/_/g, ' ') + ' using …" in Tools.'));
       } else if (s.kind !== 'function') {
         x.err(`${code(fnName)} is ${KIND_WORDS[s.kind] || 'a value'}, not a tool, so it can't be run.`);
-      } else if (s.params && s.params.length !== args.length) {
+      } else if (s.params && !keywords && (args.length > s.params.length || args.length < (s.required ?? s.params.length))) {
         x.err(`${code(fnName)} needs ${s.params.length} input${s.params.length === 1 ? '' : 's'} (${s.params.join(', ') || 'none'}), but ${args.length} ${args.length === 1 ? 'was' : 'were'} given.`);
       } else if (FILE_ORDER[s.file] > FILE_ORDER[x.file]) {
         x.warn(`${code(fnName)} is defined in ${sectionTitle(s.file)}, which this section can't see.`);
@@ -414,11 +463,19 @@
     const py = m[1];
     const a = py.match(/^\s*([A-Za-z_]\w*)\s*=[^=]/);
     if (a) declare(x, a[1], a[1], 'value');
+    const imp = py.match(/^\s*(?:from\s+[\w.]+\s+)?import\s+(.+)$/);
+    if (imp) for (const part of imp[1].replace(/[()]/g, '').split(',')) {
+      const nm = part.trim().split(/\s+as\s+/).pop().split('.')[0];
+      if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, /^\s*import/.test(py) ? 'module' : 'value');
+    }
+    const cls = py.match(/^\s*class\s+([A-Za-z_]\w*)/);
+    if (cls) declare(x, cls[1], cls[1], 'class');
     const d = py.match(/^\s*def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
     if (d) declare(x, d[1], d[1], 'function', { params: d[2].split(',').map(p => p.trim()).filter(Boolean) });
     const opens = /:\s*(#.*)?$/.test(py);
-    const kw = (py.match(/^\s*(if|elif|else|for|while|def)\b/) || [])[1];
-    return { py, open: opens ? (d ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : 'block') : null, tag: ['if', 'elif', 'else'].includes(kw) ? kw : undefined };
+    const kw = (py.match(/^\s*(if|elif|else|for|while|def|async def|class|try|except|finally|with)\b/) || [])[1];
+    const tag = { if: 'if', elif: 'elif', else: 'rawelse', try: 'try', except: 'except', finally: 'finally' }[kw];
+    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag };
   });
 
   rule(/^(?:note|comment)\s*:\s*(.*)$|^#\s?(.*)$/i, (m, x) => {
@@ -433,15 +490,113 @@
     return { py: `import ${mod}` };
   });
 
+  // --- Program structure: this file, web routes, decorators ---------------
+  rule(/^(?:if|when) this file is (?:run|started) directly$/i, (m, x) => {
+    x.note('`__name__` is `"__main__"` only when this file is started directly, not when another file imports it. Code here is the starting point.');
+    return { py: 'if __name__ == "__main__":', open: 'if', tag: 'if' };
+  });
+  rule(/^when\s+([A-Za-z_][\w.]*)\s+(?:gets|receives)\s+(an?y? ?(?:web )?requests?|(?:GET|POST|PUT|DELETE|PATCH)(?:\s*(?:,|and|or)\s*(?:GET|POST|PUT|DELETE|PATCH))*)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')$/i, (m, x) => {
+    const methods = /request/i.test(m[2]) ? [] : m[2].toUpperCase().split(/\s*(?:,|AND|OR)\s*/).filter(Boolean);
+    x.note(`A web route: when the web server gets ${methods.length ? methods.join(' or ') + ' requests' : 'a request'} for ${m[3]}, it runs the tool defined on the next line. (Flask writes this as a decorator starting with @.)`);
+    return { py: `@${m[1]}.route(${m[3].replace(/^'|'$/g, '"')}${methods.length ? `, methods=[${methods.map(v => `"${v}"`).join(', ')}]` : ''})`, tag: 'decorator' };
+  });
+  rule(/^when\s+([A-Za-z_][\w.]*)\s+handles\s+(GET|POST|PUT|DELETE|PATCH)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')(?:\s+with\s+(.+))?$/i, (m, x) => {
+    const extra = m[4] ? splitItems(m[4]).map(a => tExpr(a, x)) : [];
+    x.note(`A web route: when the server gets a ${m[2].toUpperCase()} request for ${m[3]}, it runs the tool defined on the next line.`);
+    return { py: `@${m[1]}.${m[2].toLowerCase()}(${m[3]}${extra.length ? ', ' + extra.join(', ') : ''})`, tag: 'decorator' };
+  });
+  rule(/^decorate(?: it)? with\s+(.+)$/i, (m, x) => {
+    x.note('A decorator (the line starting with @) adds behaviour to the tool or class defined right below it.');
+    return { py: '@' + tExpr(m[1], x), tag: 'decorator' };
+  });
+
+  // --- Classes -----------------------------------------------------------
+  rule(/^define\s+(?:a\s+)?class\s+([A-Za-z_]\w*)(?:\s+based on\s+(.+))?$/i, (m, x) => {
+    declare(x, m[1], m[1], 'class');
+    const bases = m[2] ? splitItems(m[2]).map(b => tExpr(b, x)) : [];
+    x.note(`A class is a blueprint for objects. Each object made from ${code(m[1])} keeps its own values (written ${code('self.something')}) and can use the tools defined inside it.` + (bases.length ? ` It builds on ${bases.map(code).join(', ')}.` : ''));
+    return { py: `class ${m[1]}${bases.length ? `(${bases.join(', ')})` : ''}:`, open: 'class' };
+  });
+  rule(/^field\s+([A-Za-z_]\w*)\s*:\s*(.+?)(?:\s+=\s+(.+))?$/i, (m, x) => {
+    declare(x, m[1], m[1], 'value');
+    x.note(`Declares that objects of this class have ${code(m[1])}, of type ${code(m[2].trim())}.` + (m[3] ? ' If none is given, it starts as ' + code(m[3].trim()) + '.' : ''));
+    return { py: `${m[1]}: ${tExpr(m[2], x)}${m[3] ? ' = ' + tExpr(m[3], x) : ''}` };
+  });
+  rule(/^use the shared\s+(.+)$/i, (m, x) => {
+    const names = splitItems(m[1]).map(n => toName(n, x));
+    if (x.fn) names.forEach(n => (x.fn.explicit = x.fn.explicit || new Set()).add(n));
+    x.note('`global` lets this tool change a value that lives outside it, instead of making its own copy.');
+    return { py: `global ${names.join(', ')}` };
+  });
+  rule(/^delete\s+(.+)$/i, (m, x) => {
+    const parts = splitItems(m[1]).map(t => tExpr(t, x));
+    x.note('`del` removes a name, or an item from a list or dictionary.');
+    return { py: `del ${parts.join(', ')}` };
+  });
+
+  // --- Handling errors ---------------------------------------------------
+  rule(/^try$/i, (m, x) => {
+    x.note('`try` runs the indented lines and watches for errors. What to do if one happens goes in "if it fails".');
+    return { py: 'try:', open: 'block', tag: 'try' };
+  });
+  rule(/^(?:if|when) (?:it|that|this|anything|something) fails(?:\s+with\s+(.+?))?(?:\s+as\s+([A-Za-z_]\w*))?$/i, (m, x) => {
+    let kinds = m[1] ? splitItems(m[1].replace(/\s+or\s+/gi, ', ')).map(k => tExpr(k, x)) : [];
+    const type = kinds.length > 1 ? `(${kinds.join(', ')})` : kinds[0] || '';
+    if (m[2]) declare(x, m[2], m[2], 'value');
+    x.note(m[1] ? `\`except\` catches ${kinds.map(code).join(' or ')} errors from the \`try\` block, so the program carries on instead of stopping.` : 'A bare `except` catches every kind of error. That can hide real problems; naming the error is safer.');
+    return { py: `except${type ? ' ' + type : ''}${m[2] ? ' as ' + m[2] : ''}:`, open: 'block', tag: 'except' };
+  });
+  rule(/^if nothing failed$/i, (m, x) => {
+    x.note('This `else` runs only when the `try` block finished without an error.');
+    return { py: 'else:', open: 'block', tag: 'tryelse' };
+  });
+  rule(/^(?:finally|in any case|either way|whatever happens)$/i, (m, x) => {
+    x.note('`finally` always runs, error or not. It is used for clean-up, like closing files.');
+    return { py: 'finally:', open: 'block', tag: 'finally' };
+  });
+  rule(/^fail again$/i, (m, x) => {
+    x.note('A bare `raise` passes the error that was just caught on up to whoever ran this.');
+    return { py: 'raise' };
+  });
+  rule(/^(?:fail|stop) with\s+(?:(?:the|an?)\s+)?(?:error\s+)?([A-Za-z_][\w.]*)(?:\s*:\s*(.+))?$/i, (m, x) => {
+    x.note(`\`raise\` stops with a ${code(m[1])} error. Whoever ran this can catch it with "if it fails".`);
+    return { py: `raise ${m[1]}${m[2] ? `(${splitItems(m[2]).map(a => tExpr(a, x)).join(', ')})` : ''}` };
+  });
+  rule(/^check that\s+(.+)$/i, (m, x) => {
+    x.note('`assert` stops the program with an error if the check is false. Tests are made of these.');
+    return { py: `assert ${tExpr(m[1], x, { cond: true })}` };
+  });
+
+  // --- Files and other things that need closing ----------------------------
+  rule(/^open\s+(?:the\s+)?(?:file\s+)?(.+?)(?:\s+for\s+(reading|writing|adding|appending))?\s+as\s+([A-Za-z_]\w*)$/i, (m, x) => {
+    const mode = { reading: 'r', writing: 'w', adding: 'a', appending: 'a' }[(m[2] || '').toLowerCase()];
+    declare(x, m[3], m[3], 'value');
+    x.note(`\`with open(…)\` opens the file and closes it automatically when the indented lines finish.` + (mode === 'w' ? ' Writing replaces whatever was in the file.' : mode === 'a' ? ' Adding writes to the end and keeps what was there.' : ''));
+    return { py: `with open(${tExpr(m[1], x)}${mode ? `, "${mode}"` : ''}) as ${m[3]}:`, open: 'block' };
+  });
+  rule(/^(async\s+)?using\s+(.+?)(?:\s+as\s+([A-Za-z_]\w*))?$/i, (m, x) => {
+    if (m[3]) declare(x, m[3], m[3], 'value');
+    x.note('`with` sets something up for the indented lines and tidies it away afterwards, even if there is an error.');
+    return { py: `${m[1] ? 'async ' : ''}with ${tExpr(m[2], x)}${m[3] ? ' as ' + m[3] : ''}:`, open: 'block' };
+  });
+
   // --- Tools (functions) -----------------------------------------------
-  rule(/^(?:define|create (?:a )?(?:new )?(?:tool|function)|make (?:a )?(?:new )?(?:tool|function)|new tool)\s+(?:called\s+|named\s+)?(.+?)(?:\s+(?:using|with|that takes|taking|needing|given)\s+(.+))?$/i, (m, x) => {
-    const name = toName(m[1], x, { define: true });
-    const params = m[2] && !/^nothing$/i.test(m[2].trim()) ? splitItems(m[2]).map(p => toName(p, x)) : [];
-    declare(x, name, m[1], 'function', { params });
+  rule(/^(?:define|create (?:a )?(?:new )?(?:tool|function)|make (?:a )?(?:new )?(?:tool|function)|new tool)\s+(async\s+)?(?:called\s+|named\s+)?(.+?)(?:\s+(?:using|with|that takes|taking|needing|given)\s+(.+))?$/i, (m, x) => {
+    const name = toName(m[2], x, { define: true });
+    const parts = m[3] && !/^nothing$/i.test(m[3].trim()) ? splitItems(m[3]) : [];
+    const params = [], shown = [];
+    for (const p of parts) {
+      const d = p.match(/^([A-Za-z_]\w*)\s*(?::\s*(.+?))?\s*(?:=\s*(.+))?$/) || [null, p];
+      const pn = toName(d[1], x, { define: true });
+      params.push(pn);
+      shown.push(pn + (d[2] ? `: ${tExpr(d[2], x)}` : '') + (d[3] ? (d[2] ? ' = ' : '=') + tExpr(d[3], x) : ''));
+    }
+    const required = parts.filter(p => !/=(?!=)/.test(p)).length;
+    declare(x, name, m[2], 'function', { params, required });
     for (const p of params) declare(x, p, p, 'value', { scope: 'local' });
-    if (x.level > 0) x.warn('This tool is defined inside another block. Usually tools are defined at the left edge, with nothing in front.');
-    x.note(`${code('def')} makes a reusable tool called ${code(name)}. The indented lines under it only run when you "run ${m[1].trim()}".` + (params.length ? ` Its inputs (${params.map(code).join(', ')}) are filled in each time it runs.` : ''));
-    return { py: `def ${name}(${params.join(', ')}):`, open: 'def', fn: { name, params } };
+    if (x.level > 0 && !x.inside('class')) x.warn('This tool is defined inside another block. Usually tools are defined at the left edge, with nothing in front.');
+    x.note(`${code(m[1] ? 'async def' : 'def')} makes a reusable tool called ${code(name)}. The indented lines under it only run when you "run ${m[2].trim()}".` + (params.length ? ` Its inputs (${params.map(code).join(', ')}) are filled in each time it runs.` : '') + (required < params.length ? ' Inputs with `=` have a value to use if none is given.' : '') + (m[1] ? ' `async` means it can wait for slow things (like the internet) without blocking.' : ''));
+    return { py: `${m[1] ? 'async ' : ''}def ${name}(${shown.join(', ')}):`, open: 'def', fn: { name, params } };
   });
 
   rule(/^(?:give back|return|send back|answer with|hand back)\b\s*(.*)$/i, (m, x) => {
@@ -516,6 +671,13 @@
   });
   rule(/^(?:for each|for every|go through each|go through every|with each|for)\s+(.+?)\s+(?:in|of|from)\s+(.+)$/i, (m, x) => {
     const coll = tExpr(m[2], x);
+    const names = splitItems(m[1]);
+    if (names.length > 1) {
+      const vs = names.map(n => toName(n, x, { define: true }));
+      vs.forEach(v => declare(x, v, v, 'value'));
+      x.note(`Each item is a group of ${vs.length} values, so each round they are unpacked into ${vs.map(code).join(', ')}.`);
+      return { py: `for ${vs.join(', ')} in ${coll}:`, open: 'loop' };
+    }
     const v = toName(m[1], x, { define: true });
     const ck = x.syms.get(coll)?.kind;
     declare(x, v, m[1], ck === 'text' ? 'text' : 'value');
@@ -675,10 +837,19 @@
   });
 
   // --- Time ----------------------------------------------------------------
-  rule(/^(?:wait|pause|sleep)\s+(?:for\s+)?(.+?)\s*(?:seconds?|secs?|s)$/i, (m, x) => {
+  rule(/^(?:wait|pause|sleep)\s+(?:for\s+)?(.+?)(?:\s+(?:seconds?|secs?)|(?<=\d)\s*s)$/i, (m, x) => {
     x.use('time');
     x.note('`time.sleep()` pauses the program. (In this browser preview pauses are skipped, so output appears all at once.)');
     return { py: `time.sleep(${tExpr(m[1], x)})` };
+  });
+
+  // --- Objects ---------------------------------------------------------------
+  rule(/^(?:make|create)\s+(?:a\s+)?new\s+([A-Za-z_][\w.]*)(?:\s+(?:with|using|from)\s+(.+?))?\s+and\s+(?:store|keep|save|put)(?:\s+it)?\s+(?:in|as|into)\s+(.+)$/i, (m, x) => {
+    const call = callExpr(m[1], m[2], x);
+    const v = toName(m[3], x, { define: true });
+    declare(x, v, m[3], 'value'); assigned(x, v);
+    x.note(`Makes a new ${code(m[1])} object and stores it in ${code(v)}. Python writes this as a call, like running a tool.`);
+    return { py: `${v} = ${call}` };
   });
 
   // --- Storing -------------------------------------------------------------
@@ -718,10 +889,13 @@
   const ANY_FILLER = /\b(?:please|kindly|just|simply|basically|really|actually|quickly)\b/gi;
   const TAIL_FILLER = /(?:\s*,?\s*\b(?:please|for me|thanks|thank you))+\s*[.!]?\s*$/i;
   const STEP_SPLIT = /\s*;\s*|\s*,?\s+(?:and then|then|after that|afterwards)\s+/gi;
+  // A colon splits "repeat 3 times: show hi" only when a lower-case sentence follows (so "note: Note" types stay put).
+  const STEP_START = /^(?:show|print|say|display|set|ask|run|call|give back|return|add|remove|delete|increase|decrease|multiply|divide|stop|skip|do nothing|wait|create|make|if|repeat|for each|count|fail|check|open|using|sort|shuffle|reverse)\b(?!\s*[:=(.\[])/;
   const NOT_FILLER = /^(?:next round|then|now|next|first)$/i;   // sentences that happen to start like filler
 
   // Hide quoted text (same length) so word matching never touches it.
-  const mask = (s) => s.replace(/"(?:[^"\\]|\\.)*"?|(?<![\w])'(?:[^'\\]|\\.)*'?/g, (m) => '\u0001'.repeat(m.length));
+  const mask = (s) => s.replace(/"(?:[^"\\]|\\.)*"?|(?<![A-Za-z0-9_])[rRbBuUfF]{0,2}'(?:[^'\\]|\\.)*'?/g, (m) => '\u0001'.repeat(m.length));
+  const balanced = (s) => { let d = 0; for (const c of s) { if ('([{'.includes(c)) d++; else if (')]}'.includes(c)) d--; } return d === 0; };
 
   function stripFiller(s) {
     const removed = [];
@@ -732,7 +906,15 @@
     if (tail && tail.index > 0) { removed.push(...tail[0].replace(/[.!,]/g, ' ').trim().split(/\s+(?=please|for|thanks|thank)/i)); s = s.slice(0, tail.index); }
     let out = '', last = 0;
     for (const m of mask(s).matchAll(ANY_FILLER)) { out += s.slice(last, m.index); last = m.index + m[0].length; removed.push(m[0].toLowerCase()); }
-    return { text: (out + s.slice(last)).replace(/[ \t]{2,}/g, ' ').trim(), removed: removed.map(w => w.toLowerCase()) };
+    s = out + s.slice(last);
+    // tidy double spaces left by removed words, but never inside quoted text
+    if (removed.length) {
+      const m = mask(s);
+      let tidy = '';
+      for (let i = 0; i < s.length; i++) if (!(s[i] === ' ' && m[i] !== '\u0001' && s[i + 1] === ' ' && m[i + 1] !== '\u0001')) tidy += s[i];
+      s = tidy;
+    }
+    return { text: s.trim(), removed: removed.map(w => w.toLowerCase()) };
   }
 
   function splitSteps(s) {
@@ -743,7 +925,8 @@
     // "repeat 3 times: show hi" -> header + body
     if (clean.length) {
       const c = mask(clean[0]).search(/:\s+\S/);
-      if (c > 0 && OPENS_BLOCK.test(clean[0].slice(0, c))) clean.splice(0, 1, clean[0].slice(0, c), clean[0].slice(c + 1).trim());
+      const after = clean[0].slice(c + 1).trim();
+      if (c > 0 && OPENS_BLOCK.test(clean[0].slice(0, c)) && balanced(mask(clean[0].slice(0, c))) && STEP_START.test(after)) clean.splice(0, 1, clean[0].slice(0, c), clean[0].slice(c + 1).trim());
     }
     return clean;
   }
@@ -790,7 +973,7 @@
     }
     // Fallback: a bare call like print("hi") or greet(name) is fine as-is.
     const e = tExpr(s, x);
-    if (/^[\w.]+\(.*\)$/.test(e) && !x.info.errs.length) {
+    if (/^(?:await\s+)?[\w.]+\(.*\)$/.test(e) && !x.info.errs.length) {
       x.note('This looks like Python already, so it is kept as written.');
       return { py: e };
     }
@@ -820,8 +1003,9 @@
     const fnRecords = [];
 
     const closeBlock = (entry) => {
-      if (entry.fn && entry.fn.globals.size && env.pass === 2) {
-        out.splice(entry.fn.outIdx + 1, 0, { text: ' '.repeat((entry.fn.level + 1) * 4) + 'global ' + [...entry.fn.globals].join(', '), src: entry.fn.line, extra: true });
+      const auto = entry.fn ? [...entry.fn.globals].filter(g => !(entry.fn.explicit && entry.fn.explicit.has(g))) : [];
+      if (auto.length && env.pass === 2) {
+        out.splice(entry.fn.outIdx + 1, 0, { text: ' '.repeat((entry.fn.level + 1) * 4) + 'global ' + auto.join(', '), src: entry.fn.line, extra: true });
       }
     };
 
@@ -863,6 +1047,12 @@
         if (!['if', 'elif'].includes(lastTag[level])) {
           cur.errs.push(`"${rawLine.trim().split(/\s+/).slice(0, res.tag === 'elif' ? 2 : 1).join(' ')}" needs an "if" right above it, lined up at the same indentation.`);
         }
+      }
+      if (['except', 'tryelse', 'finally'].includes(res.tag) && !['try', 'except', 'tryelse'].includes(lastTag[level])) {
+        cur.errs.push('This belongs to a "try" block: put it right after the lines under "try", lined up with the word "try".');
+      }
+      if (lastTag[level] === 'decorator' && !/^(?:@|def |async def |class )/.test(res.py || '')) {
+        cur.errs.push('The line above (a decorator or web route) must be followed by "define …" or "define class …".');
       }
       if (!res.comment) lastTag[level] = res.tag || 'stmt';
 
@@ -958,12 +1148,33 @@
     T('Lists', 'remove ‹value› from ‹list›', 'list.remove(value)', 'Or "remove item 0 from list" to remove by position.', ['tools', 'main']),
     T('Lists', 'sort ‹list›', 'list.sort()', 'Add "biggest first" to reverse the order.', ['tools', 'main']),
     T('Lists', 'shuffle ‹list›', 'random.shuffle(list)', '', ['tools', 'main']),
-    T('Lists', 'create dictionary ‹name›', 'name = {}', 'Stores values under keys, like prices of items.'),
-    T('Lists', 'set item ‹key› of ‹name› to ‹value›', 'name[key] = value', 'Works for lists (key is a position) and dictionaries.'),
     T('Tools', 'define ‹name› using ‹inputs›', 'def name(inputs):', 'Leave off "using …" if the tool needs no inputs.', ['tools', 'main']),
     T('Tools', 'give back ‹value›', 'return value', 'Only inside a define block.', ['tools']),
     T('Tools', 'run ‹tool› with ‹inputs›', 'tool(inputs)', '', ['tools', 'main']),
     T('Tools', 'run ‹tool› with ‹inputs› and store in ‹name›', 'name = tool(inputs)', 'Keeps what the tool gives back.', ['tools', 'main']),
+    T('Dictionaries', 'create dictionary ‹name›', 'name = {}', 'Stores values under keys, like prices of items.'),
+    T('Dictionaries', 'set item ‹key› of ‹dictionary› to ‹value›', 'dictionary[key] = value', ''),
+    T('Dictionaries', 'for each ‹key›, ‹value› in pairs of ‹dictionary›', 'for key, value in dictionary.items():', 'Goes through every key together with its value.'),
+    T('Dictionaries', 'delete item ‹key› of ‹dictionary›', 'del dictionary[key]', ''),
+    T('Objects', 'define class ‹Name›', 'class Name:', 'A blueprint for objects. Tools defined inside it take `self` first.', ['tools', 'main']),
+    T('Objects', 'define class ‹Name› based on ‹Parent›', 'class Name(Parent):', 'Builds on another class and adds to it.', ['tools', 'main']),
+    T('Objects', 'set self.‹value› to ‹value›', 'self.value = value', 'Inside a class: a value each object keeps for itself.', ['tools', 'main']),
+    T('Objects', 'make a new ‹Class› with ‹inputs› and store in ‹name›', 'name = Class(inputs)', 'Creates an object from a class.', ['tools', 'main']),
+    T('Objects', 'run ‹object›.‹tool› with ‹inputs›', 'object.tool(inputs)', 'Runs a tool that belongs to an object or module, e.g. run conn.commit.', ['tools', 'main']),
+    T('Objects', 'field ‹name›: ‹type›', 'name: type', 'Inside a data class: a value every object has.', ['tools', 'main']),
+    T('Errors', 'try', 'try:', 'Indent the lines that might fail under it.', ['tools', 'main']),
+    T('Errors', 'if it fails with ‹ErrorType› as ‹error›', 'except ErrorType as error:', 'What to do when the lines under "try" fail.', ['tools', 'main']),
+    T('Errors', 'in any case', 'finally:', 'Always runs afterwards, error or not.', ['tools', 'main']),
+    T('Errors', 'fail with ‹ErrorType›: ‹message›', 'raise ErrorType(message)', 'Stops with an error that the caller can catch.', ['tools', 'main']),
+    T('Errors', 'check that ‹condition›', 'assert condition', 'Stops with an error if the check is false. Used in tests.', ['tools', 'main']),
+    T('Files', 'open the file ‹path› as ‹f›', 'with open(path) as f:', 'Reads the file. The file closes itself after the indented lines.', ['tools', 'main']),
+    T('Files', 'open the file ‹path› for writing as ‹f›', 'with open(path, "w") as f:', 'Replaces what was in the file. Use "for adding" to add to the end.', ['tools', 'main']),
+    T('Files', 'using ‹something› as ‹name›', 'with something as name:', 'Sets something up and tidies it away afterwards.', ['tools', 'main']),
+    T('Program', 'if this file is run directly', 'if __name__ == "__main__":', 'The starting point of a program made of several files.', ['main']),
+    T('Program', 'when ‹app› gets ‹GET› at "‹/path›"', '@app.route("/path", methods=["GET"])', 'A Flask web route. Put "define …" on the next line.', ['tools', 'main']),
+    T('Program', 'when ‹app› handles ‹GET› at "‹/path›"', '@app.get("/path")', 'A FastAPI (or Flask 2) web route. Put "define …" on the next line.', ['tools', 'main']),
+    T('Program', 'decorate with ‹decorator›', '@decorator', 'Adds behaviour to the next tool or class.', ['tools', 'main']),
+    T('Program', 'use the shared ‹name›', 'global name', 'Inside a tool: change a value that lives outside it.', ['tools']),
     T('Other', 'wait ‹number› seconds', 'time.sleep(number)', '', ['tools', 'main']),
     T('Other', 'do nothing', 'pass', 'A placeholder for a block you will fill in later.', ['tools', 'main']),
     T('Other', 'stop the program', 'sys.exit()', '', ['tools', 'main']),
@@ -983,6 +1194,8 @@
     ['x as text', 'str(x)'], ['x rounded', 'round(x)'], ['x rounded to 2 places', 'round(x, 2)'],
     ['x in capitals', 'x.upper()'], ['square root of x', 'math.sqrt(x)'], ['yes / no', 'True / False'], ['nothing', 'None'],
     ['"Hi {name}"', 'f"Hi {name}"'],
+    ['x is nothing', 'x is None'], ['a if check otherwise b', 'a if check else b'], ['pairs of d', 'd.items()'],
+    ['wait for fetch(url)', 'await fetch(url)'],
   ];
 
   const GUIDE = {
@@ -1012,7 +1225,7 @@
   };
 
   /* Block openers: used by the editor to auto-indent after Enter. */
-  const OPENS_BLOCK = /^\s*(?:if|when|otherwise|else|elif|repeat|while|until|as long as|keep (?:going|repeating)|count|for|define|create (?:a )?(?:tool|function)|make (?:a )?(?:tool|function)|forever|loop|do this|python:.*:\s*$)\b/i;
+  const OPENS_BLOCK = /^\s*(?:if|when (?!\S+ (?:gets|handles)\b)|otherwise|else|elif|repeat|while|until|as long as|keep (?:going|repeating)|count|for|define|create (?:a )?(?:tool|function)|make (?:a )?(?:tool|function)|forever|loop|do this|try|in any case|finally|either way|open (?:the file )?.+ as \w+$|(?:async )?using|python:.*:\s*$)\b/i;
 
   window.IntuiLang = window.IntuiLang || {};
   window.IntuiLang.python = {

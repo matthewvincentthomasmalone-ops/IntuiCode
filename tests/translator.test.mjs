@@ -32,6 +32,8 @@ const CASES = [
   ['set age to 20\nif age is at least 18 then show "Welcome" and then show "!"', 'age = 20\nif age >= 18:\n    print("Welcome")\n    print("!")'],
   ['let\'s repeat 2 times: show "hi"', 'for _ in range(2):\n    print("hi")'],
   ['show "please just wait"', 'print("please just wait")'],
+  ['please show "a    b"', 'print("a    b")'],
+  ["check that 'a  b' is 'a  b'", "assert 'a  b' == 'a  b'"],
   ['set r to random number from 1 to 6', 'r = random.randint(1, 6)'],
 ];
 

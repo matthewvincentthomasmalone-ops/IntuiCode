@@ -20,4 +20,8 @@ jobs:
       - name: Translator, blueprint and round-trip tests (Node)
         run: node --test tests/*.test.mjs
       - name: How much reads as sentences
-        run: node tools/coverage.mjs samples tests/corpus | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo '### Corpus' >> "$GITHUB_STEP_SUMMARY"
+          node tools/coverage.mjs samples tests/corpus | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '### Held-out' >> "$GITHUB_STEP_SUMMARY"
+          node tools/coverage.mjs tests/heldout | tee -a "$GITHUB_STEP_SUMMARY"

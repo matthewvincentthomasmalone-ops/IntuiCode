@@ -105,7 +105,7 @@
   const secResult = (id) => compiled && compiled.results[id];
   const caretLine = () => ta.value.slice(0, ta.selectionStart).split('\n').length - 1;
 
-  const STARTER = /^(otherwise if|else if|otherwise|else|if|when|repeat until|repeat while|repeat forever|repeat|keep going|while|as long as|count down|count|for each|for every|for|define|give back|return|show|print|say|display|ask for an? (?:whole number|number|decimal)|ask for|ask|set|make|let|change|update|create (?:an? )?(?:empty )?(?:list|dictionary)|create|increase|decrease|multiply|divide|add|remove|subtract|sort|reverse|shuffle|wait|run|call|stop the loop|stop the program|skip to next|do nothing|use|remember|forever)(?=\s|$)/i;
+  const STARTER = /^(if (?:it|that|this|anything|something) fails(?: with)?|if nothing failed|in any case|if this file is run directly|fail with|fail again|check that|open the file|async using|using|define class|define async|make a new|field|decorate with|use the shared|delete|try|otherwise if|else if|otherwise|else|if|when|repeat until|repeat while|repeat forever|repeat|keep going|while|as long as|count down|count|for each|for every|for|define|give back|return|show|print|say|display|ask for an? (?:whole number|number|decimal)|ask for|ask|set|make|let|change|update|create (?:an? )?(?:empty )?(?:list|dictionary)|create|increase|decrease|multiply|divide|add|remove|subtract|sort|reverse|shuffle|wait|run|call|stop the loop|stop the program|skip to next|do nothing|use|remember|forever)(?=\s|$)/i;
   const OPS = new Set(['is', 'not', 'and', 'or', 'than', 'plus', 'minus', 'times', 'divided', 'mod', 'equal', 'contains', 'squared', 'more', 'less', 'greater', 'least', 'most', 'at', 'even', 'odd', 'bigger', 'smaller', 'yes', 'no', 'nothing']);
   const CONN = new Set(['to', 'by', 'with', 'using', 'from', 'in', 'of', 'store', 'into', 'as', 'item', 'first', 'last', 'length', 'random', 'number', 'text', 'decimal', 'each', 'the', 'counting', 'down', 'sum', 'biggest', 'smallest', 'rounded', 'result', 'it', 'places', 'seconds']);
   const NO_NAMES = { all: new Set(), fn: new Set() };
@@ -1337,12 +1337,19 @@
   $('btnToSentences').addEventListener('click', async () => {
     const file = curFile();
     const R = await Runner.reader();
-    const res = R.toSentences(file.source);
-    if (!res.ok) { tLine('This file can\'t be turned into sentences: ' + res.error, 't-err'); return; }
+    // Safety net: if any statement doesn't come back exactly, keep just that statement as python: and try again.
+    let force = [], res, check;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      res = R.toSentences(file.source, force);
+      if (!res.ok) { tLine('This file can\'t be turned into sentences: ' + res.error, 't-err'); return; }
+      const generated = LANG.compileProject({ sections: [{ id: 'main', file: 'main', text: res.text }] }).results.main.text;
+      check = R.compare(file.source, generated);
+      if (check.same || check.error || !check.differs.length) break;
+      force = force.concat(check.differs.map(d => d[0]));
+    }
     const next = { version: 1, lang: 'python', name: slug(file.name.split('/').pop()), sections: [{ id: 'main', file: 'main', text: res.text }], active: 'main' };
-    replaceProject(next, `Opened ${shortPath(file.name)} as sentences. Lines that can't be said in words yet stay as "python:" lines, exactly as written.`);
-    const check = R.compare(file.source, secResult('main').text);
-    if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.', 't-ok');
+    replaceProject(next, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
+    if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.' + (force.length ? ` (${force.length} part${force.length > 1 ? 's were' : ' was'} kept as python: lines to stay exact.)` : ''), 't-ok');
     else tLine(`Note: the sentences differ from the original ${check.error ? '(' + check.error + ')' : 'at lines ' + check.differs.map(d => d[0] === d[1] ? d[0] : d[0] + '–' + d[1]).join(', ')}. Check those parts before relying on them.`, 't-err');
   });
 

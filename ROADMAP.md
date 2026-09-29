@@ -19,8 +19,8 @@ directions, using rules rather than AI. This file records where it is going and 
 | # | Step | Status |
 |---|------|--------|
 | 1 | Foundation: tests, CI, a corpus and a sentence-coverage metric, architecture decisions | done |
-| 2 | Grow Python sentences: dictionaries, files, errors, `with`, classes, method calls, library phrase packs, keep comments | next |
-| 3 | The web set: HTML, CSS and JavaScript in Read and Write modes, website template with live preview, front end ↔ back end links | |
+| 2 | Grow Python sentences: dictionaries, files, errors, `with`, classes, method calls, library phrase packs, keep comments | done |
+| 3 | The web set: HTML, CSS and JavaScript in Read and Write modes, website template with live preview, front end ↔ back end links | next |
 | 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | |
 | 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | |
 
@@ -32,9 +32,17 @@ directions, using rules rather than AI. This file records where it is going and 
   than `python:` lines;
 - **exact**: files whose sentences rebuild exactly the same program. This must always be all of them.
 
-| Date | In words | Exact |
-|------|----------|-------|
-| 2026-09-29 (baseline) | 43% (130/304) | 18/18 |
+`tests/heldout/` holds programs written *after* the rules, to measure fairly. Once a
+held-out file has been used to fix something, it counts as seen; add new unseen files
+before each measurement.
+
+| Date | Corpus in words | Exact | Held-out in words | Exact |
+|------|-----------------|-------|-------------------|-------|
+| 2026-09-29 baseline | 43% (130/304) | 18/18 | – | – |
+| 2026-09-29 after step 2 | 98% (297/304) | 18/18 | 87% on first sight, one exactness bug found; 96% after fixes | 5/5 |
+
+The app has a safety net: if converting a file to sentences ever isn't exact, the
+statements that differ are kept as `python:` lines automatically and the check runs again.
 
 ## Known risks (from the design audit)
 
