@@ -253,7 +253,6 @@ def _pb_reset():
           try {
             const rt = base || 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/';
             const gr = base || 'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/';
-            if (base && !(await fetch(base + 'tree-sitter.wasm', { method: 'HEAD', cache: 'no-store' }).then(r => r.ok).catch(() => false))) continue;
             onStatus && onStatus('Loading the web reader…');
             if (typeof window.TreeSitter === 'undefined') await loadScript(rt + 'tree-sitter.js');
             await window.IntuiWebReader.init({ TreeSitter: window.TreeSitter, locate: (f) => (f === 'tree-sitter.wasm' ? rt : gr) + f, only: ['js', 'ts', 'tsx', 'html', 'css'] });

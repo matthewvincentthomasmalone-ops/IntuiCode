@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "IntuiCode",
+  "version": "0.1.0",
+  "identifier": "app.intuicode.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "node tools/build_desktop.mjs",
+    "beforeDevCommand": "node tools/build_desktop.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "IntuiCode",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Write and read code in plain sentences",
+    "longDescription": "IntuiCode translates between plain, structured sentences and real code (Python, HTML, CSS, JavaScript), in both directions, using rules rather than AI.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

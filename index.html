@@ -17,6 +17,9 @@
       </div>
     </div>
     <div class="bar-actions">
+      <span class="folder-name" id="folderName" hidden></span>
+      <button type="button" id="btnOpenFolder" class="btn ghost" hidden title="Open a project folder on this computer">Open folder</button>
+      <button type="button" id="btnSave" class="btn ghost" hidden title="Save the project as files (Ctrl+S)">Save</button>
       <button type="button" id="btnBlueprints" class="btn ghost">Blueprints</button>
       <button type="button" id="btnImport" class="btn ghost">Import code</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
@@ -109,6 +112,7 @@
           </div>
           <span class="py-status" id="pyStatus">Python not loaded</span>
           <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
+          <button type="button" class="btn small term-btn" id="btnStop" hidden>Stop</button>
           <button type="button" class="btn small term-btn" id="btnClear">Clear</button>
         </div>
         <div class="preview-wrap" id="previewWrap" hidden>

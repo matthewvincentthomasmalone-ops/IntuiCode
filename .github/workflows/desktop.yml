@@ -1,0 +1,70 @@
+name: Desktop app
+
+# Builds IntuiCode installers for Windows, macOS and Linux.
+# Run it from the Actions tab ("Run workflow"), or push a tag like v0.1.0.
+# The installers are attached to a GitHub Release (pre-release) for that version.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build tools
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Bundle Python and the parsers (so the app works offline)
+        run: |
+          npm ci
+          npm run vendor
+          python tools/fetch_pyodide.py
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "IntuiCode v__VERSION__"
+          releaseBody: |
+            Installers for IntuiCode.
+            - Windows: the .msi or -setup.exe file
+            - macOS: the .dmg file (works on Apple Silicon and Intel)
+            - Linux: the .AppImage (run it directly) or the .deb (Ubuntu/Debian)
+            These builds aren't signed yet, so Windows and macOS will warn you the first time. See the README for how to open them.
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}

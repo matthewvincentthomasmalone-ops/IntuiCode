@@ -522,6 +522,7 @@
 
   function onEdit() {
     runtimeMark = null;
+    if (typeof autosave === 'function') autosave();
     typingLine = caretLine();
     activeSec().text = ta.value;
     ensureCaretVisible();
@@ -706,6 +707,7 @@
       }
       return;
     }
+    if (desk.on && desk.python) return runDesktopPython();
     if (!(await ensurePython())) return;
     const files = {};
     for (const s of project.sections) files[s.file + '.py'] = secResult(s.id).text;
@@ -846,6 +848,7 @@
     '  reset    forget values from earlier runs',
     '  restore  swap back to the project you had before the last blueprint or import',
     '  index    open the Index',
+    ...(window.__TAURI__ ? ['  $ …     run a command in the project folder, e.g. $ git status or $ pip install flask'] : []),
     'Anything else is tried right away. Type a sentence like',
     '  random number from 1 to 6',
     '  show length of "hello"',
@@ -889,6 +892,12 @@
     e.preventDefault();
     const val = termIn.value;
     termIn.value = '';
+    if (desk.proc) {
+      tWrite(val + '\n', 't-echo');
+      invoke('write_stdin', { id: desk.proc.id, text: val + '\n' }).catch((e) => tLine(String(e), 't-err'));
+      return;
+    }
+    if (desk.on && val.trim().startsWith('$')) { history.push(val); histPos = history.length; runShell(val.trim().slice(1).trim()); return; }
     if (asking && session && !session.done) {
       setAsking(false);
       tWrite(val + '\n', 't-echo');
@@ -1110,7 +1119,7 @@
       const bp = BP.parse(bpSource(bpSel));
       if (bp.errors.length) return;
       closeBlueprints();
-      if (bp.kind === 'project') replaceProject(projectFromBlueprint(bp, bpValues), `Built "${bp.title}" from its blueprint. Press Run to try it.`);
+      if (bp.kind === 'project') { desk.folder = null; desk.dirty = true; replaceProject(projectFromBlueprint(bp, bpValues), `Built "${bp.title}" from its blueprint. Press Run to try it.` + (desk.on ? ' Press Save to keep it as files.' : '')); showFolder(); }
       else { insertSnippet(BP.fill(bp, bpValues).here); tLine(`Added "${bp.title}" to ${SECTION_META[activeSec().file].title}.`, 't-sys'); }
     }
     if (id === 'bpCopyEdit') {
@@ -1719,11 +1728,222 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Desktop app (Tauri): real folders, real Python, shell commands      */
+  /* ------------------------------------------------------------------ */
+
+  const TAURI = window.__TAURI__;
+  const desk = { on: !!(TAURI && TAURI.core), folder: null, python: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false };
+  const invoke = (cmd, args) => TAURI.core.invoke(cmd, args);
+  const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+  const join = (a, b) => a.replace(/[\\/]+$/, '') + '/' + b;
+
+  async function pickFolder(title) {
+    try { return await invoke('plugin:dialog|open', { options: { directory: true, multiple: false, title } }); }
+    catch (e) { tLine('The folder picker could not open: ' + e, 't-err'); return null; }
+  }
+  function showFolder() {
+    const el = $('folderName');
+    el.hidden = !desk.on;
+    el.textContent = desk.folder ? baseName(desk.folder) + '/' : 'not saved yet';
+    el.title = desk.folder || 'This project is not saved to a folder yet. Press Save.';
+    el.classList.toggle('unsaved', desk.dirty);
+    document.title = desk.folder ? `IntuiCode — ${baseName(desk.folder)}` : 'IntuiCode';
+  }
+
+  /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
+  async function saveProject(pick) {
+    if (!desk.on) return;
+    if (!desk.folder || pick) {
+      const f = await pickFolder('Choose a folder to save this project in');
+      if (!f) return;
+      desk.folder = f;
+    }
+    activeSec().text = ta.value;
+    compile();
+    try {
+      for (const s of project.sections) await invoke('write_text', { path: join(desk.folder, fileName(s)), content: secResult(s.id).text });
+      await invoke('write_text', { path: join(desk.folder, '.intuicode/project.json'), content: JSON.stringify({ ...project, folder: undefined }, null, 2) });
+      desk.dirty = false;
+      showFolder();
+      if (pick !== 'quiet') tLine(`Saved to ${desk.folder}: ${project.sections.map(fileName).join(', ')} (and your sentences, in .intuicode/).`, 't-sys');
+    } catch (e) { tLine('Could not save: ' + e, 't-err'); }
+  }
+  function autosave() {
+    if (!desk.on) return;
+    desk.dirty = true;
+    showFolder();
+    if (!desk.folder) return;
+    clearTimeout(desk.saveTimer);
+    desk.saveTimer = setTimeout(() => saveProject('quiet'), 1500);
+  }
+
+  /* Open a folder in Write mode. Code on disk wins over saved sentences if they disagree. */
+  async function openFolderWrite() {
+    const folder = await pickFolder('Open a project folder');
+    if (!folder) return;
+    const read = async (name) => { try { return await invoke('read_text', { path: join(folder, name) }); } catch (_) { return null; } };
+    const meta = await read('.intuicode/project.json');
+    if (meta) {
+      let saved;
+      try { saved = JSON.parse(meta); } catch (_) { saved = null; }
+      if (saved && Array.isArray(saved.sections)) {
+        desk.folder = folder;
+        replaceProject({ ...saved, version: 1 }, `Opened ${baseName(folder)}.`);
+        // did anyone change the code outside IntuiCode?
+        compile();
+        const changed = [];
+        for (const s of project.sections) {
+          const onDisk = await read(fileName(s));
+          if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== secResult(s.id).text.trim()) changed.push(s);
+        }
+        for (const s of changed) {
+          if (secLang(s) !== 'python') { tLine(`${fileName(s)} was changed outside IntuiCode. Website files can't be turned back into sentences yet, so the sentences may be out of date; Read mode shows the file as it is.`, 't-err'); continue; }
+          const res = await sentencesFor(await read(fileName(s)));
+          if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuiCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
+        }
+        if (changed.length) { ta.value = activeSec().text; refreshAll(); }
+        showFolder();
+        return;
+      }
+    }
+    const main = await read('main.py');
+    if (main != null) {
+      const settings = await read('settings.py'), tools = await read('tools.py');
+      const structured = settings != null && tools != null;
+      const sections = [];
+      for (const [file, src] of structured ? [['settings', settings], ['tools', tools], ['main', main]] : [['main', main]]) {
+        const res = await sentencesFor(src);
+        sections.push({ id: file, file, text: res ? res.text : src.split('\n').map(l => 'python: ' + l).join('\n') });
+      }
+      desk.folder = folder;
+      replaceProject({ version: 1, lang: 'python', kind: 'python', name: slug(baseName(folder)), sections, active: 'main' }, `Opened ${baseName(folder)} and turned its Python into sentences.`);
+      showFolder();
+      return;
+    }
+    const files = await invoke('read_folder', { path: folder });
+    if (files.some(f => /\.(py|jsx?|tsx?|html?|css)$/i.test(f.name))) {
+      tLine(`${baseName(folder)} isn't an IntuiCode project, so it opens in Read mode.`, 't-sys');
+      desk.readFolder = folder;
+      return importProject(files, '');
+    }
+    desk.folder = folder;
+    await saveProject('quiet');
+    tLine(`${baseName(folder)} was empty, so the current project was saved into it.`, 't-sys');
+  }
+
+  async function openFolderRead() {
+    const folder = await pickFolder('Open a folder to read');
+    if (!folder) return;
+    closeImport();
+    tLine(`Reading ${folder}…`, 't-sys');
+    try {
+      const files = await invoke('read_folder', { path: folder });
+      desk.readFolder = folder;
+      importProject(files, files.length >= 400 ? 'Only the first 400 files were read.' : '');
+    } catch (e) { tLine('Could not read the folder: ' + e, 't-err'); }
+  }
+
+  async function sentencesFor(src) {
+    try {
+      const R = await Runner.reader((s) => setStatus(s));
+      let force = [], res, check;
+      for (let i = 0; i < 4; i++) {
+        res = R.toSentences(src, force);
+        if (!res.ok) return null;
+        check = R.compare(src, LANG.compileProject({ sections: [{ id: 'main', file: 'main', text: res.text }] }).results.main.text);
+        if (check.same || check.error || !check.differs.length) break;
+        force = force.concat(check.differs.map(d => d[0]));
+      }
+      return { text: res.text, exact: !!check.same };
+    } catch (e) { tLine('Could not read the Python: ' + e.message, 't-err'); return null; }
+  }
+
+  /* Running with the computer's own Python, and shell commands. */
+  function setRunning(on, label) {
+    $('btnStop').hidden = !on;
+    termPrompt.textContent = on ? (label || 'input ›') : '❯';
+    termPrompt.classList.toggle('asking', on);
+    termIn.classList.toggle('asking', on);
+    termIn.placeholder = on ? 'type input for the program and press Enter' : 'type help, run, $ a command, or any sentence or Python';
+  }
+  async function runDesktopPython() {
+    const dir = desk.folder || await invoke('scratch_folder');
+    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: secResult(s.id).text }); }
+    catch (e) { tLine('Could not write the program files: ' + e, 't-err'); return; }
+    const id = desk.nextId++;
+    desk.proc = { id, kind: 'python', err: '' };
+    tLine(`▶ Running main.py with Python ${desk.python[1]} (installed on this computer)${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
+    setRunning(true);
+    termIn.focus({ preventScroll: true });
+    try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', 'main.py'], cwd: dir }); }
+    catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
+  }
+  async function runShell(command) {
+    if (desk.proc) { tLine('Something is already running. Press Stop first.', 't-err'); return; }
+    const dir = desk.folder || desk.readFolder || await invoke('scratch_folder');
+    const id = desk.nextId++;
+    desk.proc = { id, kind: 'shell', err: '' };
+    tLine(`$ ${command}`, 't-cmd');
+    setRunning(true, 'input ›');
+    try { await invoke('run_shell', { id, command, cwd: dir }); }
+    catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
+  }
+  function pythonTraceback(err) {
+    const frames = [...err.matchAll(/File "([^"]+)", line (\d+)/g)].map(m => ({ file: baseName(m[1]), line: +m[2] })).filter(f => project.sections.some(s => fileName(s) === f.file));
+    const last = err.trim().split('\n').pop() || '';
+    const m = last.match(/^(\w+(?:Error|Exception|Exit|Interrupt)):?\s*(.*)$/);
+    if (m && m[1] !== 'SystemExit') { const f = friendly(m[1], m[2]); if (f) tLine('✕ ' + f, 't-err'); }
+    const fr = frames[frames.length - 1];
+    if (fr) {
+      const where = locate(fr.file, fr.line);
+      if (where && where.line != null) {
+        const sec = project.sections.find(s => s.id === where.sec);
+        runtimeMark = { sec: where.sec, line: where.line, msg: (m ? friendly(m[1], m[2]) || '' : '') + ` (Python said: ${last})` };
+        tLink(`  Go to ${SECTION_META[sec.file].title}, line ${where.line + 1}: ${sec.text.split('\n')[where.line].trim()}`, where.sec, where.line);
+        if (where.sec === project.active) { renderOverlay(); renderExplain(); }
+      }
+    }
+  }
+
+  async function setupDesktop() {
+    if (!desk.on) return;
+    document.documentElement.classList.add('desktop');
+    $('btnOpenFolder').hidden = false;
+    $('btnSave').hidden = false;
+    showFolder();
+    $('btnOpenFolder').addEventListener('click', () => (mode === 'read' ? openFolderRead() : openFolderWrite()));
+    $('btnSave').addEventListener('click', () => saveProject());
+    $('btnStop').addEventListener('click', () => { if (desk.proc) invoke('stop_program', { id: desk.proc.id }); });
+    // the import dialog's folder button uses the native picker
+    $('impFolder').closest('label').addEventListener('click', (e) => { e.preventDefault(); openFolderRead(); });
+    await TAURI.event.listen('proc-output', (e) => {
+      const d = e.payload;
+      if (!desk.proc || d.id !== desk.proc.id) return;
+      if (d.stream === 'stderr') desk.proc.err += d.text;
+      tWrite(d.text, d.stream === 'stderr' ? 't-err' : undefined);
+    });
+    await TAURI.event.listen('proc-exit', (e) => {
+      const d = e.payload;
+      if (!desk.proc || d.id !== desk.proc.id) return;
+      const p = desk.proc;
+      desk.proc = null;
+      setRunning(false);
+      if (p.kind === 'python' && d.code !== 0 && d.code != null) pythonTraceback(p.err);
+      tLine(d.code === 0 ? '✓ Finished.' : d.code == null ? '■ Stopped.' : `■ Ended with exit code ${d.code}.`, d.code === 0 ? 't-ok' : 't-sys');
+    });
+    try { desk.python = await invoke('find_python'); } catch (_) { desk.python = null; }
+    try { desk.git = await invoke('find_git'); } catch (_) { desk.git = null; }
+    if (desk.python) setStatus(`Python ${desk.python[1]} (this computer)`, 'ready');
+    tLine(desk.python ? `Desktop app: programs run with Python ${desk.python[1]} installed on this computer. Type $ before a command to run it in the project folder${desk.git ? ' (for example $ git status)' : ''}.` : 'Desktop app: Python isn\'t installed on this computer, so the built-in Python is used (it can\'t install extra packages). Get Python from python.org to run programs like web servers.', 't-sys');
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Keyboard + start                                                    */
   /* ------------------------------------------------------------------ */
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.activeElement !== ta) { e.preventDefault(); run(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && desk.on) { e.preventDefault(); saveProject(); }
     if (e.key === 'Escape') {
       if (!$('bpModal').hidden) closeBlueprints();
       else if (!$('impModal').hidden) closeImport();
@@ -1742,6 +1962,7 @@
     updateChip();
     if (project.kind === 'website') runWebsite(false);
     tLine('IntuiCode terminal. Press Run to run your program, or type help.', 't-sys');
+    setupDesktop();
     setTimeout(async () => {
       await ensurePython();
       if (reads.files.length) { await analyse(); if (mode === 'read') renderRead(); }

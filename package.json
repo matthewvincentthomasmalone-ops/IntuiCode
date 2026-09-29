@@ -5,9 +5,14 @@
   "scripts": {
     "test": "python3 -m unittest discover -s tests -v && node --test tests/*.test.mjs",
     "coverage": "node tools/coverage.mjs samples tests/corpus && node tools/coverage.mjs tests/heldout",
-    "vendor": "node tools/vendor.mjs"
+    "vendor": "node tools/vendor.mjs",
+    "tauri": "tauri",
+    "desktop:prepare": "node tools/build_desktop.mjs",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.12.0",
     "tree-sitter-wasms": "0.1.13",
     "web-tree-sitter": "0.20.8"
   }

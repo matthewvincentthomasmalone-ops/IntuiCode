@@ -84,7 +84,10 @@ code { font-family: var(--f-py); font-size: .92em; }
   font: 600 11px/1 var(--f-ui); letter-spacing: .08em; text-transform: uppercase;
   padding: 5px 8px; border-radius: 4px; background: var(--slot-bg); color: var(--slot-ink);
 }
-.bar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.bar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.folder-name { font: 12.5px var(--f-py); color: var(--ink-3); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-name.unsaved::after { content: " •"; color: var(--warn); }
+#btnStop { color: var(--term-bad); border-color: var(--term-bad); }
 
 .btn {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
