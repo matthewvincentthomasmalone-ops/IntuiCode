@@ -378,7 +378,10 @@ fn compile_cpp(app: AppHandle, procs: State<Processes>, compiler: State<Compiler
 #[cfg(windows)]
 fn msvc_command(vcvars: Option<PathBuf>, source: &str, output: &str, cwd: &str) -> Command {
     use std::os::windows::process::CommandExt;
-    let cl = format!("cl /nologo /std:c++20 /EHsc /utf-8 /Fe:\"{output}\" \"{source}\"");
+    // object files go next to the program (in .intuicode\build), not among the project's files
+    let output = output.replace('/', "\\");
+    let fo = Path::new(&output).parent().map(|p| p.to_string_lossy().to_string()).filter(|p| !p.is_empty()).map(|d| format!(" /Fo{d}\\")).unwrap_or_default();
+    let cl = format!("cl /nologo /std:c++20 /EHsc /utf-8{fo} /Fe:\"{output}\" \"{source}\"");
     let mut c = Command::new("cmd");
     match vcvars {
         // vcvars sets up the paths cl needs, then cl runs in the same shell

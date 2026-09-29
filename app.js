@@ -2019,7 +2019,9 @@
     const win = /Win/i.test(navigator.userAgent);
     try { await invoke('write_text', { path: join(dir, 'main.cpp'), content: secResult('program').text }); }
     catch (e) { tLine('Could not write main.cpp: ' + e, 't-err'); return; }
-    const exe = 'intuicode-program' + (win ? '.exe' : '');
+    // the built program goes in .intuicode/build, not among your files
+    const exe = '.intuicode/build/intuicode-program' + (win ? '.exe' : '');
+    try { await invoke('write_text', { path: join(dir, '.intuicode/build/.gitignore'), content: '*\n' }); } catch (_) { /* compiling says why */ }
     const id = desk.nextId++;
     desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe };
     const msvc = desk.cpp[0] === 'msvc';
