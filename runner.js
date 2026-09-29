@@ -254,7 +254,14 @@ def _pb_reset():
             const rt = base || 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/';
             const gr = base || 'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/';
             onStatus && onStatus('Loading the web reader…');
-            if (typeof window.TreeSitter === 'undefined') await loadScript(rt + 'tree-sitter.js');
+            if (typeof window.TreeSitter === 'undefined') {
+              // loaded as text so the fix for unknown HTML tags (lang/ts_patch.js) can be applied
+              const r = await fetch(rt + 'tree-sitter.js');
+              if (!r.ok) throw new Error('tree-sitter.js: ' + r.status);
+              const text = await r.text();
+              try { window.TreeSitter = new Function(window.IntuiTsPatch.patch(text) + '\n;return TreeSitter;')(); }
+              catch (e) { await loadScript(rt + 'tree-sitter.js'); }   // a page that forbids this still reads most code
+            }
             await window.IntuiWebReader.init({ TreeSitter: window.TreeSitter, locate: (f) => (f === 'tree-sitter.wasm' ? rt : gr) + f, only: ['js', 'ts', 'tsx', 'html', 'css'] });
             return window.IntuiWebReader;
           } catch (e) { lastErr = e; }

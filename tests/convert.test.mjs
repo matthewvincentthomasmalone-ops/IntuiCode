@@ -40,6 +40,12 @@ const CASES = [
   ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.5],
   ['samples/cpp/blink/blink.ino', 'arduino', null, null, 0.95],
   ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.3],
+  // held out: written after the converter, in other styles (classes, switch, templates, SVG, tables)
+  ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.2],
+  ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.3],
+  ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.25],
+  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.3],
+  ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 0.8],
 ];
 
 for (const [file, kind, page, pulled, least] of CASES) {
@@ -125,8 +131,7 @@ test('code -> sentences: code made from every blueprint comes back exactly', () 
 });
 
 /* New sentences: C++ classes and Arduino sketches make valid code. */
-const ARDUINO_H = `#pragma once
-#include <string>
+const ARDUINO_H = `#include <string>
 #define HIGH 1
 #define LOW 0
 #define INPUT 0
@@ -134,7 +139,7 @@ const ARDUINO_H = `#pragma once
 #define INPUT_PULLUP 2
 #define LED_BUILTIN 13
 #define A0 14
-struct String { std::string s; String(const char* c = "") : s(c) {} String(int v) : s(std::to_string(v)) {} String(double v) : s(std::to_string(v)) {} String operator+(const String& o) const { return String((s + o.s).c_str()); } int length() const { return (int)s.size(); } int toInt() const { return std::stoi(s); } double toFloat() const { return std::stod(s); } };
+struct String { std::string s; String(const char* c = "") : s(c) {} String(int v) : s(std::to_string(v)) {} String(long v) : s(std::to_string(v)) {} String(unsigned long v) : s(std::to_string(v)) {} String(double v) : s(std::to_string(v)) {} String operator+(const String& o) const { return String((s + o.s).c_str()); } int length() const { return (int)s.size(); } int toInt() const { return std::stoi(s); } double toFloat() const { return std::stod(s); } };
 struct SerialT { void begin(long) {} template <typename T> void print(T) {} template <typename T> void println(T) {} } Serial;
 inline void pinMode(int, int) {} inline void digitalWrite(int, int) {} inline int digitalRead(int) { return 0; } inline int analogRead(int) { return 0; }
 inline void analogWrite(int, int) {} inline void delay(unsigned long) {} inline unsigned long millis() { return 0; } inline long random(long a, long b) { return a; }
@@ -142,7 +147,9 @@ inline void tone(int, int, unsigned long = 0) {} inline void noTone(int) {}
 `;
 function compiles(source, arduino, label) {
   if (!hasGpp) return;
-  const input = arduino ? ARDUINO_H + source + '\nint main() { setup(); loop(); }\n' : source;
+  // like the Arduino builder, declare every function first, so the order doesn't matter
+  const protos = arduino ? [...source.matchAll(/^([A-Za-z_][\w:<>]*[\s*&]+)([A-Za-z_]\w*)\(([^)]*)\)\s*\{/gm)].map(m => `${m[1]}${m[2]}(${m[3]});`).join('\n') + '\n' : '';
+  const input = arduino ? ARDUINO_H + protos + source + '\nint main() { setup(); loop(); }\n' : source;
   const r = spawnSync('g++', ['-std=c++20', '-fsyntax-only', '-x', 'c++', '-'], { input });
   assert.equal(r.status, 0, `${label}: g++ rejected it\n${r.stderr}\n${source}`);
 }

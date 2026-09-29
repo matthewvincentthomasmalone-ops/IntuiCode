@@ -63,7 +63,12 @@ export function roundTrip(L, files) {
 export async function loadWebReader() {
   const { createRequire } = await import('node:module');
   const require = createRequire(import.meta.url);
-  const TreeSitter = require('web-tree-sitter');
+  // the runtime with the fix for unknown HTML tags, as the app loads it
+  vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/ts_patch.js'), 'utf8'), { filename: 'lang/ts_patch.js' });
+  const tsFile = require.resolve('web-tree-sitter');
+  const m = { exports: {} };
+  new Function('module', 'exports', 'require', '__dirname', '__filename', globalThis.IntuiTsPatch.patch(readFileSync(tsFile, 'utf8')))(m, m.exports, createRequire(tsFile), path.dirname(tsFile), tsFile);
+  const TreeSitter = m.exports;
   vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/web_read.js'), 'utf8'), { filename: 'lang/web_read.js' });
   const W = globalThis.IntuiWebReader;
   const grammars = path.join(ROOT, 'node_modules/tree-sitter-wasms/out');

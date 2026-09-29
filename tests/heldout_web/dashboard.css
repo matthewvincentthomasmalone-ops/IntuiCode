@@ -1,0 +1,14 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter");
+html, body { height: 100%; }
+body.dark { background: #111; color: #eee; }
+#sales th, #sales td { padding: .5rem 1rem; border-bottom: 1px solid #333; }
+#sales tr:nth-child(even) { background: rgba(255,255,255,.04); }
+a[href^="http"]::after { content: " ↗"; }
+.btn { transition: transform .15s ease, box-shadow .15s ease; }
+.btn:focus-visible { outline: 2px solid #4af; outline-offset: 2px; }
+@keyframes pulse { 0% { opacity: 1 } 50% { opacity: .5 } 100% { opacity: 1 } }
+.live { animation: pulse 2s infinite; }
+@media screen and (min-width: 900px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
+.card { display: grid; grid-template-columns: repeat(2, 1fr); }
+.center { margin-left: auto; margin-right: auto; }

@@ -62,10 +62,19 @@ jobs:
       - name: Edge WebDriver matching this computer's WebView2
         if: runner.os == 'Windows'
         shell: pwsh
+        # (the approach Tauri's own end-to-end tests use)
         run: |
-          cargo install --git https://github.com/chippers/msedgedriver-tool
-          msedgedriver-tool
-          "EDGE_DRIVER=$PWD\msedgedriver.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ProgressPreference = 'SilentlyContinue'
+          $client = 'Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = @("HKLM:\SOFTWARE\WOW6432Node\$client", "HKLM:\SOFTWARE\$client", "HKCU:\SOFTWARE\WOW6432Node\$client", "HKCU:\SOFTWARE\$client") |
+            ForEach-Object { (Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue).pv } | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) { throw 'no WebView2 runtime found' }
+          $dir = Join-Path $env:RUNNER_TEMP 'msedgedriver'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" -OutFile "$dir\edgedriver.zip"
+          Expand-Archive "$dir\edgedriver.zip" -DestinationPath $dir -Force
+          Write-Host "WebView2 $version; $(& "$dir\msedgedriver.exe" --version)"
+          $dir >> $env:GITHUB_PATH
 
       - name: Drive the app (Linux)
         if: runner.os == 'Linux'
@@ -73,4 +82,11 @@ jobs:
 
       - name: Drive the app (Windows)
         if: runner.os == 'Windows'
-        run: node tests/e2e/run.mjs
+        shell: pwsh
+        # WebView2 ignores the debugging port WebDriver needs in an elevated process, which is
+        # what the runner gives us, so the tests run at medium integrity (wry#1782).
+        run: |
+          winget install gerardog.gsudo --accept-source-agreements --accept-package-agreements
+          $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
+          icacls "$env:GITHUB_WORKSPACE" /grant "Everyone:(OI)(CI)F" | Out-Null
+          gsudo --integrity Medium node tests/e2e/run.mjs

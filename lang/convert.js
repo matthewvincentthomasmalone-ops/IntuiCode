@@ -38,7 +38,11 @@
   function srcLines(src, node) {
     const lineStart = src.lastIndexOf('\n', node.startIndex - 1) + 1;
     const prefix = src.slice(lineStart, node.startIndex);
-    const lines = src.slice(node.startIndex, node.endIndex).split('\n');
+    // C++ keeps the ; after a class or struct as a separate token: it belongs with it
+    let end = node.endIndex;
+    const next = node.nextSibling;
+    if (next && next.type === ';' && !src.slice(end, next.startIndex).trim()) end = next.endIndex;
+    const lines = src.slice(node.startIndex, end).split('\n');
     const indentOf = (l) => l.match(/^[ \t]*/)[0].length;
     const first = /^[ \t]*$/.test(prefix) ? prefix.length : null;
     const rest = lines.slice(1).filter(l => l.trim()).map(indentOf);

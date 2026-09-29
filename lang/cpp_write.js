@@ -89,7 +89,8 @@
     if (/^[A-Za-z_]\w*$/.test(t) && x.types[t]) return x.types[t];
     const ids = t.match(/[A-Za-z_]\w*/g) || [];
     if (ids.length && /[-+*/%]/.test(t) && ids.every(i => x.types[i] === 'int' || x.types[i] === 'double')) return ids.some(i => x.types[i] === 'double') || /\d\.\d/.test(t) ? 'double' : 'int';
-    if (/[<>=!]=|[<>]|&&|\|\|/.test(t) && !/<</.test(t)) return 'bool';
+    const noTemplates = t.replace(/([\w:])<[\w:<>,\s*&]*>(?=\s*[({]|::)/g, '$1');   // make_unique<Circle>(…) isn't a comparison
+    if (/[<>=!]=|[<>]|&&|\|\|/.test(noTemplates) && !/<</.test(noTemplates)) return 'bool';
     return 'auto';
   }
 
