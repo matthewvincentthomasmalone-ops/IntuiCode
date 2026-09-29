@@ -1,0 +1,79 @@
+/* Brightside Bakery */
+:root {
+  --crust: #b5651d;
+  --flour: #fffaf2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Georgia", serif;
+  background: var(--flour);
+  color: #2b2118;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
+  padding: 12px 24px;
+}
+
+.nav-link {
+  color: var(--crust);
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  text-decoration: underline;
+}
+
+.hero {
+  padding: 64px 24px;
+  text-align: center;
+  background: linear-gradient(#fff3e0, #ffe0b2);
+}
+
+.tagline {
+  font-size: 20px;
+  color: #6d4c41;
+}
+
+.cta {
+  background: var(--crust);
+  color: white;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 28px;
+  cursor: pointer;
+}
+
+.cta:hover {
+  opacity: 0.9;
+}
+
+section {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+#menu-list li {
+  padding: 4px 0;
+}
+
+img {
+  max-width: 100%;
+  border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+  .hero {
+    padding: 40px 16px;
+  }
+  .nav {
+    flex-direction: column;
+  }
+}

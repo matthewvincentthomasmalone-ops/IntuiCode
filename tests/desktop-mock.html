@@ -15,6 +15,9 @@
     nextRun: null,    // { out, err, code } for the next program run
     calls: [],
     listeners: {},
+    // ?msvc and ?arduino pretend Visual Studio / arduino-cli are installed
+    cpp: new URLSearchParams(location.search).has('msvc') ? ['msvc', 'Visual Studio Build Tools 2022 (cl)'] : undefined,
+    arduino: new URLSearchParams(location.search).has('arduino') ? ['arduino-cli', 'arduino-cli  Version: 1.1.1'] : undefined,
   };
   const emit = (ev, payload) => (window.mock.listeners[ev] || []).forEach(cb => cb({ payload }));
   window.__TAURI__ = {
@@ -35,9 +38,11 @@
           }
           case 'find_python': return m.python;
           case 'find_git': return 'git version 2.53.0';
-          case 'find_cpp': return ['g++', 'g++ (mock) 14.2.0'];
-          case 'run_program': case 'run_shell': {
-            const r = m.nextRun || { out: cmd === 'run_shell' ? `(shell) ${args.command}\n` : 'hello from the real Python\n', err: '', code: 0 };
+          case 'find_cpp': return m.cpp === undefined ? ['g++', 'g++ (mock) 14.2.0'] : m.cpp;
+          case 'find_arduino': return m.arduino === undefined ? null : m.arduino;
+          case 'run_capture': { const r = m.capture || { code: 0, out: '[]', err: '' }; return [r.code, r.out, r.err]; }
+          case 'run_program': case 'run_shell': case 'compile_cpp': {
+            const r = (m.runs && m.runs.length ? m.runs.shift() : null) || m.nextRun || { out: cmd === 'run_shell' ? `(shell) ${args.command}\n` : 'hello from the real Python\n', err: '', code: 0 };
             m.nextRun = null;
             setTimeout(() => {
               if (r.out) emit('proc-output', { id: args.id, stream: 'stdout', text: r.out });

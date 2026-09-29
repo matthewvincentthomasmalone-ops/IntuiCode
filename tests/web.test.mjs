@@ -51,7 +51,7 @@ test('mechanics: events, page text, lists and the browser memory', () => {
   assert.deepEqual(problems(r, 'mechanics'), []);
   const js = r.results.mechanics.text;
   assert.doesNotThrow(() => new vm.Script(js), 'generated JavaScript must be valid');
-  assert.match(js, /document\.getElementById\("go"\)\.addEventListener\("click", \(event\) => \{/);
+  assert.match(js, /document\.getElementById\("go"\)\.addEventListener\("click", \(\) => \{/);
   assert.match(js, /let n = document\.getElementById\("name"\)\.value;/);
   assert.match(js, /\} else \{/);
   assert.match(js, /`\$\{names\.length\} names`/);
@@ -59,7 +59,7 @@ test('mechanics: events, page text, lists and the browser memory', () => {
 
 test('mechanics: talking to a server makes the handler async', () => {
   const js = site('add a button called load saying "Load"', '', 'when load is clicked\n    fetch from "/api/items" and store in items\n    show items').results.mechanics.text;
-  assert.match(js, /addEventListener\("click", async \(event\) =>/);
+  assert.match(js, /addEventListener\("click", async \(\) =>/);
   assert.doesNotThrow(() => new vm.Script(js));
 });
 

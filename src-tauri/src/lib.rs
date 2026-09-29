@@ -2,7 +2,8 @@
 //!
 //! - read and write real project folders
 //! - run programs (Python, shell commands) with live output and typed input
-//! - find the Python installed on this computer
+//! - find the Python, C++ compiler (g++, clang++ or Visual Studio's cl) and
+//!   arduino-cli installed on this computer, and compile C++ with it
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -257,25 +258,187 @@ fn find_python() -> Option<(String, String)> {
     None
 }
 
-/// A C++ compiler on this computer, if any: [program, version line].
-#[tauri::command]
-fn find_cpp() -> Option<(String, String)> {
-    for program in ["g++", "clang++", "c++"] {
-        let mut cmd = Command::new(program);
-        cmd.arg("--version");
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000);
+/* ------------------------------------------------------------------ */
+/* C++ compilers: g++ / clang++, or Visual Studio's cl on Windows      */
+/* ------------------------------------------------------------------ */
+
+#[derive(Clone, Debug)]
+enum CppTool {
+    /// g++, clang++ or c++ on the PATH
+    Gnu(String),
+    /// Visual Studio's cl.exe. `vcvars` sets up its environment; None when cl is already on the PATH
+    /// (a "Developer Command Prompt").
+    Msvc { vcvars: Option<PathBuf> },
+}
+
+#[derive(Default)]
+struct Compiler(Mutex<Option<CppTool>>);
+
+fn quiet(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    cmd
+}
+
+fn first_line(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).lines().next().unwrap_or("").trim().to_string()
+}
+
+/// Visual Studio (or its Build Tools) with the C++ workload: (vcvars batch file, product name).
+#[cfg(windows)]
+fn find_visual_studio() -> Option<(PathBuf, String)> {
+    let arch_bat = if cfg!(target_arch = "aarch64") { "vcvarsarm64.bat" } else { "vcvars64.bat" };
+    let pf86 = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| r"C:\Program Files (x86)".into());
+    let vswhere = PathBuf::from(&pf86).join(r"Microsoft Visual Studio\Installer\vswhere.exe");
+    let mut found: Vec<(PathBuf, String)> = Vec::new();
+    if vswhere.exists() {
+        let ask = |prop: &str| -> Option<String> {
+            let out = quiet(Command::new(&vswhere).args(["-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", prop])).output().ok()?;
+            let line = first_line(&out.stdout);
+            (!line.is_empty()).then_some(line)
+        };
+        if let Some(dir) = ask("installationPath") {
+            let name = ask("displayName").unwrap_or_else(|| "Visual Studio".into());
+            found.push((PathBuf::from(dir), name));
         }
-        if let Ok(out) = cmd.output() {
+    }
+    // no vswhere (or no answer): look in the usual places
+    let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
+    for (root, year) in [(&pf, "2022"), (&pf86, "2022"), (&pf86, "2019"), (&pf, "2019"), (&pf86, "2017")] {
+        for edition in ["BuildTools", "Community", "Professional", "Enterprise"] {
+            found.push((PathBuf::from(root).join("Microsoft Visual Studio").join(year).join(edition), format!("Visual Studio {year} {edition}")));
+        }
+    }
+    for (dir, name) in found {
+        let bat = dir.join(r"VC\Auxiliary\Build").join(arch_bat);
+        let bat = if bat.exists() { bat } else { dir.join(r"VC\Auxiliary\Build\vcvars64.bat") };
+        if bat.exists() {
+            return Some((bat, name));
+        }
+    }
+    None
+}
+
+fn detect_cpp() -> Option<(CppTool, String)> {
+    #[cfg(windows)]
+    {
+        // Visual Studio first: it is the usual C++ compiler on Windows
+        if let Some((bat, name)) = find_visual_studio() {
+            return Some((CppTool::Msvc { vcvars: Some(bat) }, format!("{name} (cl)")));
+        }
+        if let Ok(out) = quiet(&mut Command::new("cl")).output() {
+            let text = String::from_utf8_lossy(&out.stderr).to_string();
+            if text.contains("Microsoft") {
+                return Some((CppTool::Msvc { vcvars: None }, first_line(text.as_bytes())));
+            }
+        }
+    }
+    for program in ["g++", "clang++", "c++"] {
+        if let Ok(out) = quiet(Command::new(program).arg("--version")).output() {
             if out.status.success() {
-                let text = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
-                return Some((program.to_string(), text));
+                return Some((CppTool::Gnu(program.to_string()), first_line(&out.stdout)));
             }
         }
     }
     None
+}
+
+/// A C++ compiler on this computer, if any: [name, version].
+#[tauri::command]
+fn find_cpp(compiler: State<Compiler>) -> Option<(String, String)> {
+    let found = detect_cpp();
+    *compiler.0.lock().unwrap() = found.as_ref().map(|(tool, _)| tool.clone());
+    found.map(|(tool, version)| {
+        let name = match tool {
+            CppTool::Gnu(p) => p,
+            CppTool::Msvc { .. } => "msvc".to_string(),
+        };
+        (name, version)
+    })
+}
+
+/// Compile one C++ file into a program, with live output (events like run_program).
+#[tauri::command]
+fn compile_cpp(app: AppHandle, procs: State<Processes>, compiler: State<Compiler>, id: u32, source: String, output: String, cwd: String) -> Result<(), String> {
+    let tool = compiler.0.lock().unwrap().clone().or_else(|| detect_cpp().map(|(t, _)| t)).ok_or("No C++ compiler was found on this computer.")?;
+    let cmd = match tool {
+        CppTool::Gnu(program) => {
+            let mut c = Command::new(program);
+            c.args(["-std=c++20", "-O0", "-o", &output, &source]).current_dir(&cwd);
+            c
+        }
+        CppTool::Msvc { vcvars } => msvc_command(vcvars, &source, &output, &cwd),
+    };
+    start(app, &procs, id, cmd)
+}
+
+#[cfg(windows)]
+fn msvc_command(vcvars: Option<PathBuf>, source: &str, output: &str, cwd: &str) -> Command {
+    use std::os::windows::process::CommandExt;
+    let cl = format!("cl /nologo /std:c++20 /EHsc /utf-8 /Fe:\"{output}\" \"{source}\"");
+    let mut c = Command::new("cmd");
+    match vcvars {
+        // vcvars sets up the paths cl needs, then cl runs in the same shell
+        Some(bat) => c.raw_arg(format!("/S /C \"call \"{}\" >nul && {cl}\"", bat.display())),
+        None => c.raw_arg(format!("/S /C \"{cl}\"")),
+    };
+    c.current_dir(cwd);
+    c
+}
+
+#[cfg(not(windows))]
+fn msvc_command(_vcvars: Option<PathBuf>, _source: &str, _output: &str, cwd: &str) -> Command {
+    let mut c = Command::new("cl");
+    c.current_dir(cwd);
+    c
+}
+
+/* ------------------------------------------------------------------ */
+/* Arduino boards, through arduino-cli                                 */
+/* ------------------------------------------------------------------ */
+
+/// arduino-cli, on the PATH or inside an installed Arduino IDE 2: [program, version].
+#[tauri::command]
+fn find_arduino() -> Option<(String, String)> {
+    let mut candidates: Vec<PathBuf> = vec![PathBuf::from("arduino-cli")];
+    #[cfg(windows)]
+    for var in ["ProgramFiles", "LOCALAPPDATA"] {
+        if let Ok(root) = std::env::var(var) {
+            let base = PathBuf::from(root);
+            for dir in [base.join("Arduino IDE"), base.join("Programs").join("Arduino IDE")] {
+                candidates.push(dir.join(r"resources\app\lib\backend\resources\arduino-cli.exe"));
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    candidates.push(PathBuf::from("/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"));
+    for program in candidates {
+        if let Ok(out) = quiet(Command::new(&program).arg("version")).output() {
+            if out.status.success() {
+                return Some((program.to_string_lossy().to_string(), first_line(&out.stdout)));
+            }
+        }
+    }
+    None
+}
+
+/// Run a program to the end and hand back what it printed: [exit code, stdout, stderr].
+#[tauri::command]
+async fn run_capture(program: String, args: Vec<String>, cwd: Option<String>) -> Result<(i32, String, String), String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<(i32, String, String), String> {
+        let mut cmd = Command::new(&program);
+        cmd.args(&args);
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        let out = quiet(&mut cmd).output().map_err(|e| format!("Could not start {program}: {e}"))?;
+        Ok((out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The Git installed on this computer, if any.
@@ -291,9 +454,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Processes::default())
+        .manage(Compiler::default())
         .invoke_handler(tauri::generate_handler![
             read_folder, read_text, write_text, exists, scratch_folder,
-            run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp
+            run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
+            compile_cpp, find_arduino, run_capture
         ])
         .run(tauri::generate_context!())
         .expect("IntuiCode could not start");

@@ -72,6 +72,17 @@ export async function loadWebReader() {
   return W;
 }
 
+/* Code -> sentences for HTML, CSS, JS and C++ (needs the web reader's parsers). */
+export async function loadConverter() {
+  const W = await loadWebReader();
+  await W.loadLangs(['cpp']);
+  vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/convert.js'), 'utf8'), { filename: 'lang/convert.js' });
+  const { WEB, CPP, BP } = loadEngine();
+  const C = globalThis.IntuiConvert;
+  const env = (extra = {}) => ({ parse: W.parse, WEB, CPP, ...extra });
+  return { C, W, WEB, CPP, BP, env, convert: (kind, src, extra) => C.toSentences(kind, src, env(extra)) };
+}
+
 /* The Python reader's project analysis, for mixed projects. */
 export function pyProject(files) {
   const out = execFileSync('python3', ['-c', 'import sys,json; sys.path.insert(0, sys.argv[1]); import python_reader as r; print(json.dumps(r.analyze_project(json.load(sys.stdin))))', path.join(ROOT, 'lang')], {

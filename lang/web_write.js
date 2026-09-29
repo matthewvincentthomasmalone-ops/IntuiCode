@@ -35,6 +35,13 @@
     return parts.map(p => p.trim()).filter(Boolean);
   }
 
+  /* Apply fn to the parts of s outside quotes. */
+  function outsideQuotes(s, fn) {
+    const strs = [];
+    const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (m) => { strs.push(m); return `\u0001${strs.length - 1}\u0001`; });
+    return fn(masked).replace(/\u0001(\d+)\u0001/g, (m, i) => strs[+i]);
+  }
+
   const FILLER = /^(?:(?:please|now|next|then|and then|also|just|i want to|i'd like to|let's|let us|can you|go ahead and|make sure to)\s*,?\s+)+/i;
 
   /* Shared line machinery: indentation, info per line, output lines with their source line. */
@@ -67,9 +74,9 @@
       note(inf, 'The title shows in the browser tab and in search results.');
       return { title: t || '' };
     }
-    if ((m = s.match(/^(?:page language is|the page is in)\s+(\w+)$/i))) return { lang: m[1].toLowerCase().slice(0, 2) };
+    if ((m = s.match(/^(?:page language is|the page is in)\s+([\w-]+)$/i))) return { lang: /^[a-z]{2}(?:-[a-z0-9]+)*$/i.test(m[1]) ? m[1] : m[1].toLowerCase().slice(0, 2) };
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big |small |)heading\s+(.+)$/i))) {
-      const t = strOf(m[2]); if (t == null) inf.errs.push('Put the heading text in quotes.');
+      const t = strOf(cut(m[2])); if (t == null) inf.errs.push('Put the heading text in quotes.');
       const tag = { 'big ': 'h1', 'small ': 'h3', '': 'h2' }[m[1].toLowerCase()];
       note(inf, `${code('<' + tag + '>')} is a heading. Use one big heading (h1) per page; screen readers and search engines use headings to understand the page.`);
       return el(tag, { text: t || '', id: called(m[2]) });
@@ -130,13 +137,19 @@
     const info = makeInfo(lines);
     const rootEl = { tag: 'body', children: [], container: true };
     const stack = [{ ind: -1, el: rootEl }];
-    let title = 'My page', lang = 'en';
+    let title = 'My page', lang = 'en', bodyAttrs = '', titleSet = false;
+    const head = [];
     const all = [];
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) return;
       const ind = raw.match(/^ */)[0].length;
-      let s = raw.trim().replace(/[.:]$/, '');
+      let hm;
+      if ((hm = raw.trim().match(/^(?:in the )?head\s*:\s?(.*)$/i))) { head.push({ text: hm[1], src: i }); note(inf, 'HTML copied exactly into the page\'s <head>: the part browsers read first (links, settings), not shown on the page.'); return; }
+      if ((hm = raw.trim().match(/^(?:the )?(?:page )?body (?:attributes|has)\s*:\s?(.*)$/i))) { bodyAttrs = hm[1].trim(); note(inf, 'Attributes copied exactly onto the page\'s <body> tag.'); inf.target = 'body'; return; }
+      if (/^(?:no title|the page has no title)$/i.test(raw.trim())) { title = null; return; }
+      const rawLine = raw.trim().match(/^(?:html|raw)\s*:\s?(.*)$/i);
+      let s = rawLine ? raw.trim() : raw.trim().replace(/[.:]$/, '');
       if (/^(?:note|comment)\s*:/i.test(s)) { stack[stack.length - 1].el.children.push({ comment: s.replace(/^(?:note|comment)\s*:\s*/i, ''), src: i }); return; }
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
@@ -177,10 +190,11 @@
     push('  <meta charset="utf-8">', -1);
     push('  <meta name="viewport" content="width=device-width, initial-scale=1">', -1);
     const ti = info.findIndex(x => x.target === 'title');
-    push(`  <title>${esc(title)}</title>`, ti);
+    if (title != null) push(`  <title>${esc(title)}</title>`, ti);
+    for (const h of head) push('  ' + h.text, h.src);
     push('  <link rel="stylesheet" href="style.css">', -1);
     push('</head>', -1);
-    push('<body>', -1);
+    push(`<body${bodyAttrs ? ' ' + bodyAttrs : ''}>`, info.findIndex(x => x.target === 'body'));
     const attrs = (e) => {
       let a = '';
       if (e.id) a += ` id="${e.id}"`;
@@ -216,7 +230,10 @@
 
   const NAMED = new Set(['black', 'white', 'red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'grey', 'gray', 'brown', 'navy', 'teal', 'transparent', 'gold', 'silver', 'crimson', 'coral', 'salmon', 'tomato', 'turquoise', 'violet', 'indigo', 'lime', 'olive', 'maroon', 'beige', 'ivory', 'lavender', 'tan', 'khaki', 'aqua', 'cyan', 'magenta', 'lightgrey', 'darkgrey', 'whitesmoke', 'skyblue', 'hotpink']);
   const TAG_WORDS = { buttons: 'button', button: 'button', headings: 'h1, h2, h3', heading: 'h1, h2, h3', 'big headings': 'h1', links: 'a', link: 'a', paragraphs: 'p', paragraph: 'p', pictures: 'img', images: 'img', 'text boxes': 'input, textarea', inputs: 'input', lists: 'ul, ol', 'list items': 'li', sections: 'section', 'the page': 'body', page: 'body', everything: '*', header: 'header', footer: 'footer', 'navigation bar': 'nav', forms: 'form', labels: 'label' };
-  const CSS_PROPS = new Set(['align-items', 'align-self', 'animation', 'aspect-ratio', 'background', 'background-color', 'background-image', 'background-position', 'background-size', 'border', 'border-bottom', 'border-color', 'border-left', 'border-radius', 'border-right', 'border-top', 'bottom', 'box-shadow', 'box-sizing', 'color', 'cursor', 'display', 'flex', 'flex-direction', 'flex-wrap', 'font', 'font-family', 'font-size', 'font-style', 'font-weight', 'gap', 'grid-template-columns', 'grid-template-rows', 'height', 'justify-content', 'left', 'letter-spacing', 'line-height', 'list-style', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'max-height', 'max-width', 'min-height', 'min-width', 'object-fit', 'opacity', 'outline', 'overflow', 'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'position', 'right', 'text-align', 'text-decoration', 'text-transform', 'top', 'transform', 'transition', 'visibility', 'white-space', 'width', 'z-index', 'filter', 'backdrop-filter']);
+  const CSS_MORE = 'accent-color align-content all animation-delay animation-direction animation-duration animation-fill-mode animation-iteration-count animation-name animation-timing-function appearance backface-visibility background-attachment background-blend-mode background-clip background-origin background-repeat block-size border-bottom-color border-bottom-left-radius border-bottom-right-radius border-bottom-style border-bottom-width border-collapse border-image border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-spacing border-style border-top-color border-top-left-radius border-top-right-radius border-top-style border-top-width border-width caption-side caret-color clear clip-path color-scheme column-count column-gap columns content counter-increment counter-reset direction empty-cells fill flex-basis flex-flow flex-grow flex-shrink float font-feature-settings font-variant font-variant-numeric grid grid-area grid-auto-columns grid-auto-flow grid-auto-rows grid-column grid-column-end grid-column-start grid-gap grid-row grid-row-end grid-row-start grid-template grid-template-areas hyphens image-rendering inline-size inset isolation justify-items justify-self list-style-image list-style-position list-style-type margin-block margin-inline mask max-block-size max-inline-size min-block-size min-inline-size mix-blend-mode object-position order outline-color outline-offset outline-style outline-width overflow-wrap overflow-x overflow-y overscroll-behavior padding-block padding-inline perspective place-content place-items place-self pointer-events quotes resize rotate row-gap scale scroll-behavior scroll-margin scroll-padding scroll-snap-align scroll-snap-type scrollbar-color scrollbar-width stroke stroke-width tab-size table-layout text-align-last text-decoration-color text-decoration-line text-decoration-style text-decoration-thickness text-indent text-overflow text-rendering text-shadow text-underline-offset touch-action transform-origin transition-delay transition-duration transition-property transition-timing-function translate user-select vertical-align will-change word-break word-spacing word-wrap writing-mode'.split(' ');
+  const HTML_TAGS = new Set('a abbr address article aside audio b blockquote body button canvas caption code dd details dialog div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html i iframe img input kbd label legend li main mark menu nav ol optgroup option output p picture pre progress q s section select small span strong sub summary sup svg table tbody td textarea tfoot th thead time tr u ul video'.split(' '));
+  const CSS_PROPS = new Set([...CSS_MORE, 'align-items', 'align-self', 'animation', 'aspect-ratio', 'background', 'background-color', 'background-image', 'background-position', 'background-size', 'border', 'border-bottom', 'border-color', 'border-left', 'border-radius', 'border-right', 'border-top', 'bottom', 'box-shadow', 'box-sizing', 'color', 'cursor', 'display', 'flex', 'flex-direction', 'flex-wrap', 'font', 'font-family', 'font-size', 'font-style', 'font-weight', 'gap', 'grid-template-columns', 'grid-template-rows', 'height', 'justify-content', 'left', 'letter-spacing', 'line-height', 'list-style', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'max-height', 'max-width', 'min-height', 'min-width', 'object-fit', 'opacity', 'outline', 'overflow', 'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'position', 'right', 'text-align', 'text-decoration', 'text-transform', 'top', 'transform', 'transition', 'visibility', 'white-space', 'width', 'z-index', 'filter', 'backdrop-filter']);
+  const isCssProp = (p) => CSS_PROPS.has(p) || /^-(?:webkit|moz|ms)-[a-z-]+$/.test(p) || /^--[a-z0-9-]+$/.test(p);
 
   function color(v, inf) {
     v = v.trim();
@@ -246,9 +263,10 @@
   /* "background navy, rounded corners 8, shadow" -> [[prop, value], ...] */
   function cssProps(text, inf) {
     const out = [];
-    for (let part of splitItems(text.replace(/\s+and\s+(?=[a-z])/gi, ', '))) {
+    for (let part of splitItems(outsideQuotes(text, (t) => t.replace(/\s+and\s+(?=[a-z])/gi, ', ')))) {
       part = part.trim().replace(/\.$/, '');
       let m;
+      if ((m = part.match(/^(-{0,2}[a-z][a-z0-9-]*)\s*:\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
       if ((m = part.match(/^(?:background|background colou?r)\s+(.+?)(?:\s+(\d+)%\s+(?:see-through|transparent))?$/i))) {
         const pic = m[1].match(/^picture\s+(.+)$/i);
         if (pic) { out.push(['background-image', `url(${pic[1].trim()})`], ['background-size', 'cover']); continue; }
@@ -304,7 +322,7 @@
         inf.warns.push('An exact position can overlap other things and break on smaller screens. "in a row", "in a column" or a grid adapt better.');
         continue;
       }
-      if ((m = part.match(/^([a-z-]+)\s*:?\s+(.+)$/i)) && CSS_PROPS.has(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
+      if ((m = part.match(/^(-?[a-z-]+)\s*:?\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
       inf.errs.push(`I don't know the style "${part}". Open the Index for style words, or write a CSS property like "letter-spacing 2px".`);
     }
     return out;
@@ -321,6 +339,8 @@
     const id = toId(n);
     if (shared.ids[id]) return '#' + id;
     if (shared.groups[id] || shared.cssGroups[id]) return '.' + id;
+    if (HTML_TAGS.has(low)) return low;
+    if (/^[a-z0-9]+(?:\s*,\s*[a-z0-9]+)+$/.test(low) && low.split(/\s*,\s*/).every(t => HTML_TAGS.has(t))) return low.split(/\s*,\s*/).join(', ');
     inf.warns.push(`Nothing on the page is called ${code(id)} yet. Add it in Structure, or write "group ${n}" to style a group.`);
     return '#' + id;
   }
@@ -451,13 +471,17 @@
     q = q.replace(/\ban empty list\b|\bempty list\b/gi, '[]').replace(/\bempty text\b/gi, '""');
     for (const [re, to] of JS_WORDS) q = q.replace(re, to);
     q = q.replace(/(^|[^=!<>])=(?!=)/g, (m, a) => (x.cond ? a + ' === ' : m));
+    // inputs of little functions written in the value (t => t.done, (a, b) => a - b) are names too
+    const params = new Set();
+    for (const mm of q.matchAll(/(?:\(([^()]*)\)|([A-Za-z_$][\w$]*))\s*=>/g)) (mm[1] ?? mm[2]).split(',').map(p => p.trim().replace(/\s*=.*$/, '')).filter(Boolean).forEach(p => params.add(p));
     // names: page elements used bare become the element
-    q = q.replace(/(?<![\w$.⟦])([A-Za-z_$][\w$-]*)(?![\w$⟧])/g, (m, id) => {
+    q = q.replace(/(?<![\w$.⟦])([A-Za-z_$][\w$-]*)(?![\w$⟧])/g, (m, id, off) => {
+      if (params.has(id)) return id;
       if (/^(true|false|null|undefined|Math|Number|String|document|window|console|JSON|Date|localStorage|this|new|typeof|await|async|function|return)$/.test(id)) return id;
       if (x.vars.has(id) || x.fns.has(id)) return id;
       const el = x.shared.ids[toId(id)];
       if (el && !x.vars.has(id)) return `document.getElementById("${toId(id)}")`;
-      if (x.pass2 && !/^\d/.test(id)) inf.warns.push(`${code(id)} hasn't been set anywhere yet.`);
+      if (x.pass2 && !/^\d/.test(id) && !/^\s*\(/.test(q.slice(off + m.length))) inf.warns.push(`${code(id)} hasn't been set anywhere yet.`);
       return id;
     });
     q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/!\s+/g, '!').replace(/\s*\.\s*(?=length)/g, '.').trim();
@@ -489,16 +513,27 @@
     for (const raw of lines) {
       const s = raw.trim();
       let m;
-      if ((m = s.match(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*)\s+(?:to|be)\s/i))) x.vars.add(m[1]);
+      if ((m = s.match(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*)\s+(?:to|be)\s/i)) || (m = s.match(/^constant\s+([A-Za-z_$][\w$]*)\s/i))) x.vars.add(m[1]);
       if ((m = s.match(/^(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\s+(?:called\s+)?([A-Za-z_$][\w$]*)/i))) x.vars.add(m[1]);
       if ((m = s.match(/\band store (?:it |the reply )?in\s+([A-Za-z_$][\w$]*)$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s/i))) x.vars.add(m[1]);
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p)); }
+      if ((m = s.match(/^(?:js|javascript|raw)\s*:(.*)$/i))) {
+        for (const d of m[1].matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
+        for (const d of m[1].matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
+      }
     }
     x.pass2 = true;
-    const declared = new Set();
+    const declared = [new Set()];     // one set of names per block, like let
+    declared.has = (n) => declared.some(d => d.has(n));
+    declared.add = (n) => declared[declared.length - 1].add(n);
     const stack = [];   // {ind, close, kind}
     const E = (t, inf, cond) => { x.cond = !!cond; const r = jsExpr(t, x, inf); x.cond = false; return r; };
+    const usesEvent = (fromIdx) => { // does the block starting after this line use the event?
+      const baseInd = lines[fromIdx].match(/^ */)[0].length;
+      for (let j = fromIdx + 1; j < lines.length; j++) { if (!lines[j].trim()) continue; if (lines[j].match(/^ */)[0].length <= baseInd) break; if (/\bevent\b/.test(lines[j].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, ''))) return true; }
+      return false;
+    };
     const needsAsync = (fromIdx) => { // does the block starting after this line use fetch?
       const baseInd = lines[fromIdx].match(/^ */)[0].length;
       for (let j = fromIdx + 1; j < lines.length; j++) { if (!lines[j].trim()) continue; if (lines[j].match(/^ */)[0].length <= baseInd) break; if (/\b(fetch|send .+ to)\b/i.test(lines[j])) return true; }
@@ -511,19 +546,20 @@
       while (stack.length && ind <= stack[stack.length - 1].ind) {
         const b = stack.pop();
         const nextIsElse = /^\s*(otherwise|else)\b/i.test(raw) && ind === b.ind && b.kind === 'if';
-        if (nextIsElse) { stack.push(b); break; }
+        if (nextIsElse) { stack.push(b); declared[declared.length - 1] = new Set(); break; }
+        declared.pop();
         while (out.length && out[out.length - 1].text === '') out.pop();
         push('  '.repeat(stack.length) + b.close, b.src);
       }
       const pad = '  '.repeat(stack.length);
+      const open = (head, close, kind) => { push(pad + head, i); stack.push({ ind, close, kind, src: i }); declared.push(new Set()); };
+      const say = (t) => push(pad + t, i);
+      let m;
+      if ((m = raw.trim().match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) { note(inf, 'Raw JavaScript: copied exactly as written.'); return say(m[1]); }
       let s = raw.trim().replace(/[.:]$/, '');
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
-      const open = (head, close, kind) => { push(pad + head, i); stack.push({ ind, close, kind, src: i }); };
-      const say = (t) => push(pad + t, i);
-      let m;
       if ((m = s.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return say('// ' + m[1]);
-      if ((m = s.match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) { note(inf, 'Raw JavaScript: copied exactly as written.'); return say(m[1]); }
       // --- events
       if ((m = s.match(/^when\s+(?:the\s+)?page (?:has )?(?:loaded|opens|starts)$/i))) {
         note(inf, 'Runs the indented lines once the page has finished loading.');
@@ -534,7 +570,7 @@
         const el = elementRef(m[1], x, inf);
         const isForm = ev === 'submit';
         note(inf, `${code('addEventListener("' + ev + '", …)')} runs the indented lines every time ${code(el.id)} ${ev === 'click' ? 'is clicked' : ev === 'submit' ? 'is sent' : 'changes'}.` + (isForm ? ' `preventDefault()` stops the browser from reloading the page when the form is sent.' : ''));
-        open(`${el.js}.addEventListener("${ev}", ${needsAsync(i) ? 'async ' : ''}(event) => {`, '});', 'fn');
+        open(`${el.js}.addEventListener("${ev}", ${needsAsync(i) ? 'async ' : ''}${isForm || usesEvent(i) ? '(event)' : '()'} => {`, '});', 'fn');
         if (isForm) push('  '.repeat(stack.length) + 'event.preventDefault();', i);
         return;
       }
@@ -608,6 +644,15 @@
       if ((m = s.match(/^(?:increase)\s+(.+?)(?:\s+by\s+(.+))?$/i))) return say(`${E(m[1], inf)} += ${m[2] ? E(m[2], inf) : 1};`);
       if ((m = s.match(/^(?:decrease)\s+(.+?)(?:\s+by\s+(.+))?$/i))) return say(`${E(m[1], inf)} -= ${m[2] ? E(m[2], inf) : 1};`);
       if ((m = s.match(/^ask\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) { const kw = declared.has(m[2]) ? '' : 'let '; declared.add(m[2]); note(inf, '`prompt` shows a pop-up question. It gives back text.'); return say(`${kw}${m[2]} = prompt(${E(m[1], inf)});`); }
+      if ((m = s.match(/^constant\s+([A-Za-z_$][\w$]*)\s+(?:is|=)\s+(.+)$/i))) {
+        declared.add(m[1]);
+        note(inf, '`const` makes a name that always keeps this value; JavaScript stops with an error if anything tries to change it.');
+        return say(`const ${m[1]} = ${E(m[2], inf)};`);
+      }
+      if ((m = s.match(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)\s+(?:to|be)\s+(.+)$/i))) {
+        note(inf, `Changes ${code(m[1])}: a value that belongs to ${code(m[1].split('.').slice(0, -1).join('.'))}.`);
+        return say(`${m[1]} = ${E(m[2], inf)};`);
+      }
       if ((m = s.match(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*)\s+(?:to|be)\s+(.+)$/i))) {
         const kw = declared.has(m[1]) ? '' : 'let ';
         if (kw) note(inf, '`let` creates a name that can change later.');
@@ -619,7 +664,7 @@
         if (m[3]) { const kw = declared.has(m[3]) ? '' : 'let '; declared.add(m[3]); return say(`${kw}${m[3]} = ${call};`); }
         return say(call + ';');
       }
-      if ((m = s.match(/^show\s+(.+)$/i))) { note(inf, '`console.log` writes to the developer console (the terminal below). To show something on the page, use "set the text of …".'); return say(`console.log(${splitItems(m[1].replace(/\s+and\s+(?=["'\w])/gi, ', ')).map(v => E(v, inf)).join(', ')});`); }
+      if ((m = s.match(/^show\s+(.+)$/i))) { note(inf, '`console.log` writes to the developer console (the terminal below). To show something on the page, use "set the text of …".'); return say(`console.log(${splitItems(outsideQuotes(m[1], (t) => t.replace(/\s+and\s+(?=["'\w])/gi, ', '))).map(v => E(v, inf)).join(', ')});`); }
       inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
       say('// ??? ' + s);
     });
@@ -734,7 +779,8 @@
   };
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog)\b|on screens |in dark mode)/i;
 
-  const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, colorWord: null };
+  const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
+    cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWeb = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,7 +1,7 @@
 # IntuiCode
 
-Write Python, websites and C++ by filling in ideas and sentences, and read existing Python,
-JavaScript, HTML, CSS and C++ (including Arduino sketches) in plain English.
+Write Python, websites, C++ and Arduino sketches by filling in ideas and sentences, and read
+existing Python, JavaScript, HTML, CSS and C++ in plain English, or turn it into sentences.
 
 IntuiCode is a rules-based translator, not an AI. Every sentence becomes a specific
 line of Python, every summary points at real lines, and the same input always gives
@@ -32,9 +32,43 @@ Blueprints are plain text. You can edit any of them, save your own, or turn your
 current project into a blueprint and put blanks where your projects usually differ.
 
 **C++** projects use the same sentences. Types are worked out from values
-(text → `std::string`, whole numbers → `int`) and every choice is explained. The desktop app
-compiles and runs them with the computer's g++ or clang++; compiler errors link back to the
+(text → `std::string`, whole numbers → `int`) and every choice is explained; you can also name
+them ("set decimal total to 0", "define area using decimal w, decimal h giving back decimal",
+"constant LIMIT is 100"). Classes read like this:
+
+```
+define class Account
+    field owner: text
+    field balance: decimal = 0
+    when made using text owner
+        set self.owner to owner
+    define deposit using decimal amount giving back nothing
+        increase balance by amount
+make a new Account with "Sam" and store in account
+```
+
+The desktop app compiles and runs C++ with the computer's compiler: **Visual Studio's** (the free
+Build Tools are enough) on Windows, g++ or clang++ elsewhere. Compiler errors link back to the
 sentence that caused them.
+
+**Arduino** projects have one **Sketch** folder. Lines at the left edge are settings;
+"when the board starts" runs once and "over and over" runs forever:
+
+```
+constant LED is 13
+when the board starts
+    make pin LED an output
+    start the serial monitor at 9600
+over and over
+    turn pin LED on
+    wait 500 milliseconds
+    turn pin LED off
+    wait 500 milliseconds
+    show "blink"
+```
+
+In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
+uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
 **Read: existing code → sections → plain English**
 
@@ -61,20 +95,28 @@ Inside each file, IntuiCode will:
 - flag things worth checking: hard-coded secrets, SQL built from text, errors silently
   ignored, `debug=True`, `eval`, shell commands, TODOs, very long functions;
 - summarise any lines you highlight;
-- open the file as sentences, where it can, and check that the sentences rebuild
-  exactly the same program.
+- open the file as sentences, in any of these languages, and check that the sentences rebuild
+  exactly the same code. Anything that can't be said in words stays as exact code on its own
+  line (`python:`, `html:`, `css:`, `js:`, `c++:`), so nothing is lost or guessed. A web page
+  comes with its own style sheet and script, as a website project.
 
 ## Desktop app
 
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
 
 - **Real folders.** Open folder / Save (Ctrl+S). Your code files are the project;
-  the sentences are kept in `.intuicode/` beside them. If the Python on disk is changed in
-  another editor, its sentences are rebuilt from the code. Folders that aren't IntuiCode
-  projects open in Read mode.
+  the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
+  another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
+  program or an Arduino sketch that wasn't made with IntuiCode opens as sentences; anything
+  else opens in Read mode.
 - **Real Python.** Programs run with the Python installed on the computer, with live
   output, typed input and a Stop button, so web servers and packages work. Without Python
   installed, the built-in one is used.
+- **C++.** Compiled with Visual Studio's `cl` on Windows (found automatically; install
+  [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+  with "Desktop development with C++" if you don't have it), or g++/clang++ on macOS and Linux.
+- **Arduino.** Uses `arduino-cli`, found on the PATH or inside an installed Arduino IDE 2. The
+  first time, install the board support: `$ arduino-cli core install arduino:avr`.
 - **Commands.** Type `$` and a command in the terminal to run it in the project folder:
   `$ git status`, `$ pip install flask`.
 
@@ -111,6 +153,17 @@ npm test            # reader, translators, blueprints, web reader, exact round-t
 npm run coverage    # how much real code reads as sentences
 ```
 
+The desktop app has its own tests, which open the real app window and drive it (Python with
+typed input, shell commands, files, C++, Arduino, code opened as sentences). GitHub runs them
+on Linux and on Windows (with Visual Studio's compiler) for every push to `main`
+(**Actions → Desktop app tests**). To run them on Linux:
+
+```
+npm run tauri -- build --debug --no-bundle
+cargo install tauri-driver --locked            # and: sudo apt install webkit2gtk-driver xvfb
+xvfb-run node tests/e2e/run.mjs
+```
+
 ## Run it
 
 ```
@@ -134,7 +187,8 @@ npm install && npm run vendor
 | `lang/python_reader.py` | Python → sections, summaries and sentences, using Python's own `ast` parser |
 | `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects), live preview document |
 | `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, cross-language links |
-| `lang/cpp_write.js` | Sentences → C++ |
+| `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
+| `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact against the original |
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |

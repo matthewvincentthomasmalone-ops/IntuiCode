@@ -23,6 +23,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 3 | The web set: HTML, CSS and JavaScript in Read and Write modes, website template with live preview, front end ↔ back end links | done (see below) |
 | 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | done |
 | 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | done (first version) |
+| 6 | Everything into sentences: HTML, CSS, JavaScript, C++ and Arduino → sentences with exactness checks; C++ classes; Arduino in Write mode; Visual Studio's compiler; tests of the real desktop app | done |
 
 ### Step 3 notes
 
@@ -31,9 +32,7 @@ directions, using rules rather than AI. This file records where it is going and 
   Python (Flask/FastAPI, including Blueprint prefixes) or Express route that answers it.
 - Write mode: website projects (Structure / Styling / Mechanics), live preview, Pick,
   console and error forwarding to the terminal.
-- Not yet: converting existing JavaScript, HTML or CSS **into** sentences (Read mode shows
-  sentence-style steps, but "Open as sentences" is Python-only). That needs web round-trip
-  checks like Python's before it can be trusted.
+- Converting existing JavaScript, HTML and CSS into sentences came in step 6.
 
 ### Step 5 notes
 
@@ -42,14 +41,34 @@ directions, using rules rather than AI. This file records where it is going and 
 - Write: the core sentences produce C++20 with worked-out types and small helpers for random
   numbers and text with values. The desktop app compiles with g++/clang++ and maps compiler
   errors back to sentences.
-- Not yet: C++ classes in sentences, Arduino projects in Write mode, converting existing C++
-  into sentences.
+- C++ classes, Arduino in Write mode and converting existing C++ came in step 6.
+
+### Step 6 notes
+
+- `lang/convert.js` turns HTML, CSS, JavaScript, C++ and Arduino code into sentences. Each
+  statement, element or rule is said in words where a sentence fits; the sentences are then
+  translated back and the syntax trees compared with the original. Anything that comes back
+  different is kept as exact code (`html:`, `css:`, `js:`, `c++:`, `above main:`, `head:`)
+  and the check runs again, so the result is exact or says why not. Declarations try a more
+  careful sentence with the type spelled out before falling back to code.
+- Counted as the same: `let`/`const`, `x++`/`x += 1`, one-line bodies/braces, `std::` with
+  `using namespace std`, main's final `return 0`, attribute order and whitespace in HTML.
+- Test corpus (`tests/corpus_web/`): a landing page, its CSS and script, a C++ program with a
+  class and an Arduino sketch: all exact; 83% of HTML lines, 73% of CSS lines and 100% of the
+  JavaScript, C++ and Arduino lines read as sentences. Code made from every blueprint comes
+  back exactly.
+- C++: classes (fields, "when made" constructors, tools, private parts, "based on"), typed
+  tools and values, constants, `include`, `use namespace std`, "followed by" for output.
+- Arduino: setup/loop, pins, analog levels, waiting, tones, the serial monitor, fixed-size lists.
+  The desktop app checks sketches with arduino-cli, uploads to a connected board and opens the
+  serial monitor.
+- Desktop: Visual Studio's `cl` (found with vswhere) on Windows; MSVC error messages map to
+  sentences like g++'s. Tests drive the real app on Linux and Windows in GitHub Actions.
 
 ## What could come next
 
-- Converting existing JavaScript, HTML, CSS and C++ **into** sentences, with exactness checks
-  like Python's.
-- Arduino in Write mode (setup/loop sentences, upload to a board).
+- More of the web into words: forms with names, `hidden` elements, listeners on saved
+  elements (`const form = …; form.addEventListener`), multi-file C++ projects with headers.
 - Code signing, so Windows and macOS don't warn when installing.
 - A proper grammar for sentences, if rule collisions keep appearing (see Known risks).
 

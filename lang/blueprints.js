@@ -33,6 +33,114 @@
   'use strict';
 
   const BUILT_IN = [
+`title: Arduino: blink a light
+kind: project
+layout: arduino
+about: The first sketch everyone makes: a light that blinks, on a real board.
+story:
+The board blinks [light: the built-in light | an LED on pin 13 | an LED on pin 9],
+on for [on time: 500] milliseconds and off for [off time: 500] milliseconds.
+Each time, it [report: tells the computer how many blinks so far | just blinks].
+== sketch
+[if light = an LED on pin 13]
+set led to 13
+[end]
+[if light = an LED on pin 9]
+set led to 9
+[end]
+[if light = the built-in light]
+set led to LED_BUILTIN
+[end]
+set blinks to 0
+
+when the board starts
+    make pin led an output
+[if report = tells the computer how many blinks so far]
+    start the serial monitor at 9600
+[end]
+
+over and over
+    turn pin led on
+    wait [on time] milliseconds
+    turn pin led off
+    wait [off time] milliseconds
+    increase blinks
+[if report = tells the computer how many blinks so far]
+    show "Blinks so far: {blinks}"
+[end]
+`,
+`title: Arduino: button and light
+kind: project
+layout: arduino
+about: Press a button to switch a light on or off.
+story:
+A button on pin [button pin: 2] switches the light on pin [light pin: 13].
+When the button is pressed, the light [action: turns on while held | switches on and off].
+== sketch
+constant BUTTON is [button pin]
+constant LIGHT is [light pin]
+[if action = switches on and off]
+set lit to false
+[end]
+
+when the board starts
+    make pin BUTTON an input with pull-up
+    make pin LIGHT an output
+    start the serial monitor at 9600
+    show "Press the button"
+
+over and over
+[if action = turns on while held]
+    if pin BUTTON is off
+        turn pin LIGHT on
+    otherwise
+        turn pin LIGHT off
+[end]
+[if action = switches on and off]
+    if pin BUTTON is off
+        set lit to not lit
+        if lit
+            turn pin LIGHT on
+        otherwise
+            turn pin LIGHT off
+        show "Light on: {lit}"
+        wait 250 milliseconds
+[end]
+`,
+`title: C++ bank account (a class)
+kind: project
+layout: cpp
+about: A class in C++: an account that keeps its own balance, with tools to use it.
+story:
+An account belongs to [owner: "Sam"] and starts with [start: 50] in it.
+It can take deposits and withdrawals, and it [overdraw: refuses to go below zero | may go below zero].
+== program
+define class Account
+    field owner: text
+    field balance: decimal = 0
+
+    when made using text owner, decimal balance
+        set self.owner to owner
+        set self.balance to balance
+
+    define deposit using decimal amount giving back nothing
+        increase balance by amount
+
+    define withdraw using decimal amount giving back yes/no
+[if overdraw = refuses to go below zero]
+        if amount is greater than balance
+            give back false
+[end]
+        decrease balance by amount
+        give back true
+
+make a new Account with [owner], [start] and store in account
+run account.deposit with 25
+run account.withdraw with 100 and store in ok
+show account.owner followed by " has " followed by account.balance
+if not ok
+    show "That withdrawal was refused."
+`,
 `title: C++ guessing game
 kind: project
 layout: cpp
@@ -428,10 +536,10 @@ show "Picked:" and picked [thing]
       sections[k] = sections[k].join('\n');
     }
     meta.kind = /snippet/i.test(meta.kind) ? 'snippet' : 'project';
-    meta.layout = /c\+\+|cpp/i.test(meta.layout) ? 'cpp' : /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
+    meta.layout = /arduino|sketch|board/i.test(meta.layout) ? 'arduino' : /c\+\+|cpp/i.test(meta.layout) ? 'cpp' : /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
     if (!meta.title) errors.push('Add a "title:" line.');
     if (!Object.keys(sections).length) errors.push('Add at least one section, e.g. "== main" (or "== here" for a snippet).');
-    const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'cpp' ? ['program'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
+    const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'arduino' ? ['sketch'] : meta.layout === 'cpp' ? ['program'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
     for (const k of Object.keys(sections)) if (!allowed.includes(k)) errors.push(`"== ${k}" isn't a section for this kind of blueprint. Use: ${allowed.map(a => '== ' + a).join(', ')}.`);
 
     // Blanks, in order of first appearance (story first).

@@ -32,15 +32,20 @@
   SECTION_META.styling = { title: 'Styling', purpose: 'How the page looks (CSS)', icon: 'M3 13l3-1 7-7-2-2-7 7zM10 4l2 2' };
   SECTION_META.mechanics = { title: 'Mechanics', purpose: 'What the page does (JavaScript)', icon: 'M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2M4.2 4.2l1.4 1.4M10.4 10.4l1.4 1.4M4.2 11.8l1.4-1.4M10.4 5.6l1.4-1.4' };
   SECTION_META.program = { title: 'Program', purpose: 'What the program does, from the top (C++)', icon: 'M5 3.5L2 8l3 4.5M11 3.5l3 4.5-3 4.5' };
-  const LAYOUTS = { structured: ['settings', 'tools', 'main'], script: ['main'], website: ['structure', 'styling', 'mechanics'], cpp: ['program'] };
-  const FILE_NAME = { settings: 'settings.py', tools: 'tools.py', main: 'main.py', structure: 'index.html', styling: 'style.css', mechanics: 'script.js', program: 'main.cpp' };
-  const SEC_LANG = { structure: 'html', styling: 'css', mechanics: 'js', program: 'cpp' };
+  SECTION_META.sketch = { title: 'Sketch', purpose: 'What the board does: settings, then once at the start, then over and over (Arduino)', icon: 'M4 4.5h8v7H4zM6 2.5v2M10 2.5v2M6 11.5v2M10 11.5v2' };
+  const LAYOUTS = { structured: ['settings', 'tools', 'main'], script: ['main'], website: ['structure', 'styling', 'mechanics'], cpp: ['program'], arduino: ['sketch'] };
+  const FILE_NAME = { settings: 'settings.py', tools: 'tools.py', main: 'main.py', structure: 'index.html', styling: 'style.css', mechanics: 'script.js', program: 'main.cpp', sketch: 'sketch.ino' };
+  const SEC_LANG = { structure: 'html', styling: 'css', mechanics: 'js', program: 'cpp', sketch: 'cpp' };
   const LANG_NAME = { python: 'Python', html: 'HTML', css: 'CSS', js: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', cpp: 'C++' };
-  const fileName = (sec) => FILE_NAME[sec.file] || sec.file + '.py';
+  const KIND_OF_LAYOUT = { website: 'website', cpp: 'cpp', arduino: 'arduino' };
+  const isCpp = () => project.kind === 'cpp' || project.kind === 'arduino';
+  // An Arduino sketch must be named after its folder (blink/blink.ino).
+  const sketchName = () => (desk.folder ? baseName(desk.folder) : project.name || 'sketch');
+  const fileName = (sec) => (sec.file === 'sketch' ? sketchName() + '.ino' : FILE_NAME[sec.file] || sec.file + '.py');
   const secLang = (sec) => SEC_LANG[sec.file] || 'python';
   /* What the phrase picker, Index and auto-indent use for a folder. */
   function packFor(sec) {
-    if (secLang(sec) === 'cpp') return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: CPP.WORDS, guide: CPP.GUIDE, howtos: [], filter: () => true, webOnly: true };
+    if (secLang(sec) === 'cpp') { const ino = sec.file === 'sketch'; return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: ino ? CPP.ARDUINO_WORDS : CPP.WORDS, guide: ino ? CPP.ARDUINO_GUIDE : CPP.GUIDE, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true }; }
     if (secLang(sec) === 'python') return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: LANG.GUIDE.sections[sec.file] }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes(sec.file) };
     const g = WEB.GUIDES[sec.file];
     return { templates: WEB.TEMPLATES, opens: WEB.OPENS_BLOCK, words: WEB.WORDS[sec.file] || [], guide: g, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true };
@@ -52,7 +57,7 @@
     const filled = BP.fill(bp, values);
     const nameField = bp.fields.find(f => f.name === 'project name');
     return {
-      version: 1, lang: 'python', kind: bp.layout === 'website' ? 'website' : bp.layout === 'cpp' ? 'cpp' : 'python', name: slug(nameField ? (values[nameField.name] ?? nameField.value) : bp.title),
+      version: 1, lang: 'python', kind: KIND_OF_LAYOUT[bp.layout] || 'python', name: slug(nameField ? (values[nameField.name] ?? nameField.value) : bp.title),
       sections: LAYOUTS[bp.layout].map(f => ({ id: f, file: f, text: filled[f] || '' })),
       active: 'main',
     };
@@ -121,7 +126,7 @@
   /* ------------------------------------------------------------------ */
 
   function compile() {
-    try { compiled = project.kind === 'website' ? WEB.compileWebsite(project) : project.kind === 'cpp' ? CPP.compileCppProject(project) : LANG.compileProject(project); }
+    try { compiled = project.kind === 'website' ? WEB.compileWebsite(project) : isCpp() ? CPP.compileCppProject(project) : LANG.compileProject(project); }
     catch (e) { console.error(e); }
   }
   const secResult = (id) => compiled && compiled.results[id];
@@ -251,7 +256,7 @@
     const sec = activeSec();
     const r = secResult(sec.id);
     $('pyFile').textContent = fileName(sec);
-    $('codeTitle').textContent = LANG_NAME[secLang(sec)];
+    $('codeTitle').textContent = sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)];
     $('codeSub').textContent = `Generated from your sentences. Read it here, change it there.`;
     if (!r) { pycode.innerHTML = ''; return; }
     pycode.innerHTML = r.lines.map((o, i) => {
@@ -286,7 +291,7 @@
     const box = $('explain');
     if (!r || !text.trim()) {
       box.innerHTML = `<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
-        <div class="ex-hint"><span>Start from an idea: open <b>Blueprints</b> and fill in the blanks.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Put your cursor on any line to see how it becomes Python.</span></div>`;
+        <div class="ex-hint"><span>Start from an idea: open <b>Blueprints</b> and fill in the blanks.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Put your cursor on any line to see how it becomes ${sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]}.</span></div>`;
       return;
     }
     const inf = r.info[li] || { py: [], notes: [], warns: [], errs: [] };
@@ -699,11 +704,18 @@
   async function run() {
     if (mode === 'read') { tLine('Run works on the program in Write mode. Use "Open as sentences" to bring imported code there.', 't-sys'); return; }
     if (project.kind === 'website') return runWebsite(true);
-    if (project.kind === 'cpp') {
-      typingLine = -1; refreshAll();
+    if (isCpp()) {
+      typingLine = -1; activeSec().text = ta.value; refreshAll();
       if (renderProblems()) { tLine('Can\'t run yet: fix the problems first (see Problems on the left).', 't-err'); return; }
+      if (project.kind === 'arduino') {
+        if (desk.on && desk.arduino) return runDesktopArduino();
+        tLine(desk.on
+          ? 'To check a sketch and put it on a board, IntuiCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuiCode. Until then, copy the code on the right into the Arduino IDE.'
+          : 'A sketch runs on an Arduino board, not in the browser. In the IntuiCode desktop app (with the Arduino IDE or arduino-cli installed), Run checks the sketch and uploads it to a board plugged in by USB. Or copy the code on the right into the Arduino IDE.', 't-sys');
+        return;
+      }
       if (desk.on && desk.cpp) return runDesktopCpp();
-      tLine(desk.on ? 'No C++ compiler was found on this computer. Install one (g++ or clang++; on Windows, MSYS2 or Visual Studio Build Tools) and restart IntuiCode.' : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuiCode desktop app on a computer with g++ or clang++, or copy main.cpp into your own C++ setup.', 't-sys');
+      tLine(desk.on ? 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuiCode.' : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuiCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
       return;
     }
     typingLine = -1;
@@ -787,7 +799,7 @@
   let previewInfo = null, picking = false, previewTimer = null;
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
-    chip.textContent = mode === 'read' ? 'Reading' : project.kind === 'website' ? 'Website' : project.kind === 'cpp' ? 'C++' : 'Python';
+    chip.textContent = mode === 'read' ? 'Reading' : project.kind === 'website' ? 'Website' : project.kind === 'cpp' ? 'C++' : project.kind === 'arduino' ? 'Arduino' : 'Python';
   }
   function showBottom(which) {
     const web = project.kind === 'website';
@@ -886,6 +898,7 @@
     if (low === 'reset') { Runner.reset(); return tLine('Forgot all values from earlier runs.', 't-sys'); }
     if (!compiled) compile();
     if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
+    if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
     if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in Python projects.', 't-sys');
     const tr = LANG.translateOne(cmd, compiled.syms);
     if (tr.info.errs.length) return tLine(tr.info.errs.join('\n'), 't-err');
@@ -1076,7 +1089,7 @@
     if (!bpSel) { box.innerHTML = '<p class="bp-none">Pick a blueprint.</p>'; return; }
     const bp = BP.parse(bpSource(bpSel));
     const isProject = bp.kind === 'project';
-    const where = isProject ? (bp.layout === 'structured' ? 'Project · Settings, Tools and Main program' : 'Project · one Main program file') : `Snippet · adds lines to ${SECTION_META[activeSec().file].title}`;
+    const where = isProject ? ({ structured: 'Project · Settings, Tools and Main program', website: 'Website · Structure, Styling and Mechanics', cpp: 'C++ project · one Program file', arduino: 'Arduino project · one Sketch for a board' }[bp.layout] || 'Project · one Main program file') : `Snippet · adds lines to ${SECTION_META[activeSec().file].title}`;
     box.innerHTML = `<div class="bp-kind">${escHtml(where)}</div>
       <h3 class="bp-title">${escHtml(bp.title)}</h3>
       ${bp.errors.length ? `<div class="bp-errors">${bp.errors.map(e => `<div>${escHtml(e)}</div>`).join('')}</div>` : ''}
@@ -1334,8 +1347,9 @@
     $('rdOverview').innerHTML = linkify($('rdOverview').innerHTML);
     const secs = a && (a.ok || (a.sections && a.sections.length)) ? a.sections : [];
     const fileLang = langOfPath(file.name);
-    $('btnToSentences').disabled = !a || !a.ok || fileLang !== 'python';
-    $('btnToSentences').title = fileLang === 'python' ? '' : 'Only Python files can be opened as sentences for now.';
+    const canSay = /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
+    $('btnToSentences').disabled = !a || !a.ok || !canSay;
+    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : 'TypeScript and React files can\'t be opened as sentences yet.';
     const startOf = new Map(secs.map(s => [s.start, s]));
     const secOfLine = (ln) => secs.find(s => ln >= s.start && ln <= s.end);
     $('rdCode').innerHTML = file.source.split('\n').map((l, i) => {
@@ -1580,6 +1594,7 @@
 
   $('btnToSentences').addEventListener('click', async () => {
     const file = curFile();
+    if (langOfPath(file.name) !== 'python') return codeAsSentences(file, pyFiles());
     const R = await Runner.reader();
     // Safety net: if any statement doesn't come back exactly, keep just that statement as python: and try again.
     let force = [], res, check;
@@ -1596,6 +1611,67 @@
     if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.' + (force.length ? ` (${force.length} part${force.length > 1 ? 's were' : ' was'} kept as python: lines to stay exact.)` : ''), 't-ok');
     else tLine(`Note: the sentences differ from the original ${check.error ? '(' + check.error + ')' : 'at lines ' + check.differs.map(d => d[0] === d[1] ? d[0] : d[0] + '–' + d[1]).join(', ')}. Check those parts before relying on them.`, 't-err');
   });
+
+  /* HTML, CSS, JavaScript, C++ and Arduino code -> a Write-mode project, checked exact. */
+  async function convertEnv() {
+    const WR = await Runner.webReader((st) => setStatus(st));
+    await WR.loadLangs(['html', 'css', 'js', 'cpp']);
+    return { parse: WR.parse, WEB, CPP };
+  }
+  function reportConversion(parts) {
+    for (const [label, r] of parts) {
+      if (!r) continue;
+      if (r.exact) tLine(`✓ ${label}: checked, the sentences make exactly the same code as the original. ${r.words} of ${r.lines} lines read as sentences${r.kept ? `; ${r.kept} stay as exact code` : ''}.`, 't-ok');
+      else tLine(`${label}: ${r.reason} Check it before relying on it.`, 't-err');
+    }
+  }
+  /* Returns { project, results: [[label, result]], exact } or null (with the reason shown). */
+  async function codeToProject(file, files, name) {
+    const C = window.IntuiConvert;
+    const env = await convertEnv();
+    const lang = langOfPath(file.name);
+    if (lang === 'cpp') {
+      const ino = /\.ino$/i.test(file.name);
+      const r = C.toSentences(ino ? 'arduino' : 'cpp', file.source, env);
+      if (!r.ok) { tLine(`${shortPath(file.name)} can't be turned into sentences: ${r.error}`, 't-err'); return null; }
+      const sec = ino ? 'sketch' : 'program';
+      const locals = [...r.text.matchAll(/^include "([^"]+)"/gm)].map(m => m[1]);
+      if (locals.length) tLine(`Note: this program also uses ${locals.join(', ')} from its own folder. Those files aren't part of the sentences, so keep them next to ${ino ? 'the sketch' : 'main.cpp'} when you save.`, 't-sys');
+      return { project: { version: 1, lang: 'python', kind: ino ? 'arduino' : 'cpp', name: slug(name || baseName(file.name).replace(/\.\w+$/, '')), sections: [{ id: sec, file: sec, text: r.text }], active: sec }, results: [[shortPath(file.name), r]], exact: r.exact };
+    }
+    // a web page with its own styles and script, or a lone style sheet or script
+    const htmlFiles = files.filter(f => langOfPath(f.name) === 'html');
+    let page = lang === 'html' ? file : null;
+    if (!page) page = htmlFiles.find(h => { const i = C.pageInfo(env.parse, h.source); return i.styles.concat(i.scripts.map(x => x.src)).some(ref => C.resolveRef(h.name, ref, files.map(f => f.name)) === file.name); }) || null;
+    const sections = { structure: '', styling: '', mechanics: '' };
+    const results = [];
+    if (page) {
+      const w = C.website(page, files, env);
+      if (!w.parts.structure.ok) { tLine(`${shortPath(page.name)} can't be turned into sentences: ${w.parts.structure.error}`, 't-err'); return null; }
+      sections.structure = w.parts.structure.text;
+      results.push([shortPath(page.name), w.parts.structure]);
+      if (w.parts.styling) { sections.styling = w.parts.styling.text; results.push([w.cssFiles.map(shortPath).join(' + '), w.parts.styling]); }
+      if (w.parts.mechanics) { sections.mechanics = w.parts.mechanics.text; results.push([shortPath(w.jsPath), w.parts.mechanics]); }
+      for (const n of w.notes) tLine('Note: ' + n, 't-sys');
+    } else {
+      const r = C.toSentences(lang === 'css' ? 'css' : 'js', file.source, env);
+      if (!r.ok) { tLine(`${shortPath(file.name)} can't be turned into sentences: ${r.error}`, 't-err'); return null; }
+      sections[lang === 'css' ? 'styling' : 'mechanics'] = r.text;
+      results.push([shortPath(file.name), r]);
+    }
+    const nm = name || (page ? (page.name.split('/').length > 1 ? page.name.split('/')[0] : baseName(page.name).replace(/\.\w+$/, '')) : baseName(file.name).replace(/\.\w+$/, ''));
+    return { project: { version: 1, lang: 'python', kind: 'website', name: slug(nm), sections: ['structure', 'styling', 'mechanics'].map(f => ({ id: f, file: f, text: sections[f] })), active: page ? 'structure' : lang === 'css' ? 'styling' : 'mechanics' }, results, exact: results.every(([, r]) => r.exact) };
+  }
+  async function codeAsSentences(file, files) {
+    let out;
+    try { out = await codeToProject(file, files); }
+    catch (e) { tLine('Could not turn this code into sentences: ' + e.message, 't-err'); return; }
+    if (!out) return;
+    if (desk.on) { desk.folder = null; desk.dirty = true; }
+    replaceProject(out.project, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
+    showFolder();
+    reportConversion(out.results);
+  }
 
   /* ---------- Import: paste, files, a folder, a .zip, or drag and drop ---------- */
 
@@ -1737,8 +1813,11 @@
     await analyse();
     if (pyFiles().length === 1) reads.active = 0;
     renderRead();
+    const counts = {};
+    for (const f of pyFiles()) { const l = LANG_NAME[langOfPath(f.name)] || 'code'; counts[l] = (counts[l] || 0) + 1; }
+    const parts = Object.entries(counts).map(([l, c]) => `${c} ${l}`);
     const n = pyFiles().length;
-    tLine(`Imported ${n} Python file${n === 1 ? '' : 's'}.` + (note ? ' ' + note : ''), 't-sys');
+    tLine(`Imported ${n} file${n === 1 ? '' : 's'}${parts.length ? ` (${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]})` : ''}.` + (note ? ' ' + note : ''), 't-sys');
   }
 
   /* ------------------------------------------------------------------ */
@@ -1767,7 +1846,8 @@
   /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
   async function saveProject(pick) {
     if (!desk.on) return;
-    if (!desk.folder || pick) {
+    if (!desk.folder) {
+      if (pick === 'quiet') return;   // autosave only writes to a folder that was chosen
       const f = await pickFolder('Choose a folder to save this project in');
       if (!f) return;
       desk.folder = f;
@@ -1811,7 +1891,12 @@
           if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== secResult(s.id).text.trim()) changed.push(s);
         }
         for (const s of changed) {
-          if (secLang(s) !== 'python') { tLine(`${fileName(s)} was changed outside IntuiCode. Website files can't be turned back into sentences yet, so the sentences may be out of date; Read mode shows the file as it is.`, 't-err'); continue; }
+          if (secLang(s) !== 'python') {
+            const res = await rebuildSection(folder, s, read);
+            if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuiCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
+            else tLine(`${fileName(s)} was changed outside IntuiCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
+            continue;
+          }
           const res = await sentencesFor(await read(fileName(s)));
           if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuiCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
@@ -1820,13 +1905,30 @@
         return;
       }
     }
-    const mainCpp = await read('main.cpp');
-    if (mainCpp != null && !(await read('main.py'))) {
-      tLine(`${baseName(folder)} has C++ code. C++ files can't be turned into sentences yet, so it opens in Read mode.`, 't-sys');
-      desk.readFolder = folder;
-      return importProject(await invoke('read_folder', { path: folder }), '');
-    }
     const main = await read('main.py');
+    if (main == null) {
+      // web pages, C++ and Arduino sketches become sentences too
+      const files = await invoke('read_folder', { path: folder });
+      const top = baseName(folder);
+      const at = (n) => files.find(f => f.name === `${top}/${n}`);
+      const sketch = at(`${top}.ino`) || files.find(f => /\.ino$/i.test(f.name) && f.name.split('/').length === 2);
+      const pick = sketch || at('main.cpp') || at('index.html') || files.find(f => /\.cpp$/i.test(f.name) && /\bint\s+main\s*\(/.test(f.source)) || files.find(f => /\.html?$/i.test(f.name));
+      if (pick) {
+        let out = null;
+        try { out = await codeToProject(pick, files, top); } catch (e) { tLine('Could not turn this code into sentences: ' + e.message, 't-err'); }
+        if (out) {
+          // Only work in the folder itself when saving writes the same files back, unchanged.
+          const same = out.exact && ((out.project.kind === 'arduino' && pick.name === `${top}/${top}.ino`) || (out.project.kind === 'cpp' && pick.name === `${top}/main.cpp`)
+            || (out.project.kind === 'website' && pick.name === `${top}/index.html` && out.results.length === 1 + !!at('style.css') + !!at('script.js') && !files.some(f => /\.css$/i.test(f.name) && f.name !== `${top}/style.css`) && !files.some(f => /\.js$/i.test(f.name) && f.name !== `${top}/script.js`)));
+          desk.folder = same ? folder : null;
+          desk.dirty = !same;
+          replaceProject(out.project, same ? `Opened ${top} and turned its code into sentences.` : `Opened ${top}'s code as sentences in a new, unsaved project (the folder itself is left as it is, because saving would lay it out differently). Press Save to keep it.`);
+          showFolder();
+          reportConversion(out.results);
+          return;
+        }
+      }
+    }
     if (main != null) {
       const settings = await read('settings.py'), tools = await read('tools.py');
       const structured = settings != null && tools != null;
@@ -1841,7 +1943,7 @@
       return;
     }
     const files = await invoke('read_folder', { path: folder });
-    if (files.some(f => /\.(py|jsx?|tsx?|html?|css)$/i.test(f.name))) {
+    if (files.some(f => /\.(py|jsx?|tsx?|html?|css|cpp|cc|h|hpp|ino)$/i.test(f.name))) {
       tLine(`${baseName(folder)} isn't an IntuiCode project, so it opens in Read mode.`, 't-sys');
       desk.readFolder = folder;
       return importProject(files, '');
@@ -1861,6 +1963,20 @@
       desk.readFolder = folder;
       importProject(files, files.length >= 400 ? 'Only the first 400 files were read.' : '');
     } catch (e) { tLine('Could not read the folder: ' + e, 't-err'); }
+  }
+
+  /* A website, C++ or Arduino file changed on disk: its sentences again, from the code. */
+  async function rebuildSection(folder, s, read) {
+    try {
+      const C = window.IntuiConvert;
+      const env = await convertEnv();
+      const src = await read(fileName(s));
+      if (s.file === 'program' || s.file === 'sketch') return C.toSentences(s.file === 'sketch' ? 'arduino' : 'cpp', src, env);
+      const page = (await read('index.html')) || '';
+      if (s.file === 'structure') return C.toSentences('html', src, { ...env, pulled: ['style.css', 'script.js'] });
+      const info = C.pageInfo(env.parse, page);
+      return C.toSentences(s.file === 'styling' ? 'css' : 'js', src, { ...env, ids: info.ids, groups: info.groups });
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   async function sentencesFor(src) {
@@ -1905,24 +2021,96 @@
     catch (e) { tLine('Could not write main.cpp: ' + e, 't-err'); return; }
     const exe = 'intuicode-program' + (win ? '.exe' : '');
     const id = desk.nextId++;
-    desk.proc = { id, kind: 'compile', err: '', dir, exe };
-    tLine(`▶ Compiling main.cpp with ${desk.cpp[0]}…`, 't-sys');
+    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe };
+    const msvc = desk.cpp[0] === 'msvc';
+    tLine(`▶ Compiling main.cpp with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
     setRunning(true, 'compiling…');
-    try { await invoke('run_program', { id, program: desk.cpp[0], args: ['-std=c++20', '-O0', '-o', exe, 'main.cpp'], cwd: dir }); }
+    try { await invoke('compile_cpp', { id, source: 'main.cpp', output: exe, cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
-  function compilerErrors(err) {
-    const res = secResult('program');
+  /* Compiler messages -> the sentence they came from. g++/clang++: main.cpp:12:5: error: …   Visual Studio: main.cpp(12): error C2065: … */
+  function compilerErrors(err, file = 'main.cpp', secId = 'program') {
+    const res = secResult(secId);
+    const sec = project.sections.find(x => x.id === secId);
+    const f = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:^|[\\/\\s])${f}(?::(\\d+):\\d+:\\s*(?:fatal )?error:|\\((\\d+)(?:,\\d+)?\\)\\s*:\\s*(?:fatal )?error\\s*(?:C\\d+)?\\s*:)\\s*(.*)`, 'gm');
     let shown = 0;
-    for (const m of err.matchAll(/main\.cpp:(\d+):\d+:\s*(?:fatal )?error:\s*(.*)/g)) {
-      const o = res && res.lines[+m[1] - 1];
-      const line = o && o.src >= 0 ? o.src : null;
-      const sentence = line != null ? project.sections[0].text.split('\n')[line].trim() : '';
-      tLine(`✕ The compiler says: ${m[2]}`, 't-err');
-      if (line != null) { tLink(`  Go to Program, line ${line + 1}: ${sentence}`, 'program', line); if (!runtimeMark) runtimeMark = { sec: 'program', line, msg: `The compiler says: ${m[2]}` }; }
+    for (const m of err.matchAll(re)) {
+      const n = +(m[1] || m[2]);
+      const o = res && res.lines[n - 1];
+      let line = o && o.src >= 0 ? o.src : null;
+      const sentence = line != null && sec ? sec.text.split('\n')[line].trim() : '';
+      if (!sentence) line = null;
+      tLine(`✕ The compiler says: ${m[3]}`, 't-err');
+      if (line != null) { tLink(`  Go to ${SECTION_META[sec.file].title}, line ${line + 1}: ${sentence}`, secId, line); if (!runtimeMark) runtimeMark = { sec: secId, line, msg: `The compiler says: ${m[3]}` }; }
       if (++shown >= 5) break;
     }
+    if (!shown && /\S/.test(err)) tLine('The compiler\'s own words are above.', 't-sys');
     if (runtimeMark) { renderOverlay(); renderExplain(); }
+  }
+
+  /* Arduino: check the sketch with arduino-cli, upload it to a connected board, then show what it sends. */
+  async function runDesktopArduino() {
+    const capture = async (args) => { try { const [code, out, err] = await invoke('run_capture', { program: desk.arduino[0], args, cwd: null }); return { code, out, err }; } catch (e) { return { code: -1, out: '', err: String(e) }; } };
+    let dir = desk.folder;
+    if (!dir) dir = join(await invoke('scratch_folder'), slug(project.name) || 'sketch');
+    const name = baseName(dir);
+    try { await invoke('write_text', { path: join(dir, name + '.ino'), content: secResult('sketch').text }); }
+    catch (e) { tLine('Could not write the sketch: ' + e, 't-err'); return; }
+    setRunning(true, 'checking…');
+    tLine('Looking for a connected board…', 't-sys');
+    const list = await capture(['board', 'list', '--format', 'json']);
+    let port = null, fqbn = null, boardName = null;
+    try {
+      const data = JSON.parse(list.out || '[]');
+      const ports = Array.isArray(data) ? data : data.detected_ports || [];
+      for (const p of ports) {
+        const b = (p.matching_boards || p.boards || [])[0];
+        if (b && b.fqbn) { port = (p.port || p).address; fqbn = b.fqbn; boardName = b.name; break; }
+      }
+    } catch (_) { /* no boards listed */ }
+    fqbn = fqbn || project.board || 'arduino:avr:uno';
+    tLine(port ? `Found ${boardName || 'a board'} on ${port}.` : 'No board is plugged in, so the sketch will only be checked (for an Arduino Uno). Plug one in by USB and press Run again to upload it.', 't-sys');
+    const id = desk.nextId++;
+    desk.proc = { id, kind: 'ino-compile', err: '', out: '', dir, name, port, fqbn };
+    tLine(`▶ Checking the sketch (arduino-cli compile, ${fqbn})…`, 't-sys');
+    try { await invoke('run_program', { id, program: desk.arduino[0], args: ['compile', '--fqbn', fqbn, dir], cwd: dir }); }
+    catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
+  }
+  function arduinoNext(p, code) {
+    const all = p.err + '\n' + p.out;
+    if (p.kind === 'ino-compile') {
+      if (code !== 0) {
+        if (/platform not installed|Platform '[^']+' not found|No platforms installed|unknown package/i.test(all)) {
+          const core = p.fqbn.split(':').slice(0, 2).join(':');
+          tLine(`The board support for ${core} isn't installed yet. Type this in the terminal (it downloads it once):`, 't-err');
+          tLine(`  $ ${/\s/.test(desk.arduino[0]) ? `"${desk.arduino[0]}"` : desk.arduino[0]} core install ${core}`, 't-help');
+          return;
+        }
+        compilerErrors(all, p.name + '.ino', 'sketch');
+        tLine('■ The sketch could not be checked.', 't-sys');
+        return;
+      }
+      tLine('✓ The sketch builds.', 't-ok');
+      if (!p.port) return;
+      const id = desk.nextId++;
+      desk.proc = { ...p, id, kind: 'ino-upload', err: '', out: '' };
+      tLine(`▶ Uploading to the board on ${p.port}…`, 't-sys');
+      setRunning(true, 'uploading…');
+      invoke('run_program', { id, program: desk.arduino[0], args: ['upload', '-p', p.port, '--fqbn', p.fqbn, p.dir], cwd: p.dir }).catch((e) => { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); });
+      return;
+    }
+    if (p.kind === 'ino-upload') {
+      if (code !== 0) { tLine('■ The upload didn\'t work. Check the USB cable, close any other program using the board (like the Arduino IDE\'s serial monitor), and try again.', 't-err'); return; }
+      tLine('✓ Uploaded: the sketch is running on the board.', 't-ok');
+      const baud = (secResult('sketch').text.match(/Serial\.begin\((\d+)\)/) || [])[1];
+      if (!baud) return;
+      const id = desk.nextId++;
+      desk.proc = { ...p, id, kind: 'monitor', err: '', out: '' };
+      tLine(`▶ Showing what the board sends (serial monitor at ${baud}). Press Stop to close it.`, 't-sys');
+      setRunning(true, 'board ›');
+      invoke('run_program', { id, program: desk.arduino[0], args: ['monitor', '-p', p.port, '--config', `baudrate=${baud}`], cwd: p.dir }).catch((e) => { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); });
+    }
   }
 
   async function runShell(command) {
@@ -1967,7 +2155,10 @@
       const d = e.payload;
       if (!desk.proc || d.id !== desk.proc.id) return;
       if (d.stream === 'stderr') desk.proc.err += d.text;
-      tWrite(d.text, d.stream === 'stderr' ? 't-err' : undefined);
+      else desk.proc.out = (desk.proc.out || '') + d.text;
+      // Visual Studio's cl names the file it compiles; that line isn't news
+      const text = desk.proc.kind === 'compile' ? d.text.replace(/^main\.cpp\r?\n/m, '') : d.text;
+      if (text) tWrite(text, d.stream === 'stderr' ? 't-err' : undefined);
     });
     await TAURI.event.listen('proc-exit', (e) => {
       const d = e.payload;
@@ -1976,6 +2167,7 @@
       desk.proc = null;
       setRunning(false);
       if (p.kind === 'python' && d.code !== 0 && d.code != null) pythonTraceback(p.err);
+      if (/^ino-/.test(p.kind)) return arduinoNext(p, d.code);
       if (p.kind === 'compile') {
         if (d.code === 0) {
           const id = desk.nextId++;
@@ -1985,7 +2177,7 @@
           invoke('run_program', { id, program: join(p.dir, p.exe), args: [], cwd: p.dir }).catch((e) => { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); });
           return;
         }
-        compilerErrors(p.err);
+        compilerErrors(p.err + '\n' + (p.out || ''));
         tLine('■ The program could not be compiled.', 't-sys');
         return;
       }
@@ -1994,6 +2186,7 @@
     try { desk.python = await invoke('find_python'); } catch (_) { desk.python = null; }
     try { desk.git = await invoke('find_git'); } catch (_) { desk.git = null; }
     try { desk.cpp = await invoke('find_cpp'); } catch (_) { desk.cpp = null; }
+    try { desk.arduino = await invoke('find_arduino'); } catch (_) { desk.arduino = null; }
     if (desk.python) setStatus(`Python ${desk.python[1]} (this computer)`, 'ready');
     tLine(desk.python ? `Desktop app: programs run with Python ${desk.python[1]} installed on this computer. Type $ before a command to run it in the project folder${desk.git ? ' (for example $ git status)' : ''}.` : 'Desktop app: Python isn\'t installed on this computer, so the built-in Python is used (it can\'t install extra packages). Get Python from python.org to run programs like web servers.', 't-sys');
   }

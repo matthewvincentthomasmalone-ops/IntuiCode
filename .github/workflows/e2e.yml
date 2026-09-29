@@ -1,0 +1,76 @@
+name: Desktop app tests
+
+# Builds the real desktop app and drives its window (tests/e2e/run.mjs):
+# Python with typed input, shell commands, files, C++ (Visual Studio's compiler on
+# Windows, g++ on Linux), Arduino sketches (checked with arduino-cli on Linux),
+# and imported code opened as sentences.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build tools, WebKit's WebDriver and a virtual screen
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev webkit2gtk-driver xvfb
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Arduino CLI with the AVR boards (Uno, Nano, Mega)
+        if: runner.os == 'Linux'
+        uses: arduino/setup-arduino-cli@v2
+      - name: Arduino board support
+        if: runner.os == 'Linux'
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+
+      - name: Bundle Python and the parsers
+        run: |
+          npm ci
+          npm run vendor
+          python tools/fetch_pyodide.py
+
+      - name: Build the app (debug)
+        run: npm run tauri -- build --debug --no-bundle
+
+      - name: tauri-driver
+        run: cargo install tauri-driver --locked
+
+      - name: Edge WebDriver matching this computer's WebView2
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo install --git https://github.com/chippers/msedgedriver-tool
+          msedgedriver-tool
+          "EDGE_DRIVER=$PWD\msedgedriver.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Drive the app (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum node tests/e2e/run.mjs
+
+      - name: Drive the app (Windows)
+        if: runner.os == 'Windows'
+        run: node tests/e2e/run.mjs

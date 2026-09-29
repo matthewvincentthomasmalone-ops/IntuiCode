@@ -19,8 +19,9 @@ for (const src of BP.BUILT_IN) {
       const sections = bp.kind === 'snippet'
         ? [{ id: 'main', file: 'main', text: filled.here }]
         : bp.layout === 'cpp' ? [{ id: 'program', file: 'program', text: filled.program }]
+        : bp.layout === 'arduino' ? [{ id: 'sketch', file: 'sketch', text: filled.sketch }]
         : Object.keys(filled).map(k => ({ id: k, file: k, text: filled[k] }));
-      const res = bp.layout === 'website' ? WEB.compileWebsite({ sections }) : bp.layout === 'cpp' ? CPP.compileCppProject({ sections }) : L.compileProject({ sections });
+      const res = bp.layout === 'website' ? WEB.compileWebsite({ sections }) : bp.layout === 'cpp' ? CPP.compileCppProject({ sections }) : bp.layout === 'arduino' ? CPP.compileCppProject({ kind: 'arduino', sections }) : L.compileProject({ sections });
       const problems = sections.flatMap(s => res.results[s.id].info.flatMap(i => i.errs.concat(i.warns)));
       assert.deepEqual(JSON.parse(JSON.stringify(problems)), []);
     });

@@ -1101,7 +1101,7 @@
     return { files: results, edges, routes, fetches, calledBy: Object.fromEntries(Object.entries(calledBy).map(([k, v]) => [k, [...v]])), hasServer };
   }
 
-  const api = { init, loadLangs, analyzeCpp, kindOfPath, analyzeJs: (p, s, k, c) => analyzeJs(p, s, k || kindOfPath(p), c), analyzeHtml, analyzeCss, analyzeProject, colorName, describeDecl, ROLE_LABEL, ready: () => !!TS };
+  const api = { init, loadLangs, analyzeCpp, kindOfPath, analyzeJs: (p, s, k, c) => analyzeJs(p, s, k || kindOfPath(p), c), analyzeHtml, analyzeCss, analyzeProject, colorName, describeDecl, ROLE_LABEL, ready: () => !!TS, parse };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWebReader = api;
 })(typeof window !== 'undefined' ? window : globalThis);
