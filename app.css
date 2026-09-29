@@ -184,6 +184,8 @@ code { font-family: var(--f-py); font-size: .92em; }
 .s-fn { color: var(--fn); }
 .s-com { color: var(--com); font-style: italic; }
 .s-raw { color: var(--ink-2); }
+.s-fill { color: var(--ink-3); opacity: .75; font-style: italic; }
+.s-step { color: var(--accent); font-weight: 600; }
 .s-slot { background: var(--slot-bg); color: var(--slot-ink); border-radius: 3px; }
 .s-err { text-decoration: underline wavy var(--bad); text-decoration-skip-ink: none; text-underline-offset: 4px; }
 .s-warn { text-decoration: underline wavy var(--warn); text-decoration-skip-ink: none; text-underline-offset: 4px; }

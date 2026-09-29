@@ -64,6 +64,9 @@ SENTENCE_WORDS = {
     "added", "joined", "followed", "empty", "item", "to", "of", "in", "as", "by", "from", "with",
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
     "twenty", "fifty", "hundred",
+    # filler and step words the sentence reader leaves out or splits on
+    "please", "kindly", "just", "simply", "basically", "really", "actually", "quickly", "then", "afterwards",
+    "thanks", "do",
 }
 
 MAX_STEPS = 16

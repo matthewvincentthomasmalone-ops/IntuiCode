@@ -709,15 +709,79 @@
 
   const STARTERS = ['set', 'show', 'ask', 'if', 'otherwise', 'repeat', 'while', 'count', 'for each', 'define', 'give back', 'run', 'add', 'remove', 'increase', 'decrease', 'create list', 'sort', 'wait', 'note', 'python', 'stop the loop', 'skip to next', 'multiply', 'divide', 'remember', 'use'];
 
+  /* ------------------------------------------------------------------ */
+  /* Filler words, and several steps in one sentence                     */
+  /* ------------------------------------------------------------------ */
+
+  // Natural phrasing is never penalised: these words are left out, and the explain strip says so.
+  const LEAD_FILLER = /^(?:(?:please|kindly|ok|okay|so|and|now|next|then|and then|also|just|simply|finally|first(?:ly)?|after that|afterwards|i want to|i'd like to|i would like to|i need to|we need to|we want to|let's|let us|can you|could you|you should|go ahead and|make sure (?:to|you)|try to|remember to|be sure to)\s*,?\s+)+/i;
+  const ANY_FILLER = /\b(?:please|kindly|just|simply|basically|really|actually|quickly)\b/gi;
+  const TAIL_FILLER = /(?:\s*,?\s*\b(?:please|for me|thanks|thank you))+\s*[.!]?\s*$/i;
+  const STEP_SPLIT = /\s*;\s*|\s*,?\s+(?:and then|then|after that|afterwards)\s+/gi;
+  const NOT_FILLER = /^(?:next round|then|now|next|first)$/i;   // sentences that happen to start like filler
+
+  // Hide quoted text (same length) so word matching never touches it.
+  const mask = (s) => s.replace(/"(?:[^"\\]|\\.)*"?|(?<![\w])'(?:[^'\\]|\\.)*'?/g, (m) => '\u0001'.repeat(m.length));
+
+  function stripFiller(s) {
+    const removed = [];
+    if (NOT_FILLER.test(s) || /^[A-Za-z_]\w*\s*[+\-*/]?=[^=]/.test(s)) return { text: s, removed };
+    const lead = s.match(LEAD_FILLER);
+    if (lead && lead[0].length < s.length) { removed.push(lead[0].replace(/,/g, ' ').replace(/\s+/g, ' ').trim()); s = s.slice(lead[0].length); }
+    const tail = mask(s).match(TAIL_FILLER);
+    if (tail && tail.index > 0) { removed.push(...tail[0].replace(/[.!,]/g, ' ').trim().split(/\s+(?=please|for|thanks|thank)/i)); s = s.slice(0, tail.index); }
+    let out = '', last = 0;
+    for (const m of mask(s).matchAll(ANY_FILLER)) { out += s.slice(last, m.index); last = m.index + m[0].length; removed.push(m[0].toLowerCase()); }
+    return { text: (out + s.slice(last)).replace(/[ \t]{2,}/g, ' ').trim(), removed: removed.map(w => w.toLowerCase()) };
+  }
+
+  function splitSteps(s) {
+    const parts = []; let last = 0;
+    for (const m of mask(s).matchAll(STEP_SPLIT)) { parts.push(s.slice(last, m.index)); last = m.index + m[0].length; }
+    parts.push(s.slice(last));
+    const clean = parts.map(p => p.trim()).filter(Boolean);
+    // "repeat 3 times: show hi" -> header + body
+    if (clean.length) {
+      const c = mask(clean[0]).search(/:\s+\S/);
+      if (c > 0 && OPENS_BLOCK.test(clean[0].slice(0, c))) clean.splice(0, 1, clean[0].slice(0, c), clean[0].slice(c + 1).trim());
+    }
+    return clean;
+  }
+
   function tLine(text, x) {
-    let s = text.trim();
-    // raw + notes first, before any punctuation clean-up
+    const s0 = text.trim();
+    // raw Python and notes are never touched
     for (const r of RULES.slice(0, 2)) {
-      const m = s.match(r.re);
+      const m = s0.match(r.re);
       if (m) return r.fn(m, x);
     }
-    s = s.replace(/^(?:then|and then|next,?|now)\s+/i, '')
-      .replace(/\s*:\s*$/, '')
+    const { text: s, removed } = stripFiller(s0);
+    const parts = splitSteps(s);
+    const said = [...new Set(removed)];
+    const fillerNote = () => { if (said.length) x.note(`Left out filler: ${said.map(w => '"' + w + '"').join(', ')}. You can write words like these; Python doesn't need them.`); };
+    if (!parts.length) { x.err('This line only has filler words in it. Say what should happen, for example: show "hello".'); return { py: '# ??? ' + s0 }; }
+    if (parts.length === 1) { const r = tOne(parts[0], x); fillerNote(); return r; }
+
+    // Several steps: each becomes its own line. Steps after a block header go inside it.
+    const pys = [], results = [];
+    let depth = 0, pushed = 0;
+    parts.forEach((p, i) => {
+      const r = tOne(p, x);
+      results.push(r);
+      pys.push('    '.repeat(depth) + r.py);
+      if (r.open && i < parts.length - 1) { depth++; x.stack.push({ ind: -1, type: r.open }); pushed++; }
+    });
+    for (; pushed > 0; pushed--) x.stack.pop();
+    const last = results[results.length - 1];
+    if (last.open && depth > 0) x.err('Only one block can be opened in a sentence like this. Put the second block on its own line.');
+    fillerNote();
+    x.note(`This sentence has ${parts.length} steps, so it becomes ${parts.length} lines of Python.` + (depth ? ' The steps after the first are indented because they belong to it.' : ''));
+    return { py: pys[0], pys, open: depth ? null : last.open, tag: depth ? results[0].tag : last.tag, fn: depth ? undefined : last.fn };
+  }
+
+  function tOne(text, x) {
+    let s = text.trim();
+    s = s.replace(/\s*:\s*$/, '')
       .replace(/(?<![\d.])\.\s*$/, '')
       .replace(/\s+(?:then|do)$/i, '');
     for (const r of RULES.slice(2)) {
@@ -802,7 +866,7 @@
       }
       if (!res.comment) lastTag[level] = res.tag || 'stmt';
 
-      out.push({ text: ' '.repeat(level * 4) + res.py, src: i });
+      for (const p of res.pys || [res.py]) out.push({ text: ' '.repeat(level * 4) + p, src: i });
       if (res.open) {
         const fn = res.fn ? { ...res.fn, outIdx: out.length - 1, level, line: i, locals: new Set(res.fn.params), globals: new Set() } : null;
         if (fn) fnRecords.push(fn);
@@ -859,7 +923,7 @@
       info.errs.length = 0; info.notes.length = 0; info.warns.length = 0;
       res = { py: tExpr(text, x), expr: true };
     }
-    return { py: res.py, open: res.open, imports: [...env.imports], info, expr: !!res.expr };
+    return { py: (res.pys || [res.py]).join('\n'), open: res.open, imports: [...env.imports], info, expr: !!res.expr };
   }
 
   /* ------------------------------------------------------------------ */
@@ -936,6 +1000,7 @@
       ['Do something several times', 'repeat 3 times\n    show "Hip hip hooray!"'],
       ['Keep going until something happens', 'repeat forever\n    ask "Password? " and store in guess\n    if guess is "open sesame"\n        stop the loop'],
       ['Make a reusable tool', 'define double using n\n    give back n times 2'],
+      ['Write it naturally', 'please ask for a number "Age? " and store in age then show age\nif age is at least 18 then show "Welcome"\nnote: "please", "just" and "then" are fine. Filler is left out, and "then" splits steps.'],
       ['Use a tool and keep its answer', 'run double with 21 and store in answer'],
       ['Keep a list of things', 'create list basket with "apples", "bread"\nadd "milk" to basket\nfor each item in basket\n    show "-" and item'],
     ],
@@ -952,6 +1017,7 @@
   window.IntuiLang = window.IntuiLang || {};
   window.IntuiLang.python = {
     compileProject, translateOne, TEMPLATES, WORDS, GUIDE, OPENS_BLOCK, sectionTitle,
+    FILLER: { lead: LEAD_FILLER, words: ['please', 'kindly', 'just', 'simply', 'basically', 'really', 'actually', 'quickly'], steps: ['then', 'afterwards'] },
     keywords: { python: PY_KEYWORDS, builtins: BUILTINS },
   };
 })();

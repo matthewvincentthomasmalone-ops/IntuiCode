@@ -109,6 +109,8 @@
   const OPS = new Set(['is', 'not', 'and', 'or', 'than', 'plus', 'minus', 'times', 'divided', 'mod', 'equal', 'contains', 'squared', 'more', 'less', 'greater', 'least', 'most', 'at', 'even', 'odd', 'bigger', 'smaller', 'yes', 'no', 'nothing']);
   const CONN = new Set(['to', 'by', 'with', 'using', 'from', 'in', 'of', 'store', 'into', 'as', 'item', 'first', 'last', 'length', 'random', 'number', 'text', 'decimal', 'each', 'the', 'counting', 'down', 'sum', 'biggest', 'smallest', 'rounded', 'result', 'it', 'places', 'seconds']);
   const NO_NAMES = { all: new Set(), fn: new Set() };
+  const FILLER = new Set(LANG.FILLER.words);
+  const STEP_WORDS = new Set(LANG.FILLER.steps);
 
   function hlLine(line, mark, names) {
     names = names || NO_NAMES;
@@ -120,8 +122,13 @@
       const ind = line.match(/^\s*/)[0];
       let rest = line.slice(ind.length);
       let head = '';
+      const lead = rest.match(LANG.FILLER.lead);
+      if (lead && lead[0].length < rest.length && !/^(?:next round|then|now|next|first)$/i.test(rest)) {
+        head = `<span class="s-fill" title="Filler: fine to write, left out of the Python">${escHtml(lead[0])}</span>`;
+        rest = rest.slice(lead[0].length);
+      }
       const sm = rest.match(STARTER);
-      if (sm) { head = `<span class="s-kw">${escHtml(sm[0])}</span>`; rest = rest.slice(sm[0].length); }
+      if (sm) { head += `<span class="s-kw">${escHtml(sm[0])}</span>`; rest = rest.slice(sm[0].length); }
       const toks = rest.replace(/("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'(?=\s|$|,)|‹[^›]*›?|\b\d+(?:\.\d+)?\b|[A-Za-z_]\w*)/g, '\u0000$1\u0000').split('\u0000');
       body = escHtml(ind) + head + toks.map((t, i) => {
         if (!t) return '';
@@ -130,6 +137,8 @@
         if (t[0] === '‹') return `<span class="s-slot">${escHtml(t)}</span>`;
         if (/^\d/.test(t)) return `<span class="s-num">${t}</span>`;
         const low = t.toLowerCase();
+        if (FILLER.has(low)) return `<span class="s-fill">${escHtml(t)}</span>`;
+        if (STEP_WORDS.has(low)) return `<span class="s-step">${escHtml(t)}</span>`;
         if (names.fn.has(low)) return `<span class="s-fn">${escHtml(t)}</span>`;
         if (names.all.has(low)) return `<span class="s-var">${escHtml(t)}</span>`;
         if (OPS.has(low)) return `<span class="s-op">${escHtml(t)}</span>`;
@@ -398,7 +407,9 @@
     if (pos !== ta.selectionEnd) return closeAc();
     const b = lineBounds(pos);
     const before = b.text.slice(0, pos - b.start);
-    const indent = before.match(/^\s*/)[0];
+    let indent = before.match(/^\s*/)[0];
+    const lead = before.slice(indent.length).match(LANG.FILLER.lead);
+    if (lead) indent += lead[0];   // "please set…" still suggests "set ‹name› to ‹value›"
     const typed = before.slice(indent.length);
     if (!typed || /^(?:note|python|#)/i.test(typed)) return closeAc();
     const file = activeSec().file;
