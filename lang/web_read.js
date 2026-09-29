@@ -35,14 +35,18 @@
   /* ------------------------------------------------------------------ */
 
   // opts: { TreeSitter (module), locate(file) -> url or path }
+  let OPTS = null;
   async function init(opts) {
-    if (TS) return;
-    TS = opts.TreeSitter;
-    await TS.init({ locateFile: (f) => opts.locate(f) });
-    for (const [key, name] of Object.entries(GRAMMARS)) {
-      if (opts.only && !opts.only.includes(key)) continue;
-      langs[key] = await TS.Language.load(opts.locate(`tree-sitter-${name}.wasm`));
+    if (!TS) {
+      TS = opts.TreeSitter;
+      OPTS = opts;
+      await TS.init({ locateFile: (f) => opts.locate(f) });
     }
+    await loadLangs(opts.only || Object.keys(GRAMMARS));
+  }
+  /* Grammars load on demand (the C++ one is large). */
+  async function loadLangs(kinds) {
+    for (const key of kinds) if (GRAMMARS[key] && !langs[key]) langs[key] = await TS.Language.load(OPTS.locate(`tree-sitter-${GRAMMARS[key]}.wasm`));
   }
 
   function parse(kind, source) {
@@ -684,11 +688,259 @@
     return { ok: !rootNode.hasError(), error: rootNode.hasError() ? 'Some of this file could not be read.' : '', overview, sections, lines: lines.length, rules };
   }
 
+
+  /* ------------------------------------------------------------------ */
+  /* C++ (including Arduino sketches)                                    */
+  /* ------------------------------------------------------------------ */
+
+  const CPP_LIBS = {
+    iostream: 'reads and writes text in the terminal', string: 'works with text', vector: 'lists that can grow', map: 'dictionaries (keys and values)',
+    unordered_map: 'fast dictionaries', set: 'collections without duplicates', cmath: 'does maths', fstream: 'reads and writes files',
+    algorithm: 'sorts and searches', memory: 'smart pointers that free memory automatically', thread: 'does several things at once',
+    chrono: 'measures time', random: 'makes random numbers', cstdio: 'C-style input and output', cstring: 'C-style text', cstdlib: 'C-style helpers',
+    sstream: 'builds text piece by piece', iomanip: 'formats numbers in output', array: 'fixed-size lists', 'Arduino.h': 'the Arduino board',
+    'Servo.h': 'controls servo motors', 'Wire.h': 'talks to I2C devices', 'SPI.h': 'talks to SPI devices', 'SoftwareSerial.h': 'extra serial ports',
+  };
+
+  function cppFacts(nodes, src) {
+    const f = { effects: [], warnings: [], loops: 0, decisions: 0, news: 0, deletes: 0, pins: false, refs: [], ptrs: false, throws: false, catches: false, calls: [] };
+    for (const top of nodes) for (const n of walk(top)) {
+      const t = n.type, text = n.text;
+      if (/^(for|for_range_loop|while|do)_statement$/.test(t) || t === 'for_range_loop') f.loops++;
+      else if (t === 'if_statement' || t === 'switch_statement' || t === 'conditional_expression') f.decisions++;
+      else if (t === 'new_expression') f.news++;
+      else if (t === 'delete_expression') f.deletes++;
+      else if (t === 'throw_statement') f.throws = true;
+      else if (t === 'catch_clause') { f.catches = true; const b = n.namedChildren.find(c => c.type === 'compound_statement'); if (b && b.namedChildCount === 0) add(f.warnings, 'Catches an error and does nothing with it, so problems can fail silently.'); }
+      else if (t === 'reference_declarator' && n.parent && n.parent.type === 'parameter_declaration') add(/^const\b/.test(n.parent.text) ? (f.crefs = f.crefs || []) : f.refs, n.text.replace(/^&\s*/, ''));
+      else if (t === 'pointer_declarator') f.ptrs = true;
+      else if (t === 'binary_expression' && /^(std::)?cout\b|^Serial\.print/.test(text)) add(f.effects, 'shows text');
+      else if (t === 'binary_expression' && /^(std::)?cin\b/.test(text)) add(f.effects, 'reads what the person types');
+      else if (t === 'call_expression') {
+        const fn = (n.namedChild(0) || {}).text || '';
+        if (/^(printf|puts|Serial\.(print|println|write))$/.test(fn)) add(f.effects, 'shows text');
+        else if (/^(scanf|getline|std::getline|Serial\.read\w*)$/.test(fn)) add(f.effects, 'reads input');
+        else if (/^(fopen|std::ifstream|std::ofstream)$/.test(fn)) add(f.effects, 'works with files');
+        else if (/^(malloc|calloc|realloc)$/.test(fn)) { f.news++; add(f.effects, 'reserves memory by hand'); }
+        else if (fn === 'free') f.deletes++;
+        else if (/^(std::)?make_(unique|shared)$/.test(fn)) add(f.effects, 'makes a smart pointer (memory is freed automatically)');
+        else if (/^(pinMode|digitalWrite|digitalRead|analogRead|analogWrite)$/.test(fn)) { f.pins = true; add(f.effects, 'controls pins on the board'); }
+        else if (fn === 'delay' || fn === 'delayMicroseconds') add(f.effects, 'waits');
+        else if (/^(strcpy|strcat|sprintf|gets)$/.test(fn)) add(f.warnings, `Uses ${code(fn)}, which can write past the end of its memory (a buffer overflow). Safer: ${fn === 'gets' ? 'std::getline' : fn === 'sprintf' ? 'snprintf or std::string' : 'std::string'}.`);
+        else if (/^(system)$/.test(fn)) add(f.warnings, 'Uses `system()` to run a shell command. If any part comes from users, they could run their own commands.');
+        else if (/^[a-zA-Z_]\w*$/.test(fn)) add(f.calls, fn);
+      }
+    }
+    if (/\bofstream\b|\bifstream\b|\bfopen\b/.test(nodes.map(n => n.text).join('\n'))) add(f.effects, 'works with files');
+    return f;
+  }
+
+  function cppType(n) {
+    const t = n.childForFieldName('type');
+    return t ? t.text : '';
+  }
+  function cppParams(fn) {
+    const decl = fn.childForFieldName('declarator');
+    const pl = decl && (decl.childForFieldName('parameters') || [...walk(decl)].find(x => x.type === 'parameter_list'));
+    return pl ? pl.namedChildren.filter(c => /parameter_declaration/.test(c.type)).map(c => c.text) : [];
+  }
+  function cppName(fn) {
+    const decl = fn.childForFieldName('declarator');
+    const id = decl && [...walk(decl)].find(x => /identifier$/.test(x.type) && x.type !== 'type_identifier');
+    return id ? id.text : 'function';
+  }
+
+  function cppStepLines(nodes, limit = 16) {
+    const out = [];
+    const pad = (d) => '    '.repeat(d);
+    const flat = (n) => n.text.replace(/\s+/g, ' ');
+    const short = (s) => s.length > 70 ? s.slice(0, 67) + '…' : s;
+    const words = (n) => {
+      if (!n) return '';
+      if (n.type === 'binary_expression') {
+        const op = n.child(1) ? n.child(1).type : '';
+        const w = { '==': 'is', '!=': 'is not', '>': 'is more than', '<': 'is less than', '>=': 'is at least', '<=': 'is at most', '&&': 'and', '||': 'or', '+': 'plus', '-': 'minus', '*': 'times', '/': 'divided by', '%': 'mod' }[op];
+        if (w) return `${words(n.childForFieldName('left'))} ${w} ${words(n.childForFieldName('right'))}`;
+      }
+      if (n.type === 'parenthesized_expression' || n.type === 'condition_clause') return words(n.namedChild(0));
+      if (n.type === 'true') return 'yes';
+      if (n.type === 'false') return 'no';
+      if (n.type === 'null' || n.text === 'nullptr') return 'nothing';
+      return short(flat(n));
+    };
+    const block = (b, d) => { if (!b) return; if (b.type === 'compound_statement') b.namedChildren.forEach(c => visit(c, d)); else visit(b, d); };
+    const visit = (n, d) => {
+      if (out.length > limit) return;
+      const t = n.type;
+      if (t === 'comment') { out.push(pad(d) + 'note: ' + n.text.replace(/^\/\/\s?|^\/\*+|\*+\/$/g, '').trim().slice(0, 80)); return; }
+      if (t === 'declaration') {
+        const type = cppType(n);
+        for (const d2 of n.namedChildren.filter(c => /declarator$/.test(c.type) && c.type !== 'type_qualifier')) {
+          if (d2.type === 'init_declarator') {
+            const name = flat(d2.childForFieldName('declarator') || d2.namedChild(0));
+            const v = d2.childForFieldName('value') || d2.namedChild(1);
+            const call = v && v.type === 'call_expression' && /^(analogRead|digitalRead)$/.test(flat(v.namedChild(0)));
+            out.push(pad(d) + (call ? `read pin ${words(v.namedChild(1).namedChild(0))} and store in ${name}` : `create ${type} ${name}` + (v ? ` set to ${words(v)}` : '')));
+          } else out.push(pad(d) + `create ${type} ${flat(d2)}`);
+        }
+        return;
+      }
+      if (t === 'expression_statement') {
+        const e = n.namedChild(0);
+        if (!e) return;
+        if (e.type === 'binary_expression' && /^(std::)?cout\b/.test(e.text)) { out.push(pad(d) + 'show ' + e.text.replace(/^(std::)?cout\s*<<\s*/, '').split(/\s*<<\s*/).filter(x => !/^(std::)?endl$|^"\\n"$/.test(x)).join(' and ')); return; }
+        if (e.type === 'binary_expression' && /^(std::)?cin\b/.test(e.text)) { out.push(pad(d) + 'ask and store in ' + e.text.replace(/^(std::)?cin\s*>>\s*/, '').split(/\s*>>\s*/).join(', ')); return; }
+        if (e.type === 'assignment_expression') { const op = e.child(1).type; const l = flat(e.childForFieldName('left')), r = words(e.childForFieldName('right')); out.push(pad(d) + (op === '+=' ? `increase ${l} by ${r}` : op === '-=' ? `decrease ${l} by ${r}` : `set ${l} to ${r}`)); return; }
+        if (e.type === 'update_expression') { out.push(pad(d) + `${/\+\+/.test(e.text) ? 'increase' : 'decrease'} ${e.text.replace(/\+\+|--/g, '')} by 1`); return; }
+        if (e.type === 'call_expression') {
+          const fn = flat(e.namedChild(0)); const args = e.namedChild(1); const a = args ? args.namedChildren.map(words) : [];
+          const arduino = {
+            delay: () => `wait ${a[0]} milliseconds`, delayMicroseconds: () => `wait ${a[0]} microseconds`,
+            digitalWrite: () => `turn ${a[0]} ${/HIGH/.test(a[1]) ? 'on' : /LOW/.test(a[1]) ? 'off' : 'to ' + a[1]}`,
+            pinMode: () => `use pin ${a[0]} as ${/INPUT_PULLUP/.test(a[1]) ? 'an input (with pull-up)' : /INPUT/.test(a[1]) ? 'an input' : 'an output'}`,
+            'Serial.println': () => `show ${a.join(' and ')} on the serial monitor`, 'Serial.print': () => `show ${a.join(' and ')} on the serial monitor (same line)`,
+            'Serial.begin': () => `start the serial monitor at ${a[0]} speed`, analogWrite: () => `set pin ${a[0]} to strength ${a[1]}`,
+          }[fn];
+          out.push(pad(d) + (arduino ? arduino() : `run ${fn}` + (a.length ? ' with ' + a.join(', ') : '')));
+          return;
+        }
+      }
+      if (t === 'if_statement') {
+        out.push(pad(d) + `if ${words(n.childForFieldName('condition'))}`);
+        block(n.childForFieldName('consequence'), d + 1);
+        const alt = n.childForFieldName('alternative');
+        if (alt) { out.push(pad(d) + 'otherwise'); block(alt.namedChild(0) || alt, d + 1); }
+        return;
+      }
+      if (t === 'for_statement') {
+        const init = n.childForFieldName('initializer'), cond = n.childForFieldName('condition');
+        const m = init && cond && init.text.match(/^\w+\s+(\w+)\s*=\s*0;?$/) && cond.text.match(/^(\w+)\s*<\s*(.+)$/);
+        out.push(pad(d) + (m && m[1] === init.text.match(/^\w+\s+(\w+)/)[1] ? `repeat ${m[2]} times counting with ${m[1]}` : `repeat: ${short(flat(n).replace(/\{.*$/, ''))}`));
+        block(n.childForFieldName('body'), d + 1);
+        return;
+      }
+      if (t === 'for_range_loop') { out.push(pad(d) + `for each ${flat(n.childForFieldName('declarator')).replace(/^[&*]\s*/, '')} in ${words(n.childForFieldName('right'))}`); block(n.childForFieldName('body'), d + 1); return; }
+      if (t === 'while_statement') { out.push(pad(d) + `while ${words(n.childForFieldName('condition'))}`); block(n.childForFieldName('body'), d + 1); return; }
+      if (t === 'return_statement') { out.push(pad(d) + 'give back' + (n.namedChildCount ? ' ' + words(n.namedChild(0)) : '')); return; }
+      if (t === 'try_statement') { out.push(pad(d) + 'try'); block(n.childForFieldName('body'), d + 1); for (const c of n.namedChildren.filter(x => x.type === 'catch_clause')) { out.push(pad(d) + 'if it fails'); block(c.namedChildren.find(x => x.type === 'compound_statement'), d + 1); } return; }
+      out.push(pad(d) + 'c++: ' + short(flat(n)));
+    };
+    for (const n of nodes) visit(n, 0);
+    return { steps: out.slice(0, limit), more: out.length > limit };
+  }
+
+  function analyzeCpp(path, source, ctx) {
+    const rootNode = parse('cpp', source);
+    const lines = source.split('\n');
+    const isHeader = /\.(h|hh|hpp)$/i.test(path);
+    const groups = [];
+    const push = (kind, node, extra) => {
+      const last = groups[groups.length - 1];
+      if (last && last.kind === kind && ['imports', 'settings', 'steps'].includes(kind)) last.nodes.push(node);
+      else groups.push({ kind, nodes: [node], ...(extra || {}) });
+    };
+    const includes = [];
+    for (const n of rootNode.namedChildren) {
+      const t = n.type;
+      if (t === 'comment') continue;
+      if (t === 'preproc_call' || (t === 'preproc_ifdef' && /_H\b|_HPP\b/.test(n.text.split('\n')[0]))) { push('imports', n); continue; }
+      if (t === 'preproc_include') { const p = n.namedChild(0); includes.push({ name: p ? p.text.replace(/^[<"]|[>"]$/g, '') : '', local: p && p.type === 'string_literal' }); push('imports', n); continue; }
+      if (t === 'using_declaration' || t === 'namespace_alias_definition') { push('imports', n); continue; }
+      if (t === 'preproc_def' || (t === 'declaration' && /^(static\s+)?(const|constexpr)\b|#define/.test(n.text))) { push('settings', n); continue; }
+      if (t === 'function_definition') { const name = cppName(n); push(name === 'main' ? 'start' : name === 'setup' || name === 'loop' ? 'arduino' : 'tool', n, { name, fn: n }); continue; }
+      if ((t === 'struct_specifier' || t === 'class_specifier' || (t === 'declaration' && /^(struct|class)\b/.test(n.text))) && /\{/.test(n.text)) {
+        const nm = n.childForFieldName('name') || n.namedChildren.find(c => c.type === 'type_identifier');
+        push('class', n, { name: nm ? nm.text : 'type', fn: n, struct: /^struct/.test(n.text) });
+        continue;
+      }
+      if (t === 'namespace_definition') { push('steps', n); continue; }
+      if (t === 'declaration' && /\(/.test(n.text) && !/=/.test(n.text)) { push('declares', n); continue; }
+      push(t === 'declaration' ? 'settings' : 'steps', n);
+    }
+    const allFacts = cppFacts([rootNode], source);
+    const sections = [];
+    let id = 0;
+    const TITLE = { imports: 'Toolkits used', settings: 'Settings', steps: 'Other code', declares: 'Declarations', tool: 'Tool', start: 'Starting point', arduino: 'Arduino', class: 'Class' };
+    for (const g of groups) {
+      const first = g.nodes[0];
+      let start = line(first);
+      while (start > 1 && /^\s*(\/\/|\*|\/\*)/.test(lines[start - 2])) start--;
+      const end = endLine(g.nodes[g.nodes.length - 1]);
+      const note = commentAbove(lines, line(first) - 1);
+      const F = cppFacts(g.nodes, source);
+      const facts = [];
+      let title = TITLE[g.kind], headline = '';
+      let body = [];
+      if (g.kind === 'imports') {
+        const inc = g.nodes.filter(n => n.type === 'preproc_include').map(n => n.namedChild(0) ? n.namedChild(0).text : '');
+        headline = `Brings in ${inc.length} toolkit${inc.length === 1 ? '' : 's'} or file${inc.length === 1 ? '' : 's'}.`;
+        for (const i of inc) {
+          const nm = i.replace(/^[<"]|[>"]$/g, '');
+          const target = i.startsWith('"') ? ctx.fileOf(nm) : null;
+          facts.push(target ? `[[${target}]] (another file in this project)` : CPP_LIBS[nm] ? `${code(nm)} (${CPP_LIBS[nm]})` : code(nm));
+        }
+        if (g.nodes.some(n => /using namespace std/.test(n.text))) {
+          facts.push('`using namespace std` lets the code write `cout` instead of `std::cout`.');
+          if (isHeader) add(F.warnings, '`using namespace std` in a header file affects every file that includes it, which can cause name clashes. Keep it in .cpp files.');
+        }
+      } else if (g.kind === 'settings') {
+        const names = g.nodes.map(n => n.type === 'preproc_def' ? (n.childForFieldName('name') || n.namedChild(0)).text : (n.namedChildren.find(c => c.type === 'init_declarator') || n).text.split('=')[0].trim().replace(/[*&]/g, ''));
+        headline = `Sets ${names.length} fixed value${names.length === 1 ? '' : 's'}: ${plainList(names.map(code))}.`;
+        if (g.nodes.some(n => n.type === 'preproc_def')) facts.push('`#define` swaps text before compiling. A `constexpr` value does the same job but has a type the compiler can check.');
+      } else if (g.kind === 'class') {
+        const members = [...walk(g.fn)].filter(x => x.type === 'field_declaration' && !/\(/.test(x.text)).map(x => x.text.replace(/;$/, '').trim());
+        const methods = [...walk(g.fn)].filter(x => (x.type === 'function_definition' || (x.type === 'field_declaration' && /\(/.test(x.text)))).map(x => cppName(x.type === 'function_definition' ? x : x));
+        title = `${g.struct ? 'Struct' : 'Class'}: ${g.name}`;
+        headline = g.struct ? `${code(g.name)} groups several values together into one thing.` : `${code(g.name)} is a class: a blueprint for making objects.`;
+        if (members.length) facts.push('Each one keeps: ' + plainList(members.map(code), 8) + '.');
+        if (methods.length) facts.push('It can: ' + plainList(methods.map(code), 8) + '.');
+        if (/\bvirtual\b/.test(g.fn.text)) facts.push('`virtual` tools can be replaced by classes that build on this one.');
+        if (/\bprivate\s*:/.test(g.fn.text)) facts.push('Some of its values are `private`: only its own tools can change them.');
+      } else if (g.kind === 'declares') {
+        headline = `Announces ${g.nodes.length} tool${g.nodes.length === 1 ? '' : 's'} that ${g.nodes.length === 1 ? 'is' : 'are'} written in full elsewhere (usually the matching .cpp file).`;
+      } else if (['tool', 'start', 'arduino'].includes(g.kind)) {
+        const params = cppParams(g.fn);
+        const ret = cppType(g.fn);
+        if (g.kind === 'start') { title = 'Starting point: main'; headline = 'Runs first when the program starts. The number it gives back tells the computer whether it worked (0 means yes).'; }
+        else if (g.kind === 'arduino') { title = `Arduino: ${g.name}`; headline = g.name === 'setup' ? 'Runs once, when the board powers on or resets.' : 'Runs again and again, forever, after setup finishes.'; }
+        else {
+          title = `Tool: ${g.name}`;
+          headline = `${code(g.name)} is a reusable tool that ${params.length ? 'takes ' + plainList(params.map(code)) : 'takes no inputs'}` + (ret && ret !== 'void' ? ` and gives back a ${code(ret)}.` : '.');
+        }
+        if (F.refs.length) facts.push(`${plainList(F.refs.map(code))} ${F.refs.length > 1 ? 'are references' : 'is a reference'} (the \`&\`): the tool changes the caller's own value, not a copy.`);
+        if (F.crefs && F.crefs.length) facts.push(`${plainList(F.crefs.map(code))} ${F.crefs.length > 1 ? 'are read-only references' : 'is a read-only reference'} (\`const &\`): the tool looks at the caller's value without copying it, and can't change it.`);
+        if (params.some(p => /\*/.test(p))) facts.push('It takes a pointer (the `*`): an address of a value, rather than the value itself.');
+        if (note) facts.unshift('The comment above it says: ' + note);
+        const b = g.fn.childForFieldName('body');
+        body = b ? b.namedChildren : [];
+        if (g.name === 'loop' && /delay\(\s*[1-9]\d{3,}/.test(g.fn.text)) add(F.warnings, 'Waits a long time with `delay` inside `loop`, so the board can\'t react to anything else during that time. `millis()` timing avoids this.');
+      } else {
+        headline = `${g.nodes.length} piece${g.nodes.length === 1 ? '' : 's'} of code outside any tool.`;
+        body = g.nodes;
+      }
+      if (F.effects.length && g.kind !== 'imports') facts.push('Along the way it ' + plainList(F.effects, 6) + '.');
+      const called = F.calls.filter(c => ctx.localFns && ctx.localFns.has(c) && c !== g.name);
+      if (called.length) facts.push('Runs other tools: ' + plainList(called.map(code)) + '.');
+      if (F.loops || F.decisions) facts.push('Contains ' + [F.loops ? `${F.loops} loop${F.loops > 1 ? 's' : ''}` : '', F.decisions ? `${F.decisions} decision${F.decisions > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ') + '.');
+      if (F.news || F.deletes) facts.push('It manages memory by hand (`new`/`delete` or `malloc`/`free`).');
+      const warnings = F.warnings.slice();
+      if (['tool', 'start', 'arduino'].includes(g.kind) && end - start > 80) warnings.push(`This is ${end - start + 1} lines long. It may be doing several jobs that could be split up.`);
+      for (let i = start - 1; i < end; i++) { const m = lines[i] && lines[i].match(/\/\/\s*(TODO|FIXME|HACK|XXX)\b:?\s*(.*)/); if (m) warnings.push(`Line ${i + 1} has a ${m[1]} note: ${m[2].trim() || '(no details)'}`); }
+      const st = cppStepLines(body);
+      sections.push({ id: id++, kind: g.kind === 'arduino' ? 'start' : g.kind === 'declares' ? 'settings' : g.kind, title, headline, facts, warnings: warnings.slice(0, 6), steps: st.steps, more: st.more, start, end, name: g.name || null, lang: 'cpp' });
+    }
+    if (allFacts.news > allFacts.deletes && sections.length) sections[0].warnings.push(`Reserves memory by hand ${allFacts.news} time${allFacts.news > 1 ? 's' : ''} but frees it only ${allFacts.deletes} time${allFacts.deletes === 1 ? '' : 's'}: a possible memory leak. Smart pointers (std::unique_ptr) or containers like std::vector free memory automatically.`);
+    const isSketch = groups.some(g => g.kind === 'arduino');
+    const fns = sections.filter(s => s.kind === 'tool').length, classes = sections.filter(s => s.kind === 'class').length;
+    const overview = `${path} ` + (isSketch ? 'is an Arduino sketch' : groups.some(g => g.kind === 'start') ? 'is a C++ program' : isHeader ? 'is a C++ header: it announces tools and types that other files use' : 'holds C++ code') + (fns || classes ? `, with ${plainList([fns && `${fns} tool${fns > 1 ? 's' : ''}`, classes && `${classes} class${classes > 1 ? 'es' : ''}`].filter(Boolean))}.` : '.');
+    return { ok: !rootNode.hasError(), error: rootNode.hasError() ? 'Some of this file could not be read.' : '', overview, sections, lines: lines.length, includes, isSketch, hasMain: groups.some(g => g.kind === 'start'), isHeader, libs: includes.filter(i => !i.local).map(i => i.name) };
+  }
+
   /* ------------------------------------------------------------------ */
   /* A project: web files plus the Python reader's results               */
   /* ------------------------------------------------------------------ */
 
-  const ROLE_LABEL = { page: 'Web page', styles: 'Styles', components: 'Components', script: 'Page script', server: 'Web server', routes: 'Web routes', helpers: 'Helpers', settings: 'Settings', tests: 'Tests', package: 'Package marker', entry: 'Starting point', models: 'Data models' };
+  const ROLE_LABEL = { sketch: 'Arduino sketch', header: 'Header', page: 'Web page', styles: 'Styles', components: 'Components', script: 'Page script', server: 'Web server', routes: 'Web routes', helpers: 'Helpers', settings: 'Settings', tests: 'Tests', package: 'Package marker', entry: 'Starting point', models: 'Data models' };
 
   function resolvePath(from, ref, paths) {
     if (!ref || /^(https?:)?\/\//.test(ref)) return null;
@@ -716,6 +968,7 @@
     const htmlFiles = files.filter(f => kindOfPath(f.name) === 'html');
     const cssFiles = files.filter(f => kindOfPath(f.name) === 'css');
     const jsFiles = files.filter(f => /^(js|ts|tsx)$/.test(kindOfPath(f.name)));
+    const cppFiles = files.filter(f => kindOfPath(f.name) === 'cpp');
     const htmlCtxBase = { fileOf: (ref, from) => resolvePath(from, ref, paths) };
     // routes from Python and Express
     const routes = [];
@@ -792,6 +1045,12 @@
       return out;
     };
     for (const f of htmlFiles) parsed[f.name] = analyzeHtml(f.name, f.source, { ...htmlCtxBase, scriptsFor, stylesFor });
+    const cppFns = new Set();
+    for (const f of cppFiles) for (const m of f.source.matchAll(/^[\w:<>*&\s]+?\b(\w+)\s*\([^;{]*\)\s*(?:const\s*)?\{/gm)) cppFns.add(m[1]);
+    for (const f of cppFiles) {
+      try { parsed[f.name] = analyzeCpp(f.name, f.source, { fileOf: (ref) => resolvePath(f.name, ref, paths), localFns: cppFns }); }
+      catch (e) { parsed[f.name] = { ok: false, error: 'Could not read this file: ' + e.message, sections: [], overview: '', lines: f.source.split('\n').length, libs: [] }; }
+    }
 
     // 2. roles, edges, summaries
     const edges = [];
@@ -800,7 +1059,12 @@
       const a = parsed[f.name];
       if (!a) continue;
       let role, summary, imports = [];
-      if (kind === 'html') {
+      if (kind === 'cpp') {
+        role = a.isSketch ? 'sketch' : a.hasMain ? 'entry' : a.isHeader ? 'header' : 'helpers';
+        imports = (a.includes || []).filter(i => i.local).map(i => resolvePath(f.name, i.name, paths)).filter(Boolean);
+        const tools = (a.sections || []).filter(s => s.kind === 'tool').map(s => s.name);
+        summary = role === 'sketch' ? 'Arduino sketch: setup and loop' : role === 'entry' ? 'Starts the program (main)' : role === 'header' ? 'Announces tools and types for other files' : tools.length ? 'Tools: ' + plainList(tools.map(code), 4) : `${(a.sections || []).length} sections`;
+      } else if (kind === 'html') {
         role = 'page';
         imports = [...a.scripts, ...a.styles].map(r => resolvePath(f.name, r, paths)).filter(Boolean);
         summary = a.overview.replace(f.name + ' is ', '').replace(/^./, c => c.toUpperCase());
@@ -837,7 +1101,7 @@
     return { files: results, edges, routes, fetches, calledBy: Object.fromEntries(Object.entries(calledBy).map(([k, v]) => [k, [...v]])), hasServer };
   }
 
-  const api = { init, kindOfPath, analyzeJs: (p, s, k, c) => analyzeJs(p, s, k || kindOfPath(p), c), analyzeHtml, analyzeCss, analyzeProject, colorName, describeDecl, ROLE_LABEL, ready: () => !!TS };
+  const api = { init, loadLangs, analyzeCpp, kindOfPath, analyzeJs: (p, s, k, c) => analyzeJs(p, s, k || kindOfPath(p), c), analyzeHtml, analyzeCss, analyzeProject, colorName, describeDecl, ROLE_LABEL, ready: () => !!TS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWebReader = api;
 })(typeof window !== 'undefined' ? window : globalThis);

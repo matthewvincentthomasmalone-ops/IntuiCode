@@ -35,6 +35,7 @@
           }
           case 'find_python': return m.python;
           case 'find_git': return 'git version 2.53.0';
+          case 'find_cpp': return ['g++', 'g++ (mock) 14.2.0'];
           case 'run_program': case 'run_shell': {
             const r = m.nextRun || { out: cmd === 'run_shell' ? `(shell) ${args.command}\n` : 'hello from the real Python\n', err: '', code: 0 };
             m.nextRun = null;

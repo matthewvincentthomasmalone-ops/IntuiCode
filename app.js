@@ -8,6 +8,7 @@
 
   const LANG = window.IntuiLang.python;
   const WEB = window.IntuiWeb;
+  const CPP = window.IntuiCpp;
   const BP = window.IntuiBlueprints;
   const Runner = window.IntuiRunner;
   const $ = (id) => document.getElementById(id);
@@ -30,14 +31,16 @@
   SECTION_META.structure = { title: 'Structure', purpose: 'What is on the page (HTML)', icon: 'M2.5 3.5h11v9h-11zM2.5 6.5h11' };
   SECTION_META.styling = { title: 'Styling', purpose: 'How the page looks (CSS)', icon: 'M3 13l3-1 7-7-2-2-7 7zM10 4l2 2' };
   SECTION_META.mechanics = { title: 'Mechanics', purpose: 'What the page does (JavaScript)', icon: 'M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2M4.2 4.2l1.4 1.4M10.4 10.4l1.4 1.4M4.2 11.8l1.4-1.4M10.4 5.6l1.4-1.4' };
-  const LAYOUTS = { structured: ['settings', 'tools', 'main'], script: ['main'], website: ['structure', 'styling', 'mechanics'] };
-  const FILE_NAME = { settings: 'settings.py', tools: 'tools.py', main: 'main.py', structure: 'index.html', styling: 'style.css', mechanics: 'script.js' };
-  const SEC_LANG = { structure: 'html', styling: 'css', mechanics: 'js' };
+  SECTION_META.program = { title: 'Program', purpose: 'What the program does, from the top (C++)', icon: 'M5 3.5L2 8l3 4.5M11 3.5l3 4.5-3 4.5' };
+  const LAYOUTS = { structured: ['settings', 'tools', 'main'], script: ['main'], website: ['structure', 'styling', 'mechanics'], cpp: ['program'] };
+  const FILE_NAME = { settings: 'settings.py', tools: 'tools.py', main: 'main.py', structure: 'index.html', styling: 'style.css', mechanics: 'script.js', program: 'main.cpp' };
+  const SEC_LANG = { structure: 'html', styling: 'css', mechanics: 'js', program: 'cpp' };
   const LANG_NAME = { python: 'Python', html: 'HTML', css: 'CSS', js: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', cpp: 'C++' };
   const fileName = (sec) => FILE_NAME[sec.file] || sec.file + '.py';
   const secLang = (sec) => SEC_LANG[sec.file] || 'python';
   /* What the phrase picker, Index and auto-indent use for a folder. */
   function packFor(sec) {
+    if (secLang(sec) === 'cpp') return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: CPP.WORDS, guide: CPP.GUIDE, howtos: [], filter: () => true, webOnly: true };
     if (secLang(sec) === 'python') return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: LANG.GUIDE.sections[sec.file] }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes(sec.file) };
     const g = WEB.GUIDES[sec.file];
     return { templates: WEB.TEMPLATES, opens: WEB.OPENS_BLOCK, words: WEB.WORDS[sec.file] || [], guide: g, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true };
@@ -49,7 +52,7 @@
     const filled = BP.fill(bp, values);
     const nameField = bp.fields.find(f => f.name === 'project name');
     return {
-      version: 1, lang: 'python', kind: bp.layout === 'website' ? 'website' : 'python', name: slug(nameField ? (values[nameField.name] ?? nameField.value) : bp.title),
+      version: 1, lang: 'python', kind: bp.layout === 'website' ? 'website' : bp.layout === 'cpp' ? 'cpp' : 'python', name: slug(nameField ? (values[nameField.name] ?? nameField.value) : bp.title),
       sections: LAYOUTS[bp.layout].map(f => ({ id: f, file: f, text: filled[f] || '' })),
       active: 'main',
     };
@@ -118,7 +121,7 @@
   /* ------------------------------------------------------------------ */
 
   function compile() {
-    try { compiled = project.kind === 'website' ? WEB.compileWebsite(project) : LANG.compileProject(project); }
+    try { compiled = project.kind === 'website' ? WEB.compileWebsite(project) : project.kind === 'cpp' ? CPP.compileCppProject(project) : LANG.compileProject(project); }
     catch (e) { console.error(e); }
   }
   const secResult = (id) => compiled && compiled.results[id];
@@ -227,6 +230,7 @@
     js: /(\/\/.*$)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(\d+(?:\.\d+)?)\b|\b(const|let|var|function|return|if|else|for|of|in|while|await|async|new|true|false|null|undefined|break|continue|class|import|from|export|default|try|catch|throw|typeof)\b|([A-Za-z_$][\w$]*)(?=\()/g,
   };
   WEB_TOKEN.ts = WEB_TOKEN.tsx = WEB_TOKEN.js;
+  WEB_TOKEN.cpp = /(\/\/.*$)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(\d+(?:\.\d+)?[fFuUlL]?)\b|\b(int|double|float|char|bool|void|auto|const|constexpr|static|struct|class|public|private|protected|virtual|return|if|else|for|while|do|switch|case|break|continue|new|delete|nullptr|true|false|using|namespace|template|typename|include|define|pragma|unsigned|long|short)\b|([A-Za-z_]\w*)(?=\()/g;
   const WEB_CLASS = { html: ['p-com', 'p-str', 'p-kw', 'p-bi'], css: ['p-com', 'p-str', 'p-num', 'p-bi', 'p-kw'], js: ['p-com', 'p-str', 'p-num', 'p-kw', 'p-fn'] };
   function hlCode(lang, text) {
     if (lang === 'python' || !WEB_TOKEN[lang]) return hlPy(text);
@@ -695,6 +699,13 @@
   async function run() {
     if (mode === 'read') { tLine('Run works on the program in Write mode. Use "Open as sentences" to bring imported code there.', 't-sys'); return; }
     if (project.kind === 'website') return runWebsite(true);
+    if (project.kind === 'cpp') {
+      typingLine = -1; refreshAll();
+      if (renderProblems()) { tLine('Can\'t run yet: fix the problems first (see Problems on the left).', 't-err'); return; }
+      if (desk.on && desk.cpp) return runDesktopCpp();
+      tLine(desk.on ? 'No C++ compiler was found on this computer. Install one (g++ or clang++; on Windows, MSYS2 or Visual Studio Build Tools) and restart IntuiCode.' : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuiCode desktop app on a computer with g++ or clang++, or copy main.cpp into your own C++ setup.', 't-sys');
+      return;
+    }
     typingLine = -1;
     activeSec().text = ta.value;
     refreshAll();
@@ -776,7 +787,7 @@
   let previewInfo = null, picking = false, previewTimer = null;
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
-    chip.textContent = mode === 'read' ? 'Reading' : project.kind === 'website' ? 'Website' : 'Python';
+    chip.textContent = mode === 'read' ? 'Reading' : project.kind === 'website' ? 'Website' : project.kind === 'cpp' ? 'C++' : 'Python';
   }
   function showBottom(which) {
     const web = project.kind === 'website';
@@ -874,6 +885,7 @@
     }
     if (low === 'reset') { Runner.reset(); return tLine('Forgot all values from earlier runs.', 't-sys'); }
     if (!compiled) compile();
+    if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
     if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in Python projects.', 't-sys');
     const tr = LANG.translateOne(cmd, compiled.syms);
     if (tr.info.errs.length) return tLine(tr.info.errs.join('\n'), 't-err');
@@ -1163,7 +1175,7 @@
   const ROLE_ORDER = ['entry', 'settings', 'models', 'helpers', 'routes', 'script', 'package', 'tests'];
   const SKIP_DIRS = new Set(['venv', '.venv', 'env', '.env', 'node_modules', '__pycache__', '.git', 'site-packages', 'build', 'dist', '.tox', '.mypy_cache', '.pytest_cache', '.idea', '.vscode']);
   const EXTRA_FILE = /(^|\/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile|package\.json)$/i;
-  const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css)$/i;
+  const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$/i;
   const langOfPath = (p) => /\.py$/i.test(p) ? 'python' : (window.IntuiWebReader.kindOfPath(p) || 'python');
 
   function saveReads() {
@@ -1221,6 +1233,7 @@
       }
       if (webSide.length) {
         const WR = await Runner.webReader((s) => setStatus(s));
+        await WR.loadLangs([...new Set(webSide.map(f => WR.kindOfPath(f.name)).filter(Boolean))]);
         web = WR.analyzeProject(webSide, py);
         setStatus(Runner.ready ? $('pyStatus').textContent.replace(/^Loading.*/, 'Readers ready') : 'Web reader ready', 'ready');
       }
@@ -1250,16 +1263,17 @@
     const pages = web.files.filter(f => f.role === 'page').sort((a, b) => (/index\.html?$/.test(b.path) - /index\.html?$/.test(a.path)) || a.path.length - b.path.length);
     let entries = py && py.entries.length ? py.entries.slice() : [];
     if (pages.length) entries.push(pages[0].path);
+    for (const f of web.files) if ((f.role === 'entry' || f.role === 'sketch') && !entries.includes(f.path)) entries.push(f.path);
     if (!entries.length) { const f = web.files.find(x => /server|routes|components|script/.test(x.role)); if (f) entries = [f.path]; }
     const order = [], queue = [...entries], done = new Set();
     while (queue.length) { const p = queue.shift(); if (done.has(p)) continue; done.add(p); order.push(p); edges.filter(e => e[0] === p).forEach(e => queue.push(e[1])); }
-    const ROLE_SORT = ['entry', 'page', 'server', 'routes', 'components', 'script', 'styles', 'settings', 'models', 'helpers', 'package', 'tests'];
+    const ROLE_SORT = ['entry', 'sketch', 'page', 'server', 'routes', 'components', 'script', 'styles', 'settings', 'models', 'helpers', 'package', 'tests'];
     files.filter(f => !done.has(f.path)).sort((a, b) => ROLE_SORT.indexOf(a.role) - ROLE_SORT.indexOf(b.role) || a.path.localeCompare(b.path)).forEach(f => order.push(f.path));
     const count = (r) => web.files.filter(f => f.role === r).length;
     const scripts = web.files.filter(f => /script|components|helpers|settings/.test(f.role) && f.lang !== 'css' && f.lang !== 'html').length;
     const linked = web.fetches.filter(f => f.route).length;
     const name = py ? py.name : (() => { const firsts = new Set(files.map(f => f.path.split('/')[0])); return firsts.size === 1 && files.every(f => f.path.includes('/')) ? [...firsts][0] : 'this project'; })();
-    const guess = web.files.some(f => f.role === 'components') ? 'a React app' : pages.length && (py || web.hasServer) ? 'a website with its own server' : pages.length ? 'a website' : web.hasServer ? 'a JavaScript web server' : 'a JavaScript project';
+    const guess = web.files.some(f => f.role === 'sketch') ? 'an Arduino project' : web.files.some(f => f.lang === 'cpp') && !pages.length ? 'a C++ program' : web.files.some(f => f.role === 'components') ? 'a React app' : pages.length && (py || web.hasServer) ? 'a website with its own server' : pages.length ? 'a website' : web.hasServer ? 'a JavaScript web server' : 'a JavaScript project';
     let overview = py ? py.overview + ` It also has a front end: ${count('page')} web page${count('page') === 1 ? '' : 's'}, ${count('styles')} style file${count('styles') === 1 ? '' : 's'} and ${scripts} script${scripts === 1 ? '' : 's'}.`
       : `${name} looks like ${guess}. It has ${files.length} file${files.length === 1 ? '' : 's'}.` + (entries[0] ? ` Start reading at [[${entries[0]}]].` : '');
     if (linked) overview += ` The front end talks to the back end through ${linked} request${linked === 1 ? '' : 's'}, each linked to the route that answers it.`;
@@ -1806,6 +1820,12 @@
         return;
       }
     }
+    const mainCpp = await read('main.cpp');
+    if (mainCpp != null && !(await read('main.py'))) {
+      tLine(`${baseName(folder)} has C++ code. C++ files can't be turned into sentences yet, so it opens in Read mode.`, 't-sys');
+      desk.readFolder = folder;
+      return importProject(await invoke('read_folder', { path: folder }), '');
+    }
     const main = await read('main.py');
     if (main != null) {
       const settings = await read('settings.py'), tools = await read('tools.py');
@@ -1878,6 +1898,33 @@
     try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', 'main.py'], cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
+  async function runDesktopCpp() {
+    const dir = desk.folder || await invoke('scratch_folder');
+    const win = /Win/i.test(navigator.userAgent);
+    try { await invoke('write_text', { path: join(dir, 'main.cpp'), content: secResult('program').text }); }
+    catch (e) { tLine('Could not write main.cpp: ' + e, 't-err'); return; }
+    const exe = 'intuicode-program' + (win ? '.exe' : '');
+    const id = desk.nextId++;
+    desk.proc = { id, kind: 'compile', err: '', dir, exe };
+    tLine(`▶ Compiling main.cpp with ${desk.cpp[0]}…`, 't-sys');
+    setRunning(true, 'compiling…');
+    try { await invoke('run_program', { id, program: desk.cpp[0], args: ['-std=c++20', '-O0', '-o', exe, 'main.cpp'], cwd: dir }); }
+    catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
+  }
+  function compilerErrors(err) {
+    const res = secResult('program');
+    let shown = 0;
+    for (const m of err.matchAll(/main\.cpp:(\d+):\d+:\s*(?:fatal )?error:\s*(.*)/g)) {
+      const o = res && res.lines[+m[1] - 1];
+      const line = o && o.src >= 0 ? o.src : null;
+      const sentence = line != null ? project.sections[0].text.split('\n')[line].trim() : '';
+      tLine(`✕ The compiler says: ${m[2]}`, 't-err');
+      if (line != null) { tLink(`  Go to Program, line ${line + 1}: ${sentence}`, 'program', line); if (!runtimeMark) runtimeMark = { sec: 'program', line, msg: `The compiler says: ${m[2]}` }; }
+      if (++shown >= 5) break;
+    }
+    if (runtimeMark) { renderOverlay(); renderExplain(); }
+  }
+
   async function runShell(command) {
     if (desk.proc) { tLine('Something is already running. Press Stop first.', 't-err'); return; }
     const dir = desk.folder || desk.readFolder || await invoke('scratch_folder');
@@ -1929,10 +1976,24 @@
       desk.proc = null;
       setRunning(false);
       if (p.kind === 'python' && d.code !== 0 && d.code != null) pythonTraceback(p.err);
+      if (p.kind === 'compile') {
+        if (d.code === 0) {
+          const id = desk.nextId++;
+          desk.proc = { id, kind: 'cpp', err: '' };
+          tLine('▶ Running the program', 't-sys');
+          setRunning(true);
+          invoke('run_program', { id, program: join(p.dir, p.exe), args: [], cwd: p.dir }).catch((e) => { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); });
+          return;
+        }
+        compilerErrors(p.err);
+        tLine('■ The program could not be compiled.', 't-sys');
+        return;
+      }
       tLine(d.code === 0 ? '✓ Finished.' : d.code == null ? '■ Stopped.' : `■ Ended with exit code ${d.code}.`, d.code === 0 ? 't-ok' : 't-sys');
     });
     try { desk.python = await invoke('find_python'); } catch (_) { desk.python = null; }
     try { desk.git = await invoke('find_git'); } catch (_) { desk.git = null; }
+    try { desk.cpp = await invoke('find_cpp'); } catch (_) { desk.cpp = null; }
     if (desk.python) setStatus(`Python ${desk.python[1]} (this computer)`, 'ready');
     tLine(desk.python ? `Desktop app: programs run with Python ${desk.python[1]} installed on this computer. Type $ before a command to run it in the project folder${desk.git ? ' (for example $ git status)' : ''}.` : 'Desktop app: Python isn\'t installed on this computer, so the built-in Python is used (it can\'t install extra packages). Get Python from python.org to run programs like web servers.', 't-sys');
   }

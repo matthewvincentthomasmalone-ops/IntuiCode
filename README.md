@@ -1,7 +1,7 @@
 # IntuiCode
 
-Write Python and websites by filling in ideas and sentences, and read existing Python,
-JavaScript, HTML and CSS in plain English.
+Write Python, websites and C++ by filling in ideas and sentences, and read existing Python,
+JavaScript, HTML, CSS and C++ (including Arduino sketches) in plain English.
 
 IntuiCode is a rules-based translator, not an AI. Every sentence becomes a specific
 line of Python, every summary points at real lines, and the same input always gives
@@ -31,11 +31,16 @@ the page appear in the terminal, linked back to the sentence that caused them.
 Blueprints are plain text. You can edit any of them, save your own, or turn your
 current project into a blueprint and put blanks where your projects usually differ.
 
+**C++** projects use the same sentences. Types are worked out from values
+(text → `std::string`, whole numbers → `int`) and every choice is explained. The desktop app
+compiles and runs them with the computer's g++ or clang++; compiler errors link back to the
+sentence that caused them.
+
 **Read: existing code → sections → plain English**
 
 Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
-code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML and
-CSS are all read. For a project, IntuiCode shows:
+code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML,
+CSS and C++ (including Arduino sketches) are all read. For a project, IntuiCode shows:
 
 - what kind of app it looks like, and which file to start reading;
 - a reading order, and a map of which files use which;
@@ -128,7 +133,8 @@ npm install && npm run vendor
 | `lang/python.js` | Sentences → Python: sentence rules, word swaps, symbol table, Index content |
 | `lang/python_reader.py` | Python → sections, summaries and sentences, using Python's own `ast` parser |
 | `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects), live preview document |
-| `lang/web_read.js` | JavaScript / React / TypeScript, HTML and CSS → sections, summaries, cross-language links |
+| `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, cross-language links |
+| `lang/cpp_write.js` | Sentences → C++ |
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |

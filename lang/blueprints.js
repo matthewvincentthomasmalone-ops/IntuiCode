@@ -33,6 +33,34 @@
   'use strict';
 
   const BUILT_IN = [
+`title: C++ guessing game
+kind: project
+layout: cpp
+about: The number guessing game, in C++.
+story:
+The computer picks a number from [low: 1] to [high: 50]. The player guesses until they get it,
+and the game [hints: says higher or lower | only says wrong].
+== program
+set secret to random number from [low] to [high]
+set guesses to 0
+show "Guess my number from [low] to [high]"
+repeat forever
+    ask for a number "Your guess: " and store in guess
+    increase guesses by 1
+    if guess is secret
+        show "Correct! It took you {guesses} guesses."
+        stop the loop
+[if hints = says higher or lower]
+    otherwise if guess is less than secret
+        show "Higher"
+    otherwise
+        show "Lower"
+[end]
+[if hints = only says wrong]
+    otherwise
+        show "Wrong, try again"
+[end]
+`,
 `title: Landing page
 kind: project
 layout: website
@@ -400,10 +428,10 @@ show "Picked:" and picked [thing]
       sections[k] = sections[k].join('\n');
     }
     meta.kind = /snippet/i.test(meta.kind) ? 'snippet' : 'project';
-    meta.layout = /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
+    meta.layout = /c\+\+|cpp/i.test(meta.layout) ? 'cpp' : /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
     if (!meta.title) errors.push('Add a "title:" line.');
     if (!Object.keys(sections).length) errors.push('Add at least one section, e.g. "== main" (or "== here" for a snippet).');
-    const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
+    const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'cpp' ? ['program'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
     for (const k of Object.keys(sections)) if (!allowed.includes(k)) errors.push(`"== ${k}" isn't a section for this kind of blueprint. Use: ${allowed.map(a => '== ' + a).join(', ')}.`);
 
     // Blanks, in order of first appearance (story first).

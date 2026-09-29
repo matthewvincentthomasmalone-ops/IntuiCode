@@ -21,8 +21,8 @@ directions, using rules rather than AI. This file records where it is going and 
 | 1 | Foundation: tests, CI, a corpus and a sentence-coverage metric, architecture decisions | done |
 | 2 | Grow Python sentences: dictionaries, files, errors, `with`, classes, method calls, library phrase packs, keep comments | done |
 | 3 | The web set: HTML, CSS and JavaScript in Read and Write modes, website template with live preview, front end ↔ back end links | done (see below) |
-| 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | next |
-| 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | |
+| 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | done |
+| 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | done (first version) |
 
 ### Step 3 notes
 
@@ -34,6 +34,24 @@ directions, using rules rather than AI. This file records where it is going and 
 - Not yet: converting existing JavaScript, HTML or CSS **into** sentences (Read mode shows
   sentence-style steps, but "Open as sentences" is Python-only). That needs web round-trip
   checks like Python's before it can be trusted.
+
+### Step 5 notes
+
+- Read: C++ programs, headers and Arduino sketches (sections, types, references, memory and
+  safety warnings, Arduino steps in plain words, links from files to the headers they include).
+- Write: the core sentences produce C++20 with worked-out types and small helpers for random
+  numbers and text with values. The desktop app compiles with g++/clang++ and maps compiler
+  errors back to sentences.
+- Not yet: C++ classes in sentences, Arduino projects in Write mode, converting existing C++
+  into sentences.
+
+## What could come next
+
+- Converting existing JavaScript, HTML, CSS and C++ **into** sentences, with exactness checks
+  like Python's.
+- Arduino in Write mode (setup/loop sentences, upload to a board).
+- Code signing, so Windows and macOS don't warn when installing.
+- A proper grammar for sentences, if rule collisions keep appearing (see Known risks).
 
 ## The number we track
 

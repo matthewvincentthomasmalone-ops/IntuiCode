@@ -257,6 +257,27 @@ fn find_python() -> Option<(String, String)> {
     None
 }
 
+/// A C++ compiler on this computer, if any: [program, version line].
+#[tauri::command]
+fn find_cpp() -> Option<(String, String)> {
+    for program in ["g++", "clang++", "c++"] {
+        let mut cmd = Command::new(program);
+        cmd.arg("--version");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+        if let Ok(out) = cmd.output() {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
+                return Some((program.to_string(), text));
+            }
+        }
+    }
+    None
+}
+
 /// The Git installed on this computer, if any.
 #[tauri::command]
 fn find_git() -> Option<String> {
@@ -272,7 +293,7 @@ pub fn run() {
         .manage(Processes::default())
         .invoke_handler(tauri::generate_handler![
             read_folder, read_text, write_text, exists, scratch_folder,
-            run_program, run_shell, write_stdin, stop_program, find_python, find_git
+            run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp
         ])
         .run(tauri::generate_context!())
         .expect("IntuiCode could not start");
