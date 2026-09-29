@@ -228,7 +228,13 @@ def _pb_reset():
         const R = py.globals.get('_reader');
         return {
           analyze: (files) => JSON.parse(R.analyze_json(JSON.stringify(files))),
-          summarise: (src, a, b) => JSON.parse(R.summarise_json(src, a, b)),
+          analyzeProject: (files) => JSON.parse(R.analyze_project_json(JSON.stringify(files))),
+          summarise: (src, a, b, path) => JSON.parse(R.summarise_json(src, a, b, path || '')),
+          readZip: (bytes) => {
+            py.globals.set('_zip_bytes', bytes);
+            try { return JSON.parse(py.runPython('_reader.read_zip_json(_zip_bytes.to_py().tobytes())')); }
+            finally { py.globals.delete('_zip_bytes'); }
+          },
           toSentences: (src) => JSON.parse(R.to_sentences_json(src)),
           compare: (a, b) => JSON.parse(R.compare_json(a, b)),
         };

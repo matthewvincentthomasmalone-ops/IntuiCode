@@ -25,7 +25,18 @@ current project into a blueprint and put blanks where your projects usually diff
 
 **Read: existing code → sections → plain English**
 
-Import Python, such as code an AI wrote for you, and IntuiCode will:
+Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
+code an AI wrote for you. For a project, IntuiCode shows:
+
+- what kind of app it looks like, and which file to start reading;
+- a reading order, and a map of which files use which;
+- a role for every file (starting point, web routes, data models, settings, helpers, tests);
+- outside libraries, and any that `requirements.txt` forgets to list;
+- a `.env` secrets file if one was included (its contents are never read);
+- everything worth checking across all files, each linked to the exact place.
+
+Summaries link across files ("uses `get_db` from db.py", "used in routes/tasks.py").
+Inside each file, IntuiCode will:
 
 - split it into sections (toolkits, settings, tools, web routes, classes, main steps);
 - summarise each section: what it takes, what it gives back, what it touches (files,
@@ -59,7 +70,7 @@ python3 tools/fetch_pyodide.py
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |
-| `samples/` | Example code for Read mode |
+| `samples/` | Example code for Read mode, including a small multi-file project (`samples/taskboard`) |
 | `run.py` | Small local server (adds the `<html>` wrapper that `index.html` leaves out) |
 
 The reader can be used on its own: `python3 lang/python_reader.py some_file.py`

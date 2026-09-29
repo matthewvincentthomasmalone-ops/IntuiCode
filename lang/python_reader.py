@@ -14,6 +14,7 @@ Run this file directly to try it on a .py file:  python3 python_reader.py some_f
 import ast
 import json
 import re
+import sys
 
 # --------------------------------------------------------------------------
 # What common libraries are for, in plain words
@@ -70,6 +71,11 @@ SENTENCE_WORDS = {
 }
 
 MAX_STEPS = 16
+
+# While a project is being read, these say what the current file can see from other files.
+_XREF = {"names": {}, "modules": {}, "roots": set(), "path": ""}
+_USES = []        # (from_path, to_path, name) found while reading
+_PROJECT = {}     # path -> {"xref": ...} for summarising a highlight later
 
 
 class Unwordable(Exception):
@@ -504,7 +510,7 @@ def aliases(tree):
     return out
 
 
-SECRET_NAME = re.compile(r"(api_?key|secret|token|password|passwd|pwd|private_?key|access_?key)", re.I)
+SECRET_NAME = re.compile(r"(api_?key|secret|token|password|passwd|pwd|private_?key|access_?key|webhook)", re.I)
 
 
 class Facts:
@@ -516,6 +522,7 @@ class Facts:
         self.effects = []      # plain phrases, in order found
         self.libs = []
         self.calls_tools = []
+        self.calls_other = []
         self.warnings = []
         self.handles = []
         self.raises = []
@@ -570,8 +577,18 @@ class Facts:
         name = dotted(n.func)
         root = name.split(".")[0]
         lib = self.alias.get(root)
-        if lib:
+        if lib and lib not in _XREF["roots"] and root not in _XREF["names"] and root not in _XREF["modules"]:
             self.add(self.libs, lib)
+        xn, xm = _XREF["names"], _XREF["modules"]
+        if isinstance(n.func, ast.Name) and n.func.id in xn:
+            self.add(self.calls_other, f"[[{xn[n.func.id]}#{n.func.id}]]")
+            _USES.append((_XREF["path"], xn[n.func.id], n.func.id))
+        elif isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.value.id in xn:
+            self.add(self.calls_other, f"[[{xn[n.func.value.id]}#{n.func.value.id}]]")
+            _USES.append((_XREF["path"], xn[n.func.value.id], n.func.value.id))
+        elif isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.value.id in xm:
+            self.add(self.calls_other, f"[[{xm[n.func.value.id]}#{n.func.attr}]]")
+            _USES.append((_XREF["path"], xm[n.func.value.id], n.func.attr))
         last = name.split(".")[-1]
         kw = {k.arg: k.value for k in n.keywords}
         if name == "print":
@@ -877,7 +894,7 @@ def summarise_nodes(kind, nodes, alias, tools, lists, source_lines):
         is_async = isinstance(fn, ast.AsyncFunctionDef)
         if route:
             path, methods = route
-            title = f"Web route {path}"
+            title = f"Web route {'/'.join(methods)} {path}"
             headline = f"Handles {'/'.join(methods)} requests to {code(path)} on the web server, using the function {code(fn.name)}."
         else:
             title = f"Tool: {fn.name}"
@@ -951,6 +968,8 @@ def summarise_nodes(kind, nodes, alias, tools, lists, source_lines):
         facts.append("Uses " + plain_list([lib_phrase(l) for l in f.libs]) + ".")
     if f.calls_tools:
         facts.append("Runs other tools in this file: " + plain_list([code(t) for t in f.calls_tools]) + ".")
+    if f.calls_other:
+        facts.append("Uses tools from other files: " + plain_list(f.calls_other) + ".")
     if f.changes_globals:
         facts.append("Changes shared values that live outside it: " + plain_list([code(g) for g in f.changes_globals]) + ".")
     if f.loops or f.decisions:
@@ -972,7 +991,8 @@ def summarise_nodes(kind, nodes, alias, tools, lists, source_lines):
         m = re.search(r"#\s*(TODO|FIXME|HACK|XXX)\b:?\s*(.*)", source_lines[i])
         if m:
             warnings.append(f"Line {i + 1} has a {m.group(1)} note: {m.group(2).strip() or '(no details)'}")
-    return dict(title=title, headline=headline, facts=facts, warnings=warnings[:6], steps=steps, more=more)
+    return dict(title=title, headline=headline, facts=facts, warnings=warnings[:6], steps=steps, more=more,
+                name=getattr(first, "name", None) if kind in ("tool", "route", "class") else None)
 
 
 def file_context(tree):
@@ -994,7 +1014,7 @@ def overview(name, tree, groups, alias):
         parts.append(f"{counts['tool']} tool{'s' if counts['tool'] != 1 else ''} (functions)")
     if counts.get("class"):
         parts.append(f"{counts['class']} class{'es' if counts['class'] != 1 else ''}")
-    libs = sorted(set(alias.values()))
+    libs = sorted(set(v for k, v in alias.items() if v not in _XREF["roots"] and k not in _XREF["names"] and k not in _XREF["modules"]))
     doc = ast.get_docstring(tree)
     kinds = {v for v in alias.values()}
     guess = None
@@ -1137,7 +1157,360 @@ def compare(original, generated):
     return {"same": False, "differs": differs[:20]}
 
 
+# --------------------------------------------------------------------------
+# Whole projects: many files, how they connect, where to start
+# --------------------------------------------------------------------------
+
+SKIP_DIRS = {"venv", ".venv", "env", ".env", "node_modules", "__pycache__", ".git", "site-packages", "build", "dist",
+             ".tox", ".mypy_cache", ".pytest_cache", ".idea", ".vscode", "egg-info"}
+EXTRA_FILES = re.compile(r"(^|/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile)$", re.I)
+PIP_NAMES = {"PIL": "pillow", "cv2": "opencv-python", "sklearn": "scikit-learn", "yaml": "pyyaml", "bs4": "beautifulsoup4",
+             "dotenv": "python-dotenv", "jwt": "pyjwt", "dateutil": "python-dateutil", "telegram": "python-telegram-bot",
+             "discord": "discord.py", "psycopg2": "psycopg2-binary", "attr": "attrs", "magic": "python-magic"}
+STDLIB = set(getattr(sys, "stdlib_module_names", ())) | {"__future__"}
+ROLE_LABEL = {"entry": "Starting point", "routes": "Web routes", "models": "Data models", "settings": "Settings",
+              "helpers": "Helpers", "script": "Script", "package": "Package marker", "tests": "Tests"}
+ROLE_ORDER = ["entry", "settings", "models", "helpers", "routes", "script", "package", "tests"]
+MODEL_BASES = re.compile(r"(^|\.)(Model|Base|BaseModel|SQLModel|Document|Schema|DeclarativeBase)$")
+
+
+def keep_path(path):
+    """Which uploaded files are worth reading. Returns 'py', 'extra', 'secret' or None."""
+    parts = path.replace("\\", "/").split("/")
+    if any(p in SKIP_DIRS or p.endswith(".egg-info") for p in parts[:-1]):
+        return None
+    name = parts[-1]
+    if name == ".env" or name.startswith(".env."):
+        return "secret"
+    if name.endswith(".py"):
+        return "py"
+    if EXTRA_FILES.search(path):
+        return "extra"
+    return None
+
+
+def module_of(path, root):
+    p = path[:-3] if path.endswith(".py") else path
+    parts = p.split("/")
+    if root and parts[0] == root and len(parts) > 1:
+        parts = parts[1:]
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def common_root(paths):
+    firsts = {p.split("/")[0] for p in paths}
+    return firsts.pop() if len(firsts) == 1 and all("/" in p for p in paths) else ""
+
+
+def declared_deps(extras):
+    deps, found = set(), False
+    for f in extras:
+        n = f["name"].lower().split("/")[-1]
+        if n.startswith("requirements") and n.endswith(".txt"):
+            found = True
+            for line in f["source"].splitlines():
+                line = line.split("#")[0].strip()
+                if line and not line.startswith("-"):
+                    deps.add(re.split(r"[<>=!~\[; ]", line)[0].lower().replace("_", "-"))
+        elif n in ("pyproject.toml", "pipfile"):
+            found = True
+            for m in re.finditer(r"[\"']([A-Za-z0-9_.-]+)\s*(?:[<>=!~\[;][^\"']*)?[\"']", f["source"]):
+                deps.add(m.group(1).lower().replace("_", "-"))
+            for m in re.finditer(r"^\s*([A-Za-z0-9_.-]+)\s*=", f["source"], re.M):
+                deps.add(m.group(1).lower().replace("_", "-"))
+    return deps, found
+
+
+def readme_intro(extras):
+    for f in extras:
+        if f["name"].lower().split("/")[-1].startswith("readme"):
+            paras = [p.strip() for p in re.split(r"\n\s*\n", f["source"]) if p.strip()]
+            for p in paras:
+                if not p.startswith(("#", "![", "[!", "<", "```", "---")):
+                    text = re.sub(r"[`*_]", "", " ".join(p.split()))
+                    return text[:300] + ("…" if len(text) > 300 else "")
+    return ""
+
+
+def resolve(target, modules, root):
+    """A dotted import name -> the project file it points to, if any."""
+    if not target:
+        return None
+    t = target[len(root) + 1:] if root and target.startswith(root + ".") else target
+    if t in modules:
+        return modules[t]
+    hits = [p for m, p in modules.items() if m.endswith("." + t)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def file_links(path, tree, modules, root, is_pkg):
+    """What this file brings in from other project files."""
+    names, mods, targets = {}, {}, set()
+    here = module_of(path, root)
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom):
+            if n.level:
+                base = here.split(".") if here else []
+                if not is_pkg:
+                    base = base[:-1]
+                base = base[:len(base) - (n.level - 1)] if n.level > 1 else base
+                target = ".".join(base + ([n.module] if n.module else []))
+            else:
+                target = n.module
+            for a in n.names:
+                sub = resolve(f"{target}.{a.name}" if target else a.name, modules, root)
+                if sub:
+                    mods[a.asname or a.name] = sub
+                    targets.add(sub)
+                    continue
+                dest = resolve(target, modules, root)
+                if dest and a.name != "*":
+                    names[a.asname or a.name] = dest
+                    targets.add(dest)
+                elif dest:
+                    targets.add(dest)
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                dest = resolve(a.name, modules, root)
+                if dest:
+                    mods[a.asname or a.name] = dest
+                    targets.add(dest)
+    targets.discard(path)
+    return names, mods, targets
+
+
+def role_of(path, tree, analysis, alias):
+    name = path.split("/")[-1]
+    kinds = [s["kind"] for s in analysis["sections"]]
+    libs = set(alias.values())
+    top_calls = {dotted(n.value.func) for n in tree.body if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)}
+    if name.startswith("test_") or name.endswith("_test.py") or "/tests/" in "/" + path or (libs & {"pytest", "unittest"} and "test" in path):
+        return "tests"
+    if name == "__init__.py" and set(kinds) <= {"imports", "about", "settings"}:
+        return "package"
+    starts = "start" in kinds or any(c.endswith(("app.run", "uvicorn.run", "main")) for c in top_calls)
+    if starts or (name in ("main.py", "app.py", "manage.py", "run.py", "__main__.py", "bot.py", "server.py") and "steps" in kinds):
+        return "entry"
+    if "route" in kinds:
+        return "routes"
+    for n in tree.body:
+        if isinstance(n, ast.ClassDef) and any(MODEL_BASES.search(dotted(b)) for b in n.bases):
+            return "models"
+        if isinstance(n, ast.ClassDef) and any(dotted(d).endswith("dataclass") for d in n.decorator_list):
+            return "models"
+    if set(kinds) <= {"imports", "about", "settings"} or re.search(r"(config|settings|constants)", name):
+        return "settings"
+    if "tool" in kinds or "class" in kinds:
+        return "helpers"
+    return "script"
+
+
+def one_line(role, analysis, tree):
+    doc = ast.get_docstring(tree)
+    secs = analysis["sections"]
+    names = lambda k: [s["name"] for s in secs if s["kind"] == k and s.get("name")]
+    if role == "routes":
+        paths = [s["title"].replace("Web route ", "") for s in secs if s["kind"] == "route"]
+        text = f"{len(paths)} web route{'s' if len(paths) != 1 else ''}: " + plain_list([code(p) for p in paths], 4)
+    elif role == "models":
+        text = "Data models: " + plain_list([code(n) for n in names("class")], 5)
+    elif role == "helpers":
+        items = names("tool") + names("class")
+        text = "Tools: " + plain_list([code(n) for n in items], 5)
+    elif role == "settings":
+        count = sum(1 for n in tree.body if is_setting(n))
+        text = f"{count} setting{'s' if count != 1 else ''}"
+    elif role == "tests":
+        count = len([n for n in names("tool") if n.startswith("test")])
+        text = f"{count} test{'s' if count != 1 else ''}"
+    elif role == "package":
+        text = "Marks this folder as a package so other files can import from it"
+    elif role == "entry":
+        text = "Starts the program"
+    else:
+        text = f"{len(secs)} section{'s' if len(secs) != 1 else ''}"
+    return (doc.strip().splitlines()[0] + " · " if doc and doc.strip() else "") + text
+
+
+def guess_kind(libs):
+    if libs & {"flask", "fastapi", "django"}:
+        return "a web server or web app"
+    if libs & {"discord", "telegram"}:
+        return "a chat bot"
+    if libs & {"pygame"}:
+        return "a game"
+    if libs & {"tkinter"}:
+        return "a desktop app with windows"
+    if libs & {"streamlit"}:
+        return "a data web app"
+    if libs & {"pandas", "numpy", "matplotlib"}:
+        return "a data-processing project"
+    if libs & {"argparse", "click"}:
+        return "a command-line tool"
+    return None
+
+
+def analyze_project(files):
+    """files: list of {"name": path, "source": text}. Python files are read; README/requirements give context."""
+    global _XREF
+    _USES.clear()
+    _PROJECT.clear()
+    py = [f for f in files if keep_path(f["name"]) == "py"]
+    extras = [f for f in files if keep_path(f["name"]) == "extra"]
+    secrets = [f["name"] for f in files if keep_path(f["name"]) == "secret"]
+    root = common_root([f["name"] for f in py]) if len(py) > 1 else ""
+    modules = {module_of(f["name"], root): f["name"] for f in py}
+    roots = {m.split(".")[0] for m in modules if m} | ({root} if root else set())
+
+    trees, results = {}, []
+    for f in py:
+        path = f["name"]
+        try:
+            tree = ast.parse(f["source"])
+        except SyntaxError:
+            tree = None
+        trees[path] = tree
+        names, mods, targets = file_links(path, tree, modules, root, path.endswith("__init__.py")) if tree else ({}, {}, set())
+        _XREF = {"names": names, "modules": mods, "roots": roots, "path": path}
+        _PROJECT[path] = {"xref": _XREF}
+        a = analyze_source(path, f["source"])
+        short = path[len(root) + 1:] if root and path.startswith(root + "/") else path
+        a["overview"] = a.get("overview", "").replace(path, short, 1)
+        alias = aliases(tree) if tree else {}
+        role = role_of(path, tree, a, alias) if tree else "script"
+        results.append({"path": path, "module": module_of(path, root), "role": role, "role_label": ROLE_LABEL[role],
+                        "summary": one_line(role, a, tree) if tree else "Can't be read as Python: " + a.get("error", ""),
+                        "imports": sorted(targets), "imported_by": [], "analysis": a,
+                        "libs": sorted({v for k, v in alias.items() if v not in roots and k not in names and k not in mods}),
+                        "lines": a["lines"]})
+    _XREF = {"names": {}, "modules": {}, "roots": set(), "path": ""}
+
+    by_path = {r["path"]: r for r in results}
+    for r in results:
+        for t in r["imports"]:
+            if t in by_path and r["path"] not in by_path[t]["imported_by"]:
+                by_path[t]["imported_by"].append(r["path"])
+    # "Used in other files" on the tools themselves
+    used = {}
+    for src, dst, name in _USES:
+        if src != dst:
+            used.setdefault((dst, name), set()).add(src)
+    for r in results:
+        for s in r["analysis"].get("sections", []):
+            users = used.get((r["path"], s.get("name")))
+            if users:
+                s["facts"].insert(1, "Used in other files: " + plain_list([f"[[{u}]]" for u in sorted(users)]) + ".")
+
+    # where to start
+    def entry_score(r):
+        tree = trees[r["path"]]
+        score = 0
+        if r["role"] == "entry":
+            score += 3
+        if tree and any(is_main_guard(n) for n in tree.body):
+            score += 3
+        if r["path"].split("/")[-1] in ("main.py", "app.py", "manage.py", "run.py", "__main__.py"):
+            score += 2
+        if not r["imported_by"]:
+            score += 1
+        return score
+    ranked = sorted([r for r in results if r["role"] not in ("tests", "package")], key=lambda r: -entry_score(r))
+    entries = [r["path"] for r in ranked if entry_score(r) >= 4][:3] or ([ranked[0]["path"]] if ranked else [])
+    order, seen, queue = [], set(), list(entries)
+    while queue:
+        p = queue.pop(0)
+        if p in seen:
+            continue
+        seen.add(p)
+        order.append(p)
+        queue.extend(t for t in by_path[p]["imports"] if t not in seen)
+    rest = sorted((r for r in results if r["path"] not in seen), key=lambda r: (ROLE_ORDER.index(r["role"]), r["path"]))
+    order += [r["path"] for r in rest]
+    # libraries and dependencies
+    libs = {}
+    for r in results:
+        for l in r["libs"]:
+            libs.setdefault(l, []).append(r["path"])
+    third = sorted(l for l in libs if l not in STDLIB)
+    declared, has_list = declared_deps(extras)
+    project_warnings = []
+    if secrets:
+        project_warnings.append(f"The project includes {plain_list([code(s) for s in secrets])}, which usually holds passwords and keys. IntuiCode didn't read it. Make sure it is never shared or pushed to GitHub (add it to .gitignore).")
+    if third and has_list:
+        missing = [l for l in third if PIP_NAMES.get(l, l).lower().replace("_", "-") not in declared]
+        if missing:
+            project_warnings.append("These libraries are used but not listed in the requirements, so a fresh install would fail: "
+                                    + plain_list([f"{code(l)} (install name {code(PIP_NAMES.get(l, l))})" for l in missing], 8) + ".")
+    elif third:
+        project_warnings.append("There's no requirements.txt, so nothing records which libraries to install: "
+                                + plain_list([code(PIP_NAMES.get(l, l)) for l in third], 8) + ".")
+    if not any(r["role"] == "tests" for r in results):
+        project_warnings.append("There are no tests, so nothing checks that the code still works after a change.")
+    for r in results:
+        if not r["analysis"].get("ok"):
+            project_warnings.append(f"[[{r['path']}]] can't be read as Python ({r['analysis'].get('error')}).")
+
+    kind = guess_kind(set(libs))
+    roles = {}
+    for r in results:
+        roles.setdefault(r["role"], []).append(r["path"])
+    total_lines = sum(r["lines"] for r in results)
+    name = root or (py[0]["name"].split("/")[0] if py and "/" in py[0]["name"] else "this project")
+    text = f"{name} " + (f"looks like {kind}. It has " if kind else "has ") + f"{len(results)} Python file{'s' if len(results) != 1 else ''} ({total_lines} lines)."
+    if entries:
+        e = by_path[entries[0]]
+        why = "it has the starting point" if e["role"] == "entry" else "nothing else uses it, so it is likely where things begin"
+        text += f" Start reading at [[{entries[0]}]]: {why}."
+    noun = {"settings": "settings file", "models": "data model file", "helpers": "helper file", "routes": "web route file",
+            "script": "script", "tests": "test file"}
+    counted = [f"{len(roles[k])} {noun[k]}{'s' if len(roles[k]) != 1 else ''}" for k in ROLE_ORDER if k in roles and k in noun]
+    if counted:
+        text += " It also has " + plain_list(counted, 7) + "."
+    if third:
+        text += " Outside libraries: " + plain_list([lib_phrase(l) for l in third], 8) + "."
+    return {
+        "ok": True, "name": name, "overview": text, "readme": readme_intro(extras), "entries": entries, "order": order,
+        "files": results, "edges": [[r["path"], t] for r in results for t in r["imports"]],
+        "libs": [{"name": l, "what": LIBRARIES.get(l, ""), "files": libs[l], "stdlib": l in STDLIB} for l in sorted(libs)],
+        "declared": sorted(declared), "has_requirements": has_list, "secrets": secrets,
+        "warnings": project_warnings, "extras": [f["name"] for f in extras],
+    }
+
+
+def read_zip(data):
+    """A .zip of a project -> the files worth reading (text only, size-limited)."""
+    import io
+    import zipfile
+    out = []
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        for info in z.infolist():
+            if info.is_dir() or info.file_size > 600_000:
+                continue
+            kind = keep_path(info.filename)
+            if not kind:
+                continue
+            if kind == "secret":
+                out.append({"name": info.filename, "source": ""})
+                continue
+            try:
+                out.append({"name": info.filename, "source": z.read(info).decode("utf-8").replace("\r\n", "\n")})
+            except UnicodeDecodeError:
+                continue
+            if len(out) >= 400:
+                break
+    return out
+
+
 # JSON wrappers for the browser
+def analyze_project_json(files_json):
+    return json.dumps(analyze_project(json.loads(files_json)))
+
+
+def read_zip_json(data):
+    return json.dumps(read_zip(bytes(data)))
+
 def compare_json(original, generated):
     return json.dumps(compare(original, generated))
 
@@ -1146,8 +1519,13 @@ def analyze_json(files_json):
     return json.dumps(analyze(json.loads(files_json)))
 
 
-def summarise_json(source, start, end):
-    return json.dumps(summarise(source, int(start), int(end)))
+def summarise_json(source, start, end, path=""):
+    global _XREF
+    _XREF = _PROJECT.get(path, {}).get("xref") or {"names": {}, "modules": {}, "roots": set(), "path": ""}
+    try:
+        return json.dumps(summarise(source, int(start), int(end)))
+    finally:
+        _XREF = {"names": {}, "modules": {}, "roots": set(), "path": ""}
 
 
 def to_sentences_json(source):

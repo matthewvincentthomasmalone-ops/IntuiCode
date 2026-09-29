@@ -34,11 +34,13 @@
         <ul id="problems" class="problems"></ul>
       </div>
       <div id="readSide" hidden>
-        <div class="side-h">Imported files</div>
+        <div class="side-h">Imported code</div>
         <nav id="rdFiles" class="tree"></nav>
         <div class="side-pad"><button type="button" class="btn small" id="btnImport2">Import code</button></div>
-        <div class="side-h">Sections</div>
-        <nav id="rdOutline" class="outline"></nav>
+        <div id="rdOutlineWrap">
+          <div class="side-h">Sections in this file</div>
+          <nav id="rdOutline" class="outline"></nav>
+        </div>
       </div>
     </aside>
 
@@ -92,7 +94,8 @@
             <button type="button" id="btnToSentences" class="btn small" disabled>Open as sentences</button>
           </div>
         </div>
-        <div class="read-body">
+        <div class="rd-project" id="rdProject" hidden></div>
+        <div class="read-body" id="rdBody">
           <div class="rcode" id="rdCode" tabindex="0" aria-label="Imported code"></div>
           <div class="rsum" id="rdSum" aria-live="polite"></div>
         </div>
@@ -146,14 +149,21 @@
   </div>
 
   <div class="modal" id="impModal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="impTitle">
+    <div class="modal-card" id="impCard" role="dialog" aria-modal="true" aria-labelledby="impTitle">
       <div class="modal-h">
         <div>
           <h2 id="impTitle">Import code</h2>
-          <p>Paste Python or choose .py files. IntuiCode splits the code into sections and explains each one in plain English. It all happens in this page; the code isn't sent anywhere.</p>
+          <p>Bring in a whole project (a folder or a .zip) or a single file. IntuiCode maps how the files connect, splits each one into sections and explains them in plain English. It all happens in this page; the code isn't sent anywhere.</p>
         </div>
         <button type="button" class="btn small" id="impClose">Close</button>
       </div>
+      <div class="imp-big">
+        <label class="btn primary file-btn">Choose a project folder<input type="file" id="impFolder" webkitdirectory directory multiple></label>
+        <label class="btn file-btn">Open a .zip<input type="file" id="impZip" accept=".zip,application/zip"></label>
+        <button type="button" class="btn" id="impExample">Try the example project</button>
+        <span class="imp-drop">or drag a folder, files or a .zip onto this box</span>
+      </div>
+      <div class="imp-or">Or paste a single file</div>
       <div class="imp-row">
         <label for="impName">File name</label>
         <input id="impName" value="pasted.py" spellcheck="false">
@@ -161,7 +171,6 @@
       <textarea id="impText" class="imp-text" spellcheck="false" placeholder="Paste Python code here"></textarea>
       <div class="imp-actions">
         <label class="btn small file-btn">Choose .py files<input type="file" id="impFiles" accept=".py,.pyw,text/x-python,text/plain" multiple></label>
-        <button type="button" class="btn small" id="impExample">Try an example</button>
         <span class="imp-note" id="impNote"></span>
         <button type="button" class="btn primary" id="impGo">Read it</button>
       </div>

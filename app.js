@@ -997,14 +997,22 @@
   });
 
   /* ------------------------------------------------------------------ */
-  /* Read mode: import code, sections, summaries                         */
+  /* Read mode: import a file or a whole project, sections, summaries    */
   /* ------------------------------------------------------------------ */
 
-  const READ_KEY = 'intuicode.read.v1';
-  let reads = store.get(READ_KEY, { files: [], active: 0 });
-  let analysis = [];       // per file, from the reader
-  let readFocus = null;    // {type:'section', id} | {type:'range', start, end, summary}
+  const READ_KEY = 'intuicode.read.v2';
+  let reads = store.get(READ_KEY, { files: [], active: -1 });  // active: index into pyFiles(), or -1 for the project overview
+  let proj = null;         // the reader's analysis of the whole project
+  let readFocus = null;    // {type:'section', id} | {type:'range', summary}
   const KIND_LABEL = { about: 'About', imports: 'Toolkits', settings: 'Settings', steps: 'Steps', tool: 'Tool', route: 'Web route', class: 'Class', start: 'Start' };
+  const ROLE_ORDER = ['entry', 'settings', 'models', 'helpers', 'routes', 'script', 'package', 'tests'];
+  const SKIP_DIRS = new Set(['venv', '.venv', 'env', '.env', 'node_modules', '__pycache__', '.git', 'site-packages', 'build', 'dist', '.tox', '.mypy_cache', '.pytest_cache', '.idea', '.vscode']);
+  const EXTRA_FILE = /(^|\/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile)$/i;
+
+  function saveReads() {
+    try { localStorage.setItem(READ_KEY, JSON.stringify(reads)); }
+    catch (_) { tLine('This project is too big to remember after a reload, but you can read it now.', 't-sys'); }
+  }
 
   function setMode(next) {
     mode = next;
@@ -1023,38 +1031,80 @@
   $('modeWrite').addEventListener('click', () => setMode('write'));
   $('modeRead').addEventListener('click', () => setMode('read'));
 
-  const curFile = () => reads.files[reads.active];
-  const curAnalysis = () => analysis[reads.active];
+  const pyFiles = () => reads.files.filter(f => /\.py$/.test(f.name));
+  const curFile = () => (reads.active >= 0 ? pyFiles()[reads.active] : null);
+  const fileInfo = (path) => proj && proj.files.find(x => x.path === path);
+  const curAnalysis = () => { const f = curFile(); const i = f && fileInfo(f.name); return i ? i.analysis : null; };
+  const shortPath = (p) => (proj && proj.name && p.startsWith(proj.name + '/') ? p.slice(proj.name.length + 1) : p);
+
+  /* [[path]] and [[path#name]] in reader text become links to that file. */
+  function linkify(html) {
+    return html.replace(/\[\[([^\]#]+)(?:#([^\]]+))?\]\]/g, (m, path, name) => {
+      const label = name ? `<code>${escHtml(name)}</code> <span class="dim">(${escHtml(shortPath(path))})</span>` : `<code>${escHtml(shortPath(path))}</code>`;
+      return `<button type="button" class="linklike" data-file="${escHtml(path)}"${name ? ` data-name="${escHtml(name)}"` : ''}>${label}</button>`;
+    });
+  }
+  const rich = (s) => linkify(withCode(s));
 
   async function analyse() {
-    if (!reads.files.length) { analysis = []; return; }
+    if (!reads.files.length) { proj = null; return; }
     $('rdSum').innerHTML = '<p class="sum-empty">Reading the code… (the first time, this loads Python into the page)</p>';
     if (!(await ensurePython())) { $('rdSum').innerHTML = '<p class="sum-empty">Python couldn\'t start, so the code can\'t be read here.</p>'; return; }
     try {
       const R = await Runner.reader((s) => setStatus(s));
-      analysis = R.analyze(reads.files);
+      proj = R.analyzeProject(reads.files);
     } catch (e) {
+      proj = null;
       $('rdSum').innerHTML = `<p class="sum-empty">The reader hit a problem: ${escHtml(e.message)}</p>`;
     }
   }
 
+  function readTreeHtml() {
+    const files = pyFiles();
+    if (!files.length) return '<p class="side-note">Nothing imported yet.</p>';
+    const multi = files.length > 1;
+    let html = multi ? `<button type="button" class="tree-item${reads.active === -1 ? ' active' : ''}" data-i="-1">${FOLDER_SVG.replace('<svg', '<svg class="ti-icon"')}<span class="ti-title">Project overview</span><span class="ti-file">${escHtml(proj ? proj.name : 'project')}</span></button>` : '';
+    let lastDir = null;
+    const sorted = files.map((f, i) => ({ f, i, p: shortPath(f.name) })).sort((a, b) => a.p.split('/').length - b.p.split('/').length || a.p.localeCompare(b.p));
+    for (const { f, i, p } of sorted) {
+      const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '';
+      if (dir !== lastDir && dir) html += `<div class="tree-dir">${escHtml(dir)}</div>`;
+      lastDir = dir;
+      const info = fileInfo(f.name);
+      const role = info ? info.role : '';
+      html += `<button type="button" class="tree-item file${i === reads.active ? ' active' : ''}${role === 'package' ? ' faint' : ''}${dir ? ' nested' : ''}" data-i="${i}"><span class="ti-title">${escHtml(p.split('/').pop())}</span>${info ? `<span class="role r-${role}">${escHtml(info.role_label)}</span>` : ''}</button>`;
+    }
+    const extras = reads.files.filter(f => !/\.py$/.test(f.name));
+    if (extras.length) html += `<div class="tree-dir">Also found</div>` + extras.map(f => `<div class="tree-extra">${escHtml(shortPath(f.name))}</div>`).join('');
+    return html;
+  }
+
   function renderRead() {
+    const files = pyFiles();
+    if (reads.active >= files.length) reads.active = files.length > 1 ? -1 : 0;
+    if (files.length === 1 && reads.active === -1) reads.active = 0;
+    $('rdFiles').innerHTML = readTreeHtml();
     const file = curFile();
     const a = curAnalysis();
-    $('rdFiles').innerHTML = reads.files.map((f, i) => `<button type="button" class="tree-item${i === reads.active ? ' active' : ''}" data-i="${i}">${FOLDER_SVG.replace('<svg', '<svg class="ti-icon"')}<span class="ti-title">${escHtml(f.name)}</span><span class="ti-file">${f.source.split('\n').length} lines</span></button>`).join('')
-      || '<p class="side-note">Nothing imported yet.</p>';
+    const overview = files.length > 1 && reads.active === -1;
+    $('rdProject').hidden = !overview;
+    $('rdBody').hidden = overview;
+    $('rdOutlineWrap').hidden = !file;
     $('btnSummarise').disabled = !a || !a.ok;
     $('btnToSentences').disabled = !a || !a.ok;
-    if (!file) {
+    if (!files.length) {
       $('rdName').textContent = 'No code imported yet';
-      $('rdOverview').textContent = 'Import Python (for example code an AI wrote for you) to see it split into sections and explained in plain English.';
+      $('rdOverview').textContent = 'Import Python, such as a project an AI wrote for you, to see it split into sections and explained in plain English.';
+      $('rdProject').hidden = true; $('rdBody').hidden = false;
       $('rdCode').innerHTML = '';
-      $('rdOutline').innerHTML = '';
-      $('rdSum').innerHTML = `<div class="sum-empty"><p>Nothing to read yet.</p><div class="bp-actions"><button type="button" class="btn primary" id="rdImport">Import code</button><button type="button" class="btn" id="rdExample">Try an example</button></div></div>`;
+      $('rdSum').innerHTML = `<div class="sum-empty"><p>Nothing to read yet.</p><div class="bp-actions"><button type="button" class="btn primary" id="rdImport">Import code</button><button type="button" class="btn" id="rdExample">Try the example project</button></div></div>`;
       return;
     }
-    $('rdName').textContent = file.name;
-    $('rdOverview').innerHTML = a ? (a.ok ? withCode(a.overview) : `<span class="bad-text">This file can't be read as Python. ${escHtml(a.error)}</span>`) : 'Reading…';
+    if (overview) return renderProject();
+    const info = fileInfo(file.name);
+    $('rdName').textContent = shortPath(file.name);
+    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + (info && (info.imported_by.length || info.imports.length) ? `<span class="rd-links">${info.imports.length ? ' Uses ' + info.imports.map(p => `[[${p}]]`).join(', ') + '.' : ''}${info.imported_by.length ? ' Used by ' + info.imported_by.map(p => `[[${p}]]`).join(', ') + '.' : ''}</span>` : '') : `<span class="bad-text">This file can't be read as Python. ${escHtml(a.error)}</span>`) : 'Reading…';
+    $('rdOverview').innerHTML = linkify($('rdOverview').innerHTML);
     const secs = a && a.ok ? a.sections : [];
     const startOf = new Map(secs.map(s => [s.start, s]));
     const secOfLine = (ln) => secs.find(s => ln >= s.start && ln <= s.end);
@@ -1065,9 +1115,116 @@
       const label = head ? `<div class="rl-sec" data-sec="${head.id}"><span class="chip k-${head.kind}">${KIND_LABEL[head.kind]}</span>${escHtml(head.title)}${head.warnings.length ? `<span class="warn-dot" title="${head.warnings.length} thing${head.warnings.length > 1 ? 's' : ''} worth checking">!</span>` : ''}</div>` : '';
       return `${label}<div class="rl${s ? ' in-sec' : ''}${s && s.id % 2 ? ' alt' : ''}" data-line="${ln}" data-sec="${s ? s.id : ''}"><span class="ln">${ln}</span><span class="pc">${hlPy(l) || ' '}</span></div>`;
     }).join('');
-    $('rdOutline').innerHTML = secs.map(s => `<button type="button" class="ol-item" data-sec="${s.id}"><span class="chip k-${s.kind}">${KIND_LABEL[s.kind]}</span><span class="ol-t">${escHtml(s.title)}</span>${s.warnings.length ? `<span class="warn-dot">!</span>` : ''}<span class="ol-l">${s.start}–${s.end}</span></button>`).join('');
+    $('rdOutline').innerHTML = secs.map(s => `<button type="button" class="ol-item" data-sec="${s.id}"><span class="chip k-${s.kind}">${KIND_LABEL[s.kind]}</span><span class="ol-t">${escHtml(s.title)}</span>${s.warnings.length ? '<span class="warn-dot">!</span>' : ''}<span class="ol-l">${s.start}–${s.end}</span></button>`).join('');
     renderFocus();
   }
+
+  /* Project overview: what it is, where to start, how files connect, what to check. */
+  function renderProject() {
+    $('rdName').textContent = proj ? proj.name : 'Project';
+    $('rdOverview').textContent = proj ? `${proj.files.length} Python files` : 'Reading…';
+    if (!proj) { $('rdProject').innerHTML = '<p class="sum-empty">Reading the project…</p>'; return; }
+    const allWarn = proj.warnings.map(w => ({ w })).concat(proj.files.flatMap(f => (f.analysis.sections || []).flatMap(s => s.warnings.map(w => ({ w, f, s })))));
+    const outside = proj.libs.filter(l => !l.stdlib);
+    const inside = proj.libs.filter(l => l.stdlib);
+    $('rdProject').innerHTML = `<div class="pj">
+      <section class="pj-top">
+        <p class="pj-lead">${rich(proj.overview)}</p>
+        ${proj.readme ? `<blockquote class="pj-readme"><span class="ex-lbl">From the README</span>${escHtml(proj.readme)}</blockquote>` : ''}
+        <h4>How the files connect</h4>
+        <div class="pj-map" id="pjMap">${projectMap()}</div>
+        <p class="pj-legend">Each arrow points from a file to a file it uses, so files further right are building blocks for the ones on their left. Hover a file to see its connections; click it to read it.</p>
+      </section>
+      <div class="pj-cols">
+      <section>
+        <h4>Reading order</h4>
+        <ol class="pj-order">${proj.order.filter(p => fileInfo(p).role !== 'package').map(p => { const f = fileInfo(p); return `<li><button type="button" class="linklike" data-file="${escHtml(p)}"><code>${escHtml(shortPath(p))}</code></button> <span class="role r-${f.role}">${escHtml(f.role_label)}</span><div class="pj-sum">${rich(f.summary)}</div></li>`; }).join('')}</ol>
+      </section>
+      <section>
+        ${allWarn.length ? `<div class="sum-warn"><h4>Worth checking (${allWarn.length})</h4><ul>${allWarn.map(x => `<li>${x.f ? `<button type="button" class="linklike" data-file="${escHtml(x.f.path)}" data-sec="${x.s.id}"><code>${escHtml(shortPath(x.f.path))}</code></button> ${escHtml(x.s.title)}: ` : ''}${rich(x.w)}</li>`).join('')}</ul></div>` : ''}
+      </section>
+      <section>
+        <h4>Libraries</h4>
+        <ul class="sum-facts">${outside.map(l => `<li><code>${escHtml(l.name)}</code>${l.what ? ' ' + escHtml(l.what) : ''} <span class="dim">· ${l.files.length} file${l.files.length > 1 ? 's' : ''}</span></li>`).join('') || '<li>No outside libraries.</li>'}
+        ${inside.length ? `<li class="dim">Built into Python: ${inside.map(l => escHtml(l.name)).join(', ')}</li>` : ''}</ul>
+      </section>
+      </div>
+    </div>`;
+  }
+
+  function projectMap() {
+    const nodes = proj.files.filter(f => f.role !== 'package').map(f => f.path);
+    if (nodes.length > 60) return '<p class="sum-empty">This project has too many files to draw. Use the reading order instead.</p>';
+    const set = new Set(nodes);
+    const edges = proj.edges.filter(([a, b]) => set.has(a) && set.has(b) && a !== b);
+    const depth = Object.fromEntries(nodes.map(n => [n, 0]));
+    for (let k = 0; k < nodes.length; k++) {
+      let changed = false;
+      for (const [a, b] of edges) if (depth[b] < depth[a] + 1 && depth[a] + 1 < nodes.length) { depth[b] = depth[a] + 1; changed = true; }
+      if (!changed) break;
+    }
+    const cols = [];
+    nodes.forEach(n => { (cols[depth[n]] = cols[depth[n]] || []).push(n); });
+    cols.forEach(c => c.sort((a, b) => ROLE_ORDER.indexOf(fileInfo(a).role) - ROLE_ORDER.indexOf(fileInfo(b).role) || a.localeCompare(b)));
+    const W = 176, H = 44, CW = 232, RH = 64, PAD = 16;
+    const pos = {};
+    cols.forEach((c, ci) => c.forEach((n, ri) => { pos[n] = { x: PAD + ci * CW, y: PAD + ri * RH }; }));
+    const width = PAD * 2 + (cols.length - 1) * CW + W;
+    const height = PAD * 2 + (Math.max(...cols.map(c => c.length)) - 1) * RH + H;
+    const lines = edges.map(([a, b]) => {
+      const p = pos[a], q = pos[b];
+      let d;
+      if (q.x > p.x) {
+        const x1 = p.x + W, y1 = p.y + H / 2, x2 = q.x - 4, y2 = q.y + H / 2, mx = (x1 + x2) / 2;
+        d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+      } else {
+        const x1 = p.x + W / 2, y1 = p.y + H, x2 = q.x + W / 2, y2 = q.y + H + 4;
+        d = `M${x1},${y1} C${x1},${y1 + 40} ${x2},${y2 + 40} ${x2},${y2}`;
+      }
+      return `<path class="pj-edge" data-a="${escHtml(a)}" data-b="${escHtml(b)}" d="${d}" marker-end="url(#pjArrow)"/>`;
+    }).join('');
+    const boxes = nodes.map(n => {
+      const f = fileInfo(n), p = pos[n], sp = shortPath(n);
+      const base = sp.split('/').pop(), dir = sp.includes('/') ? sp.slice(0, sp.lastIndexOf('/') + 1) : '';
+      return `<g class="pj-node r-${f.role}" data-file="${escHtml(n)}" tabindex="0" role="button" aria-label="${escHtml(sp)}, ${escHtml(f.role_label)}">
+        <rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="7"/>
+        <text x="${p.x + 10}" y="${p.y + 18}" class="pj-name">${escHtml(dir)}<tspan class="pj-base">${escHtml(base.length > 22 ? base.slice(0, 21) + '…' : base)}</tspan></text>
+        <text x="${p.x + 10}" y="${p.y + 34}" class="pj-role">${escHtml(f.role_label)}${f.analysis.sections && f.analysis.sections.some(s => s.warnings.length) ? ' · worth checking' : ''}</text>
+      </g>`;
+    }).join('');
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Map of how the files connect">
+      <defs><marker id="pjArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="pj-arrowhead"/></marker></defs>
+      ${lines}${boxes}</svg>`;
+  }
+
+  function openFile(path, name, secId) {
+    const i = pyFiles().findIndex(f => f.name === path);
+    if (i < 0) return;
+    reads.active = i; readFocus = null; saveReads();
+    renderRead();
+    const a = curAnalysis();
+    const sec = a && a.sections && (secId != null ? a.sections.find(s => s.id === +secId) : name ? a.sections.find(s => s.name === name) : null);
+    if (sec) focusSection(sec.id, true);
+  }
+
+  $('rdProject').addEventListener('click', (e) => {
+    const link = e.target.closest('[data-file]');
+    if (link) openFile(link.dataset.file, link.dataset.name, link.dataset.sec);
+  });
+  $('rdProject').addEventListener('keydown', (e) => {
+    const n = e.target.closest('.pj-node');
+    if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openFile(n.dataset.file); }
+  });
+  $('rdProject').addEventListener('mouseover', (e) => {
+    const n = e.target.closest('.pj-node');
+    $('rdProject').querySelectorAll('.pj-edge.hot').forEach(x => x.classList.remove('hot'));
+    $('rdProject').querySelectorAll('.pj-node.dim').forEach(x => x.classList.remove('dim'));
+    if (!n) return;
+    const f = n.dataset.file;
+    const linked = new Set([f]);
+    $('rdProject').querySelectorAll('.pj-edge').forEach(x => { if (x.dataset.a === f || x.dataset.b === f) { x.classList.add('hot'); linked.add(x.dataset.a); linked.add(x.dataset.b); } });
+    $('rdProject').querySelectorAll('.pj-node').forEach(x => x.classList.toggle('dim', !linked.has(x.dataset.file)));
+  });
 
   function markLines(start, end, cls) {
     $('rdCode').querySelectorAll('.rl.' + cls).forEach(el => el.classList.remove(cls));
@@ -1084,9 +1241,9 @@
     const steps = s.steps && s.steps.length ? `<h4>Step by step, as sentences</h4><pre class="sum-steps">${s.steps.map(l => hlLine(l)).join('\n')}${s.more ? '\n<span class="s-com">…and more</span>' : ''}</pre>` : '';
     return `<div class="sum-kind">${escHtml(label)}</div>
       <h3>${escHtml(s.title)}</h3>
-      <p class="sum-head">${withCode(s.headline)}</p>
-      ${s.facts.length ? `<ul class="sum-facts">${s.facts.map(f => `<li>${withCode(f)}</li>`).join('')}</ul>` : ''}
-      ${s.warnings.length ? `<div class="sum-warn"><h4>Worth checking</h4><ul>${s.warnings.map(w => `<li>${withCode(w)}</li>`).join('')}</ul></div>` : ''}
+      <p class="sum-head">${rich(s.headline)}</p>
+      ${s.facts.length ? `<ul class="sum-facts">${s.facts.map(f => `<li>${rich(f)}</li>`).join('')}</ul>` : ''}
+      ${s.warnings.length ? `<div class="sum-warn"><h4>Worth checking</h4><ul>${s.warnings.map(w => `<li>${rich(w)}</li>`).join('')}</ul></div>` : ''}
       ${steps}`;
   }
 
@@ -1094,14 +1251,10 @@
     const a = curAnalysis();
     const box = $('rdSum');
     $('rdOutline').querySelectorAll('.ol-item').forEach(b => b.classList.toggle('on', !!readFocus && readFocus.type === 'section' && +b.dataset.sec === readFocus.id));
-    if (!a || !a.ok) { markLines(null, null, 'focus'); return; }
+    if (!a || !a.ok) { markLines(null, null, 'focus'); box.innerHTML = a ? `<p class="sum-empty">${escHtml(a.error || '')}</p>` : ''; return; }
     if (readFocus && readFocus.type === 'section') {
       const s = a.sections.find(x => x.id === readFocus.id);
-      if (s) {
-        markLines(s.start, s.end, 'focus');
-        box.innerHTML = summaryHtml(s, `${KIND_LABEL[s.kind]} · lines ${s.start}–${s.end}`);
-        return;
-      }
+      if (s) { markLines(s.start, s.end, 'focus'); box.innerHTML = summaryHtml(s, `${KIND_LABEL[s.kind]} · lines ${s.start}–${s.end}`); return; }
     }
     if (readFocus && readFocus.type === 'range') {
       const s = readFocus.summary;
@@ -1112,10 +1265,10 @@
     }
     markLines(null, null, 'focus');
     const warns = a.sections.flatMap(s => s.warnings.map(w => ({ s, w })));
-    box.innerHTML = `<div class="sum-kind">Whole file</div><h3>${escHtml(curFile().name)}</h3><p class="sum-head">${withCode(a.overview)}</p>
+    box.innerHTML = `<div class="sum-kind">Whole file</div><h3>${escHtml(shortPath(curFile().name))}</h3><p class="sum-head">${rich(a.overview)}</p>
       <p class="sum-tip">Click a section to see what it does, or highlight any lines and press <b>Summarise selection</b>.</p>
-      <h4>Sections</h4><ul class="sum-facts">${a.sections.map(s => `<li><button type="button" class="linklike" data-sec="${s.id}">${escHtml(s.title)}</button>: ${withCode(s.headline)}</li>`).join('')}</ul>
-      ${warns.length ? `<div class="sum-warn"><h4>Worth checking in this file (${warns.length})</h4><ul>${warns.map(x => `<li><button type="button" class="linklike" data-sec="${x.s.id}">${escHtml(x.s.title)}</button>: ${withCode(x.w)}</li>`).join('')}</ul></div>` : ''}`;
+      <h4>Sections</h4><ul class="sum-facts">${a.sections.map(s => `<li><button type="button" class="linklike" data-sec="${s.id}">${escHtml(s.title)}</button>: ${rich(s.headline)}</li>`).join('')}</ul>
+      ${warns.length ? `<div class="sum-warn"><h4>Worth checking in this file (${warns.length})</h4><ul>${warns.map(x => `<li><button type="button" class="linklike" data-sec="${x.s.id}">${escHtml(x.s.title)}</button>: ${rich(x.w)}</li>`).join('')}</ul></div>` : ''}`;
   }
 
   function focusSection(id, scroll) {
@@ -1140,8 +1293,7 @@
 
   function updateSummariseButton() {
     const r = selectedLines();
-    const btn = $('btnSummarise');
-    btn.textContent = r ? `Summarise lines ${r.start}–${r.end}` : 'Summarise selection';
+    $('btnSummarise').textContent = r ? `Summarise lines ${r.start}–${r.end}` : 'Summarise selection';
   }
 
   $('btnSummarise').addEventListener('click', async () => {
@@ -1151,7 +1303,7 @@
       return;
     }
     const R = await Runner.reader();
-    readFocus = { type: 'range', summary: R.summarise(curFile().source, r.start, r.end) };
+    readFocus = { type: 'range', summary: R.summarise(curFile().source, r.start, r.end, curFile().name) };
     renderFocus();
   });
 
@@ -1163,16 +1315,23 @@
     if (id != null) focusSection(id, false);
   });
   $('rdOutline').addEventListener('click', (e) => { const b = e.target.closest('.ol-item'); if (b) focusSection(+b.dataset.sec, true); });
+  const onReadLink = (e) => {
+    const f = e.target.closest('[data-file]');
+    if (f) { openFile(f.dataset.file, f.dataset.name, f.dataset.sec); return true; }
+    const b = e.target.closest('.linklike[data-sec]');
+    if (b) { focusSection(+b.dataset.sec, true); return true; }
+    return false;
+  };
   $('rdSum').addEventListener('click', (e) => {
-    const b = e.target.closest('.linklike');
-    if (b) focusSection(+b.dataset.sec, true);
+    if (onReadLink(e)) return;
     if (e.target.id === 'rdImport') openImport();
-    if (e.target.id === 'rdExample') loadExample().then(t => importFiles([{ name: 'todo_app.py', source: t }]));
+    if (e.target.id === 'rdExample') loadExampleProject();
   });
+  $('rdOverview').addEventListener('click', onReadLink);
   $('rdFiles').addEventListener('click', (e) => {
     const b = e.target.closest('.tree-item');
     if (!b) return;
-    reads.active = +b.dataset.i; readFocus = null; store.set(READ_KEY, reads); renderRead();
+    reads.active = +b.dataset.i; readFocus = null; saveReads(); renderRead();
   });
 
   $('btnToSentences').addEventListener('click', async () => {
@@ -1180,61 +1339,154 @@
     const R = await Runner.reader();
     const res = R.toSentences(file.source);
     if (!res.ok) { tLine('This file can\'t be turned into sentences: ' + res.error, 't-err'); return; }
-    const next = { version: 1, lang: 'python', name: slug(file.name), sections: [{ id: 'main', file: 'main', text: res.text }], active: 'main' };
-    replaceProject(next, `Opened ${file.name} as sentences. Lines that can't be said in words yet stay as "python:" lines, exactly as written.`);
-    const generated = secResult('main').text;
-    const check = R.compare(file.source, generated);
+    const next = { version: 1, lang: 'python', name: slug(file.name.split('/').pop()), sections: [{ id: 'main', file: 'main', text: res.text }], active: 'main' };
+    replaceProject(next, `Opened ${shortPath(file.name)} as sentences. Lines that can't be said in words yet stay as "python:" lines, exactly as written.`);
+    const check = R.compare(file.source, secResult('main').text);
     if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.', 't-ok');
     else tLine(`Note: the sentences differ from the original ${check.error ? '(' + check.error + ')' : 'at lines ' + check.differs.map(d => d[0] === d[1] ? d[0] : d[0] + '–' + d[1]).join(', ')}. Check those parts before relying on them.`, 't-err');
   });
 
-  // Import dialog
+  /* ---------- Import: paste, files, a folder, a .zip, or drag and drop ---------- */
+
+  function keepPath(path) {
+    const parts = path.replace(/\\/g, '/').split('/');
+    if (parts.slice(0, -1).some(p => SKIP_DIRS.has(p) || p.endsWith('.egg-info'))) return null;
+    const name = parts[parts.length - 1];
+    if (name === '.env' || name.startsWith('.env.')) return 'secret';
+    if (name.endsWith('.py')) return 'py';
+    if (EXTRA_FILE.test(path)) return 'extra';
+    return null;
+  }
+
+  async function filesToProject(list) {   // list of {path, file}
+    const out = [];
+    let skipped = 0;
+    for (const { path, file } of list) {
+      const kind = keepPath(path);
+      if (!kind) { skipped++; continue; }
+      if (kind === 'secret') { out.push({ name: path, source: '' }); continue; }
+      if (file.size > 600000) { skipped++; continue; }
+      out.push({ name: path, source: (await file.text()).replace(/\r\n?/g, '\n') });
+      if (out.length >= 400) break;
+    }
+    return { files: out, skipped };
+  }
+
   function openImport() { $('impModal').hidden = false; $('impNote').textContent = ''; $('impText').focus(); }
-  function closeImport() { $('impModal').hidden = true; }
+  function closeImport() { $('impModal').hidden = true; $('impCard').classList.remove('dropping'); }
   $('btnImport').addEventListener('click', openImport);
   $('btnImport2').addEventListener('click', openImport);
   $('impClose').addEventListener('click', closeImport);
   $('impModal').addEventListener('click', (e) => { if (e.target.id === 'impModal') closeImport(); });
 
-  async function loadExample() {
-    try { const r = await fetch(new URL('samples/todo_app.py', location.href).href); if (r.ok) return await r.text(); } catch (_) { /* fall through */ }
-    return '"""Example could not be loaded."""\n';
-  }
-  $('impExample').addEventListener('click', async () => {
-    $('impName').value = 'todo_app.py';
-    $('impText').value = await loadExample();
-    $('impNote').textContent = 'A small web app of the kind an AI assistant might write.';
-  });
-  $('impFiles').addEventListener('change', async (e) => {
-    const files = [...e.target.files];
-    if (!files.length) return;
-    const list = [];
-    for (const f of files) list.push({ name: f.name, source: await f.text() });
-    e.target.value = '';
+  async function loadExampleProject() {
     closeImport();
-    importFiles(list);
+    try {
+      const base = new URL('samples/taskboard/', location.href).href;
+      const manifest = await (await fetch(base + 'files.json')).json();
+      const files = [];
+      for (const f of manifest.files) files.push({ name: manifest.name + '/' + f, source: await (await fetch(base + f)).text() });
+      importProject(files, 'The example is a small task-tracker web app of the kind an AI assistant might write.');
+    } catch (e) {
+      tLine('The example project could not be loaded: ' + e.message, 't-err');
+    }
+  }
+  $('impExample').addEventListener('click', loadExampleProject);
+
+  $('impFiles').addEventListener('change', async (e) => {
+    const list = [...e.target.files].map(f => ({ path: f.name, file: f }));
+    e.target.value = '';
+    if (!list.length) return;
+    const { files } = await filesToProject(list);
+    closeImport();
+    addFiles(files);
   });
+  $('impFolder').addEventListener('change', async (e) => {
+    const list = [...e.target.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }));
+    e.target.value = '';
+    if (!list.length) return;
+    const { files, skipped } = await filesToProject(list);
+    importProject(files, skipped ? `Skipped ${skipped} files that aren't Python or project notes (images, caches, virtual environments…).` : '');
+  });
+  $('impZip').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    $('impNote').textContent = 'Opening the .zip…';
+    try {
+      const R = await Runner.reader((s) => setStatus(s));
+      importProject(R.readZip(new Uint8Array(await f.arrayBuffer())), '');
+    } catch (err) { $('impNote').textContent = 'That .zip could not be opened: ' + err.message; }
+  });
+
+  // Drag and drop files or whole folders onto the dialog
+  const card = $('impCard');
+  card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dropping'); });
+  card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove('dropping'); });
+  card.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    card.classList.remove('dropping');
+    const entries = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    const list = [];
+    const walk = (entry, prefix) => new Promise((resolve) => {
+      if (entry.isFile) entry.file(f => { list.push({ path: prefix + f.name, file: f }); resolve(); }, () => resolve());
+      else if (entry.isDirectory) {
+        if (SKIP_DIRS.has(entry.name)) return resolve();
+        const reader = entry.createReader();
+        const all = [];
+        const more = () => reader.readEntries(async (batch) => {
+          if (!batch.length) { for (const c of all) await walk(c, prefix + entry.name + '/'); resolve(); }
+          else { all.push(...batch); more(); }
+        }, () => resolve());
+        more();
+      } else resolve();
+    });
+    if (entries.length) for (const en of entries) await walk(en, '');
+    else for (const f of e.dataTransfer.files) list.push({ path: f.name, file: f });
+    if (!list.length) return;
+    if (list.length === 1 && /\.zip$/i.test(list[0].path)) {
+      const R = await Runner.reader((s) => setStatus(s));
+      return importProject(R.readZip(new Uint8Array(await list[0].file.arrayBuffer())), '');
+    }
+    const { files, skipped } = await filesToProject(list);
+    if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't Python or project notes.` : '');
+    else { closeImport(); addFiles(files); }
+  });
+
   $('impGo').addEventListener('click', () => {
     const text = $('impText').value;
-    if (!text.trim()) { $('impNote').textContent = 'Paste some code first, or choose files.'; return; }
+    if (!text.trim()) { $('impNote').textContent = 'Paste some code first, or choose files or a folder.'; return; }
     let name = $('impName').value.trim() || 'pasted.py';
     if (!/\.py\w?$/.test(name)) name += '.py';
     closeImport();
     $('impText').value = '';
-    importFiles([{ name, source: text.replace(/\r\n?/g, '\n') }]);
+    addFiles([{ name, source: text.replace(/\r\n?/g, '\n') }]);
   });
 
-  async function importFiles(list) {
-    for (const f of list) {
+  /* A folder, zip or example replaces what was imported before; single files are added to it. */
+  async function importProject(files, note) {
+    closeImport();
+    if (!files.some(f => /\.py$/.test(f.name))) { tLine('No Python files were found there.', 't-err'); return; }
+    reads = { files, active: -1 };
+    await afterImport(note);
+  }
+  async function addFiles(files) {
+    for (const f of files) {
       const at = reads.files.findIndex(x => x.name === f.name);
       if (at >= 0) reads.files[at] = f; else reads.files.push(f);
     }
-    reads.active = reads.files.findIndex(x => x.name === list[0].name);
+    reads.active = pyFiles().findIndex(x => x.name === files[0].name);
+    await afterImport('');
+  }
+  async function afterImport(note) {
     readFocus = null;
-    store.set(READ_KEY, reads);
+    saveReads();
     setMode('read');
     await analyse();
+    if (pyFiles().length === 1) reads.active = 0;
     renderRead();
+    const n = pyFiles().length;
+    tLine(`Imported ${n} Python file${n === 1 ? '' : 's'}.` + (note ? ' ' + note : ''), 't-sys');
   }
 
   /* ------------------------------------------------------------------ */
