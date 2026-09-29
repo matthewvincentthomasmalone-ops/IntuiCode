@@ -1,0 +1,1170 @@
+"""IntuiCode reader: turns existing Python into sections, sentences and plain-English summaries.
+
+Everything here is rules on top of Python's own parser (the `ast` module). No AI:
+the same code always gives the same summary, and every statement in a summary
+can be traced back to the lines it came from.
+
+Main entry points (all return JSON-ready dicts):
+    analyze(files)                  -> sections + summaries for each file
+    summarise(source, start, end)   -> summary of the statements between two lines
+    to_sentences(source)            -> the whole file as IntuiCode sentences (exact where possible)
+
+Run this file directly to try it on a .py file:  python3 python_reader.py some_file.py
+"""
+import ast
+import json
+import re
+
+# --------------------------------------------------------------------------
+# What common libraries are for, in plain words
+# --------------------------------------------------------------------------
+
+LIBRARIES = {
+    "random": "picks random values", "math": "does maths", "time": "deals with time and pauses",
+    "datetime": "works with dates and times", "os": "works with files, folders and settings on the computer",
+    "sys": "talks to the running Python program", "json": "reads and writes JSON data",
+    "csv": "reads and writes spreadsheet-style CSV files", "re": "searches text using patterns",
+    "requests": "talks to websites and web APIs over the internet", "urllib": "talks to the internet",
+    "httpx": "talks to websites and web APIs over the internet", "aiohttp": "talks to the internet without waiting",
+    "flask": "runs a web server", "fastapi": "runs a web API server", "django": "runs a web app",
+    "uvicorn": "starts a web server", "sqlite3": "stores data in a database file",
+    "sqlalchemy": "works with databases", "psycopg2": "talks to a PostgreSQL database",
+    "pymongo": "talks to a MongoDB database", "redis": "talks to a Redis data store",
+    "pandas": "works with tables of data", "numpy": "does fast maths on lots of numbers",
+    "matplotlib": "draws charts", "seaborn": "draws charts", "plotly": "draws interactive charts",
+    "tkinter": "shows desktop windows and buttons", "pygame": "makes games with graphics and sound",
+    "openai": "calls an AI model", "anthropic": "calls an AI model", "dotenv": "loads secret settings from a .env file",
+    "logging": "writes log messages", "subprocess": "runs other programs", "threading": "does several things at once",
+    "asyncio": "runs tasks that wait without blocking", "pathlib": "works with file paths",
+    "typing": "describes what kinds of values are expected (no effect when running)",
+    "dataclasses": "makes simple classes that hold data", "collections": "provides extra list and dictionary types",
+    "itertools": "provides tools for looping", "functools": "provides tools for functions",
+    "argparse": "reads options typed on the command line", "smtplib": "sends email",
+    "hashlib": "makes fingerprints (hashes) of data", "uuid": "makes unique IDs", "shutil": "copies, moves and deletes files",
+    "glob": "finds files by name pattern", "pickle": "saves Python objects to files", "bs4": "reads web pages (HTML)",
+    "selenium": "controls a web browser", "playwright": "controls a web browser", "PIL": "opens and edits images",
+    "cv2": "works with images and video", "torch": "does machine learning", "tensorflow": "does machine learning",
+    "sklearn": "does machine learning", "boto3": "talks to Amazon Web Services", "stripe": "takes payments",
+    "discord": "runs a Discord bot", "telegram": "runs a Telegram bot", "streamlit": "makes a data web app",
+    "pydantic": "checks that data has the right shape", "jwt": "makes and checks login tokens",
+    "bcrypt": "scrambles passwords safely", "yaml": "reads and writes YAML settings files", "click": "builds command-line tools",
+    "rich": "prints coloured text in the terminal", "tqdm": "shows progress bars", "schedule": "runs jobs on a timetable",
+    "socket": "sends data over the network", "email": "builds email messages", "base64": "encodes data as text",
+    "io": "treats text or bytes like files", "copy": "copies values", "string": "provides letters and digits",
+    "statistics": "calculates averages and other statistics", "decimal": "does exact decimal maths",
+    "enum": "defines fixed sets of named choices", "abc": "defines templates for classes", "contextlib": "helps with 'with' blocks",
+    "traceback": "shows details of errors", "unittest": "tests code", "pytest": "tests code",
+}
+
+# Words the sentence translator swaps. A Python name that is one of these can't
+# safely appear inside a sentence, so statements using it stay as raw Python.
+SENTENCE_WORDS = {
+    "is", "not", "and", "or", "plus", "minus", "times", "mod", "modulo", "yes", "no", "true", "false", "none",
+    "nothing", "the", "squared", "cubed", "contains", "equals", "sorted", "rounded", "divided", "multiplied",
+    "added", "joined", "followed", "empty", "item", "to", "of", "in", "as", "by", "from", "with",
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+    "twenty", "fifty", "hundred",
+}
+
+MAX_STEPS = 16
+
+
+class Unwordable(Exception):
+    """This expression can't be written as sentence words without changing its meaning."""
+
+
+# --------------------------------------------------------------------------
+# Expressions -> sentence words
+# --------------------------------------------------------------------------
+
+def q(s):
+    """A Python string as a double-quoted sentence string."""
+    if '"' in s or "\\" in s or "\n" in s or "{" in s or "}" in s:
+        raise Unwordable()
+    return '"' + s + '"'
+
+
+def name_ok(n):
+    return n.lower() not in SENTENCE_WORDS
+
+
+class Words:
+    """Turns expressions into words. strict=True refuses anything that might not round-trip exactly."""
+
+    def __init__(self, strict, tools=(), lists=()):
+        self.strict = strict
+        self.tools = set(tools)
+        self.lists = set(lists)
+
+    def raw(self, e):
+        if self.strict:
+            raise Unwordable()
+        return ast.unparse(e)
+
+    def w(self, e, top=True):
+        if isinstance(e, ast.Constant):
+            v = e.value
+            if v is True:
+                return "yes"
+            if v is False:
+                return "no"
+            if v is None:
+                return "nothing"
+            if isinstance(v, str):
+                return q(v) if self.strict else (q(v) if '"' not in v and "\n" not in v and "{" not in v else repr(v))
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                if v < 0:
+                    raise Unwordable()
+                return repr(v)
+            return self.raw(e)
+        if isinstance(e, ast.Name):
+            if not name_ok(e.id):
+                if self.strict:
+                    raise Unwordable()
+            return e.id
+        if isinstance(e, ast.BinOp):
+            ops = {ast.Add: "plus", ast.Sub: "minus", ast.Mult: "times", ast.Div: "divided by", ast.Mod: "mod"}
+            if isinstance(e.op, ast.Pow) and isinstance(e.right, ast.Constant) and e.right.value == 2:
+                return f"{self.wrap(e.left)} squared"
+            if isinstance(e.op, ast.Pow):
+                return f"{self.wrap(e.left)} to the power of {self.wrap(e.right)}"
+            word = ops.get(type(e.op))
+            if not word:
+                return self.raw(e)
+            left = self.w(e.left, False) if self._chain(e.left, e.op) else self.wrap(e.left)
+            return f"{left} {word} {self.wrap(e.right)}"
+        if isinstance(e, ast.UnaryOp):
+            if isinstance(e.op, ast.Not):
+                return f"not {self.wrap(e.operand)}"
+            return self.raw(e)
+        if isinstance(e, ast.BoolOp):
+            word = " and " if isinstance(e.op, ast.And) else " or "
+            return word.join(self.wrap(v) for v in e.values)
+        if isinstance(e, ast.Compare):
+            if len(e.ops) != 1:
+                return self.raw(e)
+            words = {ast.Eq: "is", ast.NotEq: "is not", ast.Lt: "is less than", ast.Gt: "is more than",
+                     ast.LtE: "is at most", ast.GtE: "is at least", ast.In: "is in", ast.NotIn: "is not in"}
+            op = type(e.ops[0])
+            if op in (ast.Is, ast.IsNot):
+                if self.strict:
+                    raise Unwordable()
+                word = "is" if op is ast.Is else "is not"
+            else:
+                word = words[op]
+            return f"{self.wrap(e.left)} {word} {self.wrap(e.comparators[0])}"
+        if isinstance(e, ast.Call):
+            return self.call(e)
+        if isinstance(e, ast.Subscript) and not isinstance(e.slice, ast.Slice):
+            coll = self.simple(e.value)
+            s = e.slice
+            if isinstance(s, ast.Constant) and s.value == 0:
+                return f"first item of {coll}"
+            if isinstance(s, ast.UnaryOp) and isinstance(s.op, ast.USub) and isinstance(s.operand, ast.Constant) and s.operand.value == 1:
+                return f"last item of {coll}"
+            if isinstance(s, (ast.Constant, ast.Name)):
+                return f"item {self.w(s)} of {coll}"
+            return self.raw(e)
+        if isinstance(e, ast.JoinedStr):
+            parts = []
+            for v in e.values:
+                if isinstance(v, ast.Constant):
+                    if any(c in v.value for c in '"{}\n\\'):
+                        return self.raw(e)
+                    parts.append(v.value)
+                elif isinstance(v, ast.FormattedValue):
+                    if v.conversion != -1 or v.format_spec is not None:
+                        return self.raw(e)
+                    inner = ast.unparse(v.value)
+                    if self.strict and not re.fullmatch(r"[A-Za-z_]\w*", inner):
+                        raise Unwordable()
+                    if self.strict and not name_ok(inner):
+                        raise Unwordable()
+                    parts.append("{" + inner + "}")
+            return '"' + "".join(parts) + '"'
+        if isinstance(e, (ast.List, ast.Tuple)) and not self.strict:
+            return ast.unparse(e)
+        if isinstance(e, ast.List):
+            return "[" + ", ".join(self.w(x) for x in e.elts) + "]"
+        return self.raw(e)
+
+    def _chain(self, left, op):
+        return isinstance(left, ast.BinOp) and type(left.op) is type(op) and type(op) in (ast.Add, ast.Mult)
+
+    def wrap(self, e):
+        text = self.w(e, False)
+        if isinstance(e, (ast.BinOp, ast.BoolOp, ast.Compare)):
+            if self.strict:
+                raise Unwordable()
+            return f"({text})"
+        return text
+
+    def simple(self, e):
+        if isinstance(e, ast.Name):
+            return self.w(e)
+        return self.raw(e)
+
+    def call(self, e):
+        f = e.func
+        if e.keywords:
+            return self.raw(e)
+        fname = ast.unparse(f)
+        args = e.args
+        one = len(args) == 1
+        if fname == "len" and one:
+            return f"length of {self.simple(args[0])}"
+        if fname == "int" and one and isinstance(args[0], ast.Name):
+            return f"{self.w(args[0])} as number"
+        if fname == "float" and one and isinstance(args[0], ast.Name):
+            return f"{self.w(args[0])} as decimal"
+        if fname == "str" and one and isinstance(args[0], ast.Name):
+            return f"{self.w(args[0])} as text"
+        if fname == "sum" and one:
+            return f"sum of {self.simple(args[0])}"
+        if fname == "max" and one:
+            return f"biggest in {self.simple(args[0])}"
+        if fname == "min" and one:
+            return f"smallest in {self.simple(args[0])}"
+        if fname == "random.randint" and len(args) == 2 and all(isinstance(a, (ast.Constant, ast.Name)) for a in args):
+            return f"random number from {self.w(args[0])} to {self.w(args[1])}"
+        if fname == "random.choice" and one:
+            return f"random item from {self.simple(args[0])}"
+        if fname == "math.sqrt" and one and isinstance(args[0], (ast.Constant, ast.Name)):
+            return f"square root of {self.w(args[0])}"
+        if isinstance(f, ast.Attribute) and not args and f.attr in ("upper", "lower") and isinstance(f.value, ast.Name):
+            return f"{self.w(f.value)} in {'capitals' if f.attr == 'upper' else 'lowercase'}"
+        return self.raw(e)
+
+
+# --------------------------------------------------------------------------
+# Statements -> sentences
+# --------------------------------------------------------------------------
+
+class Sentences:
+    """Writes statements as IntuiCode sentences. Anything that can't be said exactly becomes a `python:` line."""
+
+    def __init__(self, strict, tools=(), lists=()):
+        self.strict = strict
+        self.words = Words(strict, tools, lists)
+        self.tools = set(tools)
+        self.lists = set(lists)
+        self.imported = set()
+
+    def block(self, body, level):
+        out = []
+        for i, node in enumerate(body):
+            if i == 0 and is_docstring(node):
+                first = node.value.value.strip().splitlines()[0] if node.value.value.strip() else ""
+                out.append(("    " * level) + "note: " + first)
+                continue
+            out.extend(self.stmt(node, level))
+        return out
+
+    def raw_lines(self, node, level):
+        pad = "    " * level
+        return [pad + "    " * ((len(l) - len(l.lstrip())) // 4) + "python: " + l.strip()
+                for l in ast.unparse(node).splitlines() if l.strip()]
+
+    def say(self, level, text):
+        return ["    " * level + text]
+
+    def stmt(self, n, level):
+        try:
+            return self._stmt(n, level)
+        except Unwordable:
+            return self.raw_lines(n, level)
+
+    def _stmt(self, n, level):
+        W = self.words.w
+        S = self.say
+        if isinstance(n, ast.Assign) and len(n.targets) == 1:
+            t, v = n.targets[0], n.value
+            if isinstance(t, ast.Name):
+                if not name_ok(t.id):
+                    raise Unwordable()
+                ask = asked(v)
+                if ask:
+                    kind, prompt = ask
+                    p = (" " + W(prompt)) if prompt is not None else ""
+                    lead = {"text": "ask", "number": "ask for a number", "decimal": "ask for a decimal"}[kind]
+                    return S(level, f"{lead}{p} and store in {t.id}")
+                if isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id in self.tools and not v.keywords:
+                    args = ", ".join(W(a) for a in v.args)
+                    return S(level, f"run {v.func.id}{' with ' + args if args else ''} and store in {t.id}")
+                if isinstance(v, ast.List) and self.strict:
+                    self.lists.add(t.id)
+                    self.words.lists.add(t.id)
+                    if not v.elts:
+                        return S(level, f"create empty list {t.id}")
+                    return S(level, f"create list {t.id} with {', '.join(W(x) for x in v.elts)}")
+                return S(level, f"set {t.id} to {W(v)}")
+            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and isinstance(t.slice, (ast.Constant, ast.Name)):
+                return S(level, f"set item {W(t.slice)} of {W(t.value)} to {W(v)}")
+            raise Unwordable()
+        if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name) and name_ok(n.target.id):
+            verb = {ast.Add: "increase {t} by {v}", ast.Sub: "decrease {t} by {v}",
+                    ast.Mult: "multiply {t} by {v}", ast.Div: "divide {t} by {v}"}.get(type(n.op))
+            if verb:
+                return S(level, verb.format(t=n.target.id, v=W(n.value)))
+            raise Unwordable()
+        if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call):
+            return self.call_stmt(n.value, level)
+        if isinstance(n, ast.If):
+            out = S(level, f"if {W(n.test)}") + self.block(n.body, level + 1)
+            orelse = n.orelse
+            while orelse:
+                if len(orelse) == 1 and isinstance(orelse[0], ast.If) and getattr(orelse[0], "_elif", False):
+                    e = orelse[0]
+                    out += S(level, f"otherwise if {W(e.test)}") + self.block(e.body, level + 1)
+                    orelse = e.orelse
+                else:
+                    out += S(level, "otherwise") + self.block(orelse, level + 1)
+                    break
+            return out
+        if isinstance(n, ast.For) and not n.orelse and isinstance(n.target, ast.Name) and name_ok(n.target.id):
+            it = n.iter
+            v = n.target.id
+            if isinstance(it, ast.Call) and ast.unparse(it.func) == "range" and not it.keywords:
+                a = it.args
+                if len(a) == 1:
+                    head = f"repeat {W(a[0])} times" + ("" if v == "_" else f" counting with {v}")
+                    return S(level, head) + self.block(n.body, level + 1)
+                if len(a) == 2 and isinstance(a[1], ast.Constant) and isinstance(a[1].value, int) \
+                        and isinstance(a[0], ast.Constant) and isinstance(a[0].value, int) and a[1].value > a[0].value:
+                    return S(level, f"count {v} from {a[0].value} to {a[1].value - 1}") + self.block(n.body, level + 1)
+                if not self.strict and len(a) == 2:
+                    return S(level, f"count {v} from {W(a[0])} to {W(a[1])} minus 1") + self.block(n.body, level + 1)
+                raise Unwordable()
+            return S(level, f"for each {v} in {W(it)}") + self.block(n.body, level + 1)
+        if isinstance(n, ast.While) and not n.orelse:
+            if isinstance(n.test, ast.Constant) and n.test.value is True:
+                return S(level, "repeat forever") + self.block(n.body, level + 1)
+            return S(level, f"while {W(n.test)}") + self.block(n.body, level + 1)
+        if isinstance(n, ast.Break):
+            return S(level, "stop the loop")
+        if isinstance(n, ast.Continue):
+            return S(level, "skip to next")
+        if isinstance(n, ast.Pass):
+            return S(level, "do nothing")
+        if isinstance(n, ast.Return):
+            return S(level, "give back" + (f" {W(n.value)}" if n.value is not None else ""))
+        if isinstance(n, ast.FunctionDef) and simple_args(n) and not n.decorator_list and not n.returns and name_ok(n.name):
+            params = [a.arg for a in n.args.args]
+            if not all(name_ok(p) for p in params):
+                raise Unwordable()
+            head = f"define {n.name}" + (f" using {', '.join(params)}" if params else "")
+            return S(level, head) + self.block(n.body, level + 1)
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            if not self.strict:
+                mods = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or "."]
+                return S(level, "use " + ", ".join(mods))
+            raise Unwordable()
+        # Compound statements we can't say in words: keep the header as Python, but still read the body.
+        return self.compound(n, level)
+
+    def call_stmt(self, c, level):
+        W = self.words.w
+        S = self.say
+        f = ast.unparse(c.func)
+        kw = {k.arg: k.value for k in c.keywords}
+        if f == "print":
+            if any(isinstance(a, ast.Starred) for a in c.args):
+                raise Unwordable()
+            end = kw.pop("end", None)
+            if kw or (end is not None and not (isinstance(end, ast.Constant) and end.value == " ")):
+                raise Unwordable()
+            if not c.args:
+                if end is not None:
+                    raise Unwordable()
+                return S(level, "show a blank line")
+            return S(level, "show " + " and ".join(W(a) for a in c.args) + (" on the same line" if end is not None else ""))
+        if c.keywords and not (f.endswith(".sort") and list(kw) == ["reverse"]):
+            raise Unwordable()
+        if f in self.tools:
+            args = ", ".join(W(a) for a in c.args)
+            return S(level, f"run {f}" + (f" with {args}" if args else ""))
+        if f == "time.sleep" and len(c.args) == 1:
+            return S(level, f"wait {W(c.args[0])} seconds")
+        if f == "random.shuffle" and len(c.args) == 1 and isinstance(c.args[0], ast.Name):
+            return S(level, f"shuffle {W(c.args[0])}")
+        if f == "sys.exit" and not c.args:
+            return S(level, "stop the program")
+        if f == "input" and len(c.args) <= 1:
+            return S(level, "ask " + (W(c.args[0]) if c.args else '""'))
+        if isinstance(c.func, ast.Attribute) and isinstance(c.func.value, ast.Name) and name_ok(c.func.value.id):
+            obj, meth = c.func.value.id, c.func.attr
+            is_list = obj in self.lists or not self.strict
+            if meth == "append" and len(c.args) == 1 and is_list:
+                return S(level, f"add {W(c.args[0])} to {obj}")
+            if meth == "sort" and not c.args:
+                rev = kw.get("reverse")
+                if rev is None:
+                    return S(level, f"sort {obj}")
+                if isinstance(rev, ast.Constant) and rev.value is True:
+                    return S(level, f"sort {obj} biggest first")
+            if meth == "reverse" and not c.args:
+                return S(level, f"reverse {obj}")
+            if meth == "remove" and len(c.args) == 1 and is_list:
+                return S(level, f"remove {W(c.args[0])} from {obj}")
+        raise Unwordable()
+
+    def compound(self, n, level):
+        pad = "    " * level
+        py = lambda s, extra=0: pad + "    " * extra + "python: " + s
+        if isinstance(n, ast.Try):
+            out = [py("try:")] + self.block(n.body, level + 1)
+            for h in n.handlers:
+                head = "except" + (f" {ast.unparse(h.type)}" if h.type else "") + (f" as {h.name}" if h.name else "") + ":"
+                out += [py(head)] + self.block(h.body, level + 1)
+            if n.orelse:
+                out += [py("else:")] + self.block(n.orelse, level + 1)
+            if n.finalbody:
+                out += [py("finally:")] + self.block(n.finalbody, level + 1)
+            return out
+        if isinstance(n, (ast.With, ast.AsyncWith)):
+            kw = "async with" if isinstance(n, ast.AsyncWith) else "with"
+            return [py(f"{kw} {', '.join(ast.unparse(i) for i in n.items)}:")] + self.block(n.body, level + 1)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            head = ast.unparse(n).splitlines()
+            # decorator lines and the def/class line itself (may wrap over several lines)
+            lines, i = [], 0
+            while i < len(head) and head[i].startswith("@"):
+                lines.append(py(head[i])); i += 1
+            lines.append(py(head[i]))
+            if isinstance(n, ast.ClassDef):
+                return lines + self.block(n.body, level + 1)
+            return lines + self.block(n.body, level + 1)
+        if isinstance(n, (ast.For, ast.AsyncFor)) and not n.orelse:
+            kw = "async for" if isinstance(n, ast.AsyncFor) else "for"
+            return [py(f"{kw} {ast.unparse(n.target)} in {ast.unparse(n.iter)}:")] + self.block(n.body, level + 1)
+        if isinstance(n, ast.While) and not n.orelse:
+            return [py(f"while {ast.unparse(n.test)}:")] + self.block(n.body, level + 1)
+        if isinstance(n, ast.If):
+            out = [py(f"if {ast.unparse(n.test)}:")] + self.block(n.body, level + 1)
+            if n.orelse:
+                out += [py("else:")] + self.block(n.orelse, level + 1)
+            return out
+        return self.raw_lines(n, level)
+
+
+def simple_args(fn):
+    a = fn.args
+    return not (a.posonlyargs or a.vararg or a.kwonlyargs or a.kwarg or a.defaults or any(x.annotation for x in a.args))
+
+
+def is_docstring(n):
+    return isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
+
+
+def asked(v):
+    """input(...) / int(input(...)) / float(input(...)) -> (kind, prompt)."""
+    def inp(c):
+        return isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "input" and not c.keywords and len(c.args) <= 1
+    if inp(v):
+        return "text", (v.args[0] if v.args else None)
+    if isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id in ("int", "float") \
+            and len(v.args) == 1 and not v.keywords and inp(v.args[0]):
+        return ("number" if v.func.id == "int" else "decimal"), (v.args[0].args[0] if v.args[0].args else None)
+    return None
+
+
+def mark_elifs(tree, source_lines):
+    """ast can't tell `elif` from `else: if`. Look at the source to find out."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+            child = node.orelse[0]
+            line = source_lines[child.lineno - 1] if child.lineno - 1 < len(source_lines) else ""
+            child._elif = line.lstrip().startswith("elif")
+
+
+# --------------------------------------------------------------------------
+# Facts about a group of statements
+# --------------------------------------------------------------------------
+
+def dotted(e):
+    try:
+        return ast.unparse(e)
+    except Exception:
+        return ""
+
+
+def aliases(tree):
+    """import numpy as np -> {'np': 'numpy'}"""
+    out = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                out[(a.asname or a.name).split(".")[0]] = a.name.split(".")[0]
+        elif isinstance(n, ast.ImportFrom) and n.module:
+            for a in n.names:
+                out[a.asname or a.name] = n.module.split(".")[0]
+    return out
+
+
+SECRET_NAME = re.compile(r"(api_?key|secret|token|password|passwd|pwd|private_?key|access_?key)", re.I)
+
+
+class Facts:
+    def __init__(self, nodes, alias, tools, source_lines):
+        self.nodes = nodes
+        self.alias = alias
+        self.tools = tools
+        self.lines = source_lines
+        self.effects = []      # plain phrases, in order found
+        self.libs = []
+        self.calls_tools = []
+        self.warnings = []
+        self.handles = []
+        self.raises = []
+        self.changes_globals = []
+        self.loops = 0
+        self.decisions = 0
+        self.returns = []
+        self._walk()
+
+    def add(self, lst, item):
+        if item and item not in lst:
+            lst.append(item)
+
+    def _walk(self):
+        for top in self.nodes:
+            for n in ast.walk(top):
+                self._node(n)
+
+    def _node(self, n):
+        if isinstance(n, (ast.For, ast.AsyncFor, ast.While)):
+            self.loops += 1
+            if isinstance(n, ast.While) and isinstance(n.test, ast.Constant) and n.test.value is True:
+                if not any(isinstance(x, (ast.Break, ast.Return)) for x in ast.walk(n)):
+                    self.add(self.warnings, "Has a loop that repeats forever with no way out (no break or return). That may be intended for servers and games.")
+        elif isinstance(n, ast.If):
+            self.decisions += 1
+        elif isinstance(n, ast.Global):
+            for g in n.names:
+                self.add(self.changes_globals, g)
+        elif isinstance(n, ast.Raise) and n.exc is not None:
+            exc = n.exc.func if isinstance(n.exc, ast.Call) else n.exc
+            self.add(self.raises, dotted(exc))
+        elif isinstance(n, ast.Try):
+            for h in n.handlers:
+                self.add(self.handles, dotted(h.type) if h.type else "any error")
+                if h.type is None or dotted(h.type) in ("Exception", "BaseException"):
+                    if all(isinstance(b, ast.Pass) for b in h.body) or (len(h.body) == 1 and isinstance(h.body[0], (ast.Pass, ast.Continue))):
+                        self.add(self.warnings, "Catches every error and ignores it, so problems can fail silently.")
+        elif isinstance(n, ast.Return) and n.value is not None:
+            self.returns.append(n.value)
+        elif isinstance(n, (ast.Yield, ast.YieldFrom)):
+            self.add(self.effects, "produces values one at a time (a generator)")
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Name) and SECRET_NAME.search(t.id) and isinstance(n.value, ast.Constant) \
+                        and isinstance(n.value.value, str) and len(n.value.value) >= 8:
+                    self.add(self.warnings, f"`{t.id}` looks like a secret written straight into the code. Secrets are safer in environment variables or a .env file.")
+        elif isinstance(n, ast.Call):
+            self._call(n)
+
+    def _call(self, n):
+        name = dotted(n.func)
+        root = name.split(".")[0]
+        lib = self.alias.get(root)
+        if lib:
+            self.add(self.libs, lib)
+        last = name.split(".")[-1]
+        kw = {k.arg: k.value for k in n.keywords}
+        if name == "print":
+            self.add(self.effects, "shows text")
+        elif name == "input":
+            self.add(self.effects, "asks the person to type something")
+        elif name == "open":
+            mode = n.args[1] if len(n.args) > 1 else kw.get("mode")
+            m = mode.value if isinstance(mode, ast.Constant) and isinstance(mode.value, str) else "r"
+            self.add(self.effects, "writes to a file" if any(c in m for c in "wax") else "reads a file")
+        elif lib in ("requests", "httpx", "urllib", "aiohttp") or name in ("fetch",):
+            verb = {"get": "fetches data from", "post": "sends data to", "put": "sends data to", "delete": "deletes something on", "patch": "updates something on"}.get(last, "talks to")
+            self.add(self.effects, f"{verb} the internet")
+        elif last in ("execute", "executemany") or lib in ("sqlite3", "sqlalchemy", "psycopg2", "pymongo"):
+            self.add(self.effects, "reads or changes a database")
+            if last in ("execute", "executemany") and n.args and isinstance(n.args[0], (ast.JoinedStr, ast.BinOp)):
+                self.add(self.warnings, "Builds a database query by joining text. If any of that text comes from users, this allows SQL injection; pass values separately instead.")
+        elif name in ("os.getenv", "os.environ.get") or name.startswith("os.environ"):
+            self.add(self.effects, "reads settings from the environment (often secrets like API keys)")
+        elif lib == "subprocess" or name in ("os.system",):
+            self.add(self.effects, "runs other programs")
+            sh = kw.get("shell")
+            if isinstance(sh, ast.Constant) and sh.value is True or name == "os.system":
+                self.add(self.warnings, "Runs a shell command. If any part of it comes from users, they could run their own commands.")
+        elif name in ("os.remove", "os.unlink", "shutil.rmtree", "os.rmdir") or name.endswith(".unlink"):
+            self.add(self.effects, "deletes files or folders")
+        elif name in ("eval", "exec"):
+            self.add(self.warnings, f"Uses `{name}()`, which runs text as code. That is risky if the text comes from users.")
+        elif lib == "random":
+            self.add(self.effects, "uses randomness")
+        elif name in ("time.sleep", "asyncio.sleep"):
+            self.add(self.effects, "pauses")
+        elif lib in ("openai", "anthropic"):
+            self.add(self.effects, "calls an AI model")
+        elif last in ("send_message", "sendmail", "send"):
+            self.add(self.effects, "sends a message")
+        elif last == "run" and root in ("app",) and isinstance(kw.get("debug"), ast.Constant) and kw["debug"].value is True:
+            self.add(self.warnings, "Starts the web server with debug=True. Fine while building, unsafe on a public server.")
+        if isinstance(n.func, ast.Name) and n.func.id in self.tools:
+            self.add(self.calls_tools, n.func.id)
+        if isinstance(n.func, ast.Attribute) and n.func.attr in ("route", "get", "post") and False:
+            pass
+
+
+def gists(nodes):
+    """Recognise common patterns and say what they are for, e.g. counting or building a list."""
+    out = []
+    flat = list(nodes)
+    for i, n in enumerate(flat):
+        loop = n if isinstance(n, (ast.For, ast.While)) else None
+        if not loop:
+            continue
+        target = dotted(loop.iter) if isinstance(loop, ast.For) else None
+        # a value set just before the loop and changed inside it
+        for prev in flat[:i][::-1][:3]:
+            if not (isinstance(prev, ast.Assign) and len(prev.targets) == 1 and isinstance(prev.targets[0], ast.Name)):
+                continue
+            name = prev.targets[0].id
+            start = prev.value
+            for m in ast.walk(loop):
+                if isinstance(m, ast.AugAssign) and isinstance(m.target, ast.Name) and m.target.id == name and isinstance(m.op, ast.Add):
+                    cond = next((c for c in ast.walk(loop) if isinstance(c, ast.If) and any(x is m for x in ast.walk(c))), None)
+                    what = f"each item in {code(target)}" if target else "each round"
+                    if isinstance(m.value, ast.Constant) and m.value.value == 1:
+                        if target and cond:
+                            out.append(f"Counts how many items in {code(target)} pass the check {code(dotted(cond.test))}, keeping the count in {code(name)}.")
+                        elif target:
+                            out.append(f"Counts the items in {code(target)}, keeping the count in {code(name)}.")
+                        else:
+                            out.append(f"Counts rounds in {code(name)}.")
+                    else:
+                        out.append(f"Adds up {code(dotted(m.value))} for {what}, keeping the running total in {code(name)}.")
+                    break
+                if isinstance(m, ast.Call) and isinstance(m.func, ast.Attribute) and m.func.attr == "append" \
+                        and dotted(m.func.value) == name and isinstance(start, ast.List) and not start.elts:
+                    out.append(f"Builds a new list {code(name)}" + (f" from the items in {code(target)}" if target else "") + ".")
+                    break
+            else:
+                continue
+            break
+        else:
+            has_exit = any(isinstance(m, (ast.Break, ast.Return)) for m in ast.walk(loop))
+            asks = any(isinstance(m, ast.Call) and dotted(m.func) == "input" for m in ast.walk(loop))
+            if isinstance(loop, ast.While) and asks:
+                out.append("Keeps asking the person until the answer is acceptable." if not (isinstance(loop.test, ast.Constant)) else
+                           "Keeps asking the person for input until something tells it to stop.")
+            elif isinstance(loop, ast.For) and has_exit and any(isinstance(m, ast.If) for m in ast.walk(loop)):
+                out.append(f"Looks through {code(target)} for the first item that matches a check, and stops there.")
+            elif isinstance(loop, ast.For):
+                out.append(f"Does something with each item in {code(target)}.")
+    return out
+
+
+def plain_list(items, limit=6):
+    items = list(items)
+    if not items:
+        return ""
+    more = len(items) - limit
+    items = items[:limit]
+    text = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+    return text + (f" (and {more} more)" if more > 0 else "")
+
+
+def code(s):
+    return f"`{s}`"
+
+
+def describe_value(e, alias):
+    if isinstance(e, ast.Constant):
+        if isinstance(e.value, str):
+            s = e.value if len(e.value) <= 40 else e.value[:37] + "…"
+            return f'the text "{s}"'
+        if isinstance(e.value, bool):
+            return "yes" if e.value else "no"
+        if e.value is None:
+            return "nothing"
+        return f"the number {e.value}"
+    if isinstance(e, ast.Name):
+        return f"the value of {code(e.id)}"
+    if isinstance(e, (ast.List, ast.ListComp)):
+        return "a list"
+    if isinstance(e, (ast.Dict, ast.DictComp)):
+        return "a dictionary"
+    if isinstance(e, ast.Tuple):
+        return f"{len(e.elts)} values together"
+    if isinstance(e, ast.JoinedStr):
+        return "a piece of text built from values"
+    if isinstance(e, ast.Compare) or isinstance(e, ast.BoolOp) or (isinstance(e, ast.UnaryOp) and isinstance(e.op, ast.Not)):
+        return "yes or no (the result of a check)"
+    if isinstance(e, ast.BinOp):
+        return "the result of a calculation"
+    if isinstance(e, ast.Call):
+        return f"the result of {code(dotted(e.func))}"
+    return "a value"
+
+
+def lib_phrase(lib):
+    what = LIBRARIES.get(lib)
+    return f"{code(lib)} ({what})" if what else code(lib)
+
+
+def steps_for(nodes, tools, lists, limit=MAX_STEPS):
+    sent = Sentences(False, tools, lists)
+    lines = []
+    for n in nodes:
+        lines.extend(sent.stmt(n, 0))
+        if len(lines) > limit:
+            break
+    more = len(lines) > limit
+    return lines[:limit], more
+
+
+def comment_above(source_lines, lineno):
+    """The block of # comments directly above a line, joined."""
+    out = []
+    i = lineno - 2
+    while i >= 0 and source_lines[i].strip().startswith("#"):
+        out.insert(0, source_lines[i].strip().lstrip("#").strip())
+        i -= 1
+    return " ".join(x for x in out if x and not set(x) <= set("-=*#~ "))
+
+
+# --------------------------------------------------------------------------
+# Sections
+# --------------------------------------------------------------------------
+
+def start_line(n):
+    return min([n.lineno] + [d.lineno for d in getattr(n, "decorator_list", [])])
+
+
+def is_setting(n):
+    if isinstance(n, ast.AnnAssign):
+        return isinstance(n.target, ast.Name) and n.value is not None and is_plain(n.value)
+    if isinstance(n, ast.Assign):
+        return all(isinstance(t, ast.Name) for t in n.targets) and is_plain(n.value)
+    return False
+
+
+def is_plain(v):
+    """A value that is just data, not work: numbers, text, lists of those, or env lookups."""
+    if isinstance(v, ast.Constant):
+        return True
+    if isinstance(v, (ast.List, ast.Tuple, ast.Set)):
+        return all(is_plain(x) for x in v.elts)
+    if isinstance(v, ast.Dict):
+        return all(k is None or is_plain(k) for k in v.keys) and all(is_plain(x) for x in v.values)
+    if isinstance(v, ast.UnaryOp):
+        return is_plain(v.operand)
+    if isinstance(v, ast.BinOp):
+        return is_plain(v.left) and is_plain(v.right)
+    if isinstance(v, ast.Call):
+        name = dotted(v.func)
+        return name in ("os.getenv", "os.environ.get", "Path", "pathlib.Path", "set", "list", "dict") and all(is_plain(a) for a in v.args)
+    if isinstance(v, ast.Subscript) and dotted(v.value) == "os.environ":
+        return True
+    if isinstance(v, ast.Name):
+        return True
+    return False
+
+
+def is_main_guard(n):
+    return isinstance(n, ast.If) and dotted(n.test).replace("'", '"') in ('__name__ == "__main__"', '"__main__" == __name__')
+
+
+def route_of(fn):
+    for d in fn.decorator_list:
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("route", "get", "post", "put", "delete", "patch", "websocket"):
+            path = d.args[0].value if d.args and isinstance(d.args[0], ast.Constant) else "?"
+            methods = []
+            if d.func.attr != "route":
+                methods = [d.func.attr.upper()]
+            for k in d.keywords:
+                if k.arg == "methods" and isinstance(k.value, (ast.List, ast.Tuple)):
+                    methods = [x.value for x in k.value.elts if isinstance(x, ast.Constant)]
+            return path, methods or ["GET"]
+    return None
+
+
+def group_sections(tree):
+    """Split a module's top-level statements into readable sections."""
+    groups = []
+    for n in tree.body:
+        if is_docstring(n) and n is tree.body[0]:
+            kind = "about"
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            kind = "imports"
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            kind = "route" if route_of(n) else "tool"
+        elif isinstance(n, ast.ClassDef):
+            kind = "class"
+        elif is_main_guard(n):
+            kind = "start"
+        elif is_setting(n):
+            kind = "settings"
+        else:
+            kind = "steps"
+        single = kind in ("tool", "route", "class", "start", "about")
+        if groups and groups[-1]["kind"] == kind and not single:
+            groups[-1]["nodes"].append(n)
+        else:
+            groups.append({"kind": kind, "nodes": [n]})
+    return groups
+
+
+def section_span(nodes, source_lines):
+    start = start_line(nodes[0])
+    # include the comment block directly above
+    i = start - 2
+    while i >= 0 and source_lines[i].strip().startswith("#"):
+        i -= 1
+    start = i + 2
+    end = max(getattr(n, "end_lineno", n.lineno) for n in nodes)
+    return start, end
+
+
+def summarise_nodes(kind, nodes, alias, tools, lists, source_lines):
+    f = Facts(nodes, alias, tools, source_lines)
+    title, headline, facts = "", "", []
+    steps, more = [], False
+    first = nodes[0]
+    note = comment_above(source_lines, start_line(first))
+
+    if kind == "about":
+        title = "About this file"
+        headline = first.value.value.strip().splitlines()[0] if first.value.value.strip() else "A description of the file."
+        rest = " ".join(first.value.value.strip().splitlines()[1:]).strip()
+        if rest:
+            facts.append(rest[:400])
+        return dict(title=title, headline=headline, facts=facts, warnings=[], steps=[], more=False)
+
+    if kind == "imports":
+        mods = []
+        for n in nodes:
+            if isinstance(n, ast.Import):
+                mods += [a.name.split(".")[0] for a in n.names]
+            elif n.module:
+                mods.append(n.module.split(".")[0])
+        seen = []
+        for m in mods:
+            if m not in seen:
+                seen.append(m)
+        title = "Toolkits used"
+        headline = f"Brings in {len(seen)} toolkit{'s' if len(seen) != 1 else ''} that the rest of the file uses."
+        facts = [lib_phrase(m) for m in seen]
+        return dict(title=title, headline=headline, facts=facts, warnings=[], steps=[], more=False)
+
+    if kind == "settings":
+        names = []
+        for n in nodes:
+            t = n.target if isinstance(n, ast.AnnAssign) else n.targets[0]
+            names.append(t.id if isinstance(t, ast.Name) else dotted(t))
+        title = "Settings"
+        headline = f"Sets {len(names)} starting value{'s' if len(names) != 1 else ''}: {plain_list([code(x) for x in names])}."
+        for n in nodes[:8]:
+            t = n.target if isinstance(n, ast.AnnAssign) else n.targets[0]
+            facts.append(f"{code(dotted(t))} starts as {describe_value(n.value, alias)}")
+        steps = []
+    elif kind in ("tool", "route"):
+        fn = first
+        params = [a.arg for a in fn.args.args if a.arg not in ("self", "cls")]
+        doc = ast.get_docstring(fn)
+        route = route_of(fn)
+        is_async = isinstance(fn, ast.AsyncFunctionDef)
+        if route:
+            path, methods = route
+            title = f"Web route {path}"
+            headline = f"Handles {'/'.join(methods)} requests to {code(path)} on the web server, using the function {code(fn.name)}."
+        else:
+            title = f"Tool: {fn.name}"
+            takes = f"takes {plain_list([code(p) for p in params])}" if params else "takes no inputs"
+            headline = f"{code(fn.name)} is a reusable tool that {takes}."
+        if doc:
+            facts.append("The author describes it as: " + doc.strip().splitlines()[0])
+        elif note:
+            facts.append("The comment above it says: " + note)
+        for g in gists([b for b in fn.body if not is_docstring(b)]):
+            facts.append(g)
+        rets = [r for r in f.returns]
+        if rets:
+            kinds = []
+            for r in rets:
+                d = describe_value(r, alias)
+                if d not in kinds:
+                    kinds.append(d)
+            facts.append("It gives back " + (kinds[0] if len(kinds) == 1 else "one of: " + plain_list(kinds, 4)) + ".")
+        elif not route:
+            facts.append("It doesn't give anything back; it does its work through what it changes or shows.")
+        if is_async:
+            facts.append("It is `async`: it can wait (for the internet, for example) without freezing everything else.")
+        steps = []
+        body = [b for b in fn.body if not is_docstring(b)]
+        steps, more = steps_for(body, tools, lists)
+    elif kind == "class":
+        cls = first
+        methods = [b.name for b in cls.body if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        attrs = []
+        for b in cls.body:
+            if isinstance(b, ast.FunctionDef) and b.name == "__init__":
+                for s in ast.walk(b):
+                    if isinstance(s, ast.Assign):
+                        for t in s.targets:
+                            if isinstance(t, ast.Attribute) and dotted(t.value) == "self" and t.attr not in attrs:
+                                attrs.append(t.attr)
+            if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name):
+                attrs.append(b.target.id)
+        bases = [dotted(b) for b in cls.bases]
+        title = f"Class: {cls.name}"
+        headline = f"{code(cls.name)} is a class: a blueprint for making objects that each keep their own values."
+        if bases:
+            facts.append(f"It builds on {plain_list([code(b) for b in bases])}.")
+        doc = ast.get_docstring(cls)
+        if doc:
+            facts.append("The author describes it as: " + doc.strip().splitlines()[0])
+        if attrs:
+            facts.append(f"Each one keeps: {plain_list([code(a) for a in attrs], 8)}.")
+        public = [m for m in methods if not m.startswith("__")]
+        if public:
+            facts.append(f"It can: {plain_list([code(m) for m in public], 8)}.")
+        steps, more = [], False
+    else:
+        if kind == "start":
+            title = "Starting point"
+            headline = "Runs only when this file is started directly (not when another file imports it)."
+            body = first.body
+        else:
+            title = "Main steps"
+            headline = f"{len(nodes)} step{'s that run' if len(nodes) != 1 else ' that runs'} from top to bottom when the file starts."
+            body = nodes
+        if note:
+            facts.append("The comment above says: " + note)
+        steps, more = steps_for(body, tools, lists)
+
+    # shared facts
+    if f.effects:
+        facts.append("Along the way it " + plain_list(f.effects) + ".")
+    if f.libs:
+        facts.append("Uses " + plain_list([lib_phrase(l) for l in f.libs]) + ".")
+    if f.calls_tools:
+        facts.append("Runs other tools in this file: " + plain_list([code(t) for t in f.calls_tools]) + ".")
+    if f.changes_globals:
+        facts.append("Changes shared values that live outside it: " + plain_list([code(g) for g in f.changes_globals]) + ".")
+    if f.loops or f.decisions:
+        bits = []
+        if f.loops:
+            bits.append(f"{f.loops} loop{'s' if f.loops != 1 else ''}")
+        if f.decisions:
+            bits.append(f"{f.decisions} decision{'s' if f.decisions != 1 else ''} (if)")
+        facts.append("Contains " + " and ".join(bits) + ".")
+    if f.handles:
+        facts.append("Handles these errors instead of stopping: " + plain_list([code(h) if h != "any error" else h for h in f.handles]) + ".")
+    if f.raises:
+        facts.append("Can stop with these errors: " + plain_list([code(r) for r in f.raises]) + ".")
+    length = max(getattr(n, "end_lineno", n.lineno) for n in nodes) - start_line(first) + 1
+    warnings = list(f.warnings)
+    if kind in ("tool", "route") and length > 60:
+        warnings.append(f"This tool is {length} lines long. Long tools are hard to follow; it may be doing several jobs that could be split up.")
+    for i in range(start_line(first) - 1, min(len(source_lines), start_line(first) - 1 + length)):
+        m = re.search(r"#\s*(TODO|FIXME|HACK|XXX)\b:?\s*(.*)", source_lines[i])
+        if m:
+            warnings.append(f"Line {i + 1} has a {m.group(1)} note: {m.group(2).strip() or '(no details)'}")
+    return dict(title=title, headline=headline, facts=facts, warnings=warnings[:6], steps=steps, more=more)
+
+
+def file_context(tree):
+    alias = aliases(tree)
+    tools = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    lists = [t.id for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.value, ast.List)
+             for t in n.targets if isinstance(t, ast.Name)]
+    return alias, tools, lists
+
+
+def overview(name, tree, groups, alias):
+    counts = {}
+    for g in groups:
+        counts[g["kind"]] = counts.get(g["kind"], 0) + (len(g["nodes"]) if g["kind"] in ("tool", "route", "class") else 1)
+    parts = []
+    if counts.get("route"):
+        parts.append(f"{counts['route']} web route{'s' if counts['route'] != 1 else ''}")
+    if counts.get("tool"):
+        parts.append(f"{counts['tool']} tool{'s' if counts['tool'] != 1 else ''} (functions)")
+    if counts.get("class"):
+        parts.append(f"{counts['class']} class{'es' if counts['class'] != 1 else ''}")
+    libs = sorted(set(alias.values()))
+    doc = ast.get_docstring(tree)
+    kinds = {v for v in alias.values()}
+    guess = None
+    if kinds & {"flask", "fastapi", "django"}:
+        guess = "a web server or web app"
+    elif kinds & {"discord", "telegram"}:
+        guess = "a chat bot"
+    elif kinds & {"pygame"}:
+        guess = "a game"
+    elif kinds & {"tkinter"}:
+        guess = "a desktop app with windows"
+    elif kinds & {"streamlit"}:
+        guess = "a data web app"
+    elif kinds & {"pandas", "numpy", "matplotlib"}:
+        guess = "a data-processing script"
+    elif kinds & {"argparse", "click"}:
+        guess = "a command-line tool"
+    text = f"{name} " + (f"looks like {guess}. It " if guess else "")
+    text += "contains " + (plain_list(parts) if parts else "top-level steps only") + "."
+    if libs:
+        text += " It uses " + plain_list([lib_phrase(l) for l in libs], 8) + "."
+    if doc:
+        text = doc.strip().splitlines()[0] + " " + text
+    return text
+
+
+def analyze_source(name, source):
+    lines = source.splitlines()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        return {"name": name, "ok": False, "error": f"Line {e.lineno}: {e.msg}", "sections": [], "overview": "",
+                "lines": len(lines)}
+    mark_elifs(tree, lines)
+    alias, tools, lists = file_context(tree)
+    groups = group_sections(tree)
+    sections = []
+    for i, g in enumerate(groups):
+        start, end = section_span(g["nodes"], lines)
+        s = summarise_nodes(g["kind"], g["nodes"], alias, tools, lists, lines)
+        s.update(id=i, kind=g["kind"], start=start, end=end)
+        sections.append(s)
+    return {"name": name, "ok": True, "overview": overview(name, tree, groups, alias), "sections": sections,
+            "lines": len(lines)}
+
+
+def analyze(files):
+    """files: list of {"name": ..., "source": ...}"""
+    return [analyze_source(f["name"], f["source"]) for f in files]
+
+
+def nodes_in_range(body, start, end):
+    """Statements fully inside [start, end]; descends into blocks that are only partly selected."""
+    out = []
+    for n in body:
+        s, e = start_line(n), getattr(n, "end_lineno", n.lineno)
+        if s >= start and e <= end:
+            out.append(n)
+        elif s <= end and e >= start:
+            for field in ("body", "orelse", "finalbody", "handlers"):
+                sub = getattr(n, field, None)
+                if isinstance(sub, list):
+                    out.extend(nodes_in_range([x for x in sub if isinstance(x, ast.AST) and hasattr(x, "lineno")], start, end))
+    return out
+
+
+def summarise(source, start, end):
+    lines = source.splitlines()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        return {"ok": False, "error": f"The file can't be read as Python (line {e.lineno}: {e.msg})."}
+    mark_elifs(tree, lines)
+    alias, tools, lists = file_context(tree)
+    nodes = nodes_in_range(tree.body, start, end)
+    if not nodes:
+        return {"ok": False, "error": "No complete statement is inside the highlighted lines. Highlight whole lines, or a whole block."}
+    if len(nodes) == 1:
+        n = nodes[0]
+        kind = ("route" if route_of(n) else "tool") if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else \
+            "class" if isinstance(n, ast.ClassDef) else "imports" if isinstance(n, (ast.Import, ast.ImportFrom)) else \
+            "settings" if is_setting(n) else "steps"
+        s = summarise_nodes(kind, nodes, alias, tools, lists, lines)
+    else:
+        s = summarise_nodes("steps", nodes, alias, tools, lists, lines)
+    first, last = start_line(nodes[0]), max(getattr(n, "end_lineno", n.lineno) for n in nodes)
+    if s["title"] in ("Main steps",):
+        s["title"] = f"Lines {first}–{last}"
+        g = gists(nodes)
+        s["headline"] = " ".join(g) if g else f"{len(nodes)} statement{'s' if len(nodes) != 1 else ''}, run in order from line {first}."
+    s.update(ok=True, start=first, end=last)
+    return s
+
+
+def to_sentences(source):
+    """The whole file as sentences. Exact where possible; everything else is kept as python: lines."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    mark_elifs(tree, lines)
+    alias, tools, lists = file_context(tree)
+    sent = Sentences(True, tools, [])
+    out = []
+    for g in group_sections(tree):
+        label = {"about": "About", "imports": "Toolkits", "settings": "Settings", "tool": "Tool", "route": "Web route",
+                 "class": "Class", "start": "Starting point", "steps": "Main steps"}[g["kind"]]
+        if out:
+            out.append("")
+        out.append(f"note: ── {label} ──")
+        out.extend(sent.block(g["nodes"], 0) if g["kind"] != "about" else
+                   ["note: " + l for l in g["nodes"][0].value.value.strip().splitlines()[:3]])
+    return "\n".join(out) + "\n"
+
+
+def _normal(tree):
+    """A program's shape, ignoring comments and docstrings."""
+    for n in ast.walk(tree):
+        body = getattr(n, "body", None)
+        if isinstance(body, list) and body and is_docstring(body[0]) and not isinstance(n, ast.Expression):
+            body.pop(0)
+    return tree
+
+
+def compare(original, generated):
+    """Do two sources make the same program? Lists the original lines where they differ."""
+    try:
+        a = _normal(ast.parse(original))
+    except SyntaxError as e:
+        return {"same": False, "error": f"The original can't be read (line {e.lineno})."}
+    try:
+        b = _normal(ast.parse(generated))
+    except SyntaxError as e:
+        return {"same": False, "error": f"The generated Python can't be read (line {e.lineno}: {e.msg})."}
+    if ast.dump(a) == ast.dump(b):
+        return {"same": True, "differs": []}
+    differs = []
+    bd = [ast.dump(x) for x in b.body]
+    for x in a.body:
+        if ast.dump(x) not in bd:
+            differs.append([start_line(x), getattr(x, "end_lineno", x.lineno)])
+    return {"same": False, "differs": differs[:20]}
+
+
+# JSON wrappers for the browser
+def compare_json(original, generated):
+    return json.dumps(compare(original, generated))
+
+
+def analyze_json(files_json):
+    return json.dumps(analyze(json.loads(files_json)))
+
+
+def summarise_json(source, start, end):
+    return json.dumps(summarise(source, int(start), int(end)))
+
+
+def to_sentences_json(source):
+    try:
+        return json.dumps({"ok": True, "text": to_sentences(source)})
+    except SyntaxError as e:
+        return json.dumps({"ok": False, "error": f"Line {e.lineno}: {e.msg}"})
+
+
+if __name__ == "__main__":
+    import sys
+    src = open(sys.argv[1]).read()
+    for sec in analyze_source(sys.argv[1], src)["sections"]:
+        print(f"\n[{sec['kind']}] {sec['title']}  (lines {sec['start']}-{sec['end']})")
+        print("  " + sec["headline"])
+        for fact in sec["facts"]:
+            print("   -", fact)
+        for w in sec["warnings"]:
+            print("   !", w)
+        for st in sec["steps"]:
+            print("     |", st)
+    print("\n--- as sentences ---")
+    print(to_sentences(src))

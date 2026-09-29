@@ -1,0 +1,175 @@
+<title>IntuiCode</title>
+<meta name="description" content="Write Python as sentences and blueprints, or import existing code and read it in plain English.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="app.css">
+
+<div class="app" id="app">
+  <header class="bar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="logo"><path d="M3.5 5.5h11a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H9l-4 3.5v-3.5H3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 17.5l3.5 2.2L14 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="brand-name">IntuiCode</span>
+      <span class="lang-chip" title="Language for this project">Python</span>
+      <div class="modes" role="tablist" aria-label="Mode">
+        <button type="button" role="tab" id="modeWrite" aria-selected="true" title="Write a program in sentences">Write</button>
+        <button type="button" role="tab" id="modeRead" aria-selected="false" title="Read existing code in plain English">Read</button>
+      </div>
+    </div>
+    <div class="bar-actions">
+      <button type="button" id="btnBlueprints" class="btn ghost">Blueprints</button>
+      <button type="button" id="btnImport" class="btn ghost">Import code</button>
+      <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
+      <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="side" aria-label="Project">
+      <div id="writeSide">
+        <div class="side-h">Project</div>
+        <div class="tree-root" id="treeRoot"></div>
+        <nav id="tree" class="tree"></nav>
+        <div class="side-h">Problems <span id="probCount" class="count"></span></div>
+        <ul id="problems" class="problems"></ul>
+      </div>
+      <div id="readSide" hidden>
+        <div class="side-h">Imported files</div>
+        <nav id="rdFiles" class="tree"></nav>
+        <div class="side-pad"><button type="button" class="btn small" id="btnImport2">Import code</button></div>
+        <div class="side-h">Sections</div>
+        <nav id="rdOutline" class="outline"></nav>
+      </div>
+    </aside>
+
+    <main class="work" id="work">
+      <section class="panes" id="writeView">
+        <div class="pane pane-say">
+          <div class="pane-h">
+            <div class="pane-title">
+              <h2 id="secTitle">Main program</h2>
+              <p id="secPurpose">What happens, step by step, when you press Run</p>
+            </div>
+            <span class="file-tag">sentences</span>
+          </div>
+          <div class="editor" id="editor">
+            <div class="gutter" id="gutter"><div id="gutterInner"></div></div>
+            <div class="codewrap" id="codewrap">
+              <div class="band" id="bandCur"></div>
+              <div class="band band-link" id="bandLink" hidden></div>
+              <pre class="hl" id="hl" aria-hidden="true"></pre>
+              <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Sentences"></textarea>
+              <div class="ac" id="ac" role="listbox" hidden></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane pane-py">
+          <div class="pane-h">
+            <div class="pane-title">
+              <h2>Python</h2>
+              <p>Generated from your sentences. Read it here, change it there.</p>
+            </div>
+            <div class="pane-tools">
+              <span class="file-tag" id="pyFile">main.py</span>
+              <button type="button" class="btn small" id="btnCopy">Copy</button>
+            </div>
+          </div>
+          <div class="pycode" id="pycode" tabindex="0" aria-label="Generated Python"></div>
+        </div>
+      </section>
+
+      <section class="explain" id="explain" aria-live="polite"></section>
+
+      <section class="read" id="readView" hidden>
+        <div class="read-h">
+          <div class="read-title">
+            <h2 id="rdName">No code imported yet</h2>
+            <p id="rdOverview"></p>
+          </div>
+          <div class="read-tools">
+            <button type="button" id="btnSummarise" class="btn primary small" disabled>Summarise selection</button>
+            <button type="button" id="btnToSentences" class="btn small" disabled>Open as sentences</button>
+          </div>
+        </div>
+        <div class="read-body">
+          <div class="rcode" id="rdCode" tabindex="0" aria-label="Imported code"></div>
+          <div class="rsum" id="rdSum" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="term" aria-label="Terminal">
+        <div class="term-h">
+          <span class="term-title">Terminal</span>
+          <span class="py-status" id="pyStatus">Python not loaded</span>
+          <button type="button" class="btn small term-btn" id="btnClear">Clear</button>
+        </div>
+        <div class="term-body" id="termBody">
+          <div id="termLog" class="term-log"></div>
+          <form id="termForm" class="term-form" autocomplete="off">
+            <label for="termIn" id="termPrompt" class="term-prompt">❯</label>
+            <input id="termIn" class="term-in" spellcheck="false" autocapitalize="off" placeholder="type help, run, or any sentence or Python to try it">
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <aside class="index" id="index" hidden aria-label="Index">
+      <div class="index-h">
+        <div>
+          <div class="eyebrow">Index</div>
+          <h2 id="indexTitle">Python</h2>
+        </div>
+        <button type="button" class="btn small" id="btnIndexClose" aria-label="Close index">Close</button>
+      </div>
+      <div class="index-search">
+        <input id="indexSearch" type="search" placeholder="Search sentences, words, how-tos">
+      </div>
+      <div class="index-body" id="indexBody"></div>
+    </aside>
+  </div>
+
+  <div class="modal" id="bpModal" hidden>
+    <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="bpTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="bpTitle">Blueprints</h2>
+          <p>Fill in the blanks. A blueprint writes sentences into your folders, and the sentences become Python. Everything it writes stays yours to change, and you can edit any blueprint or write your own.</p>
+        </div>
+        <button type="button" class="btn small" id="bpClose">Close</button>
+      </div>
+      <div class="bp-layout">
+        <nav class="bp-list" id="bpList" aria-label="Blueprints"></nav>
+        <div class="bp-detail" id="bpDetail"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="impModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="impTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="impTitle">Import code</h2>
+          <p>Paste Python or choose .py files. IntuiCode splits the code into sections and explains each one in plain English. It all happens in this page; the code isn't sent anywhere.</p>
+        </div>
+        <button type="button" class="btn small" id="impClose">Close</button>
+      </div>
+      <div class="imp-row">
+        <label for="impName">File name</label>
+        <input id="impName" value="pasted.py" spellcheck="false">
+      </div>
+      <textarea id="impText" class="imp-text" spellcheck="false" placeholder="Paste Python code here"></textarea>
+      <div class="imp-actions">
+        <label class="btn small file-btn">Choose .py files<input type="file" id="impFiles" accept=".py,.pyw,text/x-python,text/plain" multiple></label>
+        <button type="button" class="btn small" id="impExample">Try an example</button>
+        <span class="imp-note" id="impNote"></span>
+        <button type="button" class="btn primary" id="impGo">Read it</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="lang/python.js"></script>
+<script src="lang/blueprints.js"></script>
+<script src="runner.js"></script>
+<script src="app.js"></script>
