@@ -15,6 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Install tree-sitter (for the web reader tests)
+        run: npm ci
       - name: Reader tests (Python)
         run: python3 -m unittest discover -s tests -v
       - name: Translator, blueprint and round-trip tests (Node)

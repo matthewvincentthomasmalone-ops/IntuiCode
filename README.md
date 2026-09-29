@@ -1,6 +1,7 @@
 # IntuiCode
 
-Write Python by filling in ideas and sentences, and read existing Python in plain English.
+Write Python and websites by filling in ideas and sentences, and read existing Python,
+JavaScript, HTML and CSS in plain English.
 
 IntuiCode is a rules-based translator, not an AI. Every sentence becomes a specific
 line of Python, every summary points at real lines, and the same input always gives
@@ -20,13 +21,21 @@ directly connected to every part of the code.
    became and *why*, for example why "add" became `.append()` for a list but `+=` for a number.
 3. **Python** is generated live, and runs in the page with a real terminal.
 
+**Websites** have three folders: **Structure** (HTML: what is on the page), **Styling** (CSS:
+how it looks) and **Mechanics** (JavaScript: what it does). They share names, so
+"add a button called save" in Structure can be styled with "style save: background navy,
+rounded corners 8" and used with "when save is clicked". A live preview updates as you type;
+**Pick from the page** puts an element's name into your sentence, and messages and errors from
+the page appear in the terminal, linked back to the sentence that caused them.
+
 Blueprints are plain text. You can edit any of them, save your own, or turn your
 current project into a blueprint and put blanks where your projects usually differ.
 
 **Read: existing code → sections → plain English**
 
 Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
-code an AI wrote for you. For a project, IntuiCode shows:
+code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML and
+CSS are all read. For a project, IntuiCode shows:
 
 - what kind of app it looks like, and which file to start reading;
 - a reading order, and a map of which files use which;
@@ -35,7 +44,9 @@ code an AI wrote for you. For a project, IntuiCode shows:
 - a `.env` secrets file if one was included (its contents are never read);
 - everything worth checking across all files, each linked to the exact place.
 
-Summaries link across files ("uses `get_db` from db.py", "used in routes/tasks.py").
+Summaries link across files and languages: "uses `get_db` from db.py", "the page's
+script uses `#task-list` in index.html", "styled by `.card` in style.css", and
+"`fetch('/api/tasks')` is answered by `list_tasks` in routes/tasks.py".
 Inside each file, IntuiCode will:
 
 - split it into sections (toolkits, settings, tools, web routes, classes, main steps);
@@ -48,17 +59,27 @@ Inside each file, IntuiCode will:
 - open the file as sentences, where it can, and check that the sentences rebuild
   exactly the same program.
 
+## Tests
+
+```
+npm install
+npm test            # reader, translators, blueprints, web reader, exact round-trips
+npm run coverage    # how much real code reads as sentences
+```
+
 ## Run it
 
 ```
 python3 run.py
 ```
 
-Then open http://localhost:8000. Python runs inside the page (Pyodide). By default it is
-loaded from a CDN. To work offline, or to publish as a hosted page, download it once:
+Then open http://localhost:8000. Python runs inside the page (Pyodide) and the web reader
+uses tree-sitter. By default both are loaded from a CDN. To work offline, or to publish as
+a hosted page, download them once:
 
 ```
 python3 tools/fetch_pyodide.py
+npm install && npm run vendor
 ```
 
 ## How it is built
@@ -67,6 +88,8 @@ python3 tools/fetch_pyodide.py
 |---|---|
 | `lang/python.js` | Sentences → Python: sentence rules, word swaps, symbol table, Index content |
 | `lang/python_reader.py` | Python → sections, summaries and sentences, using Python's own `ast` parser |
+| `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects), live preview document |
+| `lang/web_read.js` | JavaScript / React / TypeScript, HTML and CSS → sections, summaries, cross-language links |
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |

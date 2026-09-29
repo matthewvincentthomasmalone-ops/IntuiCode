@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TaskBoard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top-bar">
+    <img src="/static/logo.png">
+    <h1>TaskBoard</h1>
+  </header>
+  <main id="board">
+    <form id="new-task-form">
+      <input id="task-title" type="text" placeholder="What needs doing?">
+      <button type="submit" class="primary">Add task</button>
+    </form>
+    <ul id="task-list"></ul>
+    <p id="progress">No tasks yet.</p>
+  </main>
+  <footer>
+    <a href="https://example.com/help" target="_blank">Help</a>
+    <button onclick="clearDone()">Clear finished</button>
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

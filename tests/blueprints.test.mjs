@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadEngine } from './helpers/engine.mjs';
 
-const { L, BP } = loadEngine();
+const { L, BP, WEB } = loadEngine();
 
 for (const src of BP.BUILT_IN) {
   const bp = BP.parse(src);
@@ -19,7 +19,7 @@ for (const src of BP.BUILT_IN) {
       const sections = bp.kind === 'snippet'
         ? [{ id: 'main', file: 'main', text: filled.here }]
         : Object.keys(filled).map(k => ({ id: k, file: k, text: filled[k] }));
-      const res = L.compileProject({ sections });
+      const res = bp.layout === 'website' ? WEB.compileWebsite({ sections }) : L.compileProject({ sections });
       const problems = sections.flatMap(s => res.results[s.id].info.flatMap(i => i.errs.concat(i.warns)));
       assert.deepEqual(JSON.parse(JSON.stringify(problems)), []);
     });

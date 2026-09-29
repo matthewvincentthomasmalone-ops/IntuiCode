@@ -246,6 +246,19 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .term { display: flex; flex-direction: column; min-height: 0; background: var(--term-bg); color: var(--term-ink); }
 .term-h { display: flex; align-items: center; gap: 12px; padding: 6px 12px 6px 16px; border-bottom: 1px solid rgba(255, 255, 255, .07); font-size: 12px; }
 .term-title { font-weight: 700; letter-spacing: .09em; text-transform: uppercase; font-size: 11px; color: var(--term-dim); }
+.term-tabs { display: flex; gap: 2px; }
+.term-tab { border: 0; background: none; color: var(--term-dim); font: 700 11px var(--f-ui); letter-spacing: .09em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.term-tab[aria-selected="true"] { color: var(--term-ink); background: rgba(255, 255, 255, .08); }
+.term-tab:focus-visible { outline: 2px solid var(--term-accent); }
+.preview-wrap { flex: 1; min-height: 0; background: #fff; }
+.preview-wrap iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+#btnPick[aria-pressed="true"] { color: var(--term-accent); border-color: var(--term-accent); }
+.work.web { grid-template-rows: minmax(0, 1fr) auto minmax(220px, 44%); }
+.role.r-page { background: var(--slot-bg); color: var(--slot-ink); }
+.role.r-styles { background: var(--accent-soft); color: var(--op); }
+.role.r-components, .role.r-script, .role.r-server { background: var(--accent-soft); color: var(--accent); }
+.pj-node.r-page rect { stroke: var(--slot-ink); stroke-width: 2; }
+.pj-node.r-styles rect { fill: var(--accent-soft); }
 .py-status { color: var(--term-dim); font-size: 12px; margin-right: auto; }
 .py-status.ready { color: var(--term-good); }
 .py-status.bad { color: var(--term-bad); }
@@ -329,6 +342,9 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .chip.k-route { background: var(--slot-bg); color: var(--slot-ink); }
 .chip.k-class { background: var(--accent-soft); color: var(--op); }
 .chip.k-start { background: var(--slot-bg); color: var(--slot-ink); }
+.chip.k-component, .chip.k-handler { background: var(--accent-soft); color: var(--accent); }
+.chip.k-part, .chip.k-head { background: var(--slot-bg); color: var(--slot-ink); }
+.chip.k-style, .chip.k-media { background: var(--accent-soft); color: var(--op); }
 .warn-dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--warn); color: var(--panel); font: 700 11px/1 var(--f-ui); }
 
 /* Read view */

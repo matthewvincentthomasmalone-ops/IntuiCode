@@ -1020,6 +1020,37 @@ def is_main_guard(n):
     return isinstance(n, ast.If) and dotted(n.test).replace("'", '"') in ('__name__ == "__main__"', '"__main__" == __name__')
 
 
+def route_obj(fn):
+    """The object a route decorator hangs off (app, tasks_bp, router...)."""
+    for d in fn.decorator_list:
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("route", "get", "post", "put", "delete", "patch", "websocket"):
+            return dotted(d.func.value)
+    return None
+
+
+def route_prefixes(trees):
+    """Blueprint / router prefixes: register_blueprint(bp, url_prefix=...), include_router(r, prefix=...), Blueprint(..., url_prefix=...)."""
+    out = {}
+    for tree in trees:
+        if tree is None:
+            continue
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Call):
+                name = dotted(n.func)
+                kw = {k.arg: k.value for k in n.keywords}
+                pre = kw.get("url_prefix") or kw.get("prefix")
+                if name.endswith(("register_blueprint", "include_router")) and n.args and isinstance(pre, ast.Constant):
+                    out[dotted(n.args[0]).split(".")[-1]] = pre.value
+            if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call) and dotted(n.value.func).split(".")[-1] in ("Blueprint", "APIRouter"):
+                kw = {k.arg: k.value for k in n.value.keywords}
+                pre = kw.get("url_prefix") or kw.get("prefix")
+                if isinstance(pre, ast.Constant):
+                    for t in n.targets:
+                        if isinstance(t, ast.Name):
+                            out.setdefault(t.id, pre.value)
+    return out
+
+
 def route_of(fn):
     for d in fn.decorator_list:
         if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("route", "get", "post", "put", "delete", "patch", "websocket"):
@@ -1218,8 +1249,12 @@ def summarise_nodes(kind, nodes, alias, tools, lists, source_lines):
         m = re.search(r"#\s*(TODO|FIXME|HACK|XXX)\b:?\s*(.*)", source_lines[i])
         if m:
             warnings.append(f"Line {i + 1} has a {m.group(1)} note: {m.group(2).strip() or '(no details)'}")
-    return dict(title=title, headline=headline, facts=facts, warnings=warnings[:6], steps=steps, more=more,
-                name=getattr(first, "name", None) if kind in ("tool", "route", "class") else None)
+    out = dict(title=title, headline=headline, facts=facts, warnings=warnings[:6], steps=steps, more=more,
+               name=getattr(first, "name", None) if kind in ("tool", "route", "class") else None)
+    if kind == "route":
+        path, methods = route_of(first)
+        out.update(route_path=path, methods=methods, route_obj=route_obj(first))
+    return out
 
 
 def file_context(tree):
@@ -1434,6 +1469,10 @@ def keep_path(path):
         return "secret"
     if name.endswith(".py"):
         return "py"
+    if re.search(r"\.(jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$", name, re.I):
+        return "web"
+    if name == "package.json":
+        return "extra"
     if EXTRA_FILES.search(path):
         return "extra"
     return None
@@ -1637,6 +1676,15 @@ def analyze_project(files):
                         "lines": a["lines"]})
     _XREF = {"names": {}, "modules": {}, "roots": set(), "path": ""}
 
+    # full web addresses for routes, including Blueprint / router prefixes
+    prefixes = route_prefixes(trees.values())
+    for r in results:
+        for sec in r["analysis"].get("sections", []):
+            if sec.get("route_path") is not None:
+                pre = prefixes.get((sec.get("route_obj") or "").split(".")[-1], "")
+                sec["full_path"] = ("/" + (pre.strip("/") + "/" + sec["route_path"].lstrip("/")).strip("/")).replace("//", "/") if pre else sec["route_path"]
+                if pre:
+                    sec["facts"].insert(0, f"Its full web address is {code(sec['full_path'])} (the {code(pre)} part comes from where it is registered).")
     by_path = {r["path"]: r for r in results}
     for r in results:
         for t in r["imports"]:

@@ -11,10 +11,10 @@ export function loadEngine() {
   const ctx = { console };
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const f of ['lang/python.js', 'lang/blueprints.js']) {
+  for (const f of ['lang/python.js', 'lang/web_write.js', 'lang/blueprints.js']) {
     vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   }
-  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints };
+  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints, WEB: ctx.IntuiWeb };
 }
 
 /* Call the Python reader in bulk (one process per batch). */
@@ -57,4 +57,25 @@ export function roundTrip(L, files) {
       differs: checks[i].differs,
     };
   });
+}
+
+/* The web reader (JS / HTML / CSS) with tree-sitter, for tests. */
+export async function loadWebReader() {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const TreeSitter = require('web-tree-sitter');
+  vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/web_read.js'), 'utf8'), { filename: 'lang/web_read.js' });
+  const W = globalThis.IntuiWebReader;
+  const grammars = path.join(ROOT, 'node_modules/tree-sitter-wasms/out');
+  const runtime = path.join(ROOT, 'node_modules/web-tree-sitter');
+  await W.init({ TreeSitter, locate: (f) => path.join(f === 'tree-sitter.wasm' ? runtime : grammars, f) });
+  return W;
+}
+
+/* The Python reader's project analysis, for mixed projects. */
+export function pyProject(files) {
+  const out = execFileSync('python3', ['-c', 'import sys,json; sys.path.insert(0, sys.argv[1]); import python_reader as r; print(json.dumps(r.analyze_project(json.load(sys.stdin))))', path.join(ROOT, 'lang')], {
+    input: JSON.stringify(files), maxBuffer: 64 * 1024 * 1024,
+  });
+  return JSON.parse(out.toString());
 }

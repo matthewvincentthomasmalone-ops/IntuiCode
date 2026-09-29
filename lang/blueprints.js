@@ -33,6 +33,95 @@
   'use strict';
 
   const BUILT_IN = [
+`title: Landing page
+kind: project
+layout: website
+about: A one-page website with a header, a menu and a button.
+story:
+A page for [name: "Sunny Bakery"] with the tagline [tagline: "Fresh bread every morning"].
+Its main colour is [colour: #d9822b].
+The big button says [button: "See the menu"] and [action: scrolls to the menu | shows a message].
+== structure
+page title is [name]
+add a header in group top
+    add a big heading [name]
+    add a paragraph [tagline]
+    add a button called cta saying [button]
+add a section called menu
+    add a heading "Menu"
+    add a list called items
+        add a list item "Sourdough loaf"
+        add a list item "Cinnamon bun"
+        add a list item "Baguette"
+add a footer
+    add a paragraph "Made with IntuiCode"
+== styling
+shared colour brand is [colour]
+style the page: font Inter, space around 0, background #fffaf3, text colour #2b2118
+style group top: background the colour brand, text colour white, space inside 48 24, centre the text
+style cta: background white, text colour the colour brand, no border, rounded corners 999, space inside 12 24, text size 18, bold, hand cursor
+when cta is hovered: background #ffe9d2
+style menu: at most 640 wide, centred, space inside 24
+on screens narrower than 600:
+    style group top: space inside 24 16
+== mechanics
+when cta is clicked
+[if action = scrolls to the menu]
+    scroll to menu
+[end]
+[if action = shows a message]
+    show a message "Thanks for visiting!"
+[end]
+`,
+`title: To-do list page
+kind: project
+layout: website
+about: Type tasks into a box and they appear in a list.
+story:
+A to-do page called [title: "My to-dos"] where you type a task and press Add.
+New tasks [keep: are remembered by the browser | disappear when the page reloads].
+== structure
+page title is [title]
+add a main area called board
+    add a big heading [title]
+    add a form called new-task
+        add a text box called task with hint "What needs doing?"
+        add a button called add saying "Add"
+    add a list called tasks
+    add a paragraph called count "Nothing to do yet"
+== styling
+style the page: font Inter, background #f4f6fb, text colour #1d2433, space around 0
+style board: at most 560 wide, centred, space inside 32 16
+style new-task: in a row, gap 8
+style task: width 100%, space inside 10, rounded corners 6, border 1 #c9d1e0
+create group primary: background #3867d6, text colour white, no border, rounded corners 6, space inside 10 18, hand cursor
+add belongs to group primary
+style tasks: space inside 0
+style count: text colour #6b7385
+== mechanics
+create list items
+[if keep = are remembered by the browser]
+when the page has loaded
+    load "items" from the browser and store in saved
+    if saved is not nothing
+        set items to saved
+        for each item in items
+            add item to the list tasks
+        set the text of count to "{length of items} to do"
+[end]
+when new-task is sent
+    get the text of task and store in title
+    if title is empty text
+        show a message "Type a task first"
+    otherwise
+        add title to items
+        add title to the list tasks
+        clear task
+        set the text of count to "{length of items} to do"
+[if keep = are remembered by the browser]
+        save items in the browser as "items"
+[end]
+`,
 `title: Number guessing game
 kind: project
 layout: structured
@@ -311,10 +400,10 @@ show "Picked:" and picked [thing]
       sections[k] = sections[k].join('\n');
     }
     meta.kind = /snippet/i.test(meta.kind) ? 'snippet' : 'project';
-    meta.layout = /struct/i.test(meta.layout) ? 'structured' : 'script';
+    meta.layout = /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
     if (!meta.title) errors.push('Add a "title:" line.');
     if (!Object.keys(sections).length) errors.push('Add at least one section, e.g. "== main" (or "== here" for a snippet).');
-    const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
+    const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
     for (const k of Object.keys(sections)) if (!allowed.includes(k)) errors.push(`"== ${k}" isn't a section for this kind of blueprint. Use: ${allowed.map(a => '== ' + a).join(', ')}.`);
 
     // Blanks, in order of first appearance (story first).

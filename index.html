@@ -69,8 +69,8 @@
         <div class="pane pane-py">
           <div class="pane-h">
             <div class="pane-title">
-              <h2>Python</h2>
-              <p>Generated from your sentences. Read it here, change it there.</p>
+              <h2 id="codeTitle">Python</h2>
+              <p id="codeSub">Generated from your sentences. Read it here, change it there.</p>
             </div>
             <div class="pane-tools">
               <span class="file-tag" id="pyFile">main.py</span>
@@ -103,9 +103,16 @@
 
       <section class="term" aria-label="Terminal">
         <div class="term-h">
-          <span class="term-title">Terminal</span>
+          <div class="term-tabs" role="tablist">
+            <button type="button" role="tab" id="tabTerm" class="term-tab" aria-selected="true">Terminal</button>
+            <button type="button" role="tab" id="tabPreview" class="term-tab" aria-selected="false" hidden>Preview</button>
+          </div>
           <span class="py-status" id="pyStatus">Python not loaded</span>
+          <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
           <button type="button" class="btn small term-btn" id="btnClear">Clear</button>
+        </div>
+        <div class="preview-wrap" id="previewWrap" hidden>
+          <iframe id="preview" title="Live preview of the page" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
         </div>
         <div class="term-body" id="termBody">
           <div id="termLog" class="term-log"></div>
@@ -179,6 +186,8 @@
 </div>
 
 <script src="lang/python.js"></script>
+<script src="lang/web_write.js"></script>
+<script src="lang/web_read.js"></script>
 <script src="lang/blueprints.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

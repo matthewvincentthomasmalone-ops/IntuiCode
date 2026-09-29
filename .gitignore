@@ -1,5 +1,7 @@
-pyodide/
-__pycache__/
-*.pyc
-.DS_Store
 .claude/
+.DS_Store
+node_modules/
+*.pyc
+__pycache__/
+pyodide/
+vendor/

@@ -243,7 +243,31 @@ def _pb_reset():
     return reader;
   }
 
+  /* The web reader (JavaScript, HTML, CSS) runs on tree-sitter. Bundled copy first, then the CDN. */
+  let web = null;
+  function ensureWebReader(onStatus) {
+    if (!web) {
+      web = (async () => {
+        let lastErr;
+        for (const base of [new URL('vendor/tree-sitter/', location.href).href, null]) {
+          try {
+            const rt = base || 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/';
+            const gr = base || 'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/';
+            if (base && !(await fetch(base + 'tree-sitter.wasm', { method: 'HEAD', cache: 'no-store' }).then(r => r.ok).catch(() => false))) continue;
+            onStatus && onStatus('Loading the web reader…');
+            if (typeof window.TreeSitter === 'undefined') await loadScript(rt + 'tree-sitter.js');
+            await window.IntuiWebReader.init({ TreeSitter: window.TreeSitter, locate: (f) => (f === 'tree-sitter.wasm' ? rt : gr) + f, only: ['js', 'ts', 'tsx', 'html', 'css'] });
+            return window.IntuiWebReader;
+          } catch (e) { lastErr = e; }
+        }
+        throw lastErr || new Error('The web reader could not start');
+      })().catch((e) => { web = null; throw e; });
+    }
+    return web;
+  }
+
   const Runner = {
+    webReader: ensureWebReader,
     reader: ensureReader,
     get ready() { return !!fns; },
     ensure(onStatus) {

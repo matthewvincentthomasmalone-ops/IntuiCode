@@ -20,9 +20,20 @@ directions, using rules rather than AI. This file records where it is going and 
 |---|------|--------|
 | 1 | Foundation: tests, CI, a corpus and a sentence-coverage metric, architecture decisions | done |
 | 2 | Grow Python sentences: dictionaries, files, errors, `with`, classes, method calls, library phrase packs, keep comments | done |
-| 3 | The web set: HTML, CSS and JavaScript in Read and Write modes, website template with live preview, front end ↔ back end links | next |
-| 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | |
+| 3 | The web set: HTML, CSS and JavaScript in Read and Write modes, website template with live preview, front end ↔ back end links | done (see below) |
+| 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | next |
 | 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | |
+
+### Step 3 notes
+
+- Read mode: JavaScript (with React and TypeScript), HTML and CSS are read with tree-sitter.
+  Links: pages → their CSS and JS; scripts → page elements; CSS → elements; `fetch` → the
+  Python (Flask/FastAPI, including Blueprint prefixes) or Express route that answers it.
+- Write mode: website projects (Structure / Styling / Mechanics), live preview, Pick,
+  console and error forwarding to the terminal.
+- Not yet: converting existing JavaScript, HTML or CSS **into** sentences (Read mode shows
+  sentence-style steps, but "Open as sentences" is Python-only). That needs web round-trip
+  checks like Python's before it can be trusted.
 
 ## The number we track
 
