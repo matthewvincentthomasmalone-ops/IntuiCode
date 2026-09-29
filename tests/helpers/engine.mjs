@@ -1,0 +1,60 @@
+// Loads the browser engine files (which attach to `window`) into Node for testing.
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import vm from 'node:vm';
+
+export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+export function loadEngine() {
+  const ctx = { console };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  for (const f of ['lang/python.js', 'lang/blueprints.js']) {
+    vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  }
+  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints };
+}
+
+/* Call the Python reader in bulk (one process per batch). */
+function reader(cmd, payload) {
+  const out = execFileSync('python3', [path.join(ROOT, 'lang/python_reader.py'), cmd], {
+    input: JSON.stringify(payload), maxBuffer: 64 * 1024 * 1024,
+  });
+  return JSON.parse(out.toString());
+}
+export const toSentences = (sources) => reader('sentences-json', sources);
+export const compareMany = (pairs) => reader('compare-json', pairs);
+
+export function pyFiles(dir) {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) { if (!['__pycache__', 'venv', '.venv'].includes(name)) out.push(...pyFiles(full)); }
+    else if (name.endsWith('.py')) out.push(full);
+  }
+  return out;
+}
+
+/* Python -> sentences -> Python. Returns per-file exactness and how much reads as sentences. */
+export function roundTrip(L, files) {
+  const sources = files.map(f => readFileSync(f, 'utf8'));
+  const sentences = toSentences(sources);
+  const generated = sentences.map(text => L.compileProject({ sections: [{ id: 'main', file: 'main', text }] }).results.main);
+  const checks = compareMany(sources.map((s, i) => [s, generated[i].text]));
+  return files.map((f, i) => {
+    const lines = sentences[i].split('\n').filter(l => l.trim() && !/^\s*note:/.test(l));
+    const counted = lines.filter(l => !/^\s*python:\s*(import |from \S+ import )/.test(l));
+    const raw = counted.filter(l => /^\s*python:/.test(l)).length;
+    return {
+      file: path.relative(ROOT, f),
+      same: checks[i].same,
+      errors: generated[i].info.flatMap((inf, n) => inf.errs.map(e => `line ${n + 1}: ${e}`)),
+      lines: counted.length,
+      words: counted.length - raw,
+      sentences: sentences[i],
+      differs: checks[i].differs,
+    };
+  });
+}

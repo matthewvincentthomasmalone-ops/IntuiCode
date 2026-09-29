@@ -9,7 +9,7 @@ Main entry points (all return JSON-ready dicts):
     summarise(source, start, end)   -> summary of the statements between two lines
     to_sentences(source)            -> the whole file as IntuiCode sentences (exact where possible)
 
-Run this file directly to try it on a .py file:  python3 python_reader.py some_file.py
+Run this file directly:  python3 python_reader.py summary FILE | sentences FILE | project FOLDER
 """
 import ast
 import json
@@ -1535,17 +1535,46 @@ def to_sentences_json(source):
         return json.dumps({"ok": False, "error": f"Line {e.lineno}: {e.msg}"})
 
 
+def _cli(argv):
+    """python3 python_reader.py summary FILE | sentences FILE | compare ORIGINAL GENERATED | project DIR"""
+    import os
+    cmd = argv[1] if len(argv) > 1 else "summary"
+    if cmd == "sentences":
+        print(to_sentences(open(argv[2]).read()), end="")
+    elif cmd == "sentences-json":      # stdin: JSON list of sources -> JSON list of sentence texts
+        print(json.dumps([to_sentences(src) for src in json.load(sys.stdin)]))
+    elif cmd == "compare":
+        print(json.dumps(compare(open(argv[2]).read(), open(argv[3]).read())))
+    elif cmd == "compare-json":        # stdin: JSON list of [original, generated] -> JSON list of results
+        print(json.dumps([compare(a, b) for a, b in json.load(sys.stdin)]))
+    elif cmd == "project":
+        files = []
+        for base, dirs, names in os.walk(argv[2]):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for n in names:
+                path = os.path.relpath(os.path.join(base, n), os.path.dirname(os.path.abspath(argv[2])))
+                if keep_path(path):
+                    files.append({"name": path, "source": "" if keep_path(path) == "secret" else open(os.path.join(base, n), errors="replace").read()})
+        p = analyze_project(files)
+        print(p["overview"].replace("[[", "").replace("]]", ""))
+        for w in p["warnings"]:
+            print("  !", w.replace("[[", "").replace("]]", ""))
+        for path in p["order"]:
+            f = next(x for x in p["files"] if x["path"] == path)
+            print(f"  {path:40} {f['role_label']:15} {f['summary'][:70]}")
+    else:
+        path = argv[2] if cmd == "summary" else argv[1]
+        src = open(path).read()
+        for sec in analyze_source(path, src)["sections"]:
+            print(f"\n[{sec['kind']}] {sec['title']}  (lines {sec['start']}-{sec['end']})")
+            print("  " + sec["headline"])
+            for fact in sec["facts"]:
+                print("   -", fact)
+            for w in sec["warnings"]:
+                print("   !", w)
+            for st in sec["steps"]:
+                print("     |", st)
+
+
 if __name__ == "__main__":
-    import sys
-    src = open(sys.argv[1]).read()
-    for sec in analyze_source(sys.argv[1], src)["sections"]:
-        print(f"\n[{sec['kind']}] {sec['title']}  (lines {sec['start']}-{sec['end']})")
-        print("  " + sec["headline"])
-        for fact in sec["facts"]:
-            print("   -", fact)
-        for w in sec["warnings"]:
-            print("   !", w)
-        for st in sec["steps"]:
-            print("     |", st)
-    print("\n--- as sentences ---")
-    print(to_sentences(src))
+    _cli(sys.argv)
