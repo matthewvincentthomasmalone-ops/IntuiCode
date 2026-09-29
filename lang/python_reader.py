@@ -1012,7 +1012,7 @@ def is_plain(v):
     if isinstance(v, ast.Subscript) and dotted(v.value) == "os.environ":
         return True
     if isinstance(v, ast.Name):
-        return True
+        return v.id in ("True", "False", "None")
     return False
 
 

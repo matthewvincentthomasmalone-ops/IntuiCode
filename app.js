@@ -652,7 +652,7 @@
     setStatus('Loading Python…');
     try {
       const v = await Runner.ensure((s) => setStatus(s));
-      setStatus(`Python ${v} ready`, 'ready');
+      setStatus(typeof desk !== 'undefined' && desk.python ? `Python ${desk.python[1]} (this computer)` : `Python ${v} ready`, 'ready');
       return true;
     } catch (e) {
       setStatus('Python unavailable', 'bad');
@@ -1620,7 +1620,7 @@
   async function loadExampleProject() {
     closeImport();
     try {
-      const base = new URL('samples/taskboard/', location.href).href;
+      const base = new URL('samples/taskboard/', document.baseURI).href;
       const manifest = await (await fetch(base + 'files.json')).json();
       const files = [];
       for (const f of manifest.files) files.push({ name: manifest.name + '/' + f, source: await (await fetch(base + f)).text() });

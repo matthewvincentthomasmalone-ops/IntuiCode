@@ -1,0 +1,67 @@
+<!doctype html>
+<!-- Development test page: runs the real app with a pretend desktop layer (window.__TAURI__),
+     so the desktop features can be tested in a browser.  Open it through run.py:
+     http://localhost:8000/tests/desktop-mock.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="/">
+<title>IntuiCode (desktop test)</title>
+<script>
+  window.mock = {
+    files: {},        // path -> text (a pretend disk)
+    pick: '/home/me/projects/demo',
+    python: ['python3', '3.12.9'],
+    nextRun: null,    // { out, err, code } for the next program run
+    calls: [],
+    listeners: {},
+  };
+  const emit = (ev, payload) => (window.mock.listeners[ev] || []).forEach(cb => cb({ payload }));
+  window.__TAURI__ = {
+    event: { listen: async (ev, cb) => { (window.mock.listeners[ev] = window.mock.listeners[ev] || []).push(cb); return () => {}; } },
+    core: {
+      invoke: async (cmd, args) => {
+        const m = window.mock;
+        m.calls.push([cmd, args]);
+        switch (cmd) {
+          case 'plugin:dialog|open': return m.pick;
+          case 'read_text': if (args.path in m.files) return m.files[args.path]; throw new Error('not found: ' + args.path);
+          case 'write_text': m.files[args.path] = args.content; return null;
+          case 'exists': return args.path in m.files;
+          case 'scratch_folder': return '/home/me/.local/share/intuicode/unsaved-project';
+          case 'read_folder': {
+            const top = args.path.split('/').pop();
+            return Object.entries(m.files).filter(([p]) => p.startsWith(args.path + '/') && !p.includes('/.intuicode/')).map(([p, source]) => ({ name: top + p.slice(args.path.length), source }));
+          }
+          case 'find_python': return m.python;
+          case 'find_git': return 'git version 2.53.0';
+          case 'run_program': case 'run_shell': {
+            const r = m.nextRun || { out: cmd === 'run_shell' ? `(shell) ${args.command}\n` : 'hello from the real Python\n', err: '', code: 0 };
+            m.nextRun = null;
+            setTimeout(() => {
+              if (r.out) emit('proc-output', { id: args.id, stream: 'stdout', text: r.out });
+              if (r.err) emit('proc-output', { id: args.id, stream: 'stderr', text: r.err });
+              if (!r.wait) emit('proc-exit', { id: args.id, code: r.code });
+              else m.waiting = args.id;
+            }, 30);
+            return null;
+          }
+          case 'write_stdin': emit('proc-output', { id: args.id, stream: 'stdout', text: `got: ${args.text}` }); emit('proc-exit', { id: args.id, code: 0 }); return null;
+          case 'stop_program': emit('proc-exit', { id: args.id, code: null }); return null;
+          default: throw new Error('unknown command ' + cmd);
+        }
+      },
+    },
+  };
+</script>
+</head>
+<body>
+<script>
+  // the real page body, then the real scripts
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/index.html?raw', false);
+  xhr.send();
+  document.write(xhr.responseText);
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@
 
   const PYODIDE_VERSION = '0.26.4';
   const SOURCES = [
-    new URL('pyodide/', location.href).href,
+    new URL('pyodide/', document.baseURI).href,
     `https://cdn.jsdelivr.net/npm/pyodide@${PYODIDE_VERSION}/`,
   ];
 
@@ -221,7 +221,7 @@ def _pb_reset():
     if (!reader) {
       reader = (async () => {
         await Runner.ensure(onStatus);
-        const r = await fetch(new URL('lang/python_reader.py', location.href).href);
+        const r = await fetch(new URL('lang/python_reader.py', document.baseURI).href);
         if (!r.ok) throw new Error('could not load the code reader');
         py.globals.set('_reader_src', await r.text());
         py.runPython('import types\n_reader = types.ModuleType("intuicode_reader")\nexec(compile(_reader_src, "python_reader.py", "exec"), _reader.__dict__)');
@@ -249,7 +249,7 @@ def _pb_reset():
     if (!web) {
       web = (async () => {
         let lastErr;
-        for (const base of [new URL('vendor/tree-sitter/', location.href).href, null]) {
+        for (const base of [new URL('vendor/tree-sitter/', document.baseURI).href, null]) {
           try {
             const rt = base || 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/';
             const gr = base || 'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/';

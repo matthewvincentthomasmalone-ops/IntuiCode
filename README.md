@@ -59,6 +59,45 @@ Inside each file, IntuiCode will:
 - open the file as sentences, where it can, and check that the sentences rebuild
   exactly the same program.
 
+## Desktop app
+
+The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
+
+- **Real folders.** Open folder / Save (Ctrl+S). Your code files are the project;
+  the sentences are kept in `.intuicode/` beside them. If the Python on disk is changed in
+  another editor, its sentences are rebuilt from the code. Folders that aren't IntuiCode
+  projects open in Read mode.
+- **Real Python.** Programs run with the Python installed on the computer, with live
+  output, typed input and a Stop button, so web servers and packages work. Without Python
+  installed, the built-in one is used.
+- **Commands.** Type `$` and a command in the terminal to run it in the project folder:
+  `$ git status`, `$ pip install flask`.
+
+### Getting the installer
+
+Installers are built by GitHub for Windows, macOS and Linux: go to
+**Actions → Desktop app → Run workflow**, or push a tag like `v0.1.0`. When it finishes,
+the files are on the repository's **Releases** page.
+
+These builds aren't code-signed yet, so the first time you open the app:
+
+- **Windows:** if SmartScreen says "Windows protected your PC", choose **More info → Run anyway**.
+- **macOS:** right-click the app and choose **Open**, then **Open** again (or System Settings →
+  Privacy & Security → **Open Anyway**).
+- **Linux:** make the `.AppImage` executable (`chmod +x IntuiCode*.AppImage`) and run it, or
+  install the `.deb` with `sudo apt install ./IntuiCode*.deb`.
+
+### Building it yourself
+
+You need [Rust](https://rustup.rs) and Node.js, plus on Linux:
+`sudo apt install build-essential libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
+
+```
+npm install && npm run vendor && python3 tools/fetch_pyodide.py
+npm run desktop:dev      # run it
+npm run desktop:build    # make an installer for this computer
+```
+
 ## Tests
 
 ```
@@ -95,6 +134,9 @@ npm install && npm run vendor
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |
 | `samples/` | Example code for Read mode, including a small multi-file project (`samples/taskboard`) |
 | `run.py` | Small local server (adds the `<html>` wrapper that `index.html` leaves out) |
+| `src-tauri/` | The desktop app: folders, running programs, the native window (Rust) |
+| `tools/build_desktop.mjs` | Gathers the app's files into `dist/` for the desktop build |
+| `tests/desktop-mock.html` | Runs the app with a pretend desktop layer, to test desktop features in a browser |
 
 The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
 
