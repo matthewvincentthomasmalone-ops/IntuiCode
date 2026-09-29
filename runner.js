@@ -183,6 +183,12 @@ def _pb_reset():
     for (const base of SOURCES) {
       try {
         onStatus && onStatus('Loading Python (about 13 MB, first run only)…');
+        const bundledHere = base === SOURCES[0];
+        if (bundledHere) {
+          // Only use the bundled copy if it is really there (tools/fetch_pyodide.py makes it).
+          const present = await fetch(base + 'pyodide.asm.parts.json', { cache: 'no-store' }).then(r => r.ok).catch(() => false);
+          if (!present) continue;
+        }
         if (typeof window.loadPyodide !== 'function') await loadScript(base + 'pyodide.js');
         // The standard library is a zip file. Hosted artifacts don't serve .zip, so the
         // bundled copy has a .wasm suffix; the bytes are unchanged.
