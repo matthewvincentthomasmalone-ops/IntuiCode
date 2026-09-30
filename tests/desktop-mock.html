@@ -27,10 +27,9 @@
         const m = window.mock;
         m.calls.push([cmd, args]);
         switch (cmd) {
-          case 'plugin:dialog|open': return m.pick;
+          case 'pick_folder': return m.pick;
           case 'read_text': if (args.path in m.files) return m.files[args.path]; throw new Error('not found: ' + args.path);
           case 'write_text': m.files[args.path] = args.content; return null;
-          case 'exists': return args.path in m.files;
           case 'scratch_folder': return '/home/me/.local/share/intuicode/unsaved-project';
           case 'read_folder': {
             const top = args.path.split('/').pop();
