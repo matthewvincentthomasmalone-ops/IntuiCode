@@ -133,6 +133,11 @@ Installers are built by GitHub for Windows, macOS and Linux: go to
 **Actions → Desktop app → Run workflow**, or push a tag like `v0.1.0`. When it finishes,
 the files are on the repository's **Releases** page.
 
+To try a branch or pull request before it is released, open its **Desktop app tests** run:
+under **Artifacts**, `IntuiCode-windows-exe` is the app as a single `intuicode.exe` that runs
+without installing (`gh run download <run-id> -n IntuiCode-windows-exe` fetches it). It is a debug
+build, so it starts a little slower than a released one.
+
 These builds aren't code-signed yet, so the first time you open the app:
 
 - **Windows:** if SmartScreen says "Windows protected your PC", choose **More info → Run anyway**.

@@ -59,6 +59,16 @@ jobs:
       - name: Build the app (debug)
         run: npm run tauri -- build --debug --no-bundle
 
+      # One file that runs without installing (it needs the WebView2 runtime, which Windows 10/11
+      # has), to try this exact build: Actions -> this run -> Artifacts, or gh run download.
+      - name: Keep the Windows app as a download
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: IntuiCode-windows-exe
+          path: src-tauri/target/debug/intuicode.exe
+          retention-days: 14
+
       - name: Desktop layer unit tests
         if: runner.os == 'Linux'
         run: cargo test --manifest-path src-tauri/Cargo.toml
