@@ -1,67 +1,64 @@
 :root {
-  /* Layout: IDE shell. Project folders | sentences ⇄ Python, side by side | explain strip + terminal beneath. */
-  --paper: #EDF0F4;
-  --panel: #FAFBFC;
-  --panel-2: #E3E8EF;
-  --rule: #D2D9E2;
-  --ink: #172030;
-  --ink-2: #465367;
-  --ink-3: #6F7C91;
-  --accent: #2C5B8C;
-  --accent-ink: #FFFFFF;
-  --accent-soft: rgba(44, 91, 140, .10);
-  --slot-bg: rgba(226, 176, 52, .32);
-  --slot-ink: #6E4A00;
-  --kw: #2C5B8C;
-  --str: #2A7A4B;
-  --num: #9B4E12;
-  --op: #8A3B9E;
-  --var: #16707C;
-  --com: #7A8699;
-  --fn: #A0561B;
-  --good: #2A7A4B;
-  --warn: #9A6000;
-  --bad: #B4323A;
-  --band: rgba(44, 91, 140, .07);
-  --link: rgba(226, 176, 52, .28);
-  --sel: rgba(44, 91, 140, .24);
-  --term-bg: #17202C;
-  --term-ink: #D9E1EC;
-  --term-dim: #8594AA;
-  --term-accent: #F0CD6E;
-  --term-bad: #FF9494;
-  --term-good: #8FDDA5;
-  --shadow: 0 12px 36px rgba(20, 30, 50, .18);
+  /* Layout: IDE shell. Project folders | sentences ⇄ Python, side by side | explain strip + terminal beneath.
+   * Look: "pink Windows 95". Very light pink behind everything; oxblood, mint, peach and honey for frames,
+   * bevels, highlights and details; one dark "movie terminal". Always light: there is no dark theme. */
+  --paper: #FCE9EF;
+  --panel: #FFF3F6;
+  --panel-2: #F8DCE4;
+  --field: #FFF8FA;
+  --rule: #E0AFBC;
+  --ink: #2A0F16;
+  --ink-2: #5C2A36;
+  --ink-3: #7A4B57;
+  --accent: #6E1A2E;
+  --accent-ink: #FFF3F6;
+  --accent-soft: rgba(122, 214, 178, .32);
+  --slot-bg: rgba(242, 182, 64, .34);
+  --slot-ink: #663F00;
+  --kw: #7A1E35;
+  --str: #1C6A4E;
+  --num: #9A4812;
+  --op: #7A2E78;
+  --var: #1D6470;
+  --com: #85616B;
+  --fn: #9E461A;
+  --good: #1C6A4E;
+  --warn: #875700;
+  --bad: #B01A33;
+  --band: rgba(255, 196, 160, .30);
+  --link: rgba(242, 182, 64, .30);
+  --sel: rgba(122, 214, 178, .45);
+  --term-bg: #1A090F;
+  --term-ink: #F7DCE3;
+  --term-dim: #BC949E;
+  --term-accent: #F4C355;
+  --term-bad: #FF8C9C;
+  --term-good: #8EE9C5;
+  --shadow: 0 16px 40px rgba(91, 20, 38, .22), 0 3px 8px rgba(91, 20, 38, .12);
+
+  /* The palette, and the Windows 95 parts built from it */
+  --oxblood: #5B1426;
+  --mint: #A8E6CE;
+  --peach: #FFC6A5;
+  --honey: #F2B640;
+  --bevel-hi: #FFFFFF;
+  --bevel-lo: #D69AAA;
+  --bevel-dark: #5B1426;
+  --title: linear-gradient(90deg, #4E1020 0%, #7C2238 55%, #A8455C 100%);
+  --title-ink: #FFFFFF;
+  --title-dim: #F6D2DA;
+  --face: linear-gradient(#FFF9FB, #F6DCE4);
+  --face-hover: linear-gradient(#FFFFFF, #FBE6EC);
+  --raised: inset 1px 1px 0 var(--bevel-hi), inset -1px -1px 0 var(--bevel-lo);
+  --sunken: inset 1px 1px 0 var(--bevel-lo), inset 2px 2px 0 rgba(91, 20, 38, .14), inset -1px -1px 0 var(--bevel-hi);
+  --texture: radial-gradient(rgba(242, 182, 64, .20) 1px, transparent 1.4px) 0 0 / 6px 6px,
+             radial-gradient(rgba(122, 214, 178, .24) 1px, transparent 1.4px) 3px 3px / 6px 6px;
+  color-scheme: light;
 
   --f-ui: "Atkinson Hyperlegible Next", "Segoe UI", system-ui, -apple-system, sans-serif;
   --f-say: "Atkinson Hyperlegible Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
   --f-py: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --lh: 22px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #10141B; --panel: #161B24; --panel-2: #1E2430; --rule: #2A3242;
-    --ink: #DCE2EB; --ink-2: #A5B0C1; --ink-3: #78859A;
-    --accent: #88B5E4; --accent-ink: #0E1520; --accent-soft: rgba(136, 181, 228, .12);
-    --slot-bg: rgba(230, 194, 90, .24); --slot-ink: #F1D48A;
-    --kw: #88B5E4; --str: #8FD19E; --num: #F0A868; --op: #D39BE8; --var: #7FD0D8; --com: #6F7B8E; --fn: #F0B878;
-    --good: #7ACB91; --warn: #E3B45A; --bad: #F2797E;
-    --band: rgba(136, 181, 228, .07); --link: rgba(230, 194, 90, .16); --sel: rgba(136, 181, 228, .28);
-    --term-bg: #0B0E13; --shadow: 0 12px 36px rgba(0, 0, 0, .5);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #10141B; --panel: #161B24; --panel-2: #1E2430; --rule: #2A3242;
-  --ink: #DCE2EB; --ink-2: #A5B0C1; --ink-3: #78859A;
-  --accent: #88B5E4; --accent-ink: #0E1520; --accent-soft: rgba(136, 181, 228, .12);
-  --slot-bg: rgba(230, 194, 90, .24); --slot-ink: #F1D48A;
-  --kw: #88B5E4; --str: #8FD19E; --num: #F0A868; --op: #D39BE8; --var: #7FD0D8; --com: #6F7B8E; --fn: #F0B878;
-  --good: #7ACB91; --warn: #E3B45A; --bad: #F2797E;
-  --band: rgba(136, 181, 228, .07); --link: rgba(230, 194, 90, .16); --sel: rgba(136, 181, 228, .28);
-  --term-bg: #0B0E13; --shadow: 0 12px 36px rgba(0, 0, 0, .5);
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -530,6 +527,154 @@ select.blank { text-align: left; cursor: pointer; }
 .imp-note { flex: 1; min-width: 120px; color: var(--ink-3); font-size: 12.5px; }
 .file-btn { position: relative; overflow: hidden; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* ================================================================== */
+/* Pink Windows 95: bevelled frames, title bars, tiled textures, and   */
+/* one dark "movie terminal". Soft shadows and gradients keep it crisp. */
+/* ================================================================== */
+
+/* Raised faces */
+.btn {
+  border-radius: 3px; border: 1px solid var(--bevel-dark); background: var(--face); color: var(--ink);
+  box-shadow: var(--raised), 0 1px 2px rgba(91, 20, 38, .14);
+}
+.btn:hover { background: var(--face-hover); }
+.btn:active, .btn[aria-expanded="true"], .btn[aria-pressed="true"] {
+  background: #F4D3DC; color: var(--ink); border-color: var(--bevel-dark); box-shadow: var(--sunken);
+}
+.btn:focus-visible { outline: 2px dotted var(--oxblood); outline-offset: -6px; }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
+.btn.ghost:hover { border-color: var(--bevel-dark); background: var(--face-hover); box-shadow: var(--raised); }
+.btn.ghost[aria-expanded="true"] { border-color: var(--bevel-dark); background: #F4D3DC; box-shadow: var(--sunken); }
+/* the default button (Run): honey, with the heavier frame Windows gives a default button */
+.btn.primary {
+  background: linear-gradient(#FFDB88, #F2B640); color: var(--oxblood); border-color: var(--oxblood);
+  box-shadow: 0 0 0 1px var(--oxblood), inset 1px 1px 0 #FFF1C8, inset -1px -1px 0 #C98F1E, 0 2px 5px rgba(91, 20, 38, .22);
+}
+.btn.primary:hover { filter: none; background: linear-gradient(#FFE4A3, #F5C057); }
+.btn.primary:active { box-shadow: 0 0 0 1px var(--oxblood), inset 1px 1px 0 #C98F1E, inset -1px -1px 0 #FFF1C8; }
+kbd { border: 1px solid var(--bevel-dark); border-radius: 2px; background: var(--face); color: var(--oxblood); box-shadow: inset 1px 1px 0 var(--bevel-hi), inset -1px -1px 0 var(--bevel-lo); }
+
+/* Menu bar, with a mint, peach and honey stripe beneath */
+.bar { position: relative; z-index: 30; border-bottom: 0; background: var(--texture), var(--panel); box-shadow: inset 0 -1px 0 var(--bevel-lo), 0 1px 0 var(--bevel-hi); }
+.bar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: linear-gradient(90deg, var(--mint), var(--peach) 30%, var(--honey) 50%, var(--peach) 70%, var(--mint)); box-shadow: 0 2px 6px rgba(91, 20, 38, .12); }
+.logo { color: var(--oxblood); }
+.brand-name { color: var(--oxblood); text-shadow: 1px 1px 0 var(--bevel-hi), 2px 2px 0 rgba(242, 182, 64, .5); }
+.lang-chip { border-radius: 2px; background: linear-gradient(#FFE29C, #F2B640); color: var(--oxblood); border: 1px solid var(--oxblood); box-shadow: inset 1px 1px 0 #FFF1C8; }
+.modes { border-radius: 3px; padding: 2px; background: var(--panel-2); box-shadow: var(--sunken); }
+.modes button { border-radius: 2px; color: var(--ink-2); }
+.modes button[aria-selected="true"] { background: var(--face); color: var(--oxblood); box-shadow: 0 0 0 1px var(--bevel-dark), var(--raised); }
+.modes button:focus-visible { outline: 2px dotted var(--oxblood); outline-offset: -4px; }
+
+/* Menus: Windows' highlight, in oxblood */
+.menu-list { border-radius: 2px; border: 1px solid var(--bevel-dark); padding: 3px; box-shadow: var(--raised), var(--shadow); }
+.menu-list [role="menuitem"] { border-radius: 0; }
+.menu-list [role="menuitem"]:hover, .menu-list [role="menuitem"]:focus-visible { background: var(--oxblood); color: var(--accent-ink); }
+.menu-sep { margin: 4px 2px; background: var(--bevel-lo); box-shadow: 0 1px 0 var(--bevel-hi); }
+.ac { border-radius: 2px; border-color: var(--bevel-dark); box-shadow: var(--raised), var(--shadow); }
+.ac-item { border-radius: 0; }
+
+/* Sidebar */
+.side { border-right: 0; background: var(--texture), var(--panel); box-shadow: inset -1px 0 0 var(--bevel-lo), inset -2px 0 0 var(--bevel-hi); }
+.side-h { color: var(--oxblood); }
+.side-h::after { content: ""; flex: 1; border-top: 1px solid var(--bevel-lo); border-bottom: 1px solid var(--bevel-hi); }
+.tree-item, .problems li button, .ol-item { border-radius: 2px; }
+.tree-item:hover, .problems li button:hover, .ol-item:hover { background: rgba(255, 198, 165, .38); }
+.tree-item.active { background: var(--oxblood); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .25); }
+.tree-item.active .ti-title, .tree-item.active .ti-icon { color: var(--accent-ink); }
+.tree-item.active .ti-file { color: #F3C9D3; }
+.tree-item.active .role, .tree-item.active .ti-badge { background: var(--panel); color: var(--oxblood); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
+.tree-item:focus-visible { outline: 2px dotted var(--oxblood); outline-offset: 1px; }
+.count, .chip, .role, .ti-badge { border-radius: 2px; }
+
+/* Panes are windows: a title bar, then a sunken well for the code */
+.pane-h, .index-h, .term-h { background: var(--title); border-bottom: 0; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22); }
+.pane-h { padding: 7px 10px 7px 12px; align-items: center; }
+.pane-h h2, .index-h h2 { color: var(--title-ink); text-shadow: 0 1px 1px rgba(0, 0, 0, .35); }
+.pane-h h2 { font-size: 14px; }
+.pane-h p, .index-h .eyebrow { color: var(--title-dim); }
+.file-tag { background: var(--field); color: var(--ink-2); border: 1px solid var(--bevel-dark); border-radius: 2px; box-shadow: inset 1px 1px 0 var(--bevel-lo); }
+.pane-py { border-left: 0; background: var(--panel); box-shadow: inset 2px 0 0 var(--bevel-lo), inset 3px 0 0 var(--bevel-hi); }
+.editor, .pycode, .rcode {
+  margin: 6px; border: 1px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  background: var(--field); box-shadow: inset 1px 1px 0 var(--bevel-dark), inset 3px 3px 6px rgba(91, 20, 38, .08);
+}
+.gutter { background: transparent; border-right: 1px solid var(--rule); }
+.read-h { background: var(--texture), var(--panel); box-shadow: inset 0 -1px 0 var(--bevel-lo); border-bottom: 1px solid var(--bevel-hi); }
+.explain { border-top: 0; box-shadow: inset 0 1px 0 var(--bevel-hi), 0 -1px 0 var(--bevel-lo); }
+.ex-lbl, .sum-kind, .bp-kind { color: var(--oxblood); }
+
+/* Sunken fields */
+.imp-row input, .imp-text, .index-search input, .bp-edit textarea {
+  border-radius: 0; border: 1px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  background: var(--field); box-shadow: inset 1px 1px 0 var(--bevel-dark);
+}
+.imp-big { border-radius: 3px; border-color: var(--bevel-lo); background: var(--texture), var(--field); }
+.sum-warn { border-radius: 2px; border: 1px solid rgba(135, 87, 0, .35); }
+.sum-steps, .bp-sec pre, .ix-how pre { border-radius: 0; background: var(--field); box-shadow: var(--sunken); }
+.pj-map { border-radius: 0; border-color: var(--bevel-lo); background: var(--field); box-shadow: var(--sunken); }
+
+/* Dialogs are windows too: the title in a bar, Close in its corner */
+.modal { background: rgba(62, 11, 24, .38); backdrop-filter: blur(1.5px); }
+.modal-card { position: relative; border-radius: 3px; border: 1px solid var(--bevel-dark); padding: 0 22px 20px; box-shadow: var(--raised), var(--shadow); }
+.modal-h { display: block; }
+.modal-h h2 { margin: 0 -22px 12px; padding: 8px 110px 8px 12px; font-size: 15px; background: var(--title); color: var(--title-ink); text-shadow: 0 1px 1px rgba(0, 0, 0, .35); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22); }
+.modal-h > .btn { position: absolute; top: 5px; right: 6px; }
+.bp-list { border-right: 0; box-shadow: inset -1px 0 0 var(--bevel-lo), inset -2px 0 0 var(--bevel-hi); }
+.bp-item { border-radius: 2px; }
+.bp-item:hover { background: rgba(255, 198, 165, .38); }
+.bp-item.on { background: var(--oxblood); }
+.bp-item.on b { color: var(--accent-ink); }
+.bp-item.on span { color: #F3C9D3; }
+.new-kind { border-radius: 3px; border: 1px solid var(--bevel-dark); background: var(--face); box-shadow: var(--raised); }
+.new-kind:hover { border-color: var(--bevel-dark); background: var(--face-hover); }
+.new-kind[aria-checked="true"] { border-color: var(--oxblood); background: linear-gradient(#DDF6EC, #C3EEDD); box-shadow: var(--sunken); }
+.new-kind[aria-checked="true"] b { color: var(--oxblood); }
+
+/* Index drawer */
+.index { border-left: 1px solid var(--bevel-dark); box-shadow: inset 1px 0 0 var(--bevel-hi), var(--shadow); }
+.index-h { padding: 8px 10px 8px 14px; align-items: center; }
+.index-h h2 { font-size: 16px; }
+.ix-insert { border-radius: 2px; border-color: var(--bevel-dark); background: var(--face); box-shadow: var(--raised); color: var(--oxblood); }
+
+/* The movie terminal: the one dark window. Scanlines, a glow, a blinking block cursor. */
+.term { border-top: 2px solid var(--bevel-dark); }
+.term-h { padding: 5px 8px 5px 10px; }
+.term-tab { color: var(--title-dim); border-radius: 2px; }
+.term-tab[aria-selected="true"] { background: var(--face); color: var(--oxblood); box-shadow: var(--raised); }
+.term-tab:focus-visible { outline: 2px dotted var(--honey); }
+.py-status { color: var(--title-dim); }
+.py-status.ready { color: var(--mint); }
+.py-status.bad { color: #FFC0CA; }
+.term-btn { background: var(--face); color: var(--ink); border-color: var(--bevel-dark); }
+.term-btn:hover { background: var(--face-hover); }
+#btnStop { color: var(--bad); border-color: var(--bevel-dark); }
+#btnPick[aria-pressed="true"] { color: var(--oxblood); background: linear-gradient(#FFE29C, #F2B640); }
+.term-body {
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, .035) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at 50% 35%, #2C0D18 0%, var(--term-bg) 70%);
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, .6), inset 0 0 0 1px #000;
+}
+.term-log, .term-in, .term-prompt { text-shadow: 0 0 6px color-mix(in srgb, currentColor 45%, transparent); }
+.term-in { caret-color: var(--term-accent); caret-shape: block; }
+.term-in:placeholder-shown:not(:focus) {
+  text-indent: 14px; background: linear-gradient(var(--term-accent), var(--term-accent)) no-repeat 0 50% / 8px 1.05em;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .term-in:placeholder-shown:not(:focus) { animation: ic-blink 1.1s steps(1) infinite; }
+}
+@keyframes ic-blink { 50% { background-size: 0 0; } }
+.preview-wrap { box-shadow: inset 0 0 0 1px #000; }
+
+/* Chunky scrollbars with a dithered track */
+::-webkit-scrollbar { width: 15px; height: 15px; }
+::-webkit-scrollbar-track { background: repeating-conic-gradient(#F4D3DC 0 25%, var(--panel) 0 50%) 0 0 / 2px 2px; }
+::-webkit-scrollbar-thumb { background: var(--face); border: 1px solid var(--bevel-dark); box-shadow: var(--raised); }
+::-webkit-scrollbar-thumb:hover { background: var(--face-hover); }
+::-webkit-scrollbar-corner { background: var(--panel-2); }
+.term-body::-webkit-scrollbar-track { background: #12060A; }
+.term-body::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #7C2238, #5B1426); border-color: #000; box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .18); }
 
 /* ---------- Narrow screens ---------- */
 @media (max-width: 900px) {
