@@ -149,6 +149,25 @@ try {
     if (!/Exactly right/.test(verdict)) throw new Error(verdict);
   });
 
+  await check('the tutor speaks C++ too, and checks a line of C++ exactly', async () => {
+    await blueprint('C++ guessing game');
+    await click('btnTutor');
+    const place = () => js(() => { const ta = document.getElementById('ta'); const lines = ta.value.split('\n'); const li = lines.findIndex(l => /increase guesses by 1/.test(l)); const p = lines.slice(0, li).join('\n').length + 6; ta.focus(); ta.setSelectionRange(p, p); ta.dispatchEvent(new Event('click')); return true; });
+    await place();
+    await waitFor('the C++ notes', () => js(() => /In C\+\+/i.test((document.querySelector('.ex-tutor') || {}).textContent || '') && !!document.querySelector('[data-tutor="turn"]')), 120000);
+    const verdict = await js(() => {
+      const tip = document.getElementById('tip');
+      if (!tip.hidden) tip.querySelector('[data-act="close"]').click();
+      document.querySelector('[data-tutor="turn"]').click();
+      const answer = (v) => { tip.querySelector('.tip-in').value = v; tip.querySelector('[data-act="check"]').click(); return tip.querySelector('.tip-result').innerText; };
+      const out = { wrong: answer('guesses++;'), right: answer('guesses+=1 ;') };
+      tip.querySelector('[data-act="close"]').click();
+      document.getElementById('btnTutor').click();   // tutor off again
+      return out;
+    });
+    if (!/reads your line differently/.test(verdict.wrong) || !/Exactly right/.test(verdict.right)) throw new Error(JSON.stringify(verdict));
+  });
+
   await check('the project builder narrows a project down and lays out its steps', async () => {
     const r = await js(() => {
       const pick = (label) => { const b = [...document.querySelectorAll('#bldBody [data-opt]')].find(x => x.textContent.trim().startsWith(label)); if (!b) throw new Error('No option ' + label); b.click(); };

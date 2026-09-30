@@ -90,16 +90,23 @@ which step your cursor is in. The questions, parts and steps are plain text in `
 
 **Tutor: think in the language's style**
 
-Press **Tutor** in the menu bar. As you write, a tip balloon points out how Python likes things said,
-the first time you use each habit (imports first, CAPITALS for settings, `self`, the `__main__`
+Press **Tutor** in the menu bar. As you write, a tip balloon points out how the language likes things said,
+the first time you use each habit (in Python: imports first, CAPITALS for settings, `self`, the `__main__`
 guard, f-strings…), with the why behind it. Now and then it asks you to write one of your sentences
 as real Python yourself, and checks the answer with the same exact comparison that proves round
 trips: right or wrong, never a guess. Once you've written a habit right three times, its notes step
 back, and **Write this line as Python** turns the sentence into the code you now know (checked to
 make exactly the same program). In Read mode, **Style tour** walks through the habits of any Python
-file, in reading order, so code an AI wrote for you becomes code you can read and take over.
-The habits are found with Python's own parser (`style_points` in `lang/python_reader.py`); the notes
-are in `lang/tutor.js`. The tutor speaks Python so far.
+or C++ file, in reading order, so code an AI wrote for you becomes code you can read and take over.
+
+The tutor speaks **C++ and Arduino** too: kinds before names (`int guesses = 0;`), `std::`, `const`,
+the `;` and the braces, `cout <<`, references, classes with `public:` and `this->`, and on a board
+`setup` and `loop`, `pinMode`, `INPUT_PULLUP` (pressed reads LOW), `millis()` instead of `delay`,
+`unsigned long` for times. A C++ answer is right when C++ reads exactly the same tokens as the
+expected line, however it is spaced.
+
+Python's habits are found with Python's own parser (`style_points` in `lang/python_reader.py`),
+C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the notes are too).
 
 **Read: existing code → sections → plain English**
 

@@ -665,20 +665,36 @@
 
   /* ------------------------------------------------------------------ */
   /* Tutor: how the language likes things said, and lines to write      */
-  /* yourself. Habits are found by the reader (Python's own parser); an  */
-  /* answer is checked with the same exact comparison as round trips.    */
+  /* yourself. Habits are found with a real parser (Python's own, or     */
+  /* tree-sitter's C++), and answers are checked exactly.                */
   /* ------------------------------------------------------------------ */
 
   const TUTOR = window.IntuiTutor;
   const TUTOR_KEY = 'intuicode.tutor.v1';
   const tutor = Object.assign({ on: false, seen: {}, practised: {} }, store.get(TUTOR_KEY, {}));
-  const tutorRun = { reader: null, loading: null, styles: {}, timer: null, offered: new Set(), lastOffer: 0, exercise: null };
+  const tutorRun = { reader: null, loading: null, cpp: null, cppLoading: null, styles: {}, timer: null, offered: new Set(), lastOffer: 0, exercise: null };
   const tip = $('tip');
   const saveTutor = () => store.set(TUTOR_KEY, { on: tutor.on, seen: tutor.seen, practised: tutor.practised });
   const known = (card) => (tutor.practised[card] || 0) >= TUTOR.FADE_AFTER;
-  const cardOf = (card) => TUTOR.CARDS.python[card];
+  // Card ids: Python's are bare (as progress was saved before), other languages' carry their name ("cpp:if").
+  const cardOf = (id) => { const [lang, card] = id.includes(':') ? id.split(':') : ['python', id]; return (TUTOR.CARDS[lang] || {})[card]; };
+  const cardId = (lang, card) => (lang === 'python' ? card : lang + ':' + card);
+  /* The language the tutor teaches in a folder, or null. */
+  const tutorLang = (sec) => (TUTOR.CARDS[secLang(sec)] ? secLang(sec) : null);
+  const tutorReady = (lang) => (lang === 'python' ? !!tutorRun.reader : lang === 'cpp' ? !!tutorRun.cpp : false);
+  const tutorSays = (sec) => (sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]);
+  const TOUR_LANGS = new Set(['python', 'cpp']);   // Read mode's Style tour
+  const RAW_LINE = { python: /^\s*(?:raw python|python|raw|note|comment)\s*:|^\s*#/i, cpp: /^\s*(?:c\+\+|cpp|raw|above main|outside main|at the top|note|comment)\s*:|^\s*include\b/i };
 
-  function loadTutorReader() {
+  function loadTutorReader(lang = 'python') {
+    if (lang === 'cpp') {
+      if (tutorRun.cpp || tutorRun.cppLoading) return;
+      tutorRun.cppLoading = Runner.webReader((s) => setStatus(s))
+        .then(WR => WR.loadLangs(['cpp']).then(() => { tutorRun.cpp = WR.parse; renderExplain(); tutorSoon(300); }))
+        .catch(() => { /* the reader couldn't load: Read mode says so */ })
+        .finally(() => { tutorRun.cppLoading = null; });
+      return;
+    }
     if (tutorRun.reader || tutorRun.loading) return;
     tutorRun.loading = Runner.reader((s) => setStatus(s))
       .then(R => { tutorRun.reader = R; renderExplain(); tutorSoon(300); })
@@ -692,23 +708,23 @@
     $('btnTutor').setAttribute('aria-pressed', String(on));
     hideTip();
     if (on) {
-      tLine('Tutor is on. As you write, I\'ll point out how Python likes things said, and now and then ask you to write a line yourself. (It speaks Python so far.)', 't-sys');
-      loadTutorReader();
+      tLine('Tutor is on. As you write, I\'ll point out how the language likes things said, and now and then ask you to write a line yourself. (It speaks Python, C++ and Arduino so far.)', 't-sys');
+      loadTutorReader(tutorLang(activeSec()) || 'python');
       tutorSoon(600);
     }
     renderExplain();
   }
   $('btnTutor').addEventListener('click', () => setTutor(!tutor.on));
 
-  /* The habits in a Python section's code, per code line (worked out once per version of the code). */
+  /* The habits in a folder's code, per code line (worked out once per version of the code). */
   function tutorStyles(sec) {
-    const r = secResult(sec.id);
-    if (!r || secLang(sec) !== 'python' || !tutorRun.reader) return null;
+    const r = secResult(sec.id), lang = tutorLang(sec);
+    if (!r || !lang || !tutorReady(lang)) return null;
     const cached = tutorRun.styles[sec.id];
     if (cached && cached.text === r.text) return cached;
-    const res = tutorRun.reader.stylePoints(r.text, true);
+    const res = lang === 'cpp' ? TUTOR.cppStylePoints(tutorRun.cpp, r.text, true) : tutorRun.reader.stylePoints(r.text, true);
     const byLine = [];
-    if (res.ok) for (const p of res.points) (byLine[p.line - 1] = byLine[p.line - 1] || []).push(p.card);
+    for (const p of res.points || []) (byLine[p.line - 1] = byLine[p.line - 1] || []).push(cardId(lang, p.card));
     return (tutorRun.styles[sec.id] = { text: r.text, byLine });
   }
   /* The habits shown by the code a sentence became. */
@@ -717,29 +733,31 @@
     if (!st || !r || !r.info[li]) return [];
     return [...new Set(r.info[li].py.flatMap(i => st.byLine[i] || []))].filter(cardOf);
   }
-  /* The one line of Python a sentence became, if it's a sentence (not already code or a note). */
+  /* The one line of code a sentence became, if it's a sentence (not already code or a note). */
   function exerciseFor(sec, li) {
-    const r = secResult(sec.id);
-    if (!r || !r.info[li] || secLang(sec) !== 'python' || r.info[li].errs.length) return null;
+    const r = secResult(sec.id), lang = tutorLang(sec);
+    if (!r || !r.info[li] || !lang || r.info[li].errs.length) return null;
     const text = sec.text.split('\n')[li] || '';
-    if (!text.trim() || /^\s*(?:raw python|python|raw|note|comment)\s*:|^\s*#/i.test(text)) return null;
+    if (!text.trim() || RAW_LINE[lang].test(text)) return null;
     return TUTOR.exerciseLine(r.info[li].py.map(i => r.lines[i].text));
   }
 
   function tutorExplainHtml(sec, li, cards) {
     if (!tutor.on) return '';
-    const lang = secLang(sec);
-    if (lang !== 'python') return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> The tutor speaks Python so far. ${escHtml(LANG_NAME[lang] || 'This language')} is next on its list.</div>`;
-    if (!tutorRun.reader) return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> Getting ready…</div>`;
+    const lang = tutorLang(sec);
+    if (!lang) return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> The tutor speaks Python, C++ and Arduino so far. ${escHtml(LANG_NAME[secLang(sec)] || 'This language')} is next on its list.</div>`;
+    if (!tutorReady(lang)) { loadTutorReader(lang); return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> Getting ready…</div>`; }
     const ex = exerciseFor(sec, li);
     if (!cards.length && !ex) return '';
     const allKnown = cards.length && cards.every(known);
     const items = cards.map(c => (known(c)
       ? `<li class="known">✓ ${withCode(cardOf(c).title)} <span class="dim">· you know this one</span></li>`
       : `<li><b>${withCode(cardOf(c).title)}.</b> ${withCode(cardOf(c).say)}</li>`));
-    const act = !ex ? '' : allKnown ? `<button type="button" class="btn small" data-tutor="code" title="Replace this sentence with the line of Python it stands for">Write this line as Python</button>`
+    const says = tutorSays(sec);
+    const canWrite = lang !== 'cpp' || !/^\}|\{\s*$/.test(ex);   // (a c++: line can't open or close a block of sentences)
+    const act = !ex ? '' : allKnown && canWrite ? `<button type="button" class="btn small" data-tutor="code" title="Replace this sentence with the line of ${escHtml(says)} it stands for">Write this line as ${escHtml(LANG_NAME[lang])}</button>`
       : `<button type="button" class="btn small" data-tutor="turn">✎ Your turn</button>`;
-    return `<div class="ex-tutor"><div class="ex-tutor-h"><span class="ex-lbl">In Python</span>${act}</div>${items.length ? `<ul>${items.join('')}</ul>` : ''}</div>`;
+    return `<div class="ex-tutor"><div class="ex-tutor-h"><span class="ex-lbl">In ${escHtml(says)}</span>${act}</div>${items.length ? `<ul>${items.join('')}</ul>` : ''}</div>`;
   }
   $('explain').addEventListener('click', (e) => {
     const step = e.target.closest('[data-plan]');
@@ -773,19 +791,19 @@
     const c = cardOf(card);
     tutor.seen[card] = true;
     saveTutor();
-    showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">i</span><span>In Python: ${withCode(c.title)}</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
+    showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">i</span><span>In ${escHtml(tutorSays(activeSec()))}: ${withCode(c.title)}</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
       <p>${withCode(c.say)}</p><p class="tip-more" hidden>${withCode(c.more)}</p>
       <div class="tip-actions"><button type="button" class="btn small" data-act="more">Why?</button><button type="button" class="btn small primary" data-act="close">Got it</button></div>`, 'note');
   }
   function showExercise(li) {
-    const sec = activeSec();
+    const sec = activeSec(), lang = tutorLang(sec);
     const expected = exerciseFor(sec, li);
-    if (!expected || !tutorRun.reader) return false;
-    tutorRun.exercise = { expected, cards: cardsForSentence(sec, li) };
+    if (!expected || !tutorReady(lang)) return false;
+    tutorRun.exercise = { expected, lang, cards: cardsForSentence(sec, li) };
     showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">✎</span><span>Your turn</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
-      <p>Write this sentence as one line of Python:</p>
+      <p>Write this sentence as one line of ${escHtml(tutorSays(sec))}:</p>
       <div class="tip-say">${escHtml((sec.text.split('\n')[li] || '').trim())}</div>
-      <input class="tip-in" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Your line of Python">
+      <input class="tip-in" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Your line of ${escHtml(LANG_NAME[lang])}">
       <p class="tip-result" hidden></p>
       <div class="tip-actions"><button type="button" class="btn small" data-act="show">Show me</button><button type="button" class="btn small primary" data-act="check">Check</button></div>`, 'exercise');
     tip.querySelector('.tip-in').focus();
@@ -794,20 +812,21 @@
   function checkExercise() {
     const ex = tutorRun.exercise, input = tip.querySelector('.tip-in'), out = tip.querySelector('.tip-result');
     if (!ex || !input.value.trim()) return;
-    const res = tutorRun.reader.compare(TUTOR.probe(ex.expected), TUTOR.probe(input.value));
+    const cpp = ex.lang === 'cpp', name = LANG_NAME[ex.lang];
+    const res = cpp ? TUTOR.cppCompare(tutorRun.cpp, ex.expected, input.value) : tutorRun.reader.compare(TUTOR.probe(ex.expected), TUTOR.probe(input.value));
     out.hidden = false;
     if (res.same) {
       const learned = [];
       for (const c of ex.cards) { const was = known(c); tutor.practised[c] = (tutor.practised[c] || 0) + 1; if (!was && known(c)) learned.push(cardOf(c).title); }
       saveTutor();
       out.className = 'tip-result ok';
-      out.innerHTML = '✓ Exactly right: Python reads your line the same way.' + (learned.length ? ` You know this one now: ${learned.map(withCode).join(', ')}. Its notes will step back.` : '');
+      out.innerHTML = `✓ Exactly right: ${name} reads your line the same way.` + (learned.length ? ` You know this one now: ${learned.map(withCode).join(', ')}. Its notes will step back.` : '');
       renderExplain();
     } else {
       out.className = 'tip-result no';
-      const why = res.error && (res.error.match(/: (.*)\)\.$/) || [])[1];   // "…can't be read (line 1: invalid syntax)."
-      out.innerHTML = res.error ? `Python can't read that yet${why ? ` (${escHtml(why)})` : ''}. Check the brackets, the quotes and any <code>:</code> at the end.`
-        : 'Not quite: Python reads your line differently. Try again, or press Show me.';
+      const why = !cpp && res.error && (res.error.match(/: (.*)\)\.$/) || [])[1];   // "…can't be read (line 1: invalid syntax)."
+      out.innerHTML = res.error ? `${name} can't read that yet${why ? ` (${escHtml(why)})` : ''}. Check the brackets, the quotes and ${cpp ? 'the <code>;</code>' : 'any <code>:</code>'} at the end.`
+        : `Not quite: ${name} reads your line differently. Try again, or press Show me.`;
     }
     placeTip();
   }
@@ -817,7 +836,7 @@
     if (act.act === 'close') { hideTip(); ta.focus(); }
     else if (act.act === 'more') { tip.querySelector('.tip-more').hidden = false; e.target.closest('[data-act]').remove(); placeTip(); }
     else if (act.act === 'check') checkExercise();
-    else if (act.act === 'show') { const out = tip.querySelector('.tip-result'); out.hidden = false; out.className = 'tip-result'; out.innerHTML = `The line is: <code class="tip-code">${hlPy(tutorRun.exercise.expected)}</code>`; placeTip(); }
+    else if (act.act === 'show') { const out = tip.querySelector('.tip-result'); out.hidden = false; out.className = 'tip-result'; out.innerHTML = `The line is: <code class="tip-code">${hlCode(tutorRun.exercise.lang, tutorRun.exercise.expected)}</code>`; placeTip(); }
   });
   tip.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.classList.contains('tip-in')) { e.preventDefault(); checkExercise(); }
@@ -831,9 +850,9 @@
   }
   function tutorCheck() {
     if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])')) return;
-    const sec = activeSec();
-    if (secLang(sec) !== 'python') return;
-    if (!tutorRun.reader) return loadTutorReader();
+    const sec = activeSec(), lang = tutorLang(sec);
+    if (!lang) return;
+    if (!tutorReady(lang)) return loadTutorReader(lang);
     const lines = ta.value.split('\n');
     let li = caretLine();
     if (!(lines[li] || '').trim() && li > 0) li -= 1;   // just pressed Enter: the line just written
@@ -848,21 +867,24 @@
     }
   }
 
-  /* A known habit, written as the real line: the sentence becomes a python: line, checked to make exactly the same program. */
+  /* A known habit, written as the real line: the sentence becomes a python: (or c++:) line, checked to make
+   * exactly the same program. */
   function writeAsCode(li) {
-    const sec = activeSec(), code = exerciseFor(sec, li), before = secResult(sec.id) && secResult(sec.id).text;
-    if (!code || !tutorRun.reader) return;
+    const sec = activeSec(), lang = tutorLang(sec), code = exerciseFor(sec, li), before = secResult(sec.id) && secResult(sec.id).text;
+    if (!code || !tutorReady(lang)) return;
     const lines = ta.value.split('\n'), original = lines[li];
     const start = lines.slice(0, li).reduce((n, l) => n + l.length + 1, 0);
-    insertText(original.match(/^\s*/)[0] + 'python: ' + code, start, start + original.length);
+    insertText(original.match(/^\s*/)[0] + (lang === 'cpp' ? 'c++: ' : 'python: ') + code, start, start + original.length);
     compile();
-    const res = tutorRun.reader.compare(before, secResult(sec.id).text);
-    if (!res.same) {   // (it would lose an import the sentence brought in, say): put the sentence back
+    const after = secResult(sec.id);
+    const same = after && !after.info[li].errs.length && (lang === 'cpp' ? TUTOR.cppSameProgram(tutorRun.cpp, before, after.text) : tutorRun.reader.compare(before, after.text).same);
+    if (!same) {   // (it would lose an import or #include the sentence brought in, or the end of a block): put the sentence back
       insertText(original, start, start + ta.value.split('\n')[li].length);
-      tLine('That line needs something the sentence brings along (an import, say), so it stays a sentence for now.', 't-sys');
+      tLine(`That line needs something the sentence brings along (${lang === 'cpp' ? 'an #include, or the end of its block' : 'an import'}, say), so it stays a sentence for now.`, 't-sys');
+      compile();
       return;
     }
-    tLine(`Line ${li + 1} is now written in Python, by you: ${code}`, 't-ok');
+    tLine(`Line ${li + 1} is now written in ${LANG_NAME[lang]}, by you: ${code}`, 't-ok');
     refreshAll();
   }
 
@@ -1650,7 +1672,7 @@
     $('rdOutlineWrap').hidden = !file;
     $('btnSummarise').disabled = !a || !a.ok;
     $('btnToSentences').disabled = !a || !a.ok;
-    $('btnTour').disabled = !a || !a.ok || !file || langOfPath(file.name) !== 'python';
+    $('btnTour').disabled = !a || !file || !TOUR_LANGS.has(langOfPath(file.name)) || (langOfPath(file.name) === 'python' && !a.ok);
     if (!files.length) {
       $('rdName').textContent = 'No code imported yet';
       $('rdOverview').textContent = 'Import Python, such as a project an AI wrote for you, to see it split into sections and explained in plain English.';
@@ -1909,15 +1931,21 @@
     if (e.target.id === 'rdExample') loadExampleProject();
   });
 
-  /* Style tour: the habits a Python file shows, in reading order, each with why it's said that way. */
-  const BLOCK_CARDS = new Set(['class', 'def', 'init', 'indentation', 'if', 'for-in', 'range', 'enumerate', 'while', 'with-open', 'try', 'main-guard', 'decorator', 'async', 'default-args', 'star-args', 'type-hints', 'snake-case', 'private']);
+  /* Style tour: the habits a Python or C++ file shows, in reading order, each with why it's said that way. */
+  const BLOCK_CARDS = new Set(['class', 'def', 'init', 'indentation', 'if', 'for-in', 'range', 'enumerate', 'while', 'with-open', 'try', 'main-guard', 'decorator', 'async', 'default-args', 'star-args', 'type-hints', 'snake-case', 'private',
+    'cpp:class', 'cpp:function', 'cpp:void', 'cpp:constructor', 'cpp:main', 'cpp:setup-loop', 'cpp:if', 'cpp:for-count', 'cpp:range-for', 'cpp:while', 'cpp:template', 'cpp:braces', 'cpp:lambda']);
   async function startTour() {
-    const file = curFile();
-    if (!file || langOfPath(file.name) !== 'python') return;
-    const R = await Runner.reader((s) => setStatus(s));
-    const res = R.stylePoints(file.source, false);
+    const file = curFile(), lang = file && langOfPath(file.name);
+    if (!TOUR_LANGS.has(lang)) return;
+    let res;
+    if (lang === 'cpp') {
+      const WR = await Runner.webReader((s) => setStatus(s));
+      await WR.loadLangs(['cpp']);
+      res = TUTOR.cppStylePoints(WR.parse, file.source, false);
+      res.ok = true;   // (a part it couldn't read just has no stops)
+    } else res = (await Runner.reader((s) => setStatus(s))).stylePoints(file.source, false);
     if (!res.ok) { $('rdSum').innerHTML = `<p class="sum-empty">${escHtml(res.error)}</p>`; return; }
-    readFocus = { type: 'tour', file: file.name, points: res.points.filter(p => cardOf(p.card)), i: 0 };
+    readFocus = { type: 'tour', file: file.name, lang, points: res.points.map(p => ({ ...p, card: cardId(lang, p.card) })).filter(p => cardOf(p.card)), i: 0 };
     renderFocus();
   }
   function renderTour(box) {
@@ -1926,7 +1954,7 @@
     const c = cardOf(p.card), last = t.i === t.points.length - 1;
     const first = markLines(p.line, BLOCK_CARDS.has(p.card) ? p.line : p.end, 'focus');
     if (first) $('rdCode').scrollTop = first.offsetTop - $('rdCode').clientHeight / 3;
-    const order = proj ? proj.order.filter(x => /\.py$/i.test(x)) : [];
+    const order = proj ? proj.order.filter(x => langOfPath(x) === t.lang) : [];
     const nextFile = last ? order[order.indexOf(t.file) + 1] : null;
     box.innerHTML = `<div class="sum-kind">Style tour · ${t.i + 1} of ${t.points.length}</div>
       <h3>${withCode(c.title)}</h3>
@@ -2368,7 +2396,7 @@
     const text = $('impText').value;
     if (!text.trim()) { $('impNote').textContent = 'Paste some code first, or choose files or a folder.'; return; }
     let name = $('impName').value.trim() || 'pasted.py';
-    if (!/\.py\w?$/.test(name)) name += '.py';
+    if (!CODE_FILE.test(name) && !/\.pyw$/i.test(name)) name += '.py';   // (a name like blink.ino or app.js keeps its language)
     closeImport();
     $('impText').value = '';
     addFiles([{ name, source: text.replace(/\r\n?/g, '\n') }]);

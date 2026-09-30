@@ -108,7 +108,7 @@
             <p id="rdOverview"></p>
           </div>
           <div class="read-tools">
-            <button type="button" id="btnTour" class="btn small" disabled title="Walk through this file's Python habits, in reading order">Style tour</button>
+            <button type="button" id="btnTour" class="btn small" disabled title="Walk through this file's habits (Python, C++ or Arduino), in reading order">Style tour</button>
             <button type="button" id="btnSummarise" class="btn primary small" disabled>Summarise selection</button>
             <button type="button" id="btnToSentences" class="btn small" disabled>Open as sentences</button>
           </div>
@@ -244,9 +244,9 @@
         <label for="impName">File name</label>
         <input id="impName" value="pasted.py" spellcheck="false">
       </div>
-      <textarea id="impText" class="imp-text" spellcheck="false" placeholder="Paste Python code here"></textarea>
+      <textarea id="impText" class="imp-text" spellcheck="false" placeholder="Paste code here, and give the file name its ending: .py, .js, .html, .css, .cpp, .ino…"></textarea>
       <div class="imp-actions">
-        <label class="btn small file-btn">Choose .py files<input type="file" id="impFiles" accept=".py,.pyw,text/x-python,text/plain" multiple></label>
+        <label class="btn small file-btn">Choose files<input type="file" id="impFiles" accept=".py,.pyw,.js,.jsx,.mjs,.cjs,.ts,.tsx,.html,.htm,.css,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino,text/plain" multiple></label>
         <span class="imp-note" id="impNote"></span>
         <button type="button" class="btn primary" id="impGo">Read it</button>
       </div>

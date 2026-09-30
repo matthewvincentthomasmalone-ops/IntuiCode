@@ -43,6 +43,10 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Press **✎ Your turn** under the explanation and write the line in Python: a wrong answer says so; a right one
       (spacing doesn't matter) says "Exactly right". After three, **Write this line as Python** appears.
 - [ ] Read mode → Try the example project → `app.py` → **Style tour**: Next walks through the file's habits.
+- [ ] Build **C++ guessing game** with Tutor on: click `increase guesses by 1`, **✎ Your turn**, write `guesses += 1;`:
+      "Exactly right". `guesses++;` is "Not quite" (the same result, said differently).
+- [ ] Build **Arduino: button and light**: the notes say "In Arduino C++" (pinMode, INPUT_PULLUP, …).
+- [ ] Read mode → import `samples/cpp/blink/blink.ino` → **Style tour**: setup and loop, pinMode, delay…
 
 **Python (Write mode)**
 - [ ] Blueprints → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
