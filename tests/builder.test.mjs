@@ -36,6 +36,10 @@ const FILLS = {
   '‹the status code that means "you sent something wrong": 400›': '400',
   '‹the key this page expects, as bytes: expected.encode()›': 'expected.encode()',
   '‹the status code for "forbidden": 403›': '403',
+  '‹any of the three is missing: name is empty text or email is empty text or …›': 'name is empty text or email is empty text or message is empty text',
+  '‹the name they typed›': 'name',
+  '‹how long a reading must hold still, in milliseconds: 50 is usual›': '50',
+  '‹what a pressed button reads, with the pull-up: HIGH or LOW›': 'LOW',
 };
 
 const kits = Object.values(lib.kits);
@@ -368,11 +372,11 @@ test('the window app compiles, and runs with tkinter stood in (no window opens)'
 const ARDUINO_CLI = ['arduino-cli', path.join(process.env.LOCALAPPDATA || '', 'Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe')]
   .find(c => { try { return /arduino:avr/.test(spawnSync(c, ['core', 'list'], { encoding: 'utf8' }).stdout || ''); } catch (_) { return false; } });
 
-test('the gadget sketch compiles for an Arduino Uno with arduino-cli', { skip: !ARDUINO_CLI && 'arduino-cli with arduino:avr is not installed' }, () => {
+test('the gadget sketch, with its blanks filled, compiles for an Arduino Uno with arduino-cli', { skip: !ARDUINO_CLI && 'arduino-cli with arduino:avr is not installed' }, () => {
   const dir = tempDir('gadget');
   try {
     const sketch = path.join(dir, 'gadget');
-    const text = compile(build('gadget', lib.kits.gadget.steps.map(s => s.id)).project).results.sketch.text;
+    const text = compile(filled(build('gadget', lib.kits.gadget.steps.map(s => s.id)).project)).results.sketch.text;
     mkdirSync(sketch);
     writeFileSync(path.join(sketch, 'gadget.ino'), text);
     const r = spawnSync(ARDUINO_CLI, ['compile', '--fqbn', 'arduino:avr:uno', sketch], { encoding: 'utf8' });

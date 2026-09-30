@@ -20,6 +20,37 @@
 
   const code = (s) => '`' + s + '`';
   const note = (inf, s) => { if (!inf.notes.includes(s)) inf.notes.push(s); };
+
+  /* ‹Blanks› left to fill in (a hallway step, a blueprint). A blank that is text (in quotes) stays as
+     it is; any other becomes _, so the rest of the line still translates. Each such line then has one
+     problem: "Fill in the ‹…› slot." Notes can mention ‹blanks› freely. (As in web_write.js.) */
+  function holdBlanks(text) {
+    const blanks = new Map();
+    const lines = String(text || '').split('\n').map((l, i) => {
+      if (!l.includes('‹') || /^\s*(?:note|comment|description)\s*:/i.test(l)) return l;
+      let out = '', q = null, fill = 0;
+      for (let k = 0; k < l.length; k++) {
+        const c = l[k];
+        if (c === '‹' && l.indexOf('›', k) > k) {
+          const end = l.indexOf('›', k), slot = l.slice(k, end + 1);
+          blanks.set(i, [...new Set([...(blanks.get(i) || []), slot])]);
+          out += q && !fill ? slot : '_';
+          k = end; continue;
+        }
+        if (!q && (c === '"' || c === "'")) q = c;
+        else if (q && c === q && l[k - 1] !== '\\' && !fill) q = null;
+        else if (q && (c === '{' || c === '}') && l[k + 1] === c && !fill) { out += c + c; k++; continue; }   // {{ and }} are braces themselves
+        else if (q && c === '{') fill++;                                                                     // {name} in text is a value
+        else if (q && c === '}' && fill) fill--;
+        out += c;
+      }
+      return out;
+    });
+    return { text: lines.join('\n'), blanks };
+  }
+  function reportBlanks(info, blanks) {
+    for (const [i, slots] of blanks) if (info[i]) { info[i].errs = slots.map(s => `Fill in the ${s} slot.`); info[i].warns = []; }
+  }
   const FILLER = /^(?:(?:please|now|next|then|and then|also|just|i want to|i'd like to|let's|let us|go ahead and)\s*,?\s+)+/i;
   const RAW = /^(?:c\+\+|cpp|raw)\s*:\s?(.*)$/i;
   const ABOVE = /^(?:above main|outside main|at the top)\s*:\s?(.*)$/i;
@@ -539,7 +570,11 @@
     const arduino = project.kind === 'arduino';
     const x = { types: {}, fns: new Set(), classes: new Set(), known: new Set(), needs: new Set(), arduino };
     const results = {};
-    for (const sec of project.sections) results[sec.id] = compileCpp(sec, x);
+    for (const sec of project.sections) {
+      const h = holdBlanks(sec.text);
+      results[sec.id] = compileCpp({ ...sec, text: h.text }, x);
+      reportBlanks(results[sec.id].info, h.blanks);
+    }
     const syms = new Map();
     for (const [k, t] of Object.entries(x.types)) syms.set(k, { py: k, display: k, kind: /int|double|long/.test(t) ? 'number' : /string|String/.test(t) ? 'text' : /vector|\[\]/.test(t) ? 'list' : 'value' });
     for (const f of x.fns) syms.set(f, { py: f, display: f, kind: 'function' });

@@ -63,6 +63,37 @@
 
   const FILLER = /^(?:(?:please|now|next|then|and then|also|just|i want to|i'd like to|let's|let us|can you|go ahead and|make sure to)\s*,?\s+)+/i;
 
+  /* ‹Blanks› left to fill in (a hallway step, a blueprint). A blank that is text (in quotes) stays as
+     it is; any other becomes _, so the rest of the line, and the rest of the page, still works. Each
+     such line then has one problem: "Fill in the ‹…› slot." Notes can mention ‹blanks› freely. */
+  function holdBlanks(text) {
+    const blanks = new Map();
+    const lines = String(text || '').split('\n').map((l, i) => {
+      if (!l.includes('‹') || /^\s*(?:note|comment|description)\s*:/i.test(l)) return l;
+      let out = '', q = null, fill = 0;
+      for (let k = 0; k < l.length; k++) {
+        const c = l[k];
+        if (c === '‹' && l.indexOf('›', k) > k) {
+          const end = l.indexOf('›', k), slot = l.slice(k, end + 1);
+          blanks.set(i, [...new Set([...(blanks.get(i) || []), slot])]);
+          out += q && !fill ? slot : '_';
+          k = end; continue;
+        }
+        if (!q && (c === '"' || c === "'")) q = c;
+        else if (q && c === q && l[k - 1] !== '\\' && !fill) q = null;
+        else if (q && (c === '{' || c === '}') && l[k + 1] === c && !fill) { out += c + c; k++; continue; }   // {{ and }} are braces themselves
+        else if (q && c === '{') fill++;                                                                     // {name} in text is a value
+        else if (q && c === '}' && fill) fill--;
+        out += c;
+      }
+      return out;
+    });
+    return { text: lines.join('\n'), blanks };
+  }
+  function reportBlanks(info, blanks) {
+    for (const [i, slots] of blanks) if (info[i]) { info[i].errs = slots.map(s => `Fill in the ${s} slot.`); info[i].warns = []; }
+  }
+
   /* Shared line machinery: indentation, info per line, output lines with their source line. */
   function makeInfo(lines) { return lines.map((_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] })); }
   function note(inf, s) { if (!inf.notes.includes(s)) inf.notes.push(s); }
@@ -799,7 +830,11 @@
 
   function compileWebsite(project) {
     const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {} };
-    const sec = (f) => project.sections.find(s => s.file === f) || { id: f, file: f, text: '' };
+    const held = {};
+    const sec = (f) => {
+      if (!held[f]) { const s = project.sections.find(s => s.file === f) || { id: f, file: f, text: '' }; const h = holdBlanks(s.text); held[f] = { sec: { ...s, text: h.text }, blanks: h.blanks }; }
+      return held[f].sec;
+    };
     // Structure first (names), then Styling (may add groups to Structure), then Structure again, then Mechanics
     compileHtml(sec('structure'), shared);
     const css = compileCss(sec('styling'), shared);
@@ -810,6 +845,7 @@
     const marked = compileHtml(sec('structure'), { ...shared, ids: {}, mark: true });
     html.previewText = marked.text;
     const results = { structure: html, styling: css, mechanics: js };
+    for (const f of Object.keys(results)) reportBlanks(results[f].info, held[f].blanks);
     const syms = new Map();
     for (const [id, v] of Object.entries(shared.ids)) syms.set(id, { py: id, display: id, kind: 'element', tag: v.tag });
     for (const g of Object.keys({ ...shared.groups, ...shared.cssGroups })) syms.set('group ' + g, { py: g, display: 'group ' + g, kind: 'group' });

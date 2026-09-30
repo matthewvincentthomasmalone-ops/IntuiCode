@@ -369,8 +369,8 @@ style group photo: width 100%, aspect-ratio: 4 / 3, object-fit: cover, rounded c
 
 `component: contact
 name: Contact form
-depth: walk
-summary: A form for visitors to write to you: their name, their email and a message. Here the page checks that nothing is missing and thanks the person by name. The honest limit: a web page on its own can't deliver a message anywhere; that takes a computer that is always on. To receive the messages, connect the form to a form service, or to your own server (the Online service path builds one). Until then, the email link in the footer works with no server at all.
+depth: hallway
+summary: A form for visitors to write to you: their name, their email and a message. Here the page checks that nothing is missing and thanks the person by name. The form is built; you write the check that nothing is missing (the part every form needs) and put their name in the thank-you. The honest limit: a web page on its own can't deliver a message anywhere; that takes a computer that is always on. To receive the messages, connect the form to a form service, or to your own server (the Online service path builds one). Until then, the email link in the footer works with no server at all.
 usual: Formspree, Netlify Forms or Basin: they give you an address to send the form to, and email you each message.
 learn: Forms, labels and boxes; the "sent" event; why delivering a message needs a server.
 == structure
@@ -398,10 +398,10 @@ when message-form is sent
     get the text of name-box and store in name
     get the text of email-box and store in email
     get the text of message-box and store in message
-    if name is empty text or email is empty text or message is empty text
+    if ‹any of the three is missing: name is empty text or email is empty text or …›
         set the text of form-reply to "Please fill in all three boxes."
     otherwise
-        set the text of form-reply to "Thank you, {name}! I'll reply to {email} soon."
+        set the text of form-reply to "Thank you, {‹the name they typed›}! I'll reply to {email} soon."
         clear message-box`,
 
 `component: footer
@@ -1053,8 +1053,8 @@ if time since start minus lastBlink is at least BLINK_EVERY
 
 `component: button
 name: A button
-depth: walk
-summary: A push button between pin 2 and ground (GND). The board's built-in pull-up keeps the pin HIGH until the button connects it to ground, so pressed reads LOW, the opposite of what you'd guess. The sketch counts presses and reports each one. It reacts to the moment of pressing, not to holding, and ignores the tiny flickers a real button makes as its contacts close (called bounce) by trusting a reading only once it has held still for 50 milliseconds.
+depth: hallway
+summary: A push button between pin 2 and ground (GND). The board's built-in pull-up keeps the pin HIGH until the button connects it to ground, so pressed reads LOW, the opposite of what you'd guess. The sketch counts presses and reports each one. It reacts to the moment of pressing, not to holding, and ignores the tiny flickers a real button makes as its contacts close (called bounce) by trusting a reading only once it has held still for a moment. The structure is here; you fill in how long that moment is, and what a pressed button reads.
 learn: Digital inputs and pull-up resistors; noticing a change (was up, now down); debouncing.
 == settings
 constant BUTTON is 2
@@ -1069,9 +1069,9 @@ read pin BUTTON and store in buttonReading
 note: Any flicker restarts the 50 ms wait; only a reading that holds still counts.
 if buttonReading is not lastReading
     set lastChange to time since start
-if time since start minus lastChange is more than 50 and buttonReading is not buttonState
+if time since start minus lastChange is more than ‹how long a reading must hold still, in milliseconds: 50 is usual› and buttonReading is not buttonState
     set buttonState to buttonReading
-    if buttonState is LOW
+    if buttonState is ‹what a pressed button reads, with the pull-up: HIGH or LOW›
         increase presses
         show "Button pressed: {presses}"
 set lastReading to buttonReading`,

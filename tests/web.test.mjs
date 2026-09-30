@@ -19,6 +19,19 @@ test('structure: names, groups, nesting and a complete page', () => {
   assert.match(html, /name="viewport"/);
 });
 
+test('‹blanks›: one problem per line, text blanks stay visible, and the script still runs', () => {
+  const r = site('add a big heading "‹your name›"\nadd a section called ‹name›\nnote: fill in the ‹blanks›',
+    'style hero: background ‹a colour›',
+    'set total to ‹a number›\nshow "{‹how many›} and {{braces}} ‹as text›"\nshow "done"');
+  assert.deepEqual(plain(r.results.structure.info.map(i => i.errs)), [['Fill in the ‹your name› slot.'], ['Fill in the ‹name› slot.'], []]);
+  assert.deepEqual(problems(r, 'styling'), ['Fill in the ‹a colour› slot.']);
+  assert.deepEqual(problems(r, 'mechanics'), ['Fill in the ‹a number› slot.', 'Fill in the ‹how many› slot.', 'Fill in the ‹as text› slot.']);
+  assert.match(r.results.structure.text, /<h1>‹your name›<\/h1>/);
+  const js = r.results.mechanics.text;
+  assert.match(js, /\$\{_\} and \{braces\} ‹as text›/);
+  assert.doesNotThrow(() => new vm.Script(js), 'a blank must not break the rest of the script');
+});
+
 test('structure: a button inside a form sends the form', () => {
   assert.match(site('add a form called f\n    add a button called go saying "Go"').results.structure.text, /<button id="go" type="submit">/);
 });

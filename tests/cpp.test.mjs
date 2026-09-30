@@ -20,6 +20,15 @@ function assertValidCpp(source, label) {
   }
 }
 
+test('C++ and Arduino: each line with a ‹blank› has one problem', () => {
+  const r = cpp('set gain to ‹a decimal, like 0.5›\nshow "Gain: {gain} ‹units›"\nnote: fill in the ‹blanks›\nset ‹name› to 3');
+  assert.deepEqual(plain(r.info.map(i => i.errs)), [['Fill in the ‹a decimal, like 0.5› slot.'], ['Fill in the ‹units› slot.'], [], ['Fill in the ‹name› slot.']]);
+  assert.match(r.text, /text\("Gain: ", gain, " ‹units›"\)/);
+  const s = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 's', file: 'sketch', text: 'constant LED is 13\nwhen the board starts\n    make pin LED an output\nover and over\n    wait ‹how long› milliseconds' }] }).results.s;
+  assert.deepEqual(plain(s.info.flatMap(i => i.errs)), ['Fill in the ‹how long› slot.']);
+  assert.match(s.text, /delay\(_\);/);
+});
+
 test('C++: values get types, show and ask', () => {
   const r = cpp('set name to "Sam"\nset age to 30\nset height to 1.8\nset happy to yes\nask for a number "Guess: " and store in guess\nshow "Hi" and name and age');
   assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
