@@ -149,7 +149,14 @@ try {
   await check('the website preview runs in its own sandbox', async () => {
     await clearTerminal();
     await blueprint('To-do list page');
-    await waitFor('the preview address', () => js(() => /preview/.test(document.getElementById('preview').src)), 30000);
+    // wait until the preview has settled on one page: a page that loads again under the test ends it
+    let lastSrc = '', steady = 0;
+    await waitFor('the preview to settle on its address', async () => {
+      const src = await js(() => document.getElementById('preview').src);
+      steady = /preview/.test(src) && src === lastSrc ? steady + 1 : 0;
+      lastSrc = src;
+      return steady >= 3;
+    }, 30000);
     const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
     await wd('POST', `/session/${session}/frame`, { id: frame });
     try {

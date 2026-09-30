@@ -866,7 +866,7 @@
   function runWebsite(announce) {
     if (!compiled) compile();
     previewInfo = WEB.previewDocument(compiled, previewHelper());
-    showPreviewPage(previewInfo.html);
+    showPreviewPage(previewInfo.html, announce);
     setPicking(false);
     if (announce) {
       showBottom('preview');
@@ -877,8 +877,12 @@
   /* In the desktop app the page is served from its own address (preview://), because the editor's
    * Content-Security-Policy forbids inline scripts and a srcdoc page would inherit it. In a browser
    * it goes in srcdoc. Either way the sandbox keeps it in an origin of its own. */
-  let previewSeq = 0;
-  async function showPreviewPage(html) {
+  let previewSeq = 0, previewShown = null;
+  async function showPreviewPage(html, reload) {
+    // the same page again isn't reloaded (typing that doesn't change it, or a rebuild right after
+    // opening a project), unless Run asks for a fresh start
+    if (html === previewShown && !reload) return;
+    previewShown = html;
     const frame = $('preview'), seq = ++previewSeq;
     if (desk.on && TAURI.core.convertFileSrc) {
       try {
