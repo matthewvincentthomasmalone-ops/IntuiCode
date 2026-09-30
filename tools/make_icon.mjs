@@ -1,6 +1,8 @@
 // Draws the app icon, a vintage terminal with "IntuiCode>" on its screen, as src-tauri/icons/source.svg.
 // The letters are a 5×7 pixel font drawn as squares, so the icon doesn't depend on any installed font.
 // Then: npm run tauri -- icon src-tauri/icons/source.svg   (makes every size, and the .ico and .icns)
+// The Windows build only embeds a new icon.ico when src-tauri/tauri.conf.json has changed since the last
+// build (that's what reruns its build script), so touch that file before building again.
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
