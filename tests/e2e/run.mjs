@@ -155,10 +155,31 @@ try {
     try {
       const inside = await waitFor('the page in the preview', () => js(() => document.body && document.body.innerText.trim() ? {
         parent: (() => { try { return typeof parent.__TAURI__; } catch (e) { return 'blocked'; } })(),
-        tauri: typeof window.__TAURI__,
         storage: (() => { localStorage.setItem('e2e', 'kept'); return localStorage.getItem('e2e'); })(),
+        tauriScripts: typeof window.__TAURI_INTERNALS__,
       } : null), 30000);
-      if (inside.parent !== 'blocked' || inside.tauri !== 'undefined' || inside.storage !== 'kept') throw new Error(JSON.stringify(inside));
+      if (inside.parent !== 'blocked' || inside.storage !== 'kept') throw new Error(JSON.stringify(inside));
+      // On Windows, WebView2 runs Tauri's scripts in every frame, so the page may have Tauri's invoke.
+      // What matters is that no command runs from it: its requests come from origin null, which Tauri
+      // refuses, and the message route (forced by breaking fetch) only reaches the app from the window.
+      const attempts = await wd('POST', `/session/${session}/execute/async`, {
+        script: `const done = arguments[arguments.length - 1];
+          const t = window.__TAURI_INTERNALS__;
+          if (!t || typeof t.invoke !== 'function') return done({ invoke: 'none in this frame' });
+          const attempt = () => Promise.race([
+            t.invoke('find_git').then(() => 'IT RAN', (e) => 'refused: ' + String(e && e.message || e).slice(0, 80)),
+            new Promise(r => setTimeout(() => r('no answer'), 4000)),
+          ]);
+          (async () => {
+            const normal = await attempt();
+            window.fetch = () => Promise.reject(new TypeError('no fetch here'));
+            const messages = await attempt();
+            return { normal, messages, webview: typeof (window.chrome && window.chrome.webview) };
+          })().then(done, (e) => done({ error: String(e) }));`,
+        args: [],
+      });
+      console.log(`  Tauri scripts in the preview: ${inside.tauriScripts} · commands: ${JSON.stringify(attempts)}`);
+      if (JSON.stringify(attempts).includes('IT RAN') || attempts.error) throw new Error(JSON.stringify(attempts));
     } finally {
       await wd('POST', `/session/${session}/frame/parent`, {});
     }

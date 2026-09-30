@@ -54,7 +54,11 @@ must not turn into a command:
 - **The preview is sandboxed** without `allow-same-origin`: the page runs in an origin of its
   own and talks to the editor only with `postMessage` (console lines, errors, Pick, and its
   `localStorage`, which the editor keeps for it). In the desktop app it is served from
-  `preview://`, so it isn't covered by the editor's Content-Security-Policy.
+  `preview://`, so it isn't covered by the editor's Content-Security-Policy. On Windows,
+  WebView2 runs Tauri's scripts in every frame (wry ignores "main frame only" there), so the
+  page does see Tauri's `invoke`; commands from it are still refused, because a sandboxed
+  frame's requests carry origin `null` and messages only reach the app from the window itself.
+  The desktop tests try both routes from inside the preview.
 - **The editor's Content-Security-Policy** (`src-tauri/tauri.conf.json`) allows scripts only
   from the app itself: no inline scripts, nothing from the internet. Python and the parsers
   are built into the app (`tools/build_desktop.mjs` refuses a release build without them).
