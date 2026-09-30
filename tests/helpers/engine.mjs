@@ -7,6 +7,13 @@ import vm from 'node:vm';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+/* A Python 3 to run the reader with: python3 (Linux, macOS), or python / py (Windows, where
+ * `python3` is often only the Microsoft Store's placeholder). */
+export const PYTHON = ['python3', 'python', 'py'].find((p) => {
+  try { return /Python 3/.test(execFileSync(p, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })); }
+  catch (_) { return false; }
+}) || 'python3';
+
 export function loadEngine() {
   const ctx = { console };
   ctx.window = ctx;
@@ -19,7 +26,7 @@ export function loadEngine() {
 
 /* Call the Python reader in bulk (one process per batch). */
 function reader(cmd, payload) {
-  const out = execFileSync('python3', [path.join(ROOT, 'lang/python_reader.py'), cmd], {
+  const out = execFileSync(PYTHON, [path.join(ROOT, 'lang/python_reader.py'), cmd], {
     input: JSON.stringify(payload), maxBuffer: 64 * 1024 * 1024,
   });
   return JSON.parse(out.toString());
@@ -90,7 +97,7 @@ export async function loadConverter() {
 
 /* The Python reader's project analysis, for mixed projects. */
 export function pyProject(files) {
-  const out = execFileSync('python3', ['-c', 'import sys,json; sys.stdin.reconfigure(encoding="utf-8"); sys.path.insert(0, sys.argv[1]); import python_reader as r; print(json.dumps(r.analyze_project(json.load(sys.stdin))))', path.join(ROOT, 'lang')], {
+  const out = execFileSync(PYTHON, ['-c','import sys,json; sys.stdin.reconfigure(encoding="utf-8"); sys.path.insert(0, sys.argv[1]); import python_reader as r; print(json.dumps(r.analyze_project(json.load(sys.stdin))))', path.join(ROOT, 'lang')], {
     input: JSON.stringify(files), maxBuffer: 64 * 1024 * 1024,
   });
   return JSON.parse(out.toString());

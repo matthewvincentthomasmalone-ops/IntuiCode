@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "test": "python3 -m unittest discover -s tests -v && node --test tests/*.test.mjs",
+    "test": "node tools/test.mjs",
     "coverage": "node tools/coverage.mjs samples tests/corpus && node tools/coverage.mjs tests/heldout",
     "vendor": "node tools/vendor.mjs",
     "tauri": "tauri",
