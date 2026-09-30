@@ -86,6 +86,60 @@ test('preview inlines styles and scripts', () => {
   assert.match(doc.html, /data-ic-line="0"/);
 });
 
+test('preview keeps $&, $\' and $$ in the code as they are', () => {
+  const r = site('add a paragraph called total "x"', 'css: p::after { content: "$& $\' $$"; }', 'set sum to 12\nset the text of total to "Total: ${sum}"\njs: const s = "$&$\'$$";');
+  const js = r.results.mechanics.text;
+  assert.match(js, /`Total: \$\$\{sum\}`/);   // a dollar sign, then the value
+  const doc = WEB.previewDocument(r, '/*helper*/');
+  assert.ok(doc.html.includes(`<script>\n${js}</script>`), doc.html);
+  assert.ok(doc.html.includes('p::after { content: "$& $\' $$"; }'), doc.html);
+  assert.equal(doc.html.split('\n')[doc.jsLine - 1], 'let sum = 12;');
+  // a script placed in <head> with defer still runs after the page is read
+  const d2 = WEB.previewDocument(site('head: <script src="script.js" defer></script>\nadd a paragraph "x"', '', 'show "hi"'), '');
+  assert.ok(d2.html.indexOf('console.log("hi")') > d2.html.indexOf('<p>x</p>'), d2.html);
+  assert.equal(d2.html.split('\n')[d2.jsLine - 1], 'console.log("hi");');
+});
+
+test('mechanics: increase gives ++, let or const as the code needs, words inside quotes never split a sentence', () => {
+  const r = site('add a paragraph called out "x"', '', [
+    'set n to 0', 'increase n', 'decrease n', 'increase n by 1',
+    'fetch from "/api/items" and store in items', 'set items to items.rows',
+    'fetch from "/api/user" and store in user',
+    'for each item in items', '    set item to item.name',
+    'for each row in items', '    show row',
+    'define shout using word', '    set word to word in capitals', '    give back word',
+    'send "a to b" to "/api/log"',
+    'constant LIMIT is 3',
+  ].join('\n'));
+  const js = r.results.mechanics.text;
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  assert.match(js, /^let n = 0;\nn\+\+;\nn--;\nn \+= 1;$/m);
+  assert.match(js, /^let items = await \(await fetch\("\/api\/items"\)\)\.json\(\);\nitems = items\.rows;$/m);
+  assert.match(js, /^const user = await \(await fetch\("\/api\/user"\)\)\.json\(\);$/m);
+  assert.match(js, /^for \(let item of items\) \{\n  item = item\.name;$/m);
+  assert.match(js, /^for \(const row of items\) \{$/m);
+  assert.match(js, /^  word = word\.toUpperCase\(\);$/m);
+  assert.match(js, /body: JSON\.stringify\("a to b"\)/);
+  assert.doesNotThrow(() => new vm.Script(`(async () => {\n${js}\n})`));
+  assert.ok(problems(site('', '', 'constant LIMIT is 3\nset LIMIT to 4'), 'mechanics').some(e => /is a constant/.test(e)));
+});
+
+test('text in quotes: {name} fills in a value, {{ and }} are braces', () => {
+  const js = site('', '', 'set x to 1\nshow "{{x}} is {x}"\nshow "just {{braces}}"').results.mechanics.text;
+  assert.match(js, /console\.log\(`\{x\} is \$\{x\}`\);/);
+  assert.match(js, /console\.log\("just \{braces\}"\);/);
+  assert.doesNotThrow(() => new vm.Script(js));
+});
+
+test('structure: the doctype, the <html> tag and the usual settings can be left out or replaced', () => {
+  const html = site('no doctype\nno page language\nhtml attributes: dir="rtl" class="no-js"\nleave out the character set\nhead: <meta name="viewport" content="width=1024">\nhead: <link rel="stylesheet" href="style.css">\nhead: <style>\nhead:   p { color: red; }\nhead: </style>\nhtml: <pre>\nhtml:   two  spaces\nhtml: </pre>\nadd a paragraph "Say \\"hi\\" \\\\o/"\nhtml: <script src="script.js"></script>\nadd a paragraph "after"').results.structure.text;
+  assert.match(html, /^<html dir="rtl" class="no-js">\n<head>\n  <title>My page<\/title>\n  <meta name="viewport" content="width=1024">\n  <link rel="stylesheet" href="style.css">\n  <style>\n  p \{ color: red; \}\n<\/style>\n<\/head>/);   // no doctype, charset or second viewport; styles in order
+  assert.match(html, /\n  <pre>\n  two  spaces\n<\/pre>\n/);   // lines inside <pre> keep their own spaces
+  assert.match(html, /<p>Say "hi" \\o\/<\/p>/);
+  assert.match(html, /<script src="script\.js"><\/script>\n  <p>after<\/p>\n<\/body>/);   // Mechanics loads where the line says, once
+  assert.equal(html.match(/script\.js/g).length, 1);
+});
+
 /* ---------- the web reader ---------- */
 
 const W = await loadWebReader();

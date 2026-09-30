@@ -48,6 +48,15 @@ test('C++: text with {values} and random numbers add their helpers', () => {
   assertValidCpp(r.text, 'helpers');
 });
 
+test('C++: {{ and }} are braces in text with values; increase gives ++; words in quotes never split a sentence', () => {
+  const r = cpp('set n to 1\nshow "{{n}} is {n}"\nincrease n\nincrease n by 1\ncreate list of text called notes with "a"\nadd "walk to the shop" to notes');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /text\("\{n\} is ", n\)/);
+  assert.match(r.text, /n\+\+;\n\s+n \+= 1;/);
+  assert.match(r.text, /notes\.push_back\("walk to the shop"\);/);
+  assertValidCpp(r.text, 'braces');
+});
+
 test('C++: lists need a kind', () => {
   assert.ok(cpp('create list things').info.flatMap(i => i.errs).some(e => /needs to know what the list will hold/.test(e)));
 });

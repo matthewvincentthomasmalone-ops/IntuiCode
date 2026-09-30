@@ -18,7 +18,8 @@
   const escAttr = (s) => esc(s).replace(/"/g, '&quot;');
   const toId = (s) => String(s).trim().replace(/^(?:the|my)\s+/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const STR = /^"((?:[^"\\]|\\.)*)"$|^'((?:[^'\\]|\\.)*)'$/;
-  const strOf = (s) => { const m = String(s || '').trim().match(STR); return m ? (m[1] ?? m[2]) : null; };
+  /* Quoted text in a sentence -> the text: \" \' and \\ stand for the character itself (other backslashes stay). */
+  const strOf = (s) => { const m = String(s || '').trim().match(STR); return m ? (m[1] ?? m[2]).replace(/\\(["'\\])/g, '$1') : null; };
 
   function splitItems(s) {
     const parts = []; let depth = 0, quote = null, cur = '';
@@ -41,6 +42,24 @@
     const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (m) => { strs.push(m); return `\u0001${strs.length - 1}\u0001`; });
     return fn(masked).replace(/\u0001(\d+)\u0001/g, (m, i) => strs[+i]);
   }
+
+  /* Like s.match(re), but sentence words inside quotes never count ("send "a to b" to "/api""):
+     the words are hidden while matching and the groups hold the real text. */
+  const withIndices = new Map();   // by source: a regex written in a function is a new object each time
+  function qmatch(s, re) {
+    let red = withIndices.get(re.source + '/' + re.flags);
+    if (!red) { red = new RegExp(re.source, re.flags.replace(/[gd]/g, '') + 'd'); withIndices.set(re.source + '/' + re.flags, red); }
+    const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (m) => m[0] + '\u0001'.repeat(m.length - 2) + m[0]);
+    const m = masked.match(red);
+    if (!m) return null;
+    const out = m.indices.map(p => (p ? s.slice(p[0], p[1]) : undefined));
+    out.index = m.index; out.input = s;
+    return out;
+  }
+
+  /* Text in double quotes: {name} fills in a value, and {{ and }} are braces themselves. */
+  const FILL = /\{\{|\}\}|\{([^{}]+)\}|[{}]/g;
+  const fillsIn = (body) => [...body.matchAll(FILL)].some(m => m[1] != null);
 
   const FILLER = /^(?:(?:please|now|next|then|and then|also|just|i want to|i'd like to|let's|let us|can you|go ahead and|make sure to)\s*,?\s+)+/i;
 
@@ -132,37 +151,74 @@
     return null;
   }
 
+  /* Raw HTML inside <pre>, <textarea>, <script> or <style> keeps its own spaces (the page shows or runs
+     them exactly), so those lines aren't indented to fit. Which of them is still open after this line? */
+  const KEEP_SPACES = /<(pre|textarea|script|style|listing|xmp)\b[^>]*>/gi;
+  function rawOpen(line, open) {
+    const low = line.toLowerCase();
+    for (let i = 0; ;) {
+      if (open) {
+        const close = low.indexOf('</' + open, i);
+        if (close < 0) return open;
+        i = close + 2 + open.length; open = null;
+      }
+      KEEP_SPACES.lastIndex = i;
+      const m = KEEP_SPACES.exec(line);
+      if (!m) return null;
+      open = m[1].toLowerCase(); i = m.index + m[0].length;
+    }
+  }
+  // raw lines that take the place of what Structure writes itself (an attribute, never text inside another one's value)
+  const STYLE_LINK = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*?\shref\s*=\s*["']?style\.css["'\s>]/i, SCRIPT_TAG = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*?\ssrc\s*=\s*["']?script\.js["'\s>]/i;
+  const CHARSET_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\scharset\s*=/i, VIEWPORT_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\sname\s*=\s*["']?viewport["'\s>]/i;
+
   function compileHtml(sec, shared) {
     const lines = sec.text.split('\n');
     const info = makeInfo(lines);
     const rootEl = { tag: 'body', children: [], container: true };
     const stack = [{ ind: -1, el: rootEl }];
-    let title = 'My page', lang = 'en', bodyAttrs = '', titleSet = false;
+    let title = 'My page', lang = 'en', bodyAttrs = '', htmlAttrs = '', doctype = '<!DOCTYPE html>', noCharset = false, noViewport = false;
     const head = [];
     const all = [];
+    const at = {};   // the sentence line behind each part of the page outside <body>
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) return;
       const ind = raw.match(/^ */)[0].length;
+      const t = raw.trim(), exact = raw.replace(/^\s+|\r$/g, '');   // raw HTML keeps any spaces at its end
       let hm;
-      if ((hm = raw.trim().match(/^(?:in the )?head\s*:\s?(.*)$/i))) { head.push({ text: hm[1], src: i }); note(inf, 'HTML copied exactly into the page\'s <head>: the part browsers read first (links, settings), not shown on the page.'); return; }
-      if ((hm = raw.trim().match(/^(?:the )?(?:page )?body (?:attributes|has)\s*:\s?(.*)$/i))) { bodyAttrs = hm[1].trim(); note(inf, 'Attributes copied exactly onto the page\'s <body> tag.'); inf.target = 'body'; return; }
-      if (/^(?:no title|the page has no title)$/i.test(raw.trim())) { title = null; return; }
-      const rawLine = raw.trim().match(/^(?:html|raw)\s*:\s?(.*)$/i);
-      let s = rawLine ? raw.trim() : raw.trim().replace(/[.:]$/, '');
+      if ((hm = exact.match(/^(?:in the )?head\s*:\s?(.*)$/i))) {
+        head.push({ text: hm[1], src: i });
+        note(inf, 'HTML copied exactly into the page\'s <head>: the part browsers read first (links, settings), not shown on the page.');
+        if (CHARSET_META.test(hm[1])) note(inf, 'It replaces the usual `<meta charset="utf-8">`.');
+        if (VIEWPORT_META.test(hm[1])) note(inf, 'It replaces the usual viewport setting.');
+        if (STYLE_LINK.test(hm[1])) note(inf, 'This is where the page loads Styling (style.css), instead of at the end of <head>.');
+        if (SCRIPT_TAG.test(hm[1])) note(inf, 'This is where the page loads Mechanics (script.js), instead of at the end of <body>.');
+        return;
+      }
+      if ((hm = t.match(/^(?:the )?(?:page )?body (?:attributes|has)\s*:\s?(.*)$/i))) { bodyAttrs = hm[1].trim(); note(inf, 'Attributes copied exactly onto the page\'s <body> tag.'); inf.target = 'body'; return; }
+      if ((hm = t.match(/^(?:the )?html (?:tag )?attributes\s*:\s?(.*)$/i))) { htmlAttrs = hm[1].trim(); at.html = i; note(inf, 'Attributes copied exactly onto the page\'s <html> tag, which holds the whole page.'); return; }
+      if (/^(?:no title|the page has no title)$/i.test(t)) { title = null; return; }
+      if (/^(?:no page language|the page has no language)$/i.test(t)) { lang = null; at.html = at.html ?? i; note(inf, 'Leaves out `lang` on the <html> tag. With it, screen readers pronounce the page correctly and browsers can offer to translate it.'); return; }
+      if (/^(?:no doctype|leave out the doctype)$/i.test(t)) { doctype = null; note(inf, 'Leaves out `<!DOCTYPE html>`. Without it, browsers draw the page in "quirks mode", the way very old pages were drawn.'); return; }
+      if ((hm = exact.match(/^doctype\s*:\s?(.*)$/i))) { doctype = hm[1]; at.doctype = i; note(inf, 'The first line of the page, copied exactly: it tells the browser which kind of HTML this is.'); return; }
+      if (/^leave out the character set$/i.test(t)) { noCharset = true; note(inf, 'Leaves out `<meta charset="utf-8">`, so the browser has to guess how the page\'s letters are stored (accents and symbols can come out wrong).'); return; }
+      if (/^leave out the viewport(?: setting)?$/i.test(t)) { noViewport = true; note(inf, 'Leaves out the viewport setting, so phones show the page zoomed out, like on a big screen.'); return; }
+      const rawLine = exact.match(/^(?:html|raw)\s*:\s?(.*)$/i);
+      let s = rawLine ? exact : t.replace(/[.:]$/, '');
       if (/^(?:note|comment)\s*:/i.test(s)) { stack[stack.length - 1].el.children.push({ comment: s.replace(/^(?:note|comment)\s*:\s*/i, ''), src: i }); return; }
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
       while (stack.length > 1 && ind <= stack[stack.length - 1].ind) stack.pop();
       const parent = stack[stack.length - 1];
       if (parent.el !== rootEl && !parent.el.container) inf.errs.push('This line is indented under something that can\'t hold other things. Only sections, blocks, lists, forms and similar can.');
-      const el = parseHtmlLine(s, inf);
+      const el = rawLine ? { raw: rawLine[1] } : parseHtmlLine(s, inf);
       if (!el) {
         inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Structure understands, or start the line with html: to write HTML directly.');
         return;
       }
       if (el.title != null) { title = el.title; inf.target = 'title'; return; }
-      if (el.lang) { lang = el.lang; return; }
+      if (el.lang) { lang = el.lang; at.html = at.html ?? i; return; }
       el.src = i;
       if (el.id) {
         if (shared.ids[el.id] && shared.ids[el.id].line !== i) inf.errs.push(`Another element is already called ${code(el.id)} (line ${shared.ids[el.id].line + 1}). Names must be unique on a page.`);
@@ -184,15 +240,19 @@
     // render
     const out = [];
     const push = (text, src) => out.push({ text, src });
-    push('<!DOCTYPE html>', -1);
-    push(`<html lang="${lang}">`, -1);
+    const raws = [...head.map(h => h.text), ...all.filter(e => e.raw != null).map(e => e.raw)];
+    const inHead = (re) => head.some(h => re.test(h.text));
+    if (doctype != null) push(doctype, at.doctype ?? -1);
+    if (/(?:^|\s)lang\s*=/i.test(htmlAttrs)) lang = null;   // the attributes line says the language itself
+    push(`<html${lang ? ` lang="${lang}"` : ''}${htmlAttrs ? ' ' + htmlAttrs : ''}>`, at.html ?? -1);
     push('<head>', -1);
-    push('  <meta charset="utf-8">', -1);
-    push('  <meta name="viewport" content="width=device-width, initial-scale=1">', -1);
+    if (!noCharset && !inHead(CHARSET_META)) push('  <meta charset="utf-8">', -1);
+    if (!noViewport && !inHead(VIEWPORT_META)) push('  <meta name="viewport" content="width=device-width, initial-scale=1">', -1);
     const ti = info.findIndex(x => x.target === 'title');
     if (title != null) push(`  <title>${esc(title)}</title>`, ti);
-    for (const h of head) push('  ' + h.text, h.src);
-    push('  <link rel="stylesheet" href="style.css">', -1);
+    let open = null;
+    for (const h of head) { push(open ? h.text : '  ' + h.text, h.src); open = rawOpen(h.text, open); }
+    if (!raws.some(r => STYLE_LINK.test(r))) push('  <link rel="stylesheet" href="style.css">', -1);   // unless a head: or html: line places it
     push('</head>', -1);
     push(`<body${bodyAttrs ? ' ' + bodyAttrs : ''}>`, info.findIndex(x => x.target === 'body'));
     const attrs = (e) => {
@@ -204,10 +264,11 @@
       return a;
     };
     const VOID = new Set(['img', 'input', 'hr', 'br', 'meta', 'link']);
+    open = null;
     const render = (e, depth) => {
       const pad = '  '.repeat(depth);
       if (e.comment != null) return push(`${pad}<!-- ${esc(e.comment)} -->`, e.src);
-      if (e.raw != null) return push(pad + e.raw, e.src);
+      if (e.raw != null) { const keep = open; open = rawOpen(e.raw, open); return push(keep ? e.raw : pad + e.raw, e.src); }
       if (VOID.has(e.tag)) return push(`${pad}<${e.tag}${attrs(e)}>`, e.src);
       if (e.children && e.children.length && (e.container || e.tag === 'label' || e.tag === 'select')) {
         push(`${pad}<${e.tag}${attrs(e)}>`, e.src);
@@ -217,7 +278,7 @@
       } else push(`${pad}<${e.tag}${attrs(e)}>${esc(e.text ?? '')}</${e.tag}>`, e.src);
     };
     for (const c of rootEl.children) render(c, 1);
-    push('  <script src="script.js"></script>', -1);
+    if (!raws.some(r => SCRIPT_TAG.test(r))) push('  <script src="script.js"></script>', -1);   // unless a head: or html: line places it
     push('</body>', -1);
     push('</html>', -1);
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
@@ -453,8 +514,9 @@
   function jsExpr(src, x, inf) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return 'null'; }
+    // text in quotes, and regular expressions like /  +/g (a / where a value starts), are kept exactly as written
     const strs = [];
-    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (m) => { strs.push(m); return ` ⟦${strs.length - 1}⟧ `; });
+    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^])\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m) => { strs.push(m); return ` ⟦${strs.length - 1}⟧ `; });
     const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_$][\w$]*(?:\.[\w$]+)*(?:\([^()]*\)|\[[^\[\]]*\])*)`;
     const R = (p) => new RegExp(p.replace(/OPD/g, OPD), 'gi');
     q = q.replace(/\bthe\b/gi, ' ');
@@ -484,14 +546,19 @@
       if (x.pass2 && !/^\d/.test(id) && !/^\s*\(/.test(q.slice(off + m.length))) inf.warns.push(`${code(id)} hasn't been set anywhere yet.`);
       return id;
     });
-    q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/!\s+/g, '!').replace(/\s*\.\s*(?=length)/g, '.').trim();
+    q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/!\s+/g, '!').replace(/\s*\.\s*(?=length)/g, '.').replace(/(⟧) \.(?=[A-Za-z_$])/g, '$1.').trim();
     q = q.replace(/⟦(\d+)⟧/g, (m, i) => {
       const str = strs[+i];
-      if (str[0] === '"' && /\{[^{}]+\}/.test(str)) {
-        note(inf, 'Text with {…} inside becomes a template string (backticks): JavaScript fills in the current values.');
-        return '`' + str.slice(1, -1).replace(/`/g, '\\`').replace(/\{([^{}]+)\}/g, (mm, e) => '${' + jsExpr(e, x, inf) + '}') + '`';
+      if (str[0] !== '"' || !/[{}]/.test(str)) return str;
+      if (!fillsIn(str)) return str.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
+      note(inf, 'Text with {…} inside becomes a template string (backticks): JavaScript fills in the current values. (A brace itself is written twice: {{ or }}.)');
+      let body = '';
+      for (const mm of str.slice(1, -1).matchAll(new RegExp(FILL.source + '|[^{}]+', 'g'))) {
+        if (mm[1] != null) body += '${' + jsExpr(mm[1], x, inf) + '}';
+        else if (/^[{}]/.test(mm[0])) body += (body.endsWith('$') ? '\\' : '') + mm[0][0];   // a brace itself (never the start of ${)
+        else body += mm[0].replace(/`/g, '\\`');
       }
-      return str;
+      return '`' + body + '`';
     });
     return q;
   }
@@ -524,9 +591,34 @@
       }
     }
     x.pass2 = true;
-    const declared = [new Set()];     // one set of names per block, like let
-    declared.has = (n) => declared.some(d => d.has(n));
-    declared.add = (n) => declared[declared.length - 1].add(n);
+    const scopes = [new Map()];   // name -> 'let' | 'const', one map per block, like JavaScript
+    const known = (n) => scopes.some(sc => sc.has(n));
+    const isConst = (n) => { for (let k = scopes.length - 1; k >= 0; k--) if (scopes[k].has(n)) return scopes[k].get(n) === 'const'; return false; };
+    const declare = (n, kind = 'let') => scopes[scopes.length - 1].set(n, kind);
+    /* The keyword for storing in a name: '' when it already exists (a constant can't change), else let or const. */
+    const keyword = (n, inf, kind = 'let') => {
+      if (known(n)) { if (isConst(n)) inf.errs.push(`${code(n)} is a constant (made with const), so it can't be changed. Use "set ${n} to …" where it is made if it needs to change.`); return ''; }
+      declare(n, kind);
+      return kind + ' ';
+    };
+    /* Does a later line in the same block (or a block inside it) store something new in this name?
+       body: only look at the block that starts under line i. */
+    const changes = (line, n) => {
+      const t = line.trim().replace(FILLER, '').replace(/[.:]$/, ''), e = n.replace(/\$/g, '\\$');
+      const r = t.match(/^(?:js|javascript|raw)\s*:(.*)$/i);
+      if (r) return new RegExp(`(?<![\\w$.])${e}\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)|(?<![\\w$.])${e}\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*${e}(?![\\w$])`).test(r[1].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""'));
+      return new RegExp(`^(?:(?:set|let|make)\\s+${e}\\s+(?:to|be)\\s|(?:increase|decrease)\\s+${e}(?:\\s|$)|(?:create|make)\\s+(?:an?\\s+)?(?:empty\\s+)?list\\s+(?:called\\s+)?${e}(?:\\s|$))|\\band store (?:it |the reply |the result )?in\\s+${e}$`, 'i').test(t);
+    };
+    const changedLater = (i, n, body) => {
+      const base = lines[i].match(/^ */)[0].length;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (!lines[j].trim()) continue;
+        const ind = lines[j].match(/^ */)[0].length;
+        if (body ? ind <= base : ind < base) break;
+        if (changes(lines[j], n)) return true;
+      }
+      return false;
+    };
     const stack = [];   // {ind, close, kind}
     const E = (t, inf, cond) => { x.cond = !!cond; const r = jsExpr(t, x, inf); x.cond = false; return r; };
     const usesEvent = (fromIdx) => { // does the block starting after this line use the event?
@@ -546,26 +638,32 @@
       while (stack.length && ind <= stack[stack.length - 1].ind) {
         const b = stack.pop();
         const nextIsElse = /^\s*(otherwise|else)\b/i.test(raw) && ind === b.ind && b.kind === 'if';
-        if (nextIsElse) { stack.push(b); declared[declared.length - 1] = new Set(); break; }
-        declared.pop();
+        if (nextIsElse) { stack.push(b); scopes[scopes.length - 1] = new Map(); break; }
+        scopes.pop();
         while (out.length && out[out.length - 1].text === '') out.pop();
         push('  '.repeat(stack.length) + b.close, b.src);
       }
       const pad = '  '.repeat(stack.length);
-      const open = (head, close, kind) => { push(pad + head, i); stack.push({ ind, close, kind, src: i }); declared.push(new Set()); };
+      const open = (head, close, kind) => { push(pad + head, i); stack.push({ ind, close, kind, src: i }); scopes.push(new Map()); };
       const say = (t) => push(pad + t, i);
       let m;
-      if ((m = raw.trim().match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) { note(inf, 'Raw JavaScript: copied exactly as written.'); return say(m[1]); }
+      if ((m = raw.trim().match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) {
+        const d = m[1].match(/^(let|const|var)\s+([A-Za-z_$][\w$]*)/);
+        if (d) declare(d[2], d[1] === 'const' ? 'const' : 'let');   // so a later "set …" changes it instead of making it again
+        note(inf, 'Raw JavaScript: copied exactly as written.');
+        return say(m[1]);
+      }
       let s = raw.trim().replace(/[.:]$/, '');
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
       if ((m = s.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return say('// ' + m[1]);
+      const M = (re) => qmatch(s, re);   // like s.match, but sentence words inside quotes never count
       // --- events
-      if ((m = s.match(/^when\s+(?:the\s+)?page (?:has )?(?:loaded|opens|starts)$/i))) {
+      if ((m = M(/^when\s+(?:the\s+)?page (?:has )?(?:loaded|opens|starts)$/i))) {
         note(inf, 'Runs the indented lines once the page has finished loading.');
         return open(`document.addEventListener("DOMContentLoaded", ${needsAsync(i) ? 'async ' : ''}() => {`, '});', 'fn');
       }
-      if ((m = s.match(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)$/i))) {
+      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)$/i))) {
         const ev = { clicked: 'click', pressed: 'click', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit' }[m[2].toLowerCase()];
         const el = elementRef(m[1], x, inf);
         const isForm = ev === 'submit';
@@ -574,32 +672,31 @@
         if (isForm) push('  '.repeat(stack.length) + 'event.preventDefault();', i);
         return;
       }
-      if ((m = s.match(/^every\s+(\S+)\s+seconds?$/i))) { note(inf, '`setInterval` runs the indented lines again and again. The time is in milliseconds (1000 = 1 second).'); return open(`setInterval(${needsAsync(i) ? 'async ' : ''}() => {`, `}, ${Math.round(parseFloat(m[1]) * 1000)});`, 'fn'); }
-      if ((m = s.match(/^after\s+(\S+)\s+seconds?$/i))) { note(inf, '`setTimeout` runs the indented lines once, after a delay in milliseconds.'); return open(`setTimeout(${needsAsync(i) ? 'async ' : ''}() => {`, `}, ${Math.round(parseFloat(m[1]) * 1000)});`, 'fn'); }
+      if ((m = M(/^every\s+(\S+)\s+seconds?$/i))) { note(inf, '`setInterval` runs the indented lines again and again. The time is in milliseconds (1000 = 1 second).'); return open(`setInterval(${needsAsync(i) ? 'async ' : ''}() => {`, `}, ${Math.round(parseFloat(m[1]) * 1000)});`, 'fn'); }
+      if ((m = M(/^after\s+(\S+)\s+seconds?$/i))) { note(inf, '`setTimeout` runs the indented lines once, after a delay in milliseconds.'); return open(`setTimeout(${needsAsync(i) ? 'async ' : ''}() => {`, `}, ${Math.round(parseFloat(m[1]) * 1000)});`, 'fn'); }
       // --- the page
-      if ((m = s.match(/^get the (?:text|value) (?:of|in|from)\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
+      if ((m = M(/^get the (?:text|value) (?:of|in|from)\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
         const el = elementRef(m[1], x, inf);
         const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
         note(inf, prop === 'value' ? 'Text boxes keep what was typed in `.value`.' : '`.textContent` is the text shown inside the element.');
-        const kw = declared.has(m[2]) ? '' : 'let '; declared.add(m[2]);
-        return say(`${kw}${m[2]} = ${el.js}.${prop};`);
+        return say(`${keyword(m[2], inf)}${m[2]} = ${el.js}.${prop};`);
       }
-      if ((m = s.match(/^set the (?:text|value) of\s+(.+?)\s+to\s+(.+)$/i))) {
+      if ((m = M(/^set the (?:text|value) of\s+(.+?)\s+to\s+(.+)$/i))) {
         const el = elementRef(m[1], x, inf);
         const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
         note(inf, '`textContent` sets plain text safely: anything typed by users is shown as text, never run as code.');
         return say(`${el.js}.${prop} = ${E(m[2], inf)};`);
       }
-      if ((m = s.match(/^(?:clear|empty)\s+(.+)$/i))) {
+      if ((m = M(/^(?:clear|empty)\s+(.+)$/i))) {
         const el = elementRef(m[1], x, inf);
         return say(/^(input|textarea|select)$/.test(el.tag) ? `${el.js}.value = "";` : `${el.js}.replaceChildren();`);
       }
-      if ((m = s.match(/^hide\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); return say(`${el.js}.hidden = true;`); }
-      if ((m = s.match(/^(?:reveal|unhide|show the element)\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); return say(`${el.js}.hidden = false;`); }
-      if ((m = s.match(/^put\s+(.+?)\s+in(?:to)? group\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); note(inf, 'Adds a class, so the group\'s styles from Styling apply.'); return say(`${el.js}.classList.add("${toId(m[2])}");`); }
-      if ((m = s.match(/^take\s+(.+?)\s+out of group\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); return say(`${el.js}.classList.remove("${toId(m[2])}");`); }
-      if ((m = s.match(/^(?:switch|toggle) group\s+(.+?)\s+on\s+(.+)$/i))) { const el = elementRef(m[2], x, inf); return say(`${el.js}.classList.toggle("${toId(m[1])}");`); }
-      if ((m = s.match(/^add\s+(.+?)\s+to the (?:page )?list\s+(.+)$/i)) || ((m = s.match(/^add\s+(.+?)\s+to\s+([\w-]+)$/i)) && x.shared.ids[toId(m[2])] && /^(ul|ol)$/.test(x.shared.ids[toId(m[2])].tag))) {
+      if ((m = M(/^hide\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); return say(`${el.js}.hidden = true;`); }
+      if ((m = M(/^(?:reveal|unhide|show the element)\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); return say(`${el.js}.hidden = false;`); }
+      if ((m = M(/^put\s+(.+?)\s+in(?:to)? group\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); note(inf, 'Adds a class, so the group\'s styles from Styling apply.'); return say(`${el.js}.classList.add("${toId(m[2])}");`); }
+      if ((m = M(/^take\s+(.+?)\s+out of group\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); return say(`${el.js}.classList.remove("${toId(m[2])}");`); }
+      if ((m = M(/^(?:switch|toggle) group\s+(.+?)\s+on\s+(.+)$/i))) { const el = elementRef(m[2], x, inf); return say(`${el.js}.classList.toggle("${toId(m[1])}");`); }
+      if ((m = M(/^add\s+(.+?)\s+to the (?:page )?list\s+(.+)$/i)) || ((m = M(/^add\s+(.+?)\s+to\s+([\w-]+)$/i)) && x.shared.ids[toId(m[2])] && /^(ul|ol)$/.test(x.shared.ids[toId(m[2])].tag))) {
         const el = elementRef(m[2], x, inf);
         note(inf, 'Makes a new list item (`<li>`), sets its text safely with `textContent`, and adds it to the end of the list on the page.');
         say('{');
@@ -608,63 +705,82 @@
         push(pad + `  ${el.js}.append(newListItem);`, i);
         return say('}');
       }
-      if ((m = s.match(/^scroll to\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); note(inf, '`scrollIntoView` scrolls the page until the element is visible, smoothly.'); return say(`${el.js}.scrollIntoView({ behavior: "smooth" });`); }
-      if ((m = s.match(/^show (?:a )?message\s+(.+)$/i))) { note(inf, '`alert` shows a pop-up. For anything more than a quick test, "set the text of …" on the page is friendlier.'); return say(`alert(${E(m[1], inf)});`); }
-      if ((m = s.match(/^(?:go to|open the page)\s+(.+)$/i))) return say(`window.location.href = ${E(m[1], inf)};`);
+      if ((m = M(/^scroll to\s+(.+)$/i))) { const el = elementRef(m[1], x, inf); note(inf, '`scrollIntoView` scrolls the page until the element is visible, smoothly.'); return say(`${el.js}.scrollIntoView({ behavior: "smooth" });`); }
+      if ((m = M(/^show (?:a )?message\s+(.+)$/i))) { note(inf, '`alert` shows a pop-up. For anything more than a quick test, "set the text of …" on the page is friendlier.'); return say(`alert(${E(m[1], inf)});`); }
+      if ((m = M(/^(?:go to|open the page)\s+(.+)$/i))) return say(`window.location.href = ${E(m[1], inf)};`);
       // --- the server and the browser's memory
-      if ((m = s.match(/^(?:fetch|get|load)\s+(?:data\s+)?from\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
-        const kw = declared.has(m[2]) ? '' : 'const '; declared.add(m[2]);
-        note(inf, '`fetch` asks the server for data and `await` waits for the reply without freezing the page. `.json()` turns the reply into values JavaScript can use.');
+      // A reply is kept with const, unless a later line in the same block changes it (then let).
+      const replyKeyword = (n) => (known(n) ? keyword(n, inf) : keyword(n, inf, changedLater(i, n, false) ? 'let' : 'const'));
+      if ((m = M(/^(?:fetch|get|load)\s+(?:data\s+)?from\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
+        const kw = replyKeyword(m[2]);
+        note(inf, '`fetch` asks the server for data and `await` waits for the reply without freezing the page. `.json()` turns the reply into values JavaScript can use.' + (kw === 'let ' ? ` It is kept with \`let\` because a later line changes ${code(m[2])}.` : kw === 'const ' ? ' `const` keeps the reply under this name for good.' : ''));
         return say(`${kw}${m[2]} = await (await fetch(${E(m[1], inf)})).json();`);
       }
-      if ((m = s.match(/^send\s+(.+?)\s+to\s+(.+?)(?:\s+and store the reply in\s+([A-Za-z_$][\w$]*))?$/i))) {
+      if ((m = M(/^send\s+(.+?)\s+to\s+(.+?)(?:\s+and store the reply in\s+([A-Za-z_$][\w$]*))?$/i))) {
         note(inf, 'Sends the data to the server as JSON with a POST request.');
         const call = `await fetch(${E(m[2], inf)}, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(${E(m[1], inf)}) })`;
-        if (m[3]) { const kw = declared.has(m[3]) ? '' : 'const '; declared.add(m[3]); return say(`${kw}${m[3]} = await (${call}).json();`); }
+        if (m[3]) return say(`${replyKeyword(m[3])}${m[3]} = await (${call}).json();`);
         return say(call + ';');
       }
-      if ((m = s.match(/^save\s+(.+?)\s+in the browser as\s+(.+)$/i))) { note(inf, '`localStorage` keeps data in this browser, even after the page is closed. It is stored as text, so `JSON.stringify` turns values into text.'); return say(`localStorage.setItem(${E(m[2], inf)}, JSON.stringify(${E(m[1], inf)}));`); }
-      if ((m = s.match(/^load\s+(.+?)\s+from the browser and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) { const kw = declared.has(m[2]) ? '' : 'let '; declared.add(m[2]); return say(`${kw}${m[2]} = JSON.parse(localStorage.getItem(${E(m[1], inf)}));`); }
+      if ((m = M(/^save\s+(.+?)\s+in the browser as\s+(.+)$/i))) { note(inf, '`localStorage` keeps data in this browser, even after the page is closed. It is stored as text, so `JSON.stringify` turns values into text.'); return say(`localStorage.setItem(${E(m[2], inf)}, JSON.stringify(${E(m[1], inf)}));`); }
+      if ((m = M(/^load\s+(.+?)\s+from the browser and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) return say(`${keyword(m[2], inf)}${m[2]} = JSON.parse(localStorage.getItem(${E(m[1], inf)}));`);
       // --- logic (same sentences as Python, JavaScript output)
-      if ((m = s.match(/^(?:otherwise if|else if)\s+(.+)$/i))) { push('  '.repeat(stack.length - 1) + `} else if (${E(m[1], inf, true)}) {`, i); return; }
+      if ((m = M(/^(?:otherwise if|else if)\s+(.+)$/i))) { push('  '.repeat(stack.length - 1) + `} else if (${E(m[1], inf, true)}) {`, i); return; }
       if (/^(?:otherwise|else)$/i.test(s)) { push('  '.repeat(stack.length - 1) + '} else {', i); return; }
-      if ((m = s.match(/^if\s+(.+)$/i))) return open(`if (${E(m[1], inf, true)}) {`, '}', 'if');
-      if ((m = s.match(/^repeat\s+(.+?)\s+times?(?:\s+counting with\s+(\w+))?$/i))) { const v = m[2] || 'i'; x.vars.add(v); return open(`for (let ${v} = 0; ${v} < ${E(m[1], inf)}; ${v}++) {`, '}', 'loop'); }
-      if ((m = s.match(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s+(.+)$/i))) { note(inf, '`for … of` goes through the items one at a time.'); return open(`for (const ${m[1]} of ${E(m[2], inf)}) {`, '}', 'loop'); }
-      if ((m = s.match(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${E(m[1], inf, true)}) {`, '}', 'loop');
-      if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { note(inf, '`function` makes a reusable tool.'); return open(`${needsAsync(i) ? 'async ' : ''}function ${m[1]}(${m[2] ? splitItems(m[2]).join(', ') : ''}) {`, '}', 'fn'); }
-      if ((m = s.match(/^(?:give back|return)\b\s*(.*)$/i))) return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
+      if ((m = M(/^if\s+(.+)$/i))) return open(`if (${E(m[1], inf, true)}) {`, '}', 'if');
+      if ((m = M(/^repeat\s+(.+?)\s+times?(?:\s+counting with\s+(\w+))?$/i))) { const v = m[2] || 'i'; x.vars.add(v); open(`for (let ${v} = 0; ${v} < ${E(m[1], inf)}; ${v}++) {`, '}', 'loop'); declare(v); return; }
+      if ((m = M(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s+(.+)$/i))) {
+        const kind = changedLater(i, m[1], true) ? 'let' : 'const';
+        note(inf, '`for … of` goes through the items one at a time.' + (kind === 'let' ? ` It uses \`let\` because the lines inside change ${code(m[1])}.` : ''));
+        open(`for (${kind} ${m[1]} of ${E(m[2], inf)}) {`, '}', 'loop');
+        declare(m[1], kind);
+        return;
+      }
+      if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${E(m[1], inf, true)}) {`, '}', 'loop');
+      if ((m = M(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) {
+        const ps = m[2] ? splitItems(m[2]) : [];
+        note(inf, '`function` makes a reusable tool.');
+        open(`${needsAsync(i) ? 'async ' : ''}function ${m[1]}(${ps.join(', ')}) {`, '}', 'fn');
+        for (const p of ps) declare(p.replace(/\s*=.*$/, ''));   // its inputs are names inside it already
+        return;
+      }
+      if ((m = M(/^(?:give back|return)\b\s*(.*)$/i))) return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
       if (/^stop the loop$/i.test(s)) return say('break;');
       if (/^skip to next$/i.test(s)) return say('continue;');
-      if ((m = s.match(/^(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\s+(?:called\s+)?([A-Za-z_$][\w$]*)(?:\s+with\s+(.+))?$/i))) {
-        const kw = declared.has(m[1]) ? '' : 'let '; declared.add(m[1]);
-        return say(`${kw}${m[1]} = [${m[2] ? splitItems(m[2]).map(v => E(v, inf)).join(', ') : ''}];`);
+      if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\s+(?:called\s+)?([A-Za-z_$][\w$]*)(?:\s+with\s+(.+))?$/i))) {
+        return say(`${keyword(m[1], inf)}${m[1]} = [${m[2] ? splitItems(m[2]).map(v => E(v, inf)).join(', ') : ''}];`);
       }
-      if ((m = s.match(/^add\s+(.+?)\s+to\s+([A-Za-z_$][\w$]*)$/i))) { note(inf, '`.push` adds to the end of a list.'); return say(`${m[2]}.push(${E(m[1], inf)});`); }
-      if ((m = s.match(/^(?:increase)\s+(.+?)(?:\s+by\s+(.+))?$/i))) return say(`${E(m[1], inf)} += ${m[2] ? E(m[2], inf) : 1};`);
-      if ((m = s.match(/^(?:decrease)\s+(.+?)(?:\s+by\s+(.+))?$/i))) return say(`${E(m[1], inf)} -= ${m[2] ? E(m[2], inf) : 1};`);
-      if ((m = s.match(/^ask\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) { const kw = declared.has(m[2]) ? '' : 'let '; declared.add(m[2]); note(inf, '`prompt` shows a pop-up question. It gives back text.'); return say(`${kw}${m[2]} = prompt(${E(m[1], inf)});`); }
-      if ((m = s.match(/^constant\s+([A-Za-z_$][\w$]*)\s+(?:is|=)\s+(.+)$/i))) {
-        declared.add(m[1]);
+      if ((m = M(/^add\s+(.+?)\s+to\s+([A-Za-z_$][\w$]*)$/i))) { note(inf, '`.push` adds to the end of a list.'); return say(`${m[2]}.push(${E(m[1], inf)});`); }
+      if ((m = M(/^(increase|decrease)\s+(.+?)(?:\s+by\s+(.+))?$/i))) {
+        const t = E(m[2], inf), up = /^increase$/i.test(m[1]);
+        if (/^[A-Za-z_$][\w$]*$/.test(t) && isConst(t)) inf.errs.push(`${code(t)} is a constant (made with const), so it can't be changed.`);
+        if (m[3]) return say(`${t} ${up ? '+' : '-'}= ${E(m[3], inf)};`);
+        note(inf, `No amount given, so it goes ${up ? 'up' : 'down'} by 1: \`${up ? '++' : '--'}\` ${up ? 'adds' : 'takes away'} 1.`);
+        return say(`${t}${up ? '++' : '--'};`);
+      }
+      if ((m = M(/^ask\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) { note(inf, '`prompt` shows a pop-up question. It gives back text.'); return say(`${keyword(m[2], inf)}${m[2]} = prompt(${E(m[1], inf)});`); }
+      if ((m = M(/^constant\s+([A-Za-z_$][\w$]*)\s+(?:is|=)\s+(.+)$/i))) {
         note(inf, '`const` makes a name that always keeps this value; JavaScript stops with an error if anything tries to change it.');
-        return say(`const ${m[1]} = ${E(m[2], inf)};`);
+        const value = E(m[2], inf);
+        if (scopes[scopes.length - 1].has(m[1])) inf.errs.push(`${code(m[1])} already exists here, so it can't be made again.`);
+        declare(m[1], 'const');
+        return say(`const ${m[1]} = ${value};`);
       }
-      if ((m = s.match(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)\s+(?:to|be)\s+(.+)$/i))) {
+      if ((m = M(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)\s+(?:to|be)\s+(.+)$/i))) {
         note(inf, `Changes ${code(m[1])}: a value that belongs to ${code(m[1].split('.').slice(0, -1).join('.'))}.`);
         return say(`${m[1]} = ${E(m[2], inf)};`);
       }
-      if ((m = s.match(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*)\s+(?:to|be)\s+(.+)$/i))) {
-        const kw = declared.has(m[1]) ? '' : 'let ';
+      if ((m = M(/^(?:set|let|make)\s+([A-Za-z_$][\w$]*)\s+(?:to|be)\s+(.+)$/i))) {
+        const value = E(m[2], inf), kw = keyword(m[1], inf);
         if (kw) note(inf, '`let` creates a name that can change later.');
-        declared.add(m[1]);
-        return say(`${kw}${m[1]} = ${E(m[2], inf)};`);
+        return say(`${kw}${m[1]} = ${value};`);
       }
-      if ((m = s.match(/^run\s+([A-Za-z_$][\w$.]*)(?:\s+with\s+(.+?))?(?:\s+and store (?:it |the result )?in\s+([A-Za-z_$][\w$]*))?$/i))) {
+      if ((m = M(/^run\s+([A-Za-z_$][\w$.]*)(?:\s+with\s+(.+?))?(?:\s+and store (?:it |the result )?in\s+([A-Za-z_$][\w$]*))?$/i))) {
         const call = `${x.fns.has(m[1]) && needsAsyncFn(m[1]) ? 'await ' : ''}${m[1]}(${m[2] ? splitItems(m[2]).map(v => E(v, inf)).join(', ') : ''})`;
-        if (m[3]) { const kw = declared.has(m[3]) ? '' : 'let '; declared.add(m[3]); return say(`${kw}${m[3]} = ${call};`); }
+        if (m[3]) return say(`${keyword(m[3], inf)}${m[3]} = ${call};`);
         return say(call + ';');
       }
-      if ((m = s.match(/^show\s+(.+)$/i))) { note(inf, '`console.log` writes to the developer console (the terminal below). To show something on the page, use "set the text of …".'); return say(`console.log(${splitItems(outsideQuotes(m[1], (t) => t.replace(/\s+and\s+(?=["'\w])/gi, ', '))).map(v => E(v, inf)).join(', ')});`); }
+      if ((m = M(/^show\s+(.+)$/i))) { note(inf, '`console.log` writes to the developer console (the terminal below). To show something on the page, use "set the text of …".'); return say(`console.log(${splitItems(outsideQuotes(m[1], (t) => t.replace(/\s+and\s+(?=["'\w])/gi, ', '))).map(v => E(v, inf)).join(', ')});`); }
       inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
       say('// ??? ' + s);
     });
@@ -706,11 +822,19 @@
     const r = compiled.results;
     const st = r.structure || { text: '' };
     const html = st.previewText || st.text, css = (r.styling || { text: '' }).text, js = (r.mechanics || { text: '' }).text;
-    const withCss = html.replace('<link rel="stylesheet" href="style.css">', `<style>\n${css}</style>`);
+    // functions, not replacement strings: $&, $' and $$ in the code must stay as they are
+    const withCss = html.replace(/<link\b[^>]*\bhref\s*=\s*["']?style\.css["']?[^>]*>/i, () => `<style>\n${css.replace(/<\/style/gi, '<\\/style')}</style>`);
     const helper = helperScript ? `<script>${helperScript}</script>\n` : '';
-    const doc = withCss.replace('<script src="script.js"></script>', `${helper}<script>\n${js.replace(/<\/script/gi, '<\\/script')}</script>`);
-    const before = doc.slice(0, doc.indexOf('<script>\n' + js.slice(0, 20)));
-    return { html: doc, jsLine: before.split('\n').length + 1 };
+    const inline = `${helper}<script>\n${js.replace(/<\/script/gi, '<\\/script')}</script>`;
+    const tag = withCss.match(/<script\b[^>]*\bsrc\s*=\s*["']?script\.js["']?[^>]*><\/script>/i);
+    let doc = withCss;
+    if (tag && /\b(?:defer|async)\b/i.test(tag[0].replace(/"[^"]*"|'[^']*'/g, ''))) {   // a deferred script runs once the page is read: at the end of <body>
+      doc = withCss.slice(0, tag.index) + withCss.slice(tag.index + tag[0].length);
+      const end = doc.search(/<\/body>/i);
+      doc = end < 0 ? doc + inline : doc.slice(0, end) + inline + '\n' + doc.slice(end);
+    } else if (tag) doc = withCss.slice(0, tag.index) + inline + withCss.slice(tag.index + tag[0].length);
+    const start = doc.indexOf(inline);
+    return { html: doc, jsLine: doc.slice(0, start + helper.length).split('\n').length + 1 };
   }
 
   /* ------------------------------------------------------------------ */

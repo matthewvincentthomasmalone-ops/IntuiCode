@@ -1,7 +1,9 @@
 """Tests for the Python reader.  Run: python3 -m unittest discover -s tests"""
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 import zipfile
 import io
@@ -12,13 +14,13 @@ import python_reader as R  # noqa: E402
 
 
 def read(p):
-    return open(os.path.join(ROOT, p)).read()
+    with open(os.path.join(ROOT, p), encoding="utf-8") as f:
+        return f.read()
 
 
 def taskboard():
-    base = os.path.join(ROOT, "samples/taskboard")
-    names = json.load(open(os.path.join(base, "files.json")))["files"]
-    return [{"name": "taskboard/" + n, "source": open(os.path.join(base, n)).read()} for n in names]
+    names = json.loads(read("samples/taskboard/files.json"))["files"]
+    return [{"name": "taskboard/" + n, "source": read("samples/taskboard/" + n)} for n in names]
 
 
 class SingleFile(unittest.TestCase):
@@ -48,6 +50,21 @@ class SingleFile(unittest.TestCase):
         self.assertTrue(R.compare("x = 1\n", "x = 1  # hi\n")["same"])
         self.assertFalse(R.compare("x = 1\n", "x = 2\n")["same"])
 
+    def test_compare_counts_docstrings(self):
+        # __doc__ is used by help(), docopt, argparse and doctests: a lost or changed docstring is a different program
+        self.assertFalse(R.compare('def f():\n    """Adds."""\n    return 1\n', "def f():\n    return 1\n")["same"])
+        self.assertFalse(R.compare('"""Usage: a"""\n', '"""Usage: b"""\n')["same"])
+        self.assertFalse(R.compare('class E(Exception):\n    """Missing."""\n', "class E(Exception):\n    pass\n")["same"])
+        self.assertTrue(R.compare('def f():\n    """Adds."""\n', "def f():\n    '''Adds.'''\n")["same"])
+
+    def test_deep_code_is_a_clean_error(self):
+        deep = "x = " + " + ".join(["a"] * 3000) + "\n"
+        res = json.loads(R.to_sentences_json(deep))
+        self.assertFalse(res["ok"])
+        self.assertIn("nested too deeply", res["error"])
+        self.assertIn("nested too deeply", R.compare(deep, deep)["error"])
+        self.assertFalse(json.loads(R.to_sentences_json("x = 1\0\n"))["ok"])
+
 
 class Sentences(unittest.TestCase):
     def test_comments_become_notes(self):
@@ -60,6 +77,33 @@ class Sentences(unittest.TestCase):
         text = R.to_sentences("x = 1\ny = 2\n", {2})
         self.assertIn("set x to 1", text)
         self.assertIn("python: y = 2", text)
+
+    def test_docstrings_are_kept(self):
+        text = R.to_sentences('class NotFound(Exception):\n    """Raised when missing."""\n\n\ndef f():\n    """Line one.\n\n    Line two.\n    """\n    return 1\n')
+        self.assertIn("define class NotFound based on Exception\n    description: Raised when missing.", text)
+        self.assertIn("    description: Line one.\n    description:\n    description: Line two.\n    description:\n", text)
+        self.assertNotIn("note: Line one", text)
+
+    def test_add_and_remove_say_to_and_from_once(self):
+        text = R.to_sentences('import random\nnames = []\nnames.append("Walk to the shop")\nnames.append(random.randint(1, 6))\nnames.remove(random.choice(names))\n')
+        self.assertIn('add "Walk to the shop" to names', text)
+        self.assertIn("python: names.append(random.randint(1, 6))", text)
+        self.assertIn("python: names.remove(random.choice(names))", text)
+
+    def test_command_line_reads_and_writes_utf8(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHONIO") and k != "PYTHONUTF8"}
+            for encoding in ("utf-8", "utf-8-sig"):   # with and without the byte-order mark Notepad adds
+                path = os.path.join(d, encoding + ".py")
+                with open(path, "w", encoding=encoding) as f:
+                    f.write('print("héllo ✓ — ünïcode")\n')
+                out = subprocess.run([sys.executable, os.path.join(ROOT, "lang", "python_reader.py"), "sentences", path],
+                                     capture_output=True, env=env, check=True).stdout.decode("utf-8")
+                self.assertIn('show "héllo ✓ — ünïcode"', out)
+            piped = subprocess.run([sys.executable, os.path.join(ROOT, "lang", "python_reader.py"), "sentences-json"],
+                                   input=json.dumps(['print("é ✓")\n'], ensure_ascii=False).encode("utf-8"),
+                                   capture_output=True, env=env, check=True).stdout.decode("utf-8")
+            self.assertIn('show "é ✓"', json.loads(piped)[0])
 
     def test_classes_errors_files(self):
         text = R.to_sentences(read("tests/corpus/bank_account.py"))

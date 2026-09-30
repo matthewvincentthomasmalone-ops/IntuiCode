@@ -35,6 +35,19 @@ const CASES = [
   ['please show "a    b"', 'print("a    b")'],
   ["check that 'a  b' is 'a  b'", "assert 'a  b' == 'a  b'"],
   ['set r to random number from 1 to 6', 'r = random.randint(1, 6)'],
+  // words inside quotes never split a sentence
+  ['create list tasks\nadd "Walk to the shop" to tasks\nremove "Walk to the shop" from tasks', 'tasks = []\ntasks.append("Walk to the shop")\ntasks.remove("Walk to the shop")'],
+  ['create dictionary d\nset item "a of b" of d to 3', 'd = {}\nd["a of b"] = 3'],
+  ['create dictionary prices\ndelete "apple" from prices\ndelete item "pear" of prices', 'prices = {}\ndel prices["apple"]\ndel prices["pear"]'],
+  // {name} fills in a value; {{ and }} are braces
+  ['set x to 1\nshow "{{x}} is {x}"\nshow "just {{braces}}"', 'x = 1\nprint(f"{{x}} is {x}")\nprint("just {braces}")'],
+  // a block with only notes in it still gets a line Python accepts
+  ['define todo\n    note: later', 'def todo():\n    # later\n    pass'],
+  ['if yes\n    note: nothing yet\notherwise\n    show 2', 'if True:\n    # nothing yet\n    pass\nelse:\n    print(2)'],
+  // descriptions (docstrings)
+  ['define f\n    description: Does f.\n    description:\n    description: More.\n    description:\n    give back 1', 'def f():\n    """Does f.\n\n    More.\n    """\n    return 1'],
+  // text in triple quotes over several python: lines keeps its spaces
+  ['python: def f(item):\n    python: """Doc:\n    python:\n    python:         item: the thing\n    python:     """\n    python: return item', 'def f(item):\n    """Doc:\n\n        item: the thing\n    """\n    return item'],
 ];
 
 for (const [sentences, expected] of CASES) {
@@ -47,6 +60,11 @@ for (const [sentences, expected] of CASES) {
 
 test('random adds its import', () => {
   assert.deepEqual(py('set r to random number from 1 to 6').header.filter(Boolean), ['import random']);
+});
+
+test('imports added for sentences go after the file\'s own description, which stays its docstring', () => {
+  const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'description: Rolls a die.\nset r to random number from 1 to 6' }] }).results.main;
+  assert.equal(r.text, '"""Rolls a die."""\nimport random\n\nr = random.randint(1, 6)\n');
 });
 
 const ERRORS = [

@@ -90,7 +90,7 @@ export async function loadConverter() {
 
 /* The Python reader's project analysis, for mixed projects. */
 export function pyProject(files) {
-  const out = execFileSync('python3', ['-c', 'import sys,json; sys.path.insert(0, sys.argv[1]); import python_reader as r; print(json.dumps(r.analyze_project(json.load(sys.stdin))))', path.join(ROOT, 'lang')], {
+  const out = execFileSync('python3', ['-c', 'import sys,json; sys.stdin.reconfigure(encoding="utf-8"); sys.path.insert(0, sys.argv[1]); import python_reader as r; print(json.dumps(r.analyze_project(json.load(sys.stdin))))', path.join(ROOT, 'lang')], {
     input: JSON.stringify(files), maxBuffer: 64 * 1024 * 1024,
   });
   return JSON.parse(out.toString());

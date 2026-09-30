@@ -564,9 +564,16 @@ show "Picked:" and picked [thing]
     return { ...meta, story: story.join('\n').trim(), sections, fields: [...fields.values()], errors, source: text };
   }
 
-  function valueOf(f, values) {
+  /* What someone typed, made safe to go inside "double quotes" in a sentence: \ and " get a backslash,
+     and where text in quotes fills in {values} (not in Structure or Styling), a brace is written twice. */
+  function inQuotes(v, braces) {
+    const s = String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return braces ? s.replace(/\{/g, '{{').replace(/\}/g, '}}') : s;
+  }
+
+  function valueOf(f, values, braces) {
     const v = values && values[f.name] !== undefined ? values[f.name] : f.value;
-    if (f.text) return '"' + String(v).replace(/"/g, "'") + '"';
+    if (f.text) return '"' + inQuotes(v, braces) + '"';
     return String(v);
   }
 
@@ -577,10 +584,11 @@ show "Picked:" and picked [thing]
 
   function fill(bp, values) {
     const byName = new Map(bp.fields.map(f => [f.name, f]));
-    const val = (name) => { const f = byName.get(name.trim().toLowerCase()); return f ? valueOf(f, values) : ''; };
     const raw = (name) => { const f = byName.get(name.trim().toLowerCase()); return f ? String(values && values[f.name] !== undefined ? values[f.name] : f.value) : ''; };
     const out = {};
     for (const [sec, text] of Object.entries(bp.sections)) {
+      const braces = !/^(structure|styling)$/.test(sec);   // HTML and CSS text has no {values} to fill in
+      const val = (name) => { const f = byName.get(name.trim().toLowerCase()); return f ? valueOf(f, values, braces) : ''; };
       const keep = [];
       const stack = [];
       for (const line of text.split('\n')) {
@@ -593,8 +601,8 @@ show "Picked:" and picked [thing]
           continue;
         }
         if (/^\s*\[end\]\s*$/i.test(line)) { stack.pop(); continue; }
-        // Inside quoted text a blank goes in as-is; elsewhere text blanks get their quotes.
-        if (stack.every(Boolean)) keep.push(line.replace(TOKEN, (m, name) => m[0] === '[' ? val(name) : m.replace(FIELD, (mm, n2) => raw(n2))));
+        // Inside quoted text a blank goes in without quotes (but made safe for them); elsewhere text blanks get their quotes.
+        if (stack.every(Boolean)) keep.push(line.replace(TOKEN, (m, name) => m[0] === '[' ? val(name) : m.replace(FIELD, (mm, n2) => inQuotes(raw(n2), braces))));
       }
       out[sec] = keep.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
     }

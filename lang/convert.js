@@ -31,11 +31,15 @@
     if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(n) ? String.fromCodePoint(n) : m; }
     return ENT[e.toLowerCase()] ?? m;
   });
-  /* A text value as a quoted sentence string, or null if it can't be quoted exactly. */
-  const quote = (t) => (!t.includes('"') ? `"${t}"` : !t.includes("'") ? `'${t}'` : null);
+  /* A text value as a quoted sentence string for Structure: \" \' and \\ stand for the character itself. */
+  const quote = (t) => { const s = String(t).replace(/\\/g, '\\\\'); return !s.includes('"') ? `"${s}"` : !s.includes("'") ? `'${s}'` : `"${s.replace(/"/g, '\\"')}"`; };
+  /* Runs of spaces as one space, but not inside quoted text (CSS values, selectors). */
+  const collapseCode = (s) => String(s).split(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/).map((p, i) => (i % 2 ? p : p.replace(/\s+/g, ' '))).join('').trim();
 
-  /* The node's source as lines, with the indentation they share removed. */
-  function srcLines(src, node) {
+  /* The node's source as lines, with the indentation they share removed.
+     keep: source ranges whose spaces matter (inside <pre>, <script>…): a line that starts inside one is
+     kept whole, and so are the spaces at the end of a line that ends inside one. */
+  function srcLines(src, node, keep = []) {
     const lineStart = src.lastIndexOf('\n', node.startIndex - 1) + 1;
     const prefix = src.slice(lineStart, node.startIndex);
     // C++ keeps the ; after a class or struct as a separate token: it belongs with it
@@ -43,13 +47,18 @@
     const next = node.nextSibling;
     if (next && next.type === ';' && !src.slice(end, next.startIndex).trim()) end = next.endIndex;
     const lines = src.slice(node.startIndex, end).split('\n');
+    const inside = (at) => keep.some(([a, b]) => a <= at && at < b);   // at: the index of a line break
+    let at = node.startIndex;
+    const breaks = lines.map(l => (at += l.length + 1) - 1);          // the line break after each line
+    const kept = lines.map((l, i) => i > 0 && inside(breaks[i - 1]));
     const indentOf = (l) => l.match(/^[ \t]*/)[0].length;
     const first = /^[ \t]*$/.test(prefix) ? prefix.length : null;
-    const rest = lines.slice(1).filter(l => l.trim()).map(indentOf);
+    const rest = lines.slice(1).filter((l, i) => l.trim() && !kept[i + 1]).map(indentOf);
     const base = Math.min(...(first != null ? [first] : []), ...rest, 1e9);
-    const out = lines.map((l, i) => (i === 0 ? ' '.repeat(Math.max(0, (first ?? base) - base)) + l : l.slice(Math.min(base, indentOf(l))))).map(l => l.replace(/\s+$/, ''));
-    while (out.length > 1 && !out[out.length - 1]) out.pop();
-    return out;
+    const out = lines.map((l, i) => (kept[i] ? l : i === 0 ? ' '.repeat(Math.max(0, (first ?? base) - base)) + l : l.slice(Math.min(base, indentOf(l)))))
+      .map((l, i) => (kept[i] || (i < lines.length - 1 && inside(breaks[i])) ? l : l.replace(/\s+$/, '')));
+    while (out.length > 1 && !out[out.length - 1] && !kept[out.length - 1]) out.pop();
+    return { lines: out, kept };
   }
 
   const named = (n) => { const out = []; for (let i = 0; i < n.namedChildCount; i++) out.push(n.namedChild(i)); return out; };
@@ -62,8 +71,10 @@
     const o = { lines: [], keys: [], raw: 0, words: 0, parents: new Map(), keyStack: [], careful: new Set() };
     o.say = (depth, text) => { o.lines.push(IND.repeat(depth) + text); o.keys.push(o.keyStack[o.keyStack.length - 1] ?? null); if (!/^\s*note:/.test(text)) o.words++; };
     o.raw = 0;
-    o.rawLines = (depth, prefix, src, node) => {
-      for (const l of srcLines(src, node)) { o.lines.push(IND.repeat(depth) + (l ? `${prefix} ${l}` : prefix)); o.keys.push(node.startIndex); o.raw++; }
+    o.rawLines = (depth, prefix, src, node, text) => {
+      const html = prefix === 'html:' || prefix === 'head:';
+      const { lines } = text != null ? { lines: text.trim().split('\n').map(l => l.trim()) } : srcLines(src, node, html ? keepRanges(node) : []);
+      for (const l of lines) { o.lines.push(IND.repeat(depth) + (l ? `${prefix} ${l}` : prefix)); o.keys.push(node.startIndex); o.raw++; }
     };
     o.blank = () => { if (o.lines.length && o.lines[o.lines.length - 1] !== '') { o.lines.push(''); o.keys.push(null); } };
     o.mark = () => ({ n: o.lines.length, w: o.words, r: o.raw });
@@ -98,14 +109,20 @@
   /* Comparing syntax trees                                              */
   /* ================================================================== */
 
-  /* Normalised tree: { t, v (leaves), c (children), k (source position), block } */
+  /* Normalised tree: { t, v (leaves), c (children), k (source position), block }
+     Leaves keep their exact text: spaces inside strings, regexes and templates matter. */
   function normalise(node, rules) {
     const r = rules.rewrite ? rules.rewrite(node) : null;
     if (r === 'skip') return null;
     if (r && r.node) return normalise(r.node, rules);
     if (r && r.t) return r;
     const o = { t: node.type, k: node.startIndex };
-    if (!node.childCount) { o.v = rules.leaf ? rules.leaf(node) : collapse(node.text); return o; }
+    if (!node.childCount) { o.v = rules.leaf ? rules.leaf(node) : node.text; return o; }
+    // text the grammar keeps between its child nodes (the digits of -2px, the letters of a CSS string) counts too
+    let gaps = '', pos = node.startIndex;
+    for (const c of kids(node)) { gaps += node.text.slice(pos - node.startIndex, c.startIndex - node.startIndex) + '\u0000'; pos = c.endIndex; }
+    gaps += node.text.slice(pos - node.startIndex);
+    if (/[^\s\u0000]/.test(gaps) || (rules.exactGaps && rules.exactGaps(node))) o.v = gaps;
     o.c = [];
     for (const c of kids(node)) {
       if (isComment(c) || (rules.skip && rules.skip(c))) continue;
@@ -118,7 +135,7 @@
   }
   function hashOf(o) {
     if (o.h) return o.h;
-    o.h = o.c ? `${o.t}(${o.c.map(hashOf).join(',')})` : `${o.t}:${o.v}`;
+    o.h = o.c ? `${o.t}${o.v != null ? ':' + JSON.stringify(o.v) : ''}(${o.c.map(hashOf).join(',')})` : `${o.t}:${JSON.stringify(o.v)}`;
     return o.h;
   }
   /* true = same; false = differs (blame the enclosing statement); [keys] = these statements differ. */
@@ -193,7 +210,8 @@
       switch (n.type) {
         case 'identifier': case 'number': case 'true': case 'false': case 'undefined': case 'this': return n.text;
         case 'null': return 'nothing';
-        case 'string': return n.text[0] === '"' && /\{[^{}]+\}/.test(n.text) ? null : n.text;
+        case 'string': return n.text[0] === '"' && /\{\{|\}\}|\{[^{}]+\}/.test(n.text) ? null : n.text;   // in "…" the Mechanics translator fills in {x}
+        case 'regex': return /[,"'`]|\sand\s/.test(n.text) ? null : n.text;   // sentences would split it there
         case 'template_string': {
           let s = '';
           for (const c of kids(n)) {
@@ -218,11 +236,11 @@
           return op === '!' ? `not ${a}` : /^[a-z]/.test(op) ? `${op} ${a}` : `${op}${a}`;
         }
         case 'member_expression': {
-          if (!isChain(n)) return n.text;
           const obj = F(n, 'object');
-          if (F(n, 'property').text === 'length' && isChain(obj)) return `length of ${obj.text}`;
           const id = elId(obj);
           if (id && /^(value|textContent)$/.test(F(n, 'property').text) && (F(n, 'property').text === 'value') === isField(id)) return `text of ${id}`;
+          if (!isChain(n)) return n.text;
+          if (F(n, 'property').text === 'length' && isChain(obj)) return `length of ${obj.text}`;
           return n.text;
         }
         case 'call_expression': {
@@ -340,19 +358,29 @@
 
     function one(n, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
-      if (lvl) return false;
+      if (lvl && n.type !== 'lexical_declaration') return false;
       switch (n.type) {
         case 'expression_statement': return exprStmt(named(n)[0], depth);
         case 'lexical_declaration': {
           const d = named(n).filter(x => x.type === 'variable_declarator');
           if (d.length !== 1 || F(d[0], 'name').type !== 'identifier' || !F(d[0], 'value')) return false;
           const name = F(d[0], 'name').text, v = F(d[0], 'value');
+          const constant = kids(n)[0].type === 'const';
           const t = v.text.replace(/\s+/g, '');
+          const fetchUrl = () => { const f = v.descendantsOfType('call_expression').find(c => F(c, 'function').text === 'fetch'); return f && args(f).length === 1 ? ex(args(f)[0]) : null; };
+          o.careful.add(n.startIndex);
+          // Mechanics writes let for these sentences, const for "constant …", and const for a fetched reply
+          // unless a later line changes it. When that doesn't match the original, say let/const outright.
+          if (lvl || constant) {
+            if (constant && !lvl && /^await\(awaitfetch\(.+\)\)\.json\(\)$/.test(t)) { const u = fetchUrl(); return u != null && say(`fetch from ${u} and store in ${name}`); }
+            const e = ex(v);
+            return e != null && say(constant ? `constant ${name} is ${e}` : `set ${name} to ${e}`);
+          }
           const id = v.type === 'member_expression' ? elId(F(v, 'object')) : null;
           if (id && /^(value|textContent)$/.test(F(v, 'property').text) && (F(v, 'property').text === 'value') === isField(id)) return say(`get the text of ${id} and store in ${name}`);
           let m;
           if ((m = t.match(/^JSON\.parse\(localStorage\.getItem\((.+)\)\)$/)) && v.type === 'call_expression') { const k = ex(args(args(v)[0])[0]); return k != null && say(`load ${k} from the browser and store in ${name}`); }
-          if (/^await\(awaitfetch\(.+\)\)\.json\(\)$/.test(t)) { const f = v.descendantsOfType('call_expression').find(c => F(c, 'function').text === 'fetch'); const u = f && args(f).length === 1 ? ex(args(f)[0]) : null; return u != null && say(`fetch from ${u} and store in ${name}`); }
+          if (/^await\(awaitfetch\(.+\)\)\.json\(\)$/.test(t)) { const u = fetchUrl(); return u != null && say(`fetch from ${u} and store in ${name}`); }
           if (v.type === 'call_expression' && F(v, 'function').text === 'prompt' && args(v).length === 1) { const q = ex(args(v)[0]); return q != null && say(`ask ${q} and store in ${name}`); }
           const e = ex(v);
           return e != null && say(`set ${name} to ${e}`);
@@ -421,25 +449,23 @@
     return o;
   }
 
+  /* What counts as the same JavaScript. Every rule here keeps the meaning:
+     brackets around one expression (the tree already says what goes with what, except that brackets
+     stop a ?. chain, so those stay), x++ and ++x as a statement of their own, and one-line bodies
+     written with or without braces. let and const differ (const can't change), and so do x++ and
+     x += 1 (for text "5", x++ gives 6 but x += 1 gives "51"). */
   const JS_RULES = {
     skip: (c) => c.type === ';' || c.type === '{' || c.type === '}',
     rewrite: (n) => {
-      if (n.type === 'const') return { t: 'let', v: 'let', k: n.startIndex };
-      if (n.type === 'parenthesized_expression' && n.namedChildCount === 1) return { node: n.namedChild(0) };
+      if (n.type === 'parenthesized_expression' && n.namedChildCount === 1 && !n.namedChild(0).descendantsOfType('optional_chain').length) return { node: n.namedChild(0) };
       if (n.type === 'expression_statement' && n.namedChild(0) && n.namedChild(0).type === 'update_expression') {
         const u = n.namedChild(0), a = F(u, 'argument');
         return { t: 'expression_statement', k: n.startIndex, c: [{ t: 'update', v: u.text.includes('++') ? '+' : '-', c: [normalise(a, JS_RULES)] }] };
       }
-      if (n.type === 'expression_statement' && n.namedChild(0) && n.namedChild(0).type === 'augmented_assignment_expression' && /^(\+|-)=$/.test(F(n.namedChild(0), 'operator').type) && F(n.namedChild(0), 'right').text === '1') {
-        const u = n.namedChild(0);
-        return { t: 'expression_statement', k: n.startIndex, c: [{ t: 'update', v: F(u, 'operator').type[0], c: [normalise(F(u, 'left'), JS_RULES)] }] };
-      }
       return null;
     },
-    leaf: (n) => (/string_fragment|template/.test(n.type) ? n.text : collapse(n.text)),
     block: (n) => n.type === 'program' || n.type === 'statement_block',
     after: (o, n) => {
-      if (o.t === 'const') o.t = 'let';
       if (/^(if_statement|for_statement|for_in_statement|while_statement|do_statement)$/.test(n.type)) wrapBodies(o, n, ['consequence', 'body'], 'statement_block');
       if (n.type === 'else_clause') { const c = named(n).find(x => !isComment(x)); if (c && c.type !== 'statement_block' && c.type !== 'if_statement') { const i = o.c.findIndex(x => x.k === c.startIndex); if (i >= 0) o.c[i] = { t: 'statement_block', k: c.startIndex, block: true, c: [o.c[i]] }; } }
     },
@@ -483,7 +509,7 @@
     const ids = env.ids || {}, groups = new Set(env.groups || []);
     const WEB = env.WEB;
     const selPhrase = (sel) => {
-      const s = collapse(sel);
+      const s = collapseCode(sel);
       let m;
       if (/:/.test(s)) return null;
       if ((m = s.match(/^#([\w-]+)$/))) return ids[m[1]] && simpleName(m[1]) && !TAG_PHRASE[m[1]] && !WEB.TAG_WORDS[m[1]] && !HTML_TAG.test(m[1]) && !/^(?:every|group|element|the)\b/.test(m[1]) ? m[1] : s;
@@ -502,7 +528,7 @@
         if (d.type !== 'declaration') return null;
         const t = d.text.replace(/;\s*$/, '');
         const i = t.indexOf(':');
-        out.push([t.slice(0, i).trim().toLowerCase(), collapse(t.slice(i + 1))]);
+        out.push([t.slice(0, i).trim().toLowerCase(), collapseCode(t.slice(i + 1))]);
       }
       return out;
     };
@@ -523,7 +549,7 @@
       const inf = { notes: [], warns: [], errs: [] };
       const back = WEB.cssPropsFor(props, inf);
       if (inf.errs.length || JSON.stringify(back) !== JSON.stringify(ds)) return null;
-      const sel = collapse(selNode.text);
+      const sel = collapseCode(selNode.text);
       const pm = sel.match(/^([^:\s]+):(hover|active|focus|checked)$/);
       if (pm) { const who = selPhrase(pm[1]); return who ? `when ${who} is ${PSEUDO[pm[2]]}: ${props}` : null; }
       const who = selPhrase(sel);
@@ -566,6 +592,7 @@
 
   const CSS_RULES = {
     skip: (c) => c.type === ';',
+    exactGaps: (n) => n.type === 'string_value',   // "  " is a different string from " "
     block: (n) => n.type === 'stylesheet' || (n.type === 'block' && n.parent && /media_statement|supports_statement/.test(n.parent.type)),
   };
 
@@ -593,8 +620,56 @@
     const from = st ? st.endIndex : inner[0].startIndex, to = et ? et.startIndex : inner[inner.length - 1].endIndex;
     return decode(el.text.slice(from - el.startIndex, to - el.startIndex).replace(/<!--[\s\S]*?-->/g, ''));
   };
+  /* Where an element really ends: without an end tag (<img>, <input>…) the parser counts the spaces after it in too. */
+  const endOf = (n) => { if (!isEl(n) || named(n).some(x => x.type === 'end_tag')) return n.endIndex; const k = named(n); return k.length ? k[k.length - 1].endIndex : n.endIndex; };
   const onlyText = (el) => childNodes(el).every(c => c.type === 'text' || c.type === 'entity');
   const isBlankText = (n) => (n.type === 'text' && !n.text.trim());
+  const getAttr = (a, k) => (a.find(x => x.name === k) || {}).value;
+
+  /* Spaces in HTML. Browsers show a run of spaces and line breaks as one space, and only where it sits
+     between two inline things (text, links, pictures, buttons…). Next to a block (a paragraph, a
+     section, a list item…) or at the inner edge of one, it doesn't show. Inside <pre> and <textarea>
+     every space shows. Elements not listed count as inline, so no space that might show is dropped. */
+  const BLOCK = /^(?:html|head|body|address|article|aside|blockquote|center|details|dialog|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|ol|p|pre|search|section|table|tbody|thead|tfoot|tr|td|th|caption|colgroup|col|ul|summary|legend|menu|optgroup|option|br|title|meta|link|base|listing)$/;
+  const OWN_BOX = /^(?:button|select|textarea|input|img|video|audio|canvas|iframe|object|embed|meter|progress|svg|math)$/;   // inline, but spaces at their inner edges don't show
+  const KEEPS_SPACES = /^(?:pre|textarea|listing|xmp|plaintext)$/;
+  const SVG_TEXT = /^(?:text|tspan|textpath)$/;   // inside <svg>, only text keeps spaces
+  const htmlSpace = (s) => String(s).replace(/[ \t\n\f\r]+/g, ' ');   // not \s: a no-break space stays
+  const htmlTrim = (s) => htmlSpace(s).replace(/^ | $/g, '');
+
+  /* The parts of a node's source whose spaces are part of the page: inside <pre>, <textarea>, <script> and <style>. */
+  function keepRanges(node) {
+    const out = [];
+    const walk = (n) => {
+      if (n.type === 'script_element' || n.type === 'style_element' || (n.type === 'element' && /^(?:pre|textarea|listing|xmp)$/.test(tagOf(n)))) {
+        const st = named(n).find(x => x.type === 'start_tag'), et = named(n).find(x => x.type === 'end_tag');
+        if (st) out.push([st.endIndex, et ? et.startIndex : n.endIndex]);
+        return;
+      }
+      for (const c of named(n)) walk(c);
+    };
+    walk(node);
+    return out;
+  }
+
+  /* A viewport setting in a comparable form: its settings in any order, 1.0 the same as 1. */
+  function viewportKey(content) {
+    const m = new Map();
+    for (const part of String(content || '').split(/[,;]/)) {
+      const [k, ...r] = part.split('='), v = r.join('=').trim().toLowerCase();
+      if (k.trim()) m.set(k.trim().toLowerCase(), /^-?\d*\.?\d+$/.test(v) ? String(+v) : v);
+    }
+    return [...m].sort().map(([k, v]) => `${k}=${v}`).join(',');
+  }
+  const DEFAULT_VIEWPORT = viewportKey('width=device-width, initial-scale=1');
+  /* 'charset', 'viewport' or 'name' for the <meta> settings whose place in the head doesn't matter. */
+  const metaKind = (n) => {
+    if (!isEl(n) || tagOf(n) !== 'meta') return null;
+    const a = attrsOf(n);
+    if (a.some(x => x.name === 'charset')) return 'charset';
+    if (getAttr(a, 'name') == null || getAttr(a, 'http-equiv') != null) return null;
+    return String(getAttr(a, 'name')).toLowerCase() === 'viewport' ? 'viewport' : 'name';
+  };
 
   /* <html>, <head>, <body> and what belongs where, even when some tags are left out. */
   function pageParts(tree) {
@@ -620,38 +695,84 @@
     const o = Out();
     const pulled = new Set(env.pulled || []);
     const p = pageParts(tree);
-    const langAttr = p.html && attrsOf(p.html).find(a => a.name === 'lang');
-    if (langAttr && /^[a-z]{2}(?:-[a-z0-9]+)*$/i.test(langAttr.value || '')) o.say(0, `page language is ${langAttr.value}`);
+    // The page's own style sheet (Styling) and script (Mechanics): Structure links style.css at the end
+    // of <head> and script.js at the end of <body>. Anywhere else, a head: or html: line says where.
+    const ownStyle = (n) => isEl(n) && tagOf(n) === 'link' && /stylesheet/i.test(getAttr(attrsOf(n), 'rel') || '') && pulled.has(getAttr(attrsOf(n), 'href'));
+    const ownScript = (n) => n.type === 'script_element' && pulled.has(getAttr(attrsOf(n), 'src')) && !textOf(n).trim();
+    const retarget = (n, name, file) => {   // the tag's source with its file name swapped for the project's own
+      const st = named(n).find(x => x.type === 'start_tag' || x.type === 'self_closing_tag');
+      const at = named(st).find(x => x.type === 'attribute' && named(x).find(y => y.type === 'attribute_name').text.toLowerCase() === name);
+      const v = named(at).find(x => x.type === 'quoted_attribute_value' || x.type === 'attribute_value');
+      const inner = v.type === 'quoted_attribute_value' ? v.startIndex + 1 : v.startIndex, end = v.type === 'quoted_attribute_value' ? v.endIndex - 1 : v.endIndex;
+      return src.slice(n.startIndex, inner) + file + src.slice(end, endOf(n));
+    };
+    // the first line and the <html> tag
+    const doc = named(tree).find(x => x.type === 'doctype');
+    if (!doc) o.say(0, 'no doctype');
+    else if (collapse(doc.text).toLowerCase() !== '<!doctype html>') o.say(0, `doctype: ${collapse(doc.text)}`);
+    const htmlA = p.html ? attrsOf(p.html) : [];
+    const lang = htmlA.find(a => a.name === 'lang' && /^[a-z]{2}(?:-[a-z0-9]+)*$/i.test(a.value || ''));
+    o.say(0, lang ? `page language is ${lang.value}` : 'no page language');
+    if (htmlA.some(a => a !== lang)) o.say(0, `html attributes: ${htmlA.filter(a => a !== lang).map(a => a.text).join(' ')}`);
     const title = p.headItems.find(x => isEl(x) && tagOf(x) === 'title');
-    const tq = title ? quote(collapse(textOf(title))) : null;
-    if (title && tq) o.say(0, `page title is ${tq}`);
-    else o.say(0, 'no title');
+    o.say(0, title ? `page title is ${quote(htmlTrim(textOf(title)))}` : 'no title');
+    // <head>: the usual settings are said by nothing; everything else is kept as head: lines, in order
+    const ordered = p.headItems.filter(h => isEl(h) && tagOf(h) !== 'title' && !metaKind(h));
+    const plainStyle = (h) => ownStyle(h) && attrsOf(h).every(a => a.name === 'href' || (a.name === 'rel' && /^stylesheet$/i.test(a.value)));
+    let tail = ordered.length;
+    while (tail > 0 && plainStyle(ordered[tail - 1])) tail--;
+    const atEnd = new Set(ordered.slice(tail));   // where Structure puts the Styling link anyway
+    const linkKey = (h) => JSON.stringify(attrsOf(h).filter(x => x.name !== 'href').map(x => [x.name, x.value]));
+    let usualCharset = false, usualViewport = false;
     for (const h of p.headItems) {
       if (isComment(h)) continue;
-      if (h === title && tq) continue;
-      const tag = isEl(h) ? tagOf(h) : '';
       const a = isEl(h) ? attrsOf(h) : [];
-      const get = (n) => (a.find(x => x.name === n) || {}).value;
-      if (tag === 'meta' && (a.some(x => x.name === 'charset') || get('name') === 'viewport')) continue;
-      if (tag === 'link' && /stylesheet/i.test(get('rel') || '') && pulled.has(get('href'))) continue;
-      if (tag === 'script' && pulled.has(get('src'))) continue;
+      const k = metaKind(h);
+      if (h === title || atEnd.has(h)) continue;
+      if (k === 'charset' && !usualCharset && a.length === 1 && String(a[0].value).toLowerCase() === 'utf-8') { usualCharset = true; continue; }
+      if (k === 'viewport' && !usualViewport && a.length === 2 && viewportKey(getAttr(a, 'content')) === DEFAULT_VIEWPORT) { usualViewport = true; continue; }
+      if (ownStyle(h)) {   // style files next to each other were joined into one Styling: one link says where
+        const before = ordered[ordered.indexOf(h) - 1];
+        if (!(before && ownStyle(before) && linkKey(before) === linkKey(h))) o.rawLines(0, 'head:', src, h, retarget(h, 'href', 'style.css'));
+        continue;
+      }
+      if (ownScript(h)) { o.rawLines(0, 'head:', src, h, retarget(h, 'src', 'script.js')); continue; }
       o.rawLines(0, 'head:', src, h);
     }
+    if (!p.headItems.some(h => metaKind(h) === 'charset')) o.say(0, 'leave out the character set');
+    if (!p.headItems.some(h => metaKind(h) === 'viewport')) o.say(0, 'leave out the viewport setting');
     const bodyAttrs = p.body ? attrsOf(p.body) : [];
     if (bodyAttrs.length) o.say(0, `body attributes: ${bodyAttrs.map(x => x.text).join(' ')}`);
 
     const insideForm = (n) => { for (let q = n.parent; q; q = q.parent) if (isEl(q) && tagOf(q) === 'form') return true; return false; };
-    function one(n, depth) {
-      if (n.type === 'text') { o.rawLines(depth, 'html:', src, n); return true; }
-      if (n.type === 'script_element' || n.type === 'style_element') {
-        const s = attrsOf(n).find(x => x.name === 'src');
-        if (s && pulled.has(s.value) && !textOf(n).trim()) return true;
-        return false;
+    const lastItem = p.bodyItems.filter(x => !isComment(x)).pop();
+    // Inline things with nothing between them (<img><img>, </svg><b>) stay together on one html: line:
+    // each sentence gets a line of its own, and that line break would show as a space between them.
+    const inline = (n) => n.type === 'text' || n.type === 'entity' || (isEl(n) && !BLOCK.test(tagOf(n)));
+    const glue = (items) => {
+      const out = [];
+      for (const n of items) {
+        const prev = out[out.length - 1], last = prev && (prev.glued ? prev.glued[prev.glued.length - 1] : prev);
+        if (last && inline(last) && inline(n) && src.slice(endOf(last), n.startIndex) === '') {
+          const ns = prev.glued ? prev.glued.concat(n) : [prev, n];
+          out[out.length - 1] = { type: 'glued', glued: ns, startIndex: ns[0].startIndex, endIndex: endOf(n), startPosition: ns[0].startPosition, endPosition: n.endPosition,
+            nextSibling: null, namedChildCount: ns.length, namedChild: (i) => ns[i] };
+        } else out.push(n);
       }
+      return out;
+    };
+    function one(n, depth) {
+      if (n.type === 'text' || n.type === 'glued') { o.rawLines(depth, 'html:', src, n); return true; }
+      if (ownScript(n)) {   // said by nothing at the very end of the page, where Structure puts it
+        if (n === lastItem && attrsOf(n).length === 1) return true;
+        o.rawLines(depth, 'html:', src, n, retarget(n, 'src', 'script.js'));
+        return true;
+      }
+      if (ownStyle(n)) { o.rawLines(depth, 'html:', src, n, retarget(n, 'href', 'style.css')); return true; }
       if (n.type !== 'element') return false;
       const tag = tagOf(n);
       const a = attrsOf(n);
-      const get = (k) => (a.find(x => x.name === k) || {}).value;
+      const get = (k) => getAttr(a, k);
       const id = get('id');
       const cls = (get('class') || '').split(/\s+/).filter(Boolean);
       if (id != null && !simpleName(id)) return false;
@@ -659,7 +780,8 @@
       const others = (allowed) => a.every(x => ['id', 'class', ...allowed].includes(x.name));
       const called = id ? ` called ${id}` : '';
       const grp = cls.length ? ` in group${cls.length > 1 ? 's' : ''} ${cls.join(', ')}` : '';
-      const text = () => { if (!onlyText(n)) return null; const t = collapse(textOf(n)); return quote(t); };
+      // a space at the start or end inside an inline element (a link, a label…) can show, so it is kept
+      const text = () => (onlyText(n) ? quote(BLOCK.test(tag) || OWN_BOX.test(tag) ? htmlTrim(textOf(n)) : htmlSpace(textOf(n))) : null);
       const say = (t) => { o.say(depth, t + grp); return true; };
       if (/^h[123]$/.test(tag) && others([])) { const t = text(); return t != null && say(`add a ${{ h1: 'big ', h2: '', h3: 'small ' }[tag]}heading ${t}${called}`); }
       if (tag === 'p' && others([])) { const t = text(); return t != null && say(`add a paragraph${called} ${t}`); }
@@ -687,7 +809,7 @@
       if (tag === 'select' && others([])) {
         const opts = childNodes(n).filter(x => !isBlankText(x));
         if (!opts.length || !opts.every(x => isEl(x) && tagOf(x) === 'option' && !attrsOf(x).length && onlyText(x))) return false;
-        const qs = opts.map(x => quote(collapse(textOf(x))));
+        const qs = opts.map(x => quote(htmlTrim(textOf(x))));
         return !qs.some(x => x == null) && say(`add a drop-down${called} with ${qs.join(', ')}`);
       }
       if (tag === 'label' && !id && others(['for']) && (get('for') == null || simpleName(get('for')))) { const t = text(); return t != null && say(`add a label ${t}${get('for') ? ' for ' + get('for') : ''}`); }
@@ -704,71 +826,122 @@
         if (ch.some(x => x.type === 'text' && x.text.trim())) return false;
         if (tag === 'div' && cls.includes('card') && false) return false;
         say(`add a ${CONTAINER_WORD[tag]}${called}`);
-        walkBlock(o, ch.filter(x => !isBlankText(x)), depth + 1, n.startIndex, force, 'html:', src, one);
+        walkBlock(o, glue(ch.filter(x => !isBlankText(x))), depth + 1, n.startIndex, force, 'html:', src, one);
         return true;
       }
       return false;
     }
-    walkBlock(o, p.bodyItems.filter(x => !isBlankText(x) || false), 0, null, force, 'html:', src, one);
+    walkBlock(o, glue(p.bodyItems.filter(x => !isBlankText(x))), 0, null, force, 'html:', src, one);
     return o;
   }
 
-  /* HTML as a comparable tree: the page's lang, title, head extras, body attributes and body. */
-  function htmlTree(src, env, generated) {
+  /* HTML as a comparable tree: the doctype, the <html> tag, the title, the <meta> settings (their place
+     doesn't matter), the rest of the head in order, the <body> tag and the body, with spaces as the
+     browser shows them.
+     own: hrefs/srcs of the page's own style sheet and script, compared by where they are, not by name.
+     drop: { style, script } leaves those out (the original page has none, and the project's are empty). */
+  function htmlTree(src, env, own = [], drop = {}) {
     const tree = env.parse('html', src);
     const p = pageParts(tree);
-    const ignore = new Set(generated ? ['style.css', 'script.js'] : env.pulled || []);
+    own = new Set(own);
+    const found = { style: false, script: false };
     const insideForm = (n) => { for (let q = n.parent; q; q = q.parent) if (isEl(q) && tagOf(q) === 'form') return true; return false; };
-    const textRun = (run, key) => { const v = collapse(decode(src.slice(run[0].startIndex, run[run.length - 1].endIndex))); return v ? { t: 'text', v, k: key } : null; };
-    const list = (items, parentKey) => {
-      const out = [];
-      let run = [];
-      const flush = () => { if (run.length) { const x = textRun(run, parentKey ?? run[0].startIndex); if (x) out.push(x); run = []; } };
-      for (const n of items) {
-        if (isComment(n)) continue;
-        if (n.type === 'text' || n.type === 'entity') { run.push(n); continue; }
-        flush();
-        if (!keep(n)) continue;
-        const x = el(n);
-        if (x) out.push(x);
-      }
-      flush();
-      return out;
-    };
-    const el = (n) => {
+    const ownKind = (n) => {
       if (!isEl(n)) return null;
+      const a = attrsOf(n);
+      if (tagOf(n) === 'link' && /stylesheet/i.test(getAttr(a, 'rel') || '') && own.has(getAttr(a, 'href'))) return 'style';
+      if (n.type === 'script_element' && own.has(getAttr(a, 'src')) && !textOf(n).trim()) return 'script';
+      return null;
+    };
+    const attrText = (attrs) => attrs.sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)).map(a => `${a[0]}=${JSON.stringify(a[1])}`).join(' ');
+    const el = (n, ctx) => {
       const tag = tagOf(n);
-      const attrs = attrsOf(n).map(a => [a.name, a.value == null ? '' : a.value]);
+      const kind = ownKind(n);
+      let attrs = attrsOf(n).map(a => [a.name, a.value == null ? '' : a.value]);
+      if (kind) {
+        found[kind] = true;
+        return { t: 'el', v: `(${kind}) ` + attrText(attrs.filter(a => a[0] !== (kind === 'style' ? 'href' : 'src'))), k: n.startIndex };
+      }
       if (tag === 'input' && !attrs.some(a => a[0] === 'type')) attrs.push(['type', 'text']);
-      if (tag === 'button') {
+      if (tag === 'button' && !attrs.some(a => a[0] === 'form')) {   // with no form to send, a button's type changes nothing
         const i = attrs.findIndex(a => a[0] === 'type');
         const type = i >= 0 ? attrs[i][1] : null;
         if (!insideForm(n)) { if (i >= 0 && (type === 'button' || type === 'submit')) attrs.splice(i, 1); }
         else if (i < 0) attrs.push(['type', 'submit']);
       }
-      attrs.sort((x, y) => (x[0] < y[0] ? -1 : 1));
-      const o = { t: 'el', v: tag + ' ' + attrs.map(a => `${a[0]}=${JSON.stringify(a[1])}`).join(' '), k: n.startIndex, block: true, c: [] };
-      if (n.type !== 'element') { o.c.push({ t: 'raw', v: textOf(n).split('\n').map(l => l.trim()).filter(Boolean).join('\n') }); o.block = false; return o; }
-      o.c = list(childNodes(n), n.startIndex);
+      const o = { t: 'el', v: tag + ' ' + attrText(attrs), k: n.startIndex, block: true, c: [] };
+      if (n.type !== 'element') {   // <script> and <style>: the code exactly
+        const st = named(n).find(x => x.type === 'start_tag'), et = named(n).find(x => x.type === 'end_tag');
+        o.c.push({ t: 'raw', v: st ? src.slice(st.endIndex, et ? et.startIndex : n.endIndex) : '' });
+        o.block = false;
+        return o;
+      }
+      o.c = list(n, childNodes(n), n.startIndex, { exact: ctx.exact || KEEPS_SPACES.test(tag), svg: ctx.svg || tag === 'svg' || tag === 'math' }, tag);
       return o;
     };
-    const keep = (n) => {
-      if (!isEl(n)) return true;
-      const tag = tagOf(n), a = attrsOf(n), get = (k) => (a.find(x => x.name === k) || {}).value;
-      if (tag === 'meta' && (a.some(x => x.name === 'charset') || get('name') === 'viewport')) return false;
-      if (tag === 'link' && /stylesheet/i.test(get('rel') || '') && ignore.has(get('href'))) return false;
-      if (n.type === 'script_element' && ignore.has(get('src')) && !textOf(n).trim()) return false;
-      if (tag === 'title') return false;
-      return true;
+    // The children of an element with the text between them. Spaces count where they can show.
+    const list = (container, items, parentKey, ctx, ctag) => {
+      const st = container && named(container).find(x => x.type === 'start_tag'), et = container && named(container).find(x => x.type === 'end_tag');
+      let pos = st ? st.endIndex : items.length ? items[0].startIndex : 0;
+      const end = et ? et.startIndex : items.length ? endOf(items[items.length - 1]) : pos;
+      const segs = [];   // text, element, text, element, …, text (comments left out: the text either side joins up)
+      let buf = '', key = null;
+      for (const n of items) {
+        buf += src.slice(pos, n.startIndex); pos = endOf(n);
+        if (isComment(n)) continue;
+        if (n.type === 'text' || n.type === 'entity') { buf += n.text; key = key ?? n.startIndex; continue; }
+        if (!isEl(n) || (drop.style && ownKind(n) === 'style') || (drop.script && ownKind(n) === 'script')) continue;
+        segs.push({ seg: true, text: buf, key }, n);
+        buf = ''; key = null;
+      }
+      segs.push({ seg: true, text: buf + src.slice(pos, end), key });
+      const inline = (n) => (ctx.svg ? SVG_TEXT.test(tagOf(n)) : !BLOCK.test(tagOf(n)));   // can a space next to it show?
+      const edge = !ctx.svg && !BLOCK.test(ctag) && !OWN_BOX.test(ctag);                  // can a space at the inner edges show?
+      const out = [];
+      segs.forEach((s, i) => {
+        if (!s.seg) { out.push(el(s, ctx)); return; }
+        let v = decode(s.text);
+        const k = parentKey ?? s.key;
+        if (ctx.exact) {   // every space counts (the browser drops one line break right after <pre> or <textarea>)
+          if (i === 0 && /^(?:pre|textarea|listing)$/.test(ctag)) v = v.replace(/^\n/, '');
+          if (v) out.push({ t: 'text', v, k });
+          return;
+        }
+        v = htmlSpace(v);
+        if (!v) return;
+        const left = i === 0 ? edge : inline(segs[i - 1]), right = i === segs.length - 1 ? edge : inline(segs[i + 1]);
+        if (v === ' ') { if (left && right) out.push({ t: 'text', v, k }); return; }
+        if (!left) v = v.replace(/^ /, '');
+        if (!right) v = v.replace(/ $/, '');
+        out.push({ t: 'text', v, k });
+      });
+      return out;
     };
+    // <head>: the title and the <meta> settings are compared on their own; everything else in order
+    const head = [], metas = [];
+    for (const n of p.headItems) {
+      if (!isEl(n) || tagOf(n) === 'title') continue;
+      if (metaKind(n)) {
+        metas.push(attrText(attrsOf(n).map(a => [a.name, a.name === 'charset' || a.name === 'name' ? String(a.value).toLowerCase() : a.name === 'content' && metaKind(n) === 'viewport' ? viewportKey(a.value) : a.value == null ? '' : a.value])));
+        continue;
+      }
+      const kind = ownKind(n);
+      if (kind && drop[kind]) continue;
+      const x = el(n, {});
+      if (kind === 'style' && head.length && head[head.length - 1].v === x.v) continue;   // style files next to each other became one Styling
+      head.push(x);
+    }
     const title = p.headItems.find(x => isEl(x) && tagOf(x) === 'title');
-    const lang = p.html && attrsOf(p.html).find(a => a.name === 'lang');
+    const doc = named(tree).find(x => x.type === 'doctype');
     return {
-      lang: lang ? lang.value : null,
-      title: title ? collapse(textOf(title)) : null,
-      head: { t: 'head', block: true, k: 'HEAD', c: list(p.headItems, 'HEAD') },
-      bodyAttrs: p.body ? attrsOf(p.body).map(a => `${a.name}=${a.value}`).sort().join(' ') : '',
-      body: { t: 'body', block: true, k: null, c: list(p.bodyItems, null) },
+      doctype: doc ? collapse(doc.text).toLowerCase() : null,
+      htmlAttrs: p.html ? attrText(attrsOf(p.html).map(a => [a.name, a.value == null ? '' : a.value])) : '',
+      title: title ? htmlTrim(textOf(title)) : null,
+      metas: metas.sort().join('\n'),
+      head: { t: 'head', block: true, k: 'HEAD', c: head },
+      bodyAttrs: p.body ? attrText(attrsOf(p.body).map(a => [a.name, a.value == null ? '' : a.value])) : '',
+      body: { t: 'body', block: true, k: null, c: list(p.body, p.bodyItems, null, {}, 'body') },
+      found,
     };
   }
 
@@ -796,7 +969,7 @@
       switch (n.type) {
         case 'identifier': case 'number_literal': case 'true': case 'false': case 'char_literal': case 'qualified_identifier': case 'field_identifier': case 'null': case 'nullptr': return n.text;
         case 'this': return 'this';
-        case 'string_literal': return /\{[^{}]+\}/.test(n.text) || n.text.includes('\n') ? null : n.text;
+        case 'string_literal': return /\{\{|\}\}|\{[^{}]+\}/.test(n.text) || n.text.includes('\n') ? null : n.text;   // the translator fills in {x}
         case 'parenthesized_expression': { const e = ex(named(n)[0]); return e == null ? null : `(${e})`; }
         case 'binary_expression': {
           const op = F(n, 'operator').type, L = F(n, 'left'), R = F(n, 'right');
@@ -877,7 +1050,8 @@
         if (op === '-=') return say(`decrease ${target} by ${v}`);
         return false;
       }
-      if (e.type === 'update_expression') { const a = F(e, 'argument'); return cchain(a) && say(`${e.text.includes('++') ? 'increase' : 'decrease'} ${a.text}`); }
+      // x++ only: ++x can be a different operator in a class (or the only one it has)
+      if (e.type === 'update_expression') { const a = F(e, 'argument'); return cchain(a) && !/^(\+\+|--)$/.test(kids(e)[0].type) && say(`${e.text.includes('++') ? 'increase' : 'decrease'} ${a.text}`); }
       if (e.type === 'call_expression') {
         const fn = F(e, 'function'), a = named(F(e, 'arguments')).filter(x => !isComment(x));
         const v = a.map(ex);
@@ -1111,19 +1285,18 @@
     return o;
   }
 
-  function cppRules(env) {
+  /* What counts as the same C++: std::x and x when the original says `using namespace std`, brackets
+     around one expression, one-line bodies with or without braces, main last, and main's final
+     `return 0` (main gives back 0 without it). ++x and x++ differ: a class can make them do different things. */
+  function cppRules(usingStd) {
     const R = {
-      skip: (c) => c.type === ';' || c.type === '{' || c.type === '}' || c.type === 'preproc_include' || c.type === 'using_declaration',
+      skip: (c) => c.type === ';' || c.type === '{' || c.type === '}' || (/^(preproc_include|using_declaration)$/.test(c.type) && c.parent && c.parent.type === 'translation_unit'),   // compared on their own
       rewrite: (n) => {
-        if ((n.type === 'qualified_identifier' || n.type === 'qualified_type_identifier') && F(n, 'scope') && F(n, 'scope').text === 'std' && F(n, 'name')) return { node: F(n, 'name') };
-        if (n.type === 'parenthesized_expression' && n.namedChildCount === 1 && n.parent && !/if_statement|while_statement|condition_clause/.test(n.parent.type)) return { node: n.namedChild(0) };
-        if (n.type === 'expression_statement' && n.namedChild(0) && n.namedChild(0).type === 'update_expression') {
-          const u = n.namedChild(0);
-          return { t: 'expression_statement', k: n.startIndex, c: [{ t: 'update', v: u.text.includes('++') ? '+' : '-', c: [normalise(F(u, 'argument'), R)] }] };
-        }
+        if (usingStd && (n.type === 'qualified_identifier' || n.type === 'qualified_type_identifier') && F(n, 'scope') && F(n, 'scope').text === 'std' && F(n, 'name')) return { node: F(n, 'name') };
+        if (n.type === 'parenthesized_expression' && n.namedChildCount === 1 && n.parent && !/if_statement|while_statement|condition_clause|decltype/.test(n.parent.type)) return { node: n.namedChild(0) };
         return null;
       },
-      leaf: (n) => (/string_content|raw_string|char_literal/.test(n.type) ? n.text : n.type === 'type_identifier' || n.type === 'primitive_type' ? collapse(n.text).replace(/^std::/, '') : collapse(n.text)),
+      leaf: (n) => (usingStd && (n.type === 'type_identifier' || n.type === 'primitive_type') ? n.text.replace(/^std::/, '') : n.text),
       block: (n) => n.type === 'translation_unit' || n.type === 'compound_statement',
       after: (o, n) => {
         if (/^(if_statement|for_statement|for_range_loop|while_statement|do_statement)$/.test(n.type)) wrapBodies(o, n, ['consequence', 'body'], 'compound_statement');
@@ -1135,13 +1308,14 @@
         if (n.type === 'function_definition' && /^main$/.test((F(F(n, 'declarator'), 'declarator') || {}).text || '')) {
           o.isMain = true;
           const body = o.c.find(x => x.t === 'compound_statement');
-          if (body) { const last = body.c[body.c.length - 1]; if (last && last.t === 'return_statement' && hashOf(last) === 'return_statement(return:return,number_literal:0)') body.c.pop(); }
+          if (body) { const last = body.c[body.c.length - 1]; if (last && last.t === 'return_statement' && hashOf(last) === 'return_statement(return:"return",number_literal:"0")') body.c.pop(); }
         }
       },
     };
     return R;
   }
   const includesOf = (tree) => named(tree).filter(x => x.type === 'preproc_include').map(x => collapse(F(x, 'path') ? F(x, 'path').text : x.text));
+  const usingsOf = (tree) => named(tree).filter(x => x.type === 'using_declaration').map(x => collapse(x.text)).sort();
 
   /* ================================================================== */
   /* The driver: convert, check, keep what differs as code, check again  */
@@ -1158,9 +1332,12 @@
 
   function check(kind, original, generated, env) {
     if (kind === 'html') {
-      const a = htmlTree(original, env, false), b = htmlTree(generated, env, true);
-      if (a.lang && a.lang !== b.lang) return { same: false, why: 'the page language' };
-      if (a.title !== b.title && !(a.title == null && b.title == null)) return { same: false, why: 'the page title' };
+      const a = htmlTree(original, env, env.pulled || []);
+      const b = htmlTree(generated, env, ['style.css', 'script.js'], { style: !a.found.style, script: !a.found.script });
+      if (a.doctype !== b.doctype) return { same: false, why: 'the doctype (the first line of the page)' };
+      if (a.htmlAttrs !== b.htmlAttrs) return { same: false, why: 'the <html> tag (the page language or its other attributes)' };
+      if (a.title !== b.title) return { same: false, why: 'the page title' };
+      if (a.metas !== b.metas) return { same: false, why: 'the <meta> settings (character set, viewport…)' };
       if (a.bodyAttrs !== b.bodyAttrs) return { same: false, why: 'the <body> tag' };
       const h = cmp(a.head, b.head);
       if (h !== true) return { same: false, why: 'the <head>' };
@@ -1169,12 +1346,15 @@
     }
     const lang = kind === 'arduino' ? 'cpp' : kind;
     const ta = env.parse(lang, original), tb = env.parse(lang, generated);
+    let usingStd = false;
     if (lang === 'cpp') {
       const inc = new Set(includesOf(tb));
       const missing = includesOf(ta).filter(x => !inc.has(x));
       if (missing.length) return { same: false, why: `the #include of ${missing.join(', ')}` };
+      if (usingsOf(ta).join('\n') !== usingsOf(tb).join('\n')) return { same: false, why: 'the `using` lines' };
+      usingStd = usingsOf(ta).includes('using namespace std;');
     }
-    const rules = lang === 'js' ? JS_RULES : lang === 'css' ? CSS_RULES : cppRules(env);
+    const rules = lang === 'js' ? JS_RULES : lang === 'css' ? CSS_RULES : cppRules(usingStd);
     const r = cmp(normalise(ta, rules), normalise(tb, rules));
     return r === true ? { same: true } : { same: false, culprits: r === false ? null : r };
   }
@@ -1271,7 +1451,7 @@
     return { parts: out, notes, cssFiles, jsPath };
   }
 
-  const api = { toSentences, htmlTree, pageParts: (tree) => pageParts(tree), decode, pageInfo, resolveRef, website };
+  const api = { toSentences, check, htmlTree, pageParts: (tree) => pageParts(tree), decode, pageInfo, resolveRef, website };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiConvert = api;
 })(typeof window !== 'undefined' ? window : globalThis);

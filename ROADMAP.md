@@ -51,8 +51,22 @@ directions, using rules rather than AI. This file records where it is going and 
   different is kept as exact code (`html:`, `css:`, `js:`, `c++:`, `above main:`, `head:`)
   and the check runs again, so the result is exact or says why not. Declarations try a more
   careful sentence with the type spelled out before falling back to code.
-- Counted as the same: `let`/`const`, `x++`/`x += 1`, one-line bodies/braces, `std::` with
-  `using namespace std`, main's final `return 0`, attribute order and whitespace in HTML.
+- Counted as the same, only where it can't change what the code does (since the 2026-09-30
+  audit, which found `let`/`const` and `x++`/`x += 1` on this list although they behave
+  differently):
+  - JavaScript: `x++;` and `++x;` as whole statements, one-line bodies and braces, brackets
+    that don't change the meaning.
+  - C++: one-line bodies and braces, `std::` where `using namespace std` applies, main's final
+    `return 0`, extra `#include`s, `main` moved to the end.
+  - HTML: attribute order, whitespace a browser doesn't show (every space counts in `<pre>`,
+    `<textarea>`, scripts and styles, and between inline elements), a button's `type` outside
+    a form, `<input>`'s default `type="text"`, and the page's own `style.css`/`script.js`
+    tags when those files are empty. The doctype, all `<html>` attributes, the charset and
+    viewport settings and the order of the head are compared.
+  - CSS: spaces outside quotes. Numbers, colours and quoted text are compared.
+  - Python: the syntax tree, docstrings included (they become `description:` sentences).
+  - `tests/convert.test.mjs` lists pairs that must be reported as different, so a checker that
+    looks away fails the tests.
 - Test corpus (`tests/corpus_web/`): a landing page, its CSS and script, a C++ program with a
   class and an Arduino sketch: all exact; 83% of HTML lines, 73% of CSS lines and 100% of the
   JavaScript, C++ and Arduino lines read as sentences. Code made from every blueprint comes
@@ -88,6 +102,7 @@ before each measurement.
 |------|-----------------|-------|-------------------|-------|
 | 2026-09-29 baseline | 43% (130/304) | 18/18 | – | – |
 | 2026-09-29 after step 2 | 98% (297/304) | 18/18 | 87% on first sight, one exactness bug found; 96% after fixes | 5/5 |
+| 2026-09-30 after the audit (docstrings now count as statements) | 98% (306/313) | 18/18 | 96% (120/125) | 5/5 |
 
 The app has a safety net: if converting a file to sentences ever isn't exact, the
 statements that differ are kept as `python:` lines automatically and the check runs again.

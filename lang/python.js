@@ -75,6 +75,49 @@
     return best;
   }
 
+  /* Quoted text with its words hidden (same length, quote marks kept), so sentence words inside
+     quotes never count: "add "Walk to the shop" to tasks" splits at the second "to". */
+  const maskQuoted = (s) => s.replace(/"(?:[^"\\]|\\.)*"?|(?<![A-Za-z0-9_])[rRbBuUfF]{0,2}'(?:[^'\\]|\\.)*'?/g, (m) => {
+    const q = m.search(/["']/), end = m.length > q + 1 && m[m.length - 1] === m[q] ? 1 : 0;
+    return m.slice(0, q + 1) + '\u0001'.repeat(m.length - q - 1 - end) + m.slice(m.length - end);
+  });
+  /* Like s.match(re), but words inside quotes can't match; the groups hold the real text. */
+  const withIndices = new Map();   // by source: a regex written in a function is a new object each time
+  function qmatch(s, re) {
+    let red = withIndices.get(re.source + '/' + re.flags);
+    if (!red) { red = new RegExp(re.source, re.flags.replace(/[gd]/g, '') + 'd'); withIndices.set(re.source + '/' + re.flags, red); }
+    const m = maskQuoted(s).match(red);
+    if (!m) return null;
+    const out = m.indices.map(p => (p ? s.slice(p[0], p[1]) : undefined));
+    out.index = m.index; out.input = s;
+    return out;
+  }
+
+  /* Text in double quotes: {name} fills in a value, and {{ and }} are braces themselves. */
+  const FILL = /\{\{|\}\}|\{([^{}]+)\}|[{}]/g;
+  const fillsIn = (body) => [...body.matchAll(FILL)].some(m => m[1] != null);
+
+  /* Which triple-quoted text is still open at the end of this line of Python? ('"""', "'''" or null)
+     `open` is the one already open when the line starts. */
+  function openString(code, open = null) {
+    for (let i = 0; i < code.length;) {
+      if (open) {
+        if (code[i] === '\\') i += 2;
+        else if (code.startsWith(open, i)) { open = null; i += 3; }
+        else i++;
+        continue;
+      }
+      const c = code[i];
+      if (c === '#') return null;
+      if (c === '"' || c === "'") {
+        if (code.startsWith(c.repeat(3), i)) { open = c.repeat(3); i += 3; continue; }
+        for (i++; i < code.length && code[i] !== c; i += code[i] === '\\' ? 2 : 1);
+      }
+      i++;
+    }
+    return open;
+  }
+
   /* Split on commas and the word "and", but not inside quotes or brackets. */
   function splitItems(s, useAnd = true) {
     const parts = []; let depth = 0, quote = null, cur = '';
@@ -349,16 +392,14 @@
     q = q.replace(/\s*(?<![=!<>])=(?!=)\s*/g, '=');
     q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').trim();
 
-    // 8. Put the text back. Text with {name} inside becomes an f-string.
+    // 8. Put the text back. Text with {name} inside becomes an f-string; {{ and }} are braces.
     q = q.replace(/⟦(\d+)⟧/g, (m, i) => {
       const str = strs[+i];
       if (/^[rRbBuUfF]/.test(str)) return str; // already Python (f"…", r"…"): keep exactly
-      if (str[0] === '"' && /\{[^{}]+\}/.test(str)) {   // only double-quoted text fills in {names}; 'single' stays exact
-        const inner = str.replace(/\{([^{}]+)\}/g, (mm, e) => '{' + tExpr(e, x) + '}');
-        x.note('Text with {…} inside becomes an f-string (the `f` before the quotes). Python swaps in the current value of whatever is in the curly brackets.');
-        return 'f' + inner;
-      }
-      return str;
+      if (str[0] !== '"' || !/[{}]/.test(str)) return str;   // only double-quoted text fills in {names}; 'single' stays exact
+      if (!fillsIn(str)) return str.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
+      x.note('Text with {…} inside becomes an f-string (the `f` before the quotes). Python swaps in the current value of whatever is in the curly brackets. (A brace itself is written twice: {{ or }}.)');
+      return 'f' + str.replace(FILL, (mm, e) => (e != null ? '{' + tExpr(e, x) + '}' : mm.length === 2 ? mm : mm + mm));
     });
     return q;
   }
@@ -393,7 +434,7 @@
   // --- Values ---------------------------------------------------------
   function setTarget(target, x) {
     let m;
-    if ((m = target.match(/^(?:the\s+)?item\s+(.+?)\s+(?:of|in)\s+(.+)$/i))) {
+    if ((m = qmatch(target, /^(?:the\s+)?item\s+(.+?)\s+(?:of|in)\s+(.+)$/i))) {
       const coll = tExpr(m[2], x);
       const key = tExpr(m[1], x);
       const k = x.syms.get(coll)?.kind;
@@ -410,7 +451,7 @@
   function doSet(nameRaw, valueRaw, x, verb) {
     const tgt = setTarget(nameRaw, x);
     let value;
-    const call = valueRaw.match(/^(?:the\s+)?(?:result|answer|output) of\s+(.+?)(?:\s+(?:with|using|on)\s+(.+))?$/i);
+    const call = qmatch(valueRaw, /^(?:the\s+)?(?:result|answer|output) of\s+(.+?)(?:\s+(?:with|using|on)\s+(.+))?$/i);
     if (call) value = callExpr(call[1], call[2], x);
     else value = tExpr(valueRaw, x);
     if (tgt) return { py: `${tgt.py} = ${value}` };
@@ -472,14 +513,23 @@
     if (cls) declare(x, cls[1], cls[1], 'class');
     const d = py.match(/^\s*def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
     if (d) declare(x, d[1], d[1], 'function', { params: d[2].split(',').map(p => p.trim()).filter(Boolean) });
-    const opens = /:\s*(#.*)?$/.test(py);
+    const strOpen = openString(py);   // text in triple quotes that carries on to the next lines
+    if (strOpen) x.note('The text in triple quotes carries on over the next lines, which are copied exactly (their spaces are part of the text).');
+    const opens = !strOpen && /:\s*(#.*)?$/.test(py);
     const kw = (py.match(/^\s*(if|elif|else|for|while|def|async def|class|try|except|finally|with)\b/) || [])[1];
     const tag = { if: 'if', elif: 'elif', else: 'rawelse', try: 'try', except: 'except', finally: 'finally' }[kw];
-    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag };
+    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag, strOpen, comment: /^\s*(#|$)/.test(py) };
   });
 
   rule(/^(?:note|comment)\s*:\s*(.*)$|^#\s?(.*)$/i, (m, x) => {
     return { py: '# ' + (m[1] ?? m[2] ?? ''), comment: true };
+  });
+
+  // A description: the text in triple quotes at the top of a tool, class or file (a docstring).
+  // Several description lines in a row are one text; see translateSection.
+  rule(/^description\s*:\s?(.*)$/i, (m, x) => {
+    x.note('A description (docstring): the text in triple quotes at the top of a tool, class or file. Python keeps it as help text (`help()`, `__doc__`), so it is more than a note.');
+    return { py: '"""' + m[1] + '"""', desc: m[1] };
   });
 
   rule(/^(?:use|import)\s+(?:the\s+)?([A-Za-z_]\w*)(\s+(?:module|library|toolkit))?$/i, (m, x) => {
@@ -528,7 +578,7 @@
     x.note('`global` lets this tool change a value that lives outside it, instead of making its own copy.');
     return { py: `global ${names.join(', ')}` };
   });
-  rule(/^delete\s+(.+)$/i, (m, x) => {
+  rule(/^delete\s+(?!.*\sfrom\s)(.+)$/i, (m, x) => {   // "delete … from …" is the remove sentence below
     const parts = splitItems(m[1]).map(t => tExpr(t, x));
     x.note('`del` removes a name, or an item from a list or dictionary.');
     return { py: `del ${parts.join(', ')}` };
@@ -933,9 +983,9 @@
 
   function tLine(text, x) {
     const s0 = text.trim();
-    // raw Python and notes are never touched
-    for (const r of RULES.slice(0, 2)) {
-      const m = s0.match(r.re);
+    // raw Python, notes and descriptions are never touched (raw Python keeps any spaces at its end)
+    for (const r of RULES.slice(0, 3)) {
+      const m = (r === RULES[0] ? text.replace(/^\s+/, '').replace(/\r$/, '') : s0).match(r.re);
       if (m) return r.fn(m, x);
     }
     const { text: s, removed } = stripFiller(s0);
@@ -967,8 +1017,8 @@
     s = s.replace(/\s*:\s*$/, '')
       .replace(/(?<![\d.])\.\s*$/, '')
       .replace(/\s+(?:then|do)$/i, '');
-    for (const r of RULES.slice(2)) {
-      const m = s.match(r.re);
+    for (const r of RULES.slice(3)) {
+      const m = qmatch(s, r.re);
       if (m) { const res = r.fn(m, x); if (res) return res; }
     }
     // Fallback: a bare call like print("hi") or greet(name) is fine as-is.
@@ -1003,11 +1053,21 @@
     const fnRecords = [];
 
     const closeBlock = (entry) => {
+      if (entry.empty) {   // only notes inside: Python still needs a line there
+        let at = out.length;
+        while (at > 0 && !out[at - 1].text.trim()) at--;
+        out.splice(at, 0, { text: ' '.repeat(entry.level * 4) + 'pass', src: entry.head, extra: true });
+        const n = 'Only notes are indented under this line, and Python needs at least one real line in every block, so `pass` (do nothing) is added after them.';
+        if (!info[entry.head].notes.includes(n)) info[entry.head].notes.push(n);
+      }
       const auto = entry.fn ? [...entry.fn.globals].filter(g => !(entry.fn.explicit && entry.fn.explicit.has(g))) : [];
       if (auto.length && env.pass === 2) {
         out.splice(entry.fn.outIdx + 1, 0, { text: ' '.repeat((entry.fn.level + 1) * 4) + 'global ' + auto.join(', '), src: entry.fn.line, extra: true });
       }
     };
+    const isDesc = (j, ind) => j >= 0 && j < lines.length && /^\s*description\s*:/i.test(lines[j]) && lines[j].replace(/\t/g, '    ').match(/^ */)[0].length === ind;
+    let strOpen = null;   // a python: line left text in triple quotes open: { delim, line }
+    let seenCode = false, docEnd = 0;   // the imports added at the top go after the file's description
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i].replace(/\t/g, '    ');
@@ -1015,10 +1075,24 @@
       if (!rawLine.trim()) { out.push({ text: '', src: i }); continue; }
       const ind = rawLine.match(/^ */)[0].length;
 
+      // the rest of a text in triple quotes: copied exactly, spaces and all
+      if (strOpen) {
+        const c = lines[i].match(/^\s*(?:raw python|python|raw)\s*:\s?(.*?)\r?$/i);
+        if (c) {
+          out.push({ text: c[1], src: i });
+          strOpen.delim = openString(c[1], strOpen.delim);
+          cur.notes.push(`Part of the text in triple quotes that starts on line ${strOpen.line + 1}, copied exactly.`);
+          if (!strOpen.delim) strOpen = null;
+          continue;
+        }
+        info[strOpen.line].errs.push(`The text in triple quotes that starts here isn't closed. Its next lines must be python: lines, ending with ${strOpen.delim}.`);
+        strOpen = null;
+      }
+
       let top = stack[stack.length - 1];
       let pushed = false, popped = false, badIndent = false;
       if (pending) {
-        if (ind > top.ind) { stack.push({ ind, type: pending.type, fn: pending.fn }); pushed = true; }
+        if (ind > top.ind) { stack.push({ ind, type: pending.type, fn: pending.fn, empty: true, head: pending.line, level: stack.length }); pushed = true; }
         else {
           info[pending.line].errs.push('Nothing is indented under this line. The lines that belong to it need to move right: press Tab at the start of the next line.');
           out.splice(pending.outIdx + 1, 0, { text: ' '.repeat((pending.level + 1) * 4) + 'pass', src: pending.line, extra: true });
@@ -1054,15 +1128,25 @@
       if (lastTag[level] === 'decorator' && !/^(?:@|def |async def |class )/.test(res.py || '')) {
         cur.errs.push('The line above (a decorator or web route) must be followed by "define …" or "define class …".');
       }
-      if (!res.comment) lastTag[level] = res.tag || 'stmt';
+      if (!res.comment) { lastTag[level] = res.tag || 'stmt'; for (const e of stack) e.empty = false; }
 
+      if (res.desc != null) {   // description lines in a row make one text in triple quotes
+        const first = !isDesc(i - 1, ind), last = !isDesc(i + 1, ind), t = res.desc;
+        if (!first && !last && !t) out.push({ text: '', src: i });
+        else out.push({ text: ' '.repeat(level * 4) + (first ? '"""' + t + (last ? '"""' : '') : t + (last ? '"""' : '')), src: i });
+        if (last && !seenCode) { seenCode = true; if (level === 0) docEnd = out.length; }   // the file's own description stays first
+        continue;
+      }
+      if (!res.comment) seenCode = true;
       for (const p of res.pys || [res.py]) out.push({ text: ' '.repeat(level * 4) + p, src: i });
+      if (res.strOpen) strOpen = { delim: res.strOpen, line: i };
       if (res.open) {
         const fn = res.fn ? { ...res.fn, outIdx: out.length - 1, level, line: i, locals: new Set(res.fn.params), globals: new Set() } : null;
         if (fn) fnRecords.push(fn);
         pending = { line: i, type: res.open, level, outIdx: out.length - 1, fn };
       }
     }
+    if (strOpen) info[strOpen.line].errs.push(`The text in triple quotes that starts here isn't closed: end it with ${strOpen.delim}.`);
     if (pending) {
       info[pending.line].errs.push('Nothing is indented under this line. Add at least one indented line below it.');
       out.push({ text: ' '.repeat((pending.level + 1) * 4) + 'pass', src: pending.line, extra: true });
@@ -1083,7 +1167,7 @@
       }
     }
     if (header.length) header.push({ text: '', src: -1 });
-    const all = header.concat(out);
+    const all = out.slice(0, docEnd).concat(header, out.slice(docEnd));
     all.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
 
     return { lines: all, info, text: all.map(o => o.text).join('\n') + '\n' };
@@ -1150,6 +1234,7 @@
     T('Lists', 'shuffle ‹list›', 'random.shuffle(list)', '', ['tools', 'main']),
     T('Tools', 'define ‹name› using ‹inputs›', 'def name(inputs):', 'Leave off "using …" if the tool needs no inputs.', ['tools', 'main']),
     T('Tools', 'give back ‹value›', 'return value', 'Only inside a define block.', ['tools']),
+    T('Tools', 'description: ‹what it does›', '"""what it does"""', 'The first line under define or define class: help text Python keeps (a docstring). Several lines in a row make one text.', ['tools', 'main']),
     T('Tools', 'run ‹tool› with ‹inputs›', 'tool(inputs)', '', ['tools', 'main']),
     T('Tools', 'run ‹tool› with ‹inputs› and store in ‹name›', 'name = tool(inputs)', 'Keeps what the tool gives back.', ['tools', 'main']),
     T('Dictionaries', 'create dictionary ‹name›', 'name = {}', 'Stores values under keys, like prices of items.'),

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { loadConverter, ROOT } from './helpers/engine.mjs';
 
-const { convert, W, WEB, CPP, BP } = await loadConverter();
+const { convert, W, WEB, CPP, BP, C, env } = await loadConverter();
 const read = (p) => readFileSync(`${ROOT}/${p}`, 'utf8');
 const hasGpp = spawnSync('g++', ['--version']).status === 0;
 
@@ -66,7 +66,8 @@ for (const [file, kind, page, pulled, least] of CASES) {
 
 test('code -> sentences: the sentences read naturally', () => {
   const js = convert('js', read('tests/corpus_web/app.js'), pageNames(read('tests/corpus_web/landing.html'))).text;
-  assert.match(js, /^when signup is sent\n    get the text of email and store in email$/m);
+  assert.match(js, /^when signup is sent\n    constant email is text of email$/m);   // const in the original, so a constant
+  assert.match(js, /^    load "emails" from the browser and store in saved$/m);          // let in the original
   assert.match(js, /^    save saved in the browser as "emails"$/m);
   assert.match(js, /^if hour is less than 7 or hour is at least 15$/m);
   assert.match(js, /^    show "Batch \{i plus 1\} is in the oven"$/m);
@@ -96,10 +97,101 @@ test('code -> sentences: anything that can\'t be said stays exact code', () => {
   assert.match(c.text, /^show n$/m);
 });
 
-test('code -> sentences: let/const, x++ and one-line ifs count as the same', () => {
+test('code -> sentences: let and const, x++ and x += 1 each get their own sentence; one-line ifs count as the same', () => {
   const r = convert('js', 'const n = 2;\nlet c = 0;\nif (n > 1) c++;\nwhile (c < 5) c += 1;\n');
   assert.equal(r.exact, true, r.reason);
   assert.equal(r.kept, 0, r.text);
+  assert.match(r.text, /^constant n is 2\nset c to 0\nif n is greater than 1\n    increase c\nwhile c is less than 5\n    increase c by 1$/m);
+});
+
+/* The checker itself: code that behaves differently must never count as the same. */
+const same = (kind, a, b, extra = {}) => C.check(kind, a, b, env(extra)).same;
+const page = (head, body, { open = '<html lang="en">', doctype = '<!DOCTYPE html>\n', charset = 'utf-8', viewport = 'width=device-width, initial-scale=1' } = {}) =>
+  `${doctype}${open}\n<head>\n${charset ? `<meta charset="${charset}">\n` : ''}${viewport ? `<meta name="viewport" content="${viewport}">\n` : ''}<title>T</title>\n${head}\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
+const DIFFERENT = [
+  // JavaScript: for the text "5", x++ gives 6 but x += 1 gives "51"; const can't change; spaces in regexes, templates and strings are text
+  ['js', 'x++;', 'x += 1;'],
+  ['js', 'x--;', 'x -= 1;'],
+  ['js', 'const x = 1;', 'let x = 1;'],
+  ['js', 'for (const x of y) {}', 'for (let x of y) {}'],
+  ['js', 'let r = /  +/g;', 'let r = / +/g;'],
+  ['js', 'let t = `a  b`;', 'let t = `a b`;'],
+  ['js', 'let s = "  ";', 'let s = " ";'],
+  ['js', 'let v = (a?.b).c;', 'let v = a?.b.c;'],   // brackets end a ?. chain
+  // C++: a class can give ++x, x++ and x += 1 different meanings; std:: only goes without `using namespace std`
+  ['cpp', 'int main() { int x = 0; x++; }', 'int main() { int x = 0; x += 1; }'],
+  ['cpp', 'int main() { int x = 0; ++x; }', 'int main() { int x = 0; x++; }'],
+  ['cpp', '#include <iostream>\nint main() { cout << 1; }', '#include <iostream>\nint main() { std::cout << 1; }'],
+  ['cpp', '#include <iostream>\nusing namespace std;\nint main() { cout << 1; }', '#include <iostream>\nint main() { std::cout << 1; }'],
+  ['cpp', 'auto s = "a  b";', 'auto s = "a b";'],
+  // CSS: numbers, colours and the text in quotes all count
+  ['css', 'a { background: url("my  photo.jpg"); }', 'a { background: url("my photo.jpg"); }'],
+  ['css', 'a { content: "  "; }', 'a { content: " "; }'],
+  ['css', 'a { margin: -2px; }', 'a { margin: 5px; }'],
+  ['css', 'a { color: #fff; }', 'a { color: #000; }'],
+  // HTML: the doctype, the <html> tag, the <meta> settings and the order of styles and scripts in <head>
+  ['html', page('', '<p>x</p>'), page('', '<p>x</p>', { doctype: '' })],
+  ['html', page('', '<p>x</p>', { open: '<html lang="ar" dir="rtl">' }), page('', '<p>x</p>', { open: '<html lang="ar">' })],
+  ['html', page('', '<p>x</p>', { open: '<html class="no-js">' }), page('', '<p>x</p>', { open: '<html>' })],
+  ['html', page('', '<p>x</p>', { open: '<html>' }), page('', '<p>x</p>')],
+  ['html', page('', '<p>x</p>', { viewport: 'width=1024' }), page('', '<p>x</p>')],
+  ['html', page('', '<p>x</p>', { viewport: '' }), page('', '<p>x</p>')],
+  ['html', page('', '<p>x</p>', { charset: 'iso-8859-1' }), page('', '<p>x</p>')],
+  ['html', page('<link rel="stylesheet" href="own.css">\n<style>p { color: red; }</style>', '<p>x</p>'), page('<style>p { color: red; }</style>\n<link rel="stylesheet" href="style.css">', '<p>x</p>'), { pulled: ['own.css'] }],
+  ['html', page('<script src="app.js" defer></script>', '<p>x</p>'), page('', '<p>x</p>\n<script src="script.js"></script>'), { pulled: ['app.js'] }],
+  // HTML: spaces that show (inside <pre>, <textarea> and scripts; between inline things; a no-break space)
+  ['html', page('', '<pre>  a</pre>'), page('', '<pre> a</pre>')],
+  ['html', page('', '<textarea>a\n  b</textarea>'), page('', '<textarea>a\n b</textarea>')],
+  ['html', page('', '<script>let t = `a\n  b`;</script>'), page('', '<script>let t = `a\n b`;</script>')],
+  ['html', page('', '<nav><a>A</a><a>B</a></nav>'), page('', '<nav><a>A</a>\n <a>B</a></nav>')],
+  ['html', page('', '<p><img src="a"><img src="b"></p>'), page('', '<p><img src="a">\n<img src="b"></p>')],
+  ['html', page('', '<p>a <b>x</b></p>'), page('', '<p>a<b>x</b></p>')],
+  ['html', page('', '<p>a&nbsp;b</p>'), page('', '<p>a b</p>')],
+];
+test('checker: code that behaves differently is reported as different', () => {
+  for (const [kind, a, b, extra] of DIFFERENT) {
+    assert.equal(same(kind, a, b, extra), false, `${kind} should differ:\n${a}\n---\n${b}`);
+    assert.equal(same(kind, b, a, extra && extra.pulled ? { pulled: ['style.css', 'script.js', ...extra.pulled] } : extra), false, `${kind} should differ (the other way round):\n${b}\n---\n${a}`);
+  }
+});
+test('checker: what still counts as the same really is the same', () => {
+  const SAME = [
+    ['js', 'x++;', '++x;'],
+    ['js', 'if (a) b();', 'if (a) { b(); }'],
+    ['js', 'let v = (a + b) * c;', 'let v = (a + b) * c;'],
+    ['cpp', '#include <iostream>\nusing namespace std;\nint main() { cout << 1; }', '#include <iostream>\nusing namespace std;\nint main() { std::cout << 1; }'],
+    ['cpp', 'int main() { int x = 1; return 0; }', 'int main() { int x = 1; }'],
+    ['css', 'a  >  b { color: red; }', 'a > b { color: red; }'],
+    ['html', page('', '<p>a   b</p>'), page('', '<p>a b</p>')],
+    ['html', page('', '<p>  a b  </p>'), page('', '<p>a b</p>')],
+    ['html', page('', '<ul><li>a</li><li>b</li></ul>'), page('', '<ul>\n  <li>a</li>\n  <li>b</li>\n</ul>')],
+    ['html', page('', '<p><img src="a">  <img src="b"></p>'), page('', '<p><img src="a">\n<img src="b"></p>')],
+    ['html', page('', '<p>x</p>', { charset: 'UTF-8', viewport: 'width=device-width, initial-scale=1.0' }), page('', '<p>x</p>')],
+  ];
+  for (const [kind, a, b] of SAME) assert.equal(same(kind, a, b), true, `${kind} should be the same:\n${a}\n---\n${b}`);
+});
+
+test('code -> sentences: exact where the checker used to look away', () => {
+  const exact = (kind, src, extra, re) => { const r = convert(kind, src, extra || {}); assert.equal(r.exact, true, `${r.reason}\n${r.text}`); if (re) assert.match(r.text, re); return r; };
+  // a reply that changes later is kept with let; x++ and x += 1 say different things
+  let r = exact('js', 'let data = await (await fetch("/api")).json();\ndata = data.items;\n', null, /^fetch from "\/api" and store in data\nset data to data\.items$/m);
+  assert.equal(r.kept, 0, r.text);
+  exact('js', 'let data = await (await fetch("/api")).json();\nconsole.log(data);\n', null, /^set data to await \(await fetch\("\/api"\)\)\.json\(\)$/m);
+  r = exact('js', 'let n = 0;\nn++;\nn += 1;\n', null, /^increase n\nincrease n by 1$/m);
+  assert.equal(r.kept, 0, r.text);
+  exact('js', 'function f(a) {\n  a = a + 1;\n  return a;\n}\nfor (let x of [1, 2]) {\n  x = x * 2;\n}\n', null, /^    set a to a plus 1$/m);
+  exact('cpp', 'int main() {\n    int x = 0;\n    x++;\n    ++x;\n}\n', null, /^increase x\nc\+\+: \+\+x;$/m);
+  // the <html> tag, a page without a doctype or settings, styles in order, spaces in <pre> and scripts
+  exact('html', page('', '<h1>Hi</h1>', { open: '<html lang="ar" dir="rtl">' }), null, /^page language is ar\nhtml attributes: dir="rtl"$/m);
+  r = exact('html', '<html>\n<head>\n<title>Old</title>\n<link rel="stylesheet" href="s.css">\n<style>\n  p { color: red; }\n</style>\n</head>\n<body>\n  <section>\n    <pre>\n  one\n    two\n</pre>\n    <script>\n      let t = `a\n  b`;\n    </script>\n  </section>\n  <nav><a href="/a">A</a><a href="/b">B</a></nav>\n</body>\n</html>\n', { pulled: ['s.css'] },
+    /^no doctype\nno page language\npage title is "Old"\nhead: <link rel="stylesheet" href="style.css">\nhead: <style>\nhead:   p \{ color: red; \}\nhead: <\/style>\nleave out the character set\nleave out the viewport setting$/m);
+  assert.match(r.text, /^    html: <pre>\n    html:   one\n    html:     two\n    html: <\/pre>$/m);
+  exact('html', page('<script src="app.js" defer></script>\n<link rel="stylesheet" href="s.css">', '<nav>\n  <a href="/"> Home </a>\n  <a href="/b">B</a>\n</nav>', { viewport: 'width=1024' }), { pulled: ['s.css', 'app.js'] },
+    /^head: <meta name="viewport" content="width=1024">\nhead: <script src="script\.js" defer><\/script>\nadd a navigation bar\n    add a link to "\/" saying " Home "$/m);
+  exact('html', page('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">', '<p>x</p>'), null, /^page title is "T"\nhead: <meta http-equiv/m);
+  // inline things with nothing between them stay on one line (a line break would show as a space)
+  exact('html', page('', '<h1>Hi</h1>\n<img src="a.png" alt="A"><img src="b.png" alt="B">\n<section>\n  <b>x</b><i>y</i>\n</section>'), null,
+    /^add a big heading "Hi"\nhtml: <img src="a\.png" alt="A"><img src="b\.png" alt="B">\nadd a section\n    html: <b>x<\/b><i>y<\/i>$/m);
 });
 
 test('code -> sentences: C++ main with inputs is reported, not guessed', () => {

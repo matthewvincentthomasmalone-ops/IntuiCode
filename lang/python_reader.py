@@ -123,6 +123,9 @@ def safe_code(e):
     bare = _STR.sub("''", text)
     if '"' in bare:
         return False
+    # in "double quotes", {…} fills in a value (and {{ }} are braces), so braces there aren't plain text
+    if re.search(r'(?<![\w\'])"(?:[^"\\]|\\.)*[{}]', re.sub(r"(?<![\w\"])'(?:[^'\\]|\\.)*'", "''", text)):
+        return False
     return not _TRIGGERS.search(bare)
 
 
@@ -138,6 +141,74 @@ def top_level_split(text):
         elif depth == 0 and (c == "," or bare.startswith(" and ", i)):
             return True
     return False
+
+
+def has_word(text, *words):
+    """Does one of these words appear outside quotes? The sentence translator would split there."""
+    bare = _STR.sub("''", text)
+    return re.search(r"\s(?:%s)\s" % "|".join(words), bare, re.I) is not None
+
+
+def string_lines(text):
+    """Line numbers (from 1) that carry on a string started on an earlier line."""
+    import io
+    import tokenize
+    inside, starts = set(), []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.STRING and tok.end[0] > tok.start[0]:
+                inside.update(range(tok.start[0] + 1, tok.end[0] + 1))
+            elif tok.type == getattr(tokenize, "FSTRING_START", -1):
+                starts.append(tok.start[0])
+            elif tok.type == getattr(tokenize, "FSTRING_END", -1) and starts:
+                inside.update(range(starts.pop() + 1, tok.end[0] + 1))
+    except (tokenize.TokenError, SyntaxError):
+        pass
+    return inside
+
+
+def code_lines(text, level):
+    """Python code as python: lines. A line that carries on a multi-line string is kept exactly
+    as it is after "python: ", because its spaces are part of the text."""
+    pad = "    " * level
+    inside = string_lines(text)
+    out, here = [], pad
+    for n, line in enumerate(text.split("\n"), 1):
+        if n in inside:
+            out.append(here + ("python: " + line if line else "python:"))
+        elif line.strip():
+            here = pad + "    " * ((len(line) - len(line.lstrip())) // 4)
+            out.append(here + "python: " + (line.lstrip() if n + 1 in inside else line.strip()))
+    return out
+
+
+def described(node, level):
+    """A docstring as description: lines that rebuild exactly the same text, or None if they can't.
+    The lines under the first are written at the docstring's own indentation; an empty last line
+    is the closing quotes on a line of their own."""
+    c = node.value
+    s = c.value
+    if c.kind is not None or "\\" in s or '"""' in s or s.endswith('"') or re.search(r"[\t\r\f\v]", s):
+        return None
+    pad = "    " * level
+    parts = s.split("\n")
+    out = []
+    for i, line in enumerate(parts):
+        last = i == len(parts) - 1
+        if i == 0:
+            text = line
+        elif last and line == pad:
+            text = ""
+        elif line == "" and not last:
+            text = ""
+        elif line.startswith(pad) and line[len(pad):]:
+            text = line[len(pad):]
+        else:
+            return None
+        if text != text.rstrip():
+            return None
+        out.append(pad + ("description: " + text if text else "description:"))
+    return out
 
 
 def dotted_name(e):
@@ -340,17 +411,20 @@ class Sentences:
         for i, node in enumerate(body):
             out.extend(self.notes_before(start_line(node), level))
             if i == 0 and is_docstring(node):
-                first = node.value.value.strip().splitlines()[0] if node.value.value.strip() else ""
-                out.append(("    " * level) + "note: " + first)
+                out.extend(self.docstring(node, level))
             else:
                 out.extend(self.stmt(node, level))
             self.last = max(self.last, getattr(node, "end_lineno", node.lineno))
         return out
 
+    def docstring(self, node, level):
+        """Kept exactly: as description: lines, or as one python: line when those can't say it."""
+        if level == 0 and node.lineno in self.force_raw:
+            return self.raw_lines(node, level)
+        return described(node, level) or self.raw_lines(node, level)
+
     def raw_lines(self, node, level):
-        pad = "    " * level
-        return [pad + "    " * ((len(l) - len(l.lstrip())) // 4) + "python: " + l.strip()
-                for l in ast.unparse(node).splitlines() if l.strip()]
+        return code_lines(ast.unparse(node), level)
 
     def say(self, level, text):
         return ["    " * level + text]
@@ -625,8 +699,12 @@ class Sentences:
         if isinstance(c.func, ast.Attribute) and isinstance(c.func.value, ast.Name) and name_ok(c.func.value.id):
             obj, meth = c.func.value.id, c.func.attr
             is_list = obj in self.lists or not self.strict
+            # "add … to …" and "remove … from …" split at the first of those words outside quotes
             if meth == "append" and len(c.args) == 1 and not c.keywords and is_list:
-                return S(level, f"add {self.arg(c.args[0])} to {obj}")
+                item = self.arg(c.args[0])
+                if has_word(item, "to", "onto", "into"):
+                    raise Unwordable()
+                return S(level, f"add {item} to {obj}")
             if meth == "sort" and not c.args and is_list:
                 rev = kw.get("reverse")
                 if not c.keywords:
@@ -636,7 +714,10 @@ class Sentences:
             if meth == "reverse" and not c.args and not c.keywords and is_list:
                 return S(level, f"reverse {obj}")
             if meth == "remove" and len(c.args) == 1 and not c.keywords and is_list:
-                return S(level, f"remove {self.arg(c.args[0])} from {obj}")
+                item = self.arg(c.args[0])
+                if has_word(item, "from") or re.match(r"(?:the\s+)?item\s", item, re.I):   # "remove item 2 from x" removes by position
+                    raise Unwordable()
+                return S(level, f"remove {item} from {obj}")
         name = self.callable_name(c.func)
         args = self.args(c)
         return S(level, f"run {name}" + (f" with {args}" if args else ""))
@@ -1405,7 +1486,7 @@ def to_sentences(source, force_raw=()):
             out.append("")
         out.append(f"note: ── {label} ──")
         if g["kind"] == "about":
-            out.extend("note: " + l for l in g["nodes"][0].value.value.strip().splitlines()[:3])
+            out.extend(sent.docstring(g["nodes"][0], 0))
             sent.last = max(sent.last, g["nodes"][0].end_lineno)
         else:
             out.extend(sent.block(g["nodes"], 0))
@@ -1413,33 +1494,33 @@ def to_sentences(source, force_raw=()):
     return "\n".join(out) + "\n"
 
 
-def _normal(tree):
-    """A program's shape, ignoring comments and docstrings."""
-    for n in ast.walk(tree):
-        body = getattr(n, "body", None)
-        if isinstance(body, list) and body and is_docstring(body[0]) and not isinstance(n, ast.Expression):
-            body.pop(0)
-    return tree
+TOO_DEEP = "The code is nested too deeply to read (for example, a very long chain of + or brackets inside brackets)."
 
 
 def compare(original, generated):
-    """Do two sources make the same program? Lists the original lines where they differ."""
+    """Do two sources make the same program? Lists the original lines where they differ.
+    Comments don't count; docstrings do (Python keeps them as help text)."""
     try:
-        a = _normal(ast.parse(original))
-    except SyntaxError as e:
-        return {"same": False, "error": f"The original can't be read (line {e.lineno})."}
-    try:
-        b = _normal(ast.parse(generated))
-    except SyntaxError as e:
-        return {"same": False, "error": f"The generated Python can't be read (line {e.lineno}: {e.msg})."}
-    if ast.dump(a) == ast.dump(b):
-        return {"same": True, "differs": []}
-    differs = []
-    bd = [ast.dump(x) for x in b.body]
-    for x in a.body:
-        if ast.dump(x) not in bd:
-            differs.append([start_line(x), getattr(x, "end_lineno", x.lineno)])
-    return {"same": False, "differs": differs[:20]}
+        try:
+            a = ast.parse(original)
+        except (SyntaxError, ValueError) as e:
+            return {"same": False, "error": f"The original can't be read (line {getattr(e, 'lineno', None)})."}
+        try:
+            b = ast.parse(generated)
+        except (SyntaxError, ValueError) as e:
+            return {"same": False, "error": f"The generated Python can't be read (line {getattr(e, 'lineno', None)}: {getattr(e, 'msg', e)})."}
+        if ast.dump(a) == ast.dump(b):
+            return {"same": True, "differs": []}
+        differs = []
+        bd = [ast.dump(x) for x in b.body]
+        for x in a.body:
+            if ast.dump(x) not in bd:
+                differs.append([start_line(x), getattr(x, "end_lineno", x.lineno)])
+        return {"same": False, "differs": differs[:20]}
+    except RecursionError:
+        return {"same": False, "error": TOO_DEEP}
+    except MemoryError:
+        return {"same": False, "error": "The code is too big to compare."}
 
 
 # --------------------------------------------------------------------------
@@ -1829,20 +1910,35 @@ def summarise_json(source, start, end, path=""):
 def to_sentences_json(source, force_raw_json="[]"):
     try:
         return json.dumps({"ok": True, "text": to_sentences(source, set(json.loads(force_raw_json)))})
-    except SyntaxError as e:
-        return json.dumps({"ok": False, "error": f"Line {e.lineno}: {e.msg}"})
+    except SyntaxError as e:   # also: null bytes in the code
+        return json.dumps({"ok": False, "error": f"Line {e.lineno}: {e.msg}" if e.lineno else e.msg})
+    except RecursionError:
+        return json.dumps({"ok": False, "error": TOO_DEEP})
+    except (ValueError, MemoryError) as e:
+        return json.dumps({"ok": False, "error": f"The code can't be read: {e or 'it is too big'}."})
+
+
+def _read(path):
+    with open(path, encoding="utf-8-sig") as f:   # -sig: a byte-order mark (Notepad adds one) isn't code
+        return f.read()
 
 
 def _cli(argv):
     """python3 python_reader.py summary FILE | sentences FILE | compare ORIGINAL GENERATED | project DIR"""
     import os
+    # files, the terminal and piped JSON are UTF-8 everywhere (Windows would use its own code page)
+    for stream in (sys.stdin, sys.stdout):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     cmd = argv[1] if len(argv) > 1 else "summary"
     if cmd == "sentences":
-        print(to_sentences(open(argv[2]).read()), end="")
+        print(to_sentences(_read(argv[2])), end="")
     elif cmd == "sentences-json":      # stdin: JSON list of sources -> JSON list of sentence texts
         print(json.dumps([to_sentences(src) for src in json.load(sys.stdin)]))
     elif cmd == "compare":
-        print(json.dumps(compare(open(argv[2]).read(), open(argv[3]).read())))
+        print(json.dumps(compare(_read(argv[2]), _read(argv[3]))))
     elif cmd == "compare-json":        # stdin: JSON list of [original, generated] -> JSON list of results
         print(json.dumps([compare(a, b) for a, b in json.load(sys.stdin)]))
     elif cmd == "project":
@@ -1852,7 +1948,11 @@ def _cli(argv):
             for n in names:
                 path = os.path.relpath(os.path.join(base, n), os.path.dirname(os.path.abspath(argv[2])))
                 if keep_path(path):
-                    files.append({"name": path, "source": "" if keep_path(path) == "secret" else open(os.path.join(base, n), errors="replace").read()})
+                    if keep_path(path) == "secret":
+                        files.append({"name": path, "source": ""})
+                        continue
+                    with open(os.path.join(base, n), encoding="utf-8-sig", errors="replace") as f:
+                        files.append({"name": path, "source": f.read()})
         p = analyze_project(files)
         print(p["overview"].replace("[[", "").replace("]]", ""))
         for w in p["warnings"]:
@@ -1862,7 +1962,7 @@ def _cli(argv):
             print(f"  {path:40} {f['role_label']:15} {f['summary'][:70]}")
     else:
         path = argv[2] if cmd == "summary" else argv[1]
-        src = open(path).read()
+        src = _read(path)
         for sec in analyze_source(path, src)["sections"]:
             print(f"\n[{sec['kind']}] {sec['title']}  (lines {sec['start']}-{sec['end']})")
             print("  " + sec["headline"])
