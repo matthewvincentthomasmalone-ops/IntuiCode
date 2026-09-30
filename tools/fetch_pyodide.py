@@ -9,15 +9,19 @@ possible, and runner.js undoes both when it loads:
   - the 10 MB engine is split into 4 parts (hosts limit upload size);
   - the standard-library .zip gets a .wasm suffix (hosts don't serve .zip).
 """
+import base64
 import hashlib
 import io
 import json
 import os
+import sys
 import tarfile
 import urllib.request
 
 VERSION = "0.26.4"
 URL = f"https://registry.npmjs.org/pyodide/-/pyodide-{VERSION}.tgz"
+# The package's checksum as published on the npm registry (dist.integrity). Change it with VERSION.
+INTEGRITY = "sha512-z2CHsjVlhhJi5tYBF0AYAfNEPo3zq/z+xOpFtk1tweJkRaTqU4UK/7pLvo8DBU2VDPH31vB3pSI+8fnoqrVrFg=="
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "pyodide")
 KEEP = {"pyodide.js", "pyodide.asm.js", "pyodide-lock.json", "pyodide.asm.wasm", "python_stdlib.zip"}
@@ -26,6 +30,9 @@ KEEP = {"pyodide.js", "pyodide.asm.js", "pyodide-lock.json", "pyodide.asm.wasm",
 def main():
     print(f"Downloading Pyodide {VERSION}…")
     data = urllib.request.urlopen(URL).read()
+    got = "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode()
+    if got != INTEGRITY:
+        sys.exit(f"The download isn't Pyodide {VERSION} as published (its checksum is {got}), so nothing was changed.")
     os.makedirs(OUT, exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
         for member in tar.getmembers():

@@ -47,6 +47,9 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Blueprints → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
       (the first time it may ask you to run `$ arduino-cli core install arduino:avr`: type it, then Run again).
 - [ ] With a board plugged in by USB: Run uploads it; the light blinks and "Blinks so far" lines appear.
+- [ ] A board with a USB-serial chip (many ESP32 boards): Run says there is a board it can't name.
+      Type `board esp32`, then Run: it uploads. (Most ESP32 boards have no `LED_BUILTIN`: the
+      compiler's complaint comes with a hint to use a pin number.)
 
 **Reading and converting code**
 - [ ] Import code → **Try the example project**. The overview and the file map appear.

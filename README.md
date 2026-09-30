@@ -116,9 +116,16 @@ The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can'
   [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
   with "Desktop development with C++" if you don't have it), or g++/clang++ on macOS and Linux.
 - **Arduino.** Uses `arduino-cli`, found on the PATH or inside an installed Arduino IDE 2. The
-  first time, install the board support: `$ arduino-cli core install arduino:avr`.
+  first time, install the board support: `$ arduino-cli core install arduino:avr`. Official
+  boards are recognised on their USB port; for a board with a USB-serial chip (CH340, CP2102:
+  many ESP32 and clone boards), type `board esp32` (or `uno`, `nano`, `mega`, or arduino-cli's
+  full name for it) in the terminal once, and Run uploads to it.
 - **Commands.** Type `$` and a command in the terminal to run it in the project folder:
   `$ git status`, `$ pip install flask`.
+
+The window only works in folders you pick with its own Open/Save dialogs, and code you open is
+never run in it: the website preview is sandboxed. See "nothing untrusted runs in the desktop
+window" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### Getting the installer
 
@@ -154,12 +161,14 @@ npm run coverage    # how much real code reads as sentences
 ```
 
 The desktop app has its own tests, which open the real app window and drive it (Python with
-typed input, shell commands, files, C++, Arduino, code opened as sentences). GitHub runs them
-on Linux and on Windows (with Visual Studio's compiler) for every push to `main`
+typed input, shell commands, files and the folders allowed, the sandboxed preview, C++,
+Arduino, code opened as sentences). GitHub runs them on Linux and on Windows (with Visual
+Studio's compiler) for every push to `main` and every pull request
 (**Actions → Desktop app tests**). To run them on Linux:
 
 ```
 npm run tauri -- build --debug --no-bundle
+cargo test --manifest-path src-tauri/Cargo.toml   # the desktop layer's own checks
 cargo install tauri-driver --locked            # and: sudo apt install webkit2gtk-driver xvfb
 xvfb-run node tests/e2e/run.mjs
 ```
@@ -211,3 +220,7 @@ The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
   and pattern recognisers in `gists()` in `lang/python_reader.py`.
 - **Another language:** a language pack exposes the same shape as `lang/python.js`
   (`compileProject`, `TEMPLATES`, `WORDS`, `GUIDE`, `OPENS_BLOCK`) on `window.IntuiLang`.
+
+## License
+
+IntuiCode is licensed under the [Apache License 2.0](LICENSE).

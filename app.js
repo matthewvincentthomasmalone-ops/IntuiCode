@@ -338,14 +338,18 @@
   }
   const FOLDER_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5v8h13v-7h-7l-1.5-1.5h-4.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
 
+  /* How many problems ('errs') or warnings ('warns') a folder's sentences have; `waitForTyping`
+   * leaves out the line being typed, whose problems show once the cursor leaves it. */
+  function issues(s, kind, waitForTyping) {
+    const r = secResult(s.id);
+    return r ? r.info.reduce((n, inf, i) => n + (waitForTyping && s.id === project.active && i === typingLine ? 0 : inf[kind].length), 0) : 0;
+  }
+
   function renderTree() {
     $('treeRoot').innerHTML = `${FOLDER_SVG}${escHtml(project.name)}/`;
     $('tree').innerHTML = project.sections.map(s => {
       const meta = SECTION_META[s.file];
-      const r = secResult(s.id);
-      const skip = (i) => s.id === project.active && i.line === typingLine;
-      const errs = r ? r.info.reduce((n, i) => n + (skip(i) ? 0 : i.errs.length), 0) : 0;
-      const warns = r ? r.info.reduce((n, i) => n + (skip(i) ? 0 : i.warns.length), 0) : 0;
+      const errs = issues(s, 'errs', true), warns = issues(s, 'warns', true);
       const badge = errs ? `<span class="ti-badge" title="${errs} problem${errs > 1 ? 's' : ''}">${errs}</span>` : warns ? `<span class="ti-badge warn" title="${warns} warning${warns > 1 ? 's' : ''}">${warns}</span>` : '';
       return `<button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${meta.title}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}</span></button>`;
     }).join('');
@@ -553,7 +557,7 @@
 
   function onEdit() {
     runtimeMark = null;
-    if (typeof autosave === 'function') autosave();
+    autosave();
     typingLine = caretLine();
     activeSec().text = ta.value;
     ensureCaretVisible();
@@ -668,6 +672,15 @@
     b.addEventListener('click', () => { setMode('write'); openSection(sec, line); });
     termLog.appendChild(b); tWrite('\n');
   }
+  /* A problem found while running: a link to its sentence, which is also marked in the editor
+   * (`keepFirst`: only if nothing is marked yet, for a list of compiler errors). */
+  function pointAt(secId, line, msg, keepFirst) {
+    const sec = project.sections.find(s => s.id === secId);
+    if (!sec) return;
+    if (!keepFirst || !runtimeMark) runtimeMark = { sec: secId, line, msg };
+    tLink(`  Go to ${SECTION_META[sec.file].title}, line ${line + 1}: ${(sec.text.split('\n')[line] || '').trim()}`, secId, line);
+    if (secId === project.active) { renderOverlay(); renderExplain(); }
+  }
   function setStatus(text, cls) { const el = $('pyStatus'); el.textContent = text; el.className = 'py-status' + (cls ? ' ' + cls : ''); }
   function setAsking(on) {
     asking = on;
@@ -683,7 +696,7 @@
     setStatus('Loading Python…');
     try {
       const v = await Runner.ensure((s) => setStatus(s));
-      setStatus(typeof desk !== 'undefined' && desk.python ? `Python ${desk.python[1]} (this computer)` : `Python ${v} ready`, 'ready');
+      setStatus(desk.python ? `Python ${desk.python[1]} (this computer)` : `Python ${v} ready`, 'ready');
       return true;
     } catch (e) {
       setStatus('Python unavailable', 'bad');
@@ -779,13 +792,7 @@
       const f = friendly(r.type, r.msg);
       tLine(`✕ ${f || 'The program stopped with an error.'}`, 't-err');
       tLine(`  Python said: ${r.type}: ${r.msg}`, 't-sys');
-      if (where && where.line != null) {
-        const sec = project.sections.find(s => s.id === where.sec);
-        const sentence = sec.text.split('\n')[where.line].trim();
-        runtimeMark = { sec: where.sec, line: where.line, msg: (f || 'The program stopped here.') + ` (Python said: ${r.type}: ${r.msg})` };
-        tLink(`  Go to ${SECTION_META[sec.file].title}, line ${where.line + 1}: ${sentence}`, where.sec, where.line);
-        if (where.sec === project.active) { renderOverlay(); renderExplain(); }
-      }
+      if (where && where.line != null) pointAt(where.sec, where.line, (f || 'The program stopped here.') + ` (Python said: ${r.type}: ${r.msg})`);
     }
   }
 
@@ -863,7 +870,7 @@
     setPicking(false);
     if (announce) {
       showBottom('preview');
-      const errs = project.sections.reduce((n, s) => n + (secResult(s.id) ? secResult(s.id).info.reduce((k, i) => k + i.errs.length, 0) : 0), 0);
+      const errs = project.sections.reduce((n, s) => n + issues(s, 'errs'), 0);
       tLine(`▶ Preview updated.${errs ? ` ${errs} sentence${errs > 1 ? 's have' : ' has'} a problem, so parts may be missing.` : ''}`, 't-sys');
     }
   }
@@ -914,7 +921,7 @@
         if (o && o.src >= 0) where = o.src;
       }
       tLine(`✕ The page hit an error: ${d.text}`, 't-err');
-      if (where !== '') tLink(`  Go to Mechanics, line ${where + 1}: ${(project.sections.find(s => s.file === 'mechanics').text.split('\n')[where] || '').trim()}`, 'mechanics', where);
+      if (where !== '') pointAt(project.sections.find(s => s.file === 'mechanics').id, where, `The page hit an error: ${d.text}`);
     } else if (d.type === 'pick') {
       setPicking(false);
       const sec = activeSec();
@@ -1681,22 +1688,28 @@
   $('btnToSentences').addEventListener('click', async () => {
     const file = curFile();
     if (langOfPath(file.name) !== 'python') return codeAsSentences(file, pyFiles());
-    const R = await Runner.reader();
-    // Safety net: if any statement doesn't come back exactly, keep just that statement as python: and try again.
+    const out = checkedSentences(await Runner.reader(), file.source);
+    if (!out.ok) { tLine('This file can\'t be turned into sentences: ' + out.error, 't-err'); return; }
+    const next = { version: 1, lang: 'python', name: slug(file.name.split('/').pop()), sections: [{ id: 'main', file: 'main', text: out.text }], active: 'main' };
+    replaceProject(next, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
+    const { check, kept } = out;
+    if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.' + (kept ? ` (${kept} part${kept > 1 ? 's were' : ' was'} kept as python: lines to stay exact.)` : ''), 't-ok');
+    else tLine(`Note: the sentences differ from the original ${check.error ? '(' + check.error + ')' : 'at lines ' + check.differs.map(d => d[0] === d[1] ? d[0] : d[0] + '–' + d[1]).join(', ')}. Check those parts before relying on them.`, 't-err');
+  });
+
+  /* Python -> sentences, checked. Safety net: any statement that doesn't come back exactly is kept
+   * as a python: line and the check runs again. */
+  function checkedSentences(R, src) {
     let force = [], res, check;
     for (let attempt = 0; attempt < 4; attempt++) {
-      res = R.toSentences(file.source, force);
-      if (!res.ok) { tLine('This file can\'t be turned into sentences: ' + res.error, 't-err'); return; }
-      const generated = LANG.compileProject({ sections: [{ id: 'main', file: 'main', text: res.text }] }).results.main.text;
-      check = R.compare(file.source, generated);
+      res = R.toSentences(src, force);
+      if (!res.ok) return { ok: false, error: res.error };
+      check = R.compare(src, LANG.compileProject({ sections: [{ id: 'main', file: 'main', text: res.text }] }).results.main.text);
       if (check.same || check.error || !check.differs.length) break;
       force = force.concat(check.differs.map(d => d[0]));
     }
-    const next = { version: 1, lang: 'python', name: slug(file.name.split('/').pop()), sections: [{ id: 'main', file: 'main', text: res.text }], active: 'main' };
-    replaceProject(next, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
-    if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.' + (force.length ? ` (${force.length} part${force.length > 1 ? 's were' : ' was'} kept as python: lines to stay exact.)` : ''), 't-ok');
-    else tLine(`Note: the sentences differ from the original ${check.error ? '(' + check.error + ')' : 'at lines ' + check.differs.map(d => d[0] === d[1] ? d[0] : d[0] + '–' + d[1]).join(', ')}. Check those parts before relying on them.`, 't-err');
-  });
+    return { ok: true, text: res.text, check, kept: force.length };
+  }
 
   /* HTML, CSS, JavaScript, C++ and Arduino code -> a Write-mode project, checked exact. */
   async function convertEnv() {
@@ -2062,16 +2075,8 @@
 
   async function sentencesFor(src) {
     try {
-      const R = await Runner.reader((s) => setStatus(s));
-      let force = [], res, check;
-      for (let i = 0; i < 4; i++) {
-        res = R.toSentences(src, force);
-        if (!res.ok) return null;
-        check = R.compare(src, LANG.compileProject({ sections: [{ id: 'main', file: 'main', text: res.text }] }).results.main.text);
-        if (check.same || check.error || !check.differs.length) break;
-        force = force.concat(check.differs.map(d => d[0]));
-      }
-      return { text: res.text, exact: !!check.same };
+      const out = checkedSentences(await Runner.reader((s) => setStatus(s)), src);
+      return out.ok ? { text: out.text, exact: !!out.check.same } : null;
     } catch (e) { tLine('Could not read the Python: ' + e.message, 't-err'); return null; }
   }
 
@@ -2125,17 +2130,14 @@
     for (const m of err.matchAll(re)) {
       const n = +(m[1] || m[2]);
       const o = res && res.lines[n - 1];
-      let line = o && o.src >= 0 ? o.src : null;
-      const sentence = line != null && sec ? sec.text.split('\n')[line].trim() : '';
-      if (!sentence) line = null;
+      const line = o && o.src >= 0 ? o.src : null;
       tLine(`✕ The compiler says: ${m[3]}`, 't-err');
       const hint = COMPILER_HINTS.find(([re]) => re.test(m[3]));
       if (hint) tLine('  ' + hint[1], 't-sys');
-      if (line != null) { tLink(`  Go to ${SECTION_META[sec.file].title}, line ${line + 1}: ${sentence}`, secId, line); if (!runtimeMark) runtimeMark = { sec: secId, line, msg: `The compiler says: ${m[3]}` }; }
+      if (line != null && sec && sec.text.split('\n')[line].trim()) pointAt(secId, line, `The compiler says: ${m[3]}`, true);
       if (++shown >= 5) break;
     }
     if (!shown && /\S/.test(err)) tLine('The compiler\'s own words are above.', 't-sys');
-    if (runtimeMark) { renderOverlay(); renderExplain(); }
   }
 
   /* Arduino: check the sketch with arduino-cli, upload it to a connected board, then show what it sends. */
@@ -2212,8 +2214,7 @@
     }
   }
 
-  async function runShell(command) {
-    if (desk.proc) { tLine('Something is already running. Press Stop first.', 't-err'); return; }
+  async function runShell(command) {   // (while a program runs, what is typed goes to it instead)
     const dir = desk.folder || desk.readFolder || await invoke('scratch_folder');
     const id = desk.nextId++;
     desk.proc = { id, kind: 'shell', err: '' };
@@ -2228,15 +2229,8 @@
     const m = last.match(/^(\w+(?:Error|Exception|Exit|Interrupt)):?\s*(.*)$/);
     if (m && m[1] !== 'SystemExit') { const f = friendly(m[1], m[2]); if (f) tLine('✕ ' + f, 't-err'); }
     const fr = frames[frames.length - 1];
-    if (fr) {
-      const where = locate(fr.file, fr.line);
-      if (where && where.line != null) {
-        const sec = project.sections.find(s => s.id === where.sec);
-        runtimeMark = { sec: where.sec, line: where.line, msg: (m ? friendly(m[1], m[2]) || '' : '') + ` (Python said: ${last})` };
-        tLink(`  Go to ${SECTION_META[sec.file].title}, line ${where.line + 1}: ${sec.text.split('\n')[where.line].trim()}`, where.sec, where.line);
-        if (where.sec === project.active) { renderOverlay(); renderExplain(); }
-      }
-    }
+    const where = fr && locate(fr.file, fr.line);
+    if (where && where.line != null) pointAt(where.sec, where.line, (m ? friendly(m[1], m[2]) || '' : '') + ` (Python said: ${last})`);
   }
 
   async function setupDesktop() {
