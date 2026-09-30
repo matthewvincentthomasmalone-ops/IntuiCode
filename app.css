@@ -104,6 +104,39 @@ code { font-family: var(--f-py); font-size: .92em; }
 .btn.small { padding: 4px 10px; font-size: 12px; }
 .btn[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
+/* File menu */
+.menu { position: relative; }
+.menu-list {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 210px;
+  display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--rule);
+  border-radius: 8px; background: var(--panel); box-shadow: var(--shadow);
+}
+.menu-list[hidden] { display: none; }
+.menu-list [role="menuitem"] {
+  display: flex; justify-content: space-between; align-items: center; gap: 18px; text-align: left;
+  border: 0; border-radius: 5px; background: none; padding: 7px 10px; cursor: pointer;
+  font: 600 13px var(--f-ui); color: var(--ink);
+}
+.menu-list [role="menuitem"][hidden] { display: none; }
+.menu-list [role="menuitem"]:hover, .menu-list [role="menuitem"]:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+.menu-sep { height: 1px; margin: 4px 6px; background: var(--rule); }
+.desk-only { display: none; }
+.desktop .desk-only { display: inline-block; }
+
+/* New project */
+.new-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.new-kind {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; cursor: pointer;
+  padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); color: var(--ink);
+}
+.new-kind b { font-size: 14px; }
+.new-kind span { font-size: 12.5px; color: var(--ink-3); }
+.new-kind:hover { border-color: var(--accent); }
+.new-kind[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.new-kind[aria-checked="true"] b { color: var(--accent); }
+.new-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.new-save { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+
 .workspace { position: relative; display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 0; }
 
 /* ---------- Sidebar: folders + problems ---------- */

@@ -87,6 +87,19 @@ try {
     if (!r.tauri || !r.desktop || !r.save) throw new Error(JSON.stringify(r));
   });
 
+  await check('File → New project makes an empty project of the chosen kind', async () => {
+    const r = await js(() => {
+      document.getElementById('btnFile').click();
+      document.getElementById('btnNew').click();
+      document.querySelector('.new-kind[data-kind="structured"]').click();
+      document.getElementById('newName').value = 'e2e new project';
+      document.getElementById('newSave').checked = false;   // (a folder dialog can't be answered from here)
+      document.getElementById('newGo').click();
+      return { files: [...document.querySelectorAll('#tree .ti-file')].map(x => x.textContent), folder: document.getElementById('folderName').textContent, sentences: document.getElementById('ta').value };
+    });
+    if (r.files.join() !== 'settings.py,tools.py,main.py' || r.folder !== 'not saved yet' || r.sentences !== '') throw new Error(JSON.stringify(r));
+  });
+
   let hasPython = false;
   await check('finds the computer\'s Python, C++ compiler and Git', async () => {
     await waitFor('the desktop setup message', logHas('Desktop app:'));

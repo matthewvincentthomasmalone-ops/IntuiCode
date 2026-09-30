@@ -1808,6 +1808,75 @@
   $('impClose').addEventListener('click', closeImport);
   $('impModal').addEventListener('click', (e) => { if (e.target.id === 'impModal') closeImport(); });
 
+  /* ------------------------------------------------------------------ */
+  /* File menu and New project                                           */
+  /* ------------------------------------------------------------------ */
+
+  function setFileMenu(open) {
+    $('fileList').hidden = !open;
+    $('btnFile').setAttribute('aria-expanded', String(open));
+    if (open) { const first = [...$('fileList').querySelectorAll('[role="menuitem"]')].find(b => !b.hidden); if (first) first.focus(); }
+  }
+  $('btnFile').addEventListener('click', () => setFileMenu($('fileList').hidden));
+  $('fileList').addEventListener('click', (e) => { if (e.target.closest('[role="menuitem"]')) setFileMenu(false); });
+  document.addEventListener('click', (e) => { if (!$('fileList').hidden && !e.target.closest('#fileMenu')) setFileMenu(false); });
+  $('fileList').addEventListener('keydown', (e) => {
+    const items = [...$('fileList').querySelectorAll('[role="menuitem"]')].filter(b => !b.hidden);
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); setFileMenu(false); $('btnFile').focus(); }
+  });
+
+  const NEW_KINDS = [
+    { id: 'script', layout: 'script', title: 'Python', about: 'One file of steps: main.py' },
+    { id: 'structured', layout: 'structured', title: 'Python in parts', about: 'Settings, Tools and a Main program' },
+    { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
+    { id: 'cpp', layout: 'cpp', title: 'C++ program', about: 'main.cpp, compiled on this computer (desktop app)' },
+    { id: 'arduino', layout: 'arduino', title: 'Arduino sketch', about: 'For a board plugged in by USB (desktop app)' },
+  ];
+  // What a folder starts with: a website its title, a sketch its two parts. The rest start empty.
+  const NEW_START = {
+    structure: (name) => `page title is "${name.replace(/["\\{}]/g, '')}"`,
+    sketch: () => 'when the board starts\n    note: runs once, when the board powers on\nover and over\n    note: runs again and again',
+  };
+  let newKind = 'script';
+  function renderNewKinds() {
+    $('newKinds').innerHTML = NEW_KINDS.map(k => `<button type="button" role="radio" class="new-kind" data-kind="${k.id}" aria-checked="${k.id === newKind}" tabindex="${k.id === newKind ? 0 : -1}"><b>${escHtml(k.title)}</b><span>${escHtml(k.about)}</span></button>`).join('');
+  }
+  function chooseNewKind(id) { newKind = id; renderNewKinds(); $('newKinds').querySelector(`[data-kind="${id}"]`).focus(); }
+  function openNewProject() {
+    setFileMenu(false);
+    renderNewKinds();
+    $('newSaveRow').hidden = !desk.on;
+    $('newModal').hidden = false;
+    $('newName').focus(); $('newName').select();
+  }
+  function closeNewProject() { $('newModal').hidden = true; }
+  function createNewProject() {
+    const k = NEW_KINDS.find(x => x.id === newKind);
+    const name = $('newName').value.trim() || 'My project';
+    const sections = LAYOUTS[k.layout].map(f => ({ id: f, file: f, text: NEW_START[f] ? NEW_START[f](name) : '' }));
+    const next = { version: 1, lang: 'python', kind: KIND_OF_LAYOUT[k.layout] || 'python', name: slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };
+    const askFolder = desk.on && $('newSave').checked;
+    closeNewProject();
+    replaceProject(next, `New ${k.title} project "${name}".` + (desk.on && !askFolder ? ' Press Save to keep it as files.' : ''));
+    ta.focus();
+    if (askFolder) saveProject();   // asks where
+  }
+  $('btnNew').addEventListener('click', openNewProject);
+  $('newClose').addEventListener('click', closeNewProject);
+  $('newGo').addEventListener('click', createNewProject);
+  $('newModal').addEventListener('click', (e) => { if (e.target.id === 'newModal') closeNewProject(); });
+  $('newKinds').addEventListener('click', (e) => { const b = e.target.closest('.new-kind'); if (b) chooseNewKind(b.dataset.kind); });
+  $('newKinds').addEventListener('keydown', (e) => {   // arrow keys move between the kinds, as in any radio group
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const i = NEW_KINDS.findIndex(k => k.id === newKind);
+    chooseNewKind(NEW_KINDS[(i + step + NEW_KINDS.length) % NEW_KINDS.length].id);
+  });
+  $('newName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createNewProject(); } });
+
   async function loadExampleProject() {
     closeImport();
     try {
@@ -1953,6 +2022,14 @@
       if (pick === 'quiet') return;   // autosave only writes to a folder that was chosen
       const f = await pickFolder('Choose a folder to save this project in');
       if (!f) return;
+      // never write over another project's files
+      const names = project.sections.map(s => (s.file === 'sketch' ? baseName(f) + '.ino' : fileName(s))).concat('.intuicode/project.json');
+      const taken = [];
+      for (const n of names) { try { await invoke('read_text', { path: join(f, n) }); taken.push(n); } catch (_) { /* not there: free */ } }
+      if (taken.length) {
+        tLine(`Nothing was saved: ${baseName(f)} already has ${taken.join(', ')}, and saving would write over ${taken.length > 1 ? 'them' : 'it'}. Choose an empty folder, or use File → Open folder to open that project.`, 't-err');
+        return;
+      }
       desk.folder = f;
     }
     activeSec().text = ta.value;
@@ -2295,8 +2372,13 @@
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.activeElement !== ta) { e.preventDefault(); run(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && desk.on) { e.preventDefault(); saveProject(); }
+    // (a browser keeps Ctrl+N for a new window; the desktop app gets it)
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewProject(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
     if (e.key === 'Escape') {
-      if (!$('bpModal').hidden) closeBlueprints();
+      if (!$('newModal').hidden) closeNewProject();
+      else if (!$('fileList').hidden) setFileMenu(false);
+      else if (!$('bpModal').hidden) closeBlueprints();
       else if (!$('impModal').hidden) closeImport();
       else if (!ac.hidden) closeAc();
       else if (!$('index').hidden) closeIndex();

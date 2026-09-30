@@ -18,10 +18,17 @@
     </div>
     <div class="bar-actions">
       <span class="folder-name" id="folderName" hidden></span>
-      <button type="button" id="btnOpenFolder" class="btn ghost" hidden title="Open a project folder on this computer">Open folder</button>
-      <button type="button" id="btnSave" class="btn ghost" hidden title="Save the project as files (Ctrl+S)">Save</button>
+      <div class="menu" id="fileMenu">
+        <button type="button" id="btnFile" class="btn ghost" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList">File</button>
+        <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
+          <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
+          <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
+          <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" id="btnImport">Import code…</button>
+        </div>
+      </div>
       <button type="button" id="btnBlueprints" class="btn ghost">Blueprints</button>
-      <button type="button" id="btnImport" class="btn ghost">Import code</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
       <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
     </div>
@@ -157,6 +164,28 @@
       <div class="bp-layout">
         <nav class="bp-list" id="bpList" aria-label="Blueprints"></nav>
         <div class="bp-detail" id="bpDetail"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="newModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="newTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="newTitle">New project</h2>
+          <p>An empty project, ready for your sentences. (Blueprints start one with sentences already written.)</p>
+        </div>
+        <button type="button" class="btn small" id="newClose">Close</button>
+      </div>
+      <div class="new-kinds" id="newKinds" role="radiogroup" aria-label="Kind of project"></div>
+      <div class="imp-row new-name">
+        <label for="newName">Name</label>
+        <input id="newName" value="My project" spellcheck="false" autocomplete="off">
+      </div>
+      <label class="new-save" id="newSaveRow" hidden><input type="checkbox" id="newSave" checked> Choose a folder for it now</label>
+      <div class="imp-actions">
+        <span class="imp-note">The project you have now is kept: type "restore" in the terminal to swap back.</span>
+        <button type="button" class="btn primary" id="newGo">Create project</button>
       </div>
     </div>
   </div>

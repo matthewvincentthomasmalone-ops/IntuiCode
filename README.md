@@ -104,7 +104,9 @@ Inside each file, IntuiCode will:
 
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
 
-- **Real folders.** Open folder / Save (Ctrl+S). Your code files are the project;
+- **Real folders.** File → New project (Ctrl+N), Open folder (Ctrl+O) and Save (Ctrl+S). A new
+  project can go straight into a folder you choose; IntuiCode won't save over another project's
+  files. Your code files are the project;
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
   program or an Arduino sketch that wasn't made with IntuiCode opens as sentences; anything

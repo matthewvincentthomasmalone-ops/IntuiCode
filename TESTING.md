@@ -27,6 +27,11 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Start**
 - [ ] The window opens. The terminal says which Python it found ("Desktop app: programs run with Python 3.x…").
 
+**New project**
+- [ ] File → New project (or Ctrl+N): pick a kind, type a name, leave "Choose a folder for it now" ticked,
+      Create, and choose an empty folder: the project's files appear there.
+- [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
+
 **Python (Write mode)**
 - [ ] Blueprints → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
