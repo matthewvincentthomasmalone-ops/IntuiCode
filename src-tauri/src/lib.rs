@@ -226,16 +226,44 @@ fn pump<R: Read + Send + 'static>(app: AppHandle, id: u32, stream: &'static str,
     std::thread::spawn(move || {
         let mut reader = BufReader::new(reader);
         let mut buf = [0u8; 4096];
+        let mut pending: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app.emit("proc-output", Output { id, stream, text });
+                    pending.extend_from_slice(&buf[..n]);
+                    // a character split between two reads waits for the rest of it
+                    let ready = pending.len() - incomplete_tail(&pending);
+                    if ready > 0 {
+                        let text = String::from_utf8_lossy(&pending[..ready]).to_string();
+                        pending.drain(..ready);
+                        let _ = app.emit("proc-output", Output { id, stream, text });
+                    }
                 }
             }
         }
+        if !pending.is_empty() {
+            let _ = app.emit("proc-output", Output { id, stream, text: String::from_utf8_lossy(&pending).to_string() });
+        }
     });
+}
+
+/// How many bytes at the end begin a UTF-8 character that hasn't fully arrived yet.
+fn incomplete_tail(bytes: &[u8]) -> usize {
+    for back in 1..=bytes.len().min(3) {
+        let b = bytes[bytes.len() - back];
+        if b & 0xC0 == 0x80 {
+            continue; // a continuation byte: the character began earlier
+        }
+        let len = match b {
+            0xF0..=0xF7 => 4,
+            0xE0..=0xEF => 3,
+            0xC0..=0xDF => 2,
+            _ => 1,
+        };
+        return if len > back { back } else { 0 };
+    }
+    0
 }
 
 fn start(app: AppHandle, procs: &Processes, id: u32, mut cmd: Command) -> Result<(), String> {
@@ -245,6 +273,11 @@ fn start(app: AppHandle, procs: &Processes, id: u32, mut cmd: Command) -> Result
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // no console window
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0); // a group of its own, so Stop also ends what it starts
     }
     let mut child = cmd.spawn().map_err(|e| format!("Could not start the program: {e}"))?;
     let stdout = child.stdout.take().unwrap();
@@ -263,6 +296,9 @@ fn start(app: AppHandle, procs: &Processes, id: u32, mut cmd: Command) -> Result
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
+        let procs = app.state::<Processes>();
+        procs.stdin.lock().unwrap().remove(&id);
+        procs.children.lock().unwrap().remove(&id);
         std::thread::sleep(std::time::Duration::from_millis(80)); // let the last output arrive first
         let _ = app.emit("proc-exit", Exit { id, code });
     });
@@ -309,10 +345,22 @@ fn write_stdin(procs: State<Processes>, id: u32, text: String) -> Result<(), Str
 #[tauri::command]
 fn stop_program(procs: State<Processes>, id: u32) -> Result<(), String> {
     procs.stdin.lock().unwrap().remove(&id);
-    if let Some(child) = procs.children.lock().unwrap().remove(&id) {
-        let _ = child.lock().unwrap().kill();
+    let child = procs.children.lock().unwrap().remove(&id);
+    if let Some(child) = child {
+        let mut child = child.lock().unwrap();
+        stop_everything_started_by(child.id());
+        let _ = child.kill();
     }
     Ok(())
+}
+
+/// A shell's commands, or a web server Python started, keep running when only the program
+/// itself is stopped (and keep their port), so stop everything it started too.
+fn stop_everything_started_by(pid: u32) {
+    #[cfg(windows)]
+    let _ = quiet(Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"])).output();
+    #[cfg(unix)]
+    let _ = Command::new("kill").args(["-s", "KILL", "--", &format!("-{pid}")]).output();
 }
 
 /// The Python installed on this computer, if any: [program, version].
@@ -596,6 +644,18 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_split_character_waits_for_the_rest() {
+        let euro = "€".as_bytes();
+        let face = "😀".as_bytes();
+        assert_eq!(incomplete_tail(b"plain"), 0);
+        assert_eq!(incomplete_tail(&euro[..1]), 1);
+        assert_eq!(incomplete_tail(&[b'a', euro[0], euro[1]]), 2);
+        assert_eq!(incomplete_tail(euro), 0);
+        assert_eq!(incomplete_tail(&face[..3]), 3);
+        assert_eq!(incomplete_tail(face), 0);
+    }
 
     #[test]
     fn only_allowed_folders_and_programs() {

@@ -935,6 +935,7 @@
     '  reset    forget values from earlier runs',
     '  restore  swap back to the project you had before the last blueprint or import',
     '  index    open the Index',
+    '  board …  which board an Arduino sketch is for, e.g. board esp32 (when it can\'t be told from the USB port)',
     ...(window.__TAURI__ ? ['  $ …     run a command in the project folder, e.g. $ git status or $ pip install flask'] : []),
     'Anything else is tried right away. Type a sentence like',
     '  random number from 1 to 6',
@@ -961,6 +962,7 @@
       return tLine(project.name + '/\n' + project.sections.map(s => `  ${fileName(s).padEnd(13)} ${SECTION_META[s.file].title}: ${SECTION_META[s.file].purpose}`).join('\n'), 't-help');
     }
     if (low === 'reset') { Runner.reset(); return tLine('Forgot all values from earlier runs.', 't-sys'); }
+    if (low === 'board' || low.startsWith('board ')) return chooseBoard(cmd.slice(5).trim());
     if (!compiled) compile();
     if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
     if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
@@ -978,6 +980,20 @@
     }
   }
 
+  /* Which board a sketch is for. arduino-cli recognises official boards by their USB port, but not
+   * boards that use a USB-serial chip (CH340, CP2102: many ESP32 and clone boards), so it can be named. */
+  const BOARD_NAMES = { uno: 'arduino:avr:uno', nano: 'arduino:avr:nano', mega: 'arduino:avr:mega', leonardo: 'arduino:avr:leonardo', esp32: 'esp32:esp32:esp32' };
+  function chooseBoard(name) {
+    if (project.kind !== 'arduino') return tLine('Choosing a board is for Arduino projects.', 't-sys');
+    const names = Object.keys(BOARD_NAMES).join(', ');
+    if (!name) return tLine(`This sketch is for ${project.board || 'a board recognised on its USB port (or an Uno)'}. To choose, type board and one of: ${names}, or arduino-cli's full name for it (list them with $ arduino-cli board listall).`, 't-help');
+    const fqbn = BOARD_NAMES[name.toLowerCase()] || name;
+    if (!BOARD_ID.test(fqbn)) return tLine(`"${name}" isn't a board name IntuiCode knows. Use one of: ${names}, or arduino-cli's full name, like esp32:esp32:esp32-evb.`, 't-err');
+    project.board = fqbn;
+    save(); autosave();
+    tLine(`This sketch is now for ${fqbn}. Press Run to check it and upload it.`, 't-sys');
+  }
+
   $('termForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const val = termIn.value;
@@ -987,7 +1003,7 @@
       invoke('write_stdin', { id: desk.proc.id, text: val + '\n' }).catch((e) => tLine(String(e), 't-err'));
       return;
     }
-    if (desk.on && val.trim().startsWith('$')) { history.push(val); histPos = history.length; runShell(val.trim().slice(1).trim()); return; }
+    // an answer the program asked for comes first, even one like "$5"
     if (asking && session && !session.done) {
       setAsking(false);
       tWrite(val + '\n', 't-echo');
@@ -996,6 +1012,7 @@
       step();
       return;
     }
+    if (desk.on && val.trim().startsWith('$')) { history.push(val); histPos = history.length; runShell(val.trim().slice(1).trim()); return; }
     if (val.trim()) { history.push(val); histPos = history.length; }
     command(val);
   });
@@ -2094,6 +2111,10 @@
     try { await invoke('compile_cpp', { id, source: 'main.cpp', output: exe, cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
+  /* Compiler complaints that need a word about the board, not the code. */
+  const COMPILER_HINTS = [
+    [/'LED_BUILTIN' was not declared/, 'Not every board has a built-in light called LED_BUILTIN (most ESP32 boards don\'t). Use the pin number of a light on your board, like "set led to 2", or wire an LED to a pin and use that pin.'],
+  ];
   /* Compiler messages -> the sentence they came from. g++/clang++: main.cpp:12:5: error: …   Visual Studio: main.cpp(12): error C2065: … */
   function compilerErrors(err, file = 'main.cpp', secId = 'program') {
     const res = secResult(secId);
@@ -2108,6 +2129,8 @@
       const sentence = line != null && sec ? sec.text.split('\n')[line].trim() : '';
       if (!sentence) line = null;
       tLine(`✕ The compiler says: ${m[3]}`, 't-err');
+      const hint = COMPILER_HINTS.find(([re]) => re.test(m[3]));
+      if (hint) tLine('  ' + hint[1], 't-sys');
       if (line != null) { tLink(`  Go to ${SECTION_META[sec.file].title}, line ${line + 1}: ${sentence}`, secId, line); if (!runtimeMark) runtimeMark = { sec: secId, line, msg: `The compiler says: ${m[3]}` }; }
       if (++shown >= 5) break;
     }
@@ -2126,17 +2149,23 @@
     setRunning(true, 'checking…');
     tLine('Looking for a connected board…', 't-sys');
     const list = await capture(['board', 'list', '--format', 'json']);
-    let port = null, fqbn = null, boardName = null;
+    let port = null, fqbn = null, boardName = null, unnamed = null;
     try {
       const data = JSON.parse(list.out || '[]');
       const ports = Array.isArray(data) ? data : data.detected_ports || [];
       for (const p of ports) {
         const b = (p.matching_boards || p.boards || [])[0];
-        if (b && b.fqbn) { port = (p.port || p).address; fqbn = b.fqbn; boardName = b.name; break; }
+        const where = p.port || p;
+        if (b && b.fqbn) { port = where.address; fqbn = b.fqbn; boardName = b.name; break; }
+        // a USB device arduino-cli can't name: a board with a USB-serial chip (built-in serial ports have no USB id)
+        if (!unnamed && where.protocol === 'serial' && where.properties && where.properties.vid) unnamed = where.address;
       }
     } catch (_) { /* no boards listed */ }
+    if (!port && unnamed && project.board) { port = unnamed; fqbn = project.board; }
     fqbn = fqbn || project.board || 'arduino:avr:uno';
-    tLine(port ? `Found ${boardName || 'a board'} on ${port}.` : 'No board is plugged in, so the sketch will only be checked (for an Arduino Uno). Plug one in by USB and press Run again to upload it.', 't-sys');
+    if (port) tLine(`Found ${boardName || fqbn} on ${port}.`, 't-sys');
+    else if (unnamed) tLine(`There is a board on ${unnamed}, but it doesn't say which kind it is (boards with a USB-serial chip, like many ESP32 boards, don't). Type board esp32 (or uno, nano, mega, or arduino-cli's full name for it) and press Run again to upload to it. For now the sketch is only checked, for ${fqbn}.`, 't-sys');
+    else tLine(`No board is plugged in, so the sketch will only be checked (for ${project.board ? fqbn : 'an Arduino Uno'}). Plug one in by USB and press Run again to upload it.`, 't-sys');
     const id = desk.nextId++;
     desk.proc = { id, kind: 'ino-compile', err: '', out: '', dir, name, port, fqbn };
     tLine(`▶ Checking the sketch (arduino-cli compile, ${fqbn})…`, 't-sys');
@@ -2149,8 +2178,12 @@
       if (code !== 0) {
         if (/platform not installed|Platform '[^']+' not found|No platforms installed|unknown package/i.test(all)) {
           const core = p.fqbn.split(':').slice(0, 2).join(':');
+          // Espressif's ESP32 boards come from their own list, not Arduino's
+          const extra = core === 'esp32:esp32' ? ' --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json' : '';
+          const cli = /\s/.test(desk.arduino[0]) ? `"${desk.arduino[0]}"` : desk.arduino[0];
           tLine(`The board support for ${core} isn't installed yet. Type this in the terminal (it downloads it once):`, 't-err');
-          tLine(`  $ ${/\s/.test(desk.arduino[0]) ? `"${desk.arduino[0]}"` : desk.arduino[0]} core install ${core}`, 't-help');
+          if (extra) tLine(`  $ ${cli} core update-index${extra}`, 't-help');
+          tLine(`  $ ${cli} core install ${core}${extra}`, 't-help');
           return;
         }
         compilerErrors(all, p.name + '.ino', 'sketch');

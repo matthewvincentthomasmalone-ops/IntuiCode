@@ -40,8 +40,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
 
+class Server(socketserver.ThreadingTCPServer):
+    # One request at a time isn't enough: the page asks for a dozen files at once, and on Windows
+    # the connections that don't fit in the queue are refused, leaving a blank page.
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 if __name__ == "__main__":
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("127.0.0.1", PORT), Handler) as httpd:
+    with Server(("127.0.0.1", PORT), Handler) as httpd:
         print(f"IntuiCode is running at http://localhost:{PORT}  (Ctrl+C to stop)")
         httpd.serve_forever()
