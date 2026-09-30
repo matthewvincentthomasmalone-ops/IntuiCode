@@ -56,6 +56,10 @@ jobs:
       - name: Build the app (debug)
         run: npm run tauri -- build --debug --no-bundle
 
+      - name: Desktop layer unit tests
+        if: runner.os == 'Linux'
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: tauri-driver
         run: cargo install tauri-driver --locked
 

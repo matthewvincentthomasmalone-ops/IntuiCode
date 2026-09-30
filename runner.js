@@ -9,10 +9,10 @@
   'use strict';
 
   const PYODIDE_VERSION = '0.26.4';
-  const SOURCES = [
-    new URL('pyodide/', document.baseURI).href,
-    `https://cdn.jsdelivr.net/npm/pyodide@${PYODIDE_VERSION}/`,
-  ];
+  // The desktop app only uses the copies built into it: code from the internet never runs in the
+  // window that can run commands on the computer (its Content-Security-Policy blocks it anyway).
+  const DESKTOP = !!window.__TAURI_INTERNALS__;   // the real app (tests/desktop-mock.html doesn't set it)
+  const SOURCES = [new URL('pyodide/', document.baseURI).href].concat(DESKTOP ? [] : [`https://cdn.jsdelivr.net/npm/pyodide@${PYODIDE_VERSION}/`]);
 
   const DRIVER = String.raw`
 import sys, io, json, builtins, random, traceback, os, time, ast
@@ -212,7 +212,7 @@ def _pb_reset():
         try { delete window.loadPyodide; } catch (_) { window.loadPyodide = undefined; }
       }
     }
-    throw lastErr || new Error('Python could not start');
+    throw lastErr || new Error(DESKTOP ? 'the built-in Python is missing from this build of the app (tools/fetch_pyodide.py adds it)' : 'Python could not start');
   }
 
   /* The code reader (lang/python_reader.py) runs inside the same Python. */
@@ -243,13 +243,13 @@ def _pb_reset():
     return reader;
   }
 
-  /* The web reader (JavaScript, HTML, CSS) runs on tree-sitter. Bundled copy first, then the CDN. */
+  /* The web reader (JavaScript, HTML, CSS) runs on tree-sitter. Bundled copy first, then (not in the desktop app) the CDN. */
   let web = null;
   function ensureWebReader(onStatus) {
     if (!web) {
       web = (async () => {
         let lastErr;
-        for (const base of [new URL('vendor/tree-sitter/', document.baseURI).href, null]) {
+        for (const base of [new URL('vendor/tree-sitter/', document.baseURI).href].concat(DESKTOP ? [] : [null])) {
           try {
             const rt = base || 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/';
             const gr = base || 'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/';

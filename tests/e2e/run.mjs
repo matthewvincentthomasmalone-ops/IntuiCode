@@ -122,19 +122,46 @@ try {
     await waitFor('the output', logHas('shell-says-hi'));
   });
 
-  await check('reads and writes real files', async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
+  await check('reads and writes real files, only in allowed folders', async () => {
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
     const r = await wd('POST', `/session/${session}/execute/async`, {
-      script: `const [dir, done] = arguments; const I = window.__TAURI__.core.invoke;
+      script: `const [elsewhere, done] = arguments; const I = window.__TAURI__.core.invoke;
         (async () => {
+          const dir = (await I('scratch_folder')) + '/e2e';
           await I('write_text', { path: dir + '/site/index.html', content: '<h1 id="t">Hi</h1>' });
           const back = await I('read_text', { path: dir + '/site/index.html' });
           const list = await I('read_folder', { path: dir + '/site' });
-          return { back, names: list.map(f => f.name), exists: await I('exists', { path: dir + '/site/index.html' }) };
+          const refused = async (cmd, args) => { try { await I(cmd, args); return false; } catch (e) { return true; } };
+          return {
+            back, names: list.map(f => f.name),
+            refused: [
+              await refused('write_text', { path: elsewhere + '/x.txt', content: 'x' }),
+              await refused('read_text', { path: dir + '/../../x.txt' }),
+              await refused('run_program', { id: 999, program: 'definitely-not-allowed', args: [], cwd: dir }),
+            ],
+          };
         })().then(done, (e) => done({ error: String(e) }));`,
-      args: [dir],
+      args: [elsewhere],
     });
-    if (r.error || r.back !== '<h1 id="t">Hi</h1>' || !r.names.includes('site/index.html') || !r.exists) throw new Error(JSON.stringify(r));
+    if (r.error || r.back !== '<h1 id="t">Hi</h1>' || !r.names.includes('site/index.html') || r.refused.includes(false)) throw new Error(JSON.stringify(r));
+  });
+
+  await check('the website preview runs in its own sandbox', async () => {
+    await clearTerminal();
+    await blueprint('To-do list page');
+    await waitFor('the preview address', () => js(() => /preview/.test(document.getElementById('preview').src)), 30000);
+    const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
+    await wd('POST', `/session/${session}/frame`, { id: frame });
+    try {
+      const inside = await waitFor('the page in the preview', () => js(() => document.body && document.body.innerText.trim() ? {
+        parent: (() => { try { return typeof parent.__TAURI__; } catch (e) { return 'blocked'; } })(),
+        tauri: typeof window.__TAURI__,
+        storage: (() => { localStorage.setItem('e2e', 'kept'); return localStorage.getItem('e2e'); })(),
+      } : null), 30000);
+      if (inside.parent !== 'blocked' || inside.tauri !== 'undefined' || inside.storage !== 'kept') throw new Error(JSON.stringify(inside));
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
   });
 
   await check('compiles and runs C++ with a class (Visual Studio on Windows, g++ elsewhere)', async () => {

@@ -63,12 +63,25 @@
     };
   }
 
+  /* A project read back from the browser or from a folder's .intuicode/project.json keeps only the
+   * parts IntuiCode uses, checked, so a project file from someone else can't put markup into the
+   * page or odd values into the commands IntuiCode runs. */
+  const KIND_FILES = { python: ['settings', 'tools', 'main'], website: LAYOUTS.website, cpp: LAYOUTS.cpp, arduino: LAYOUTS.arduino };
+  const BOARD_ID = /^[\w.-]+:[\w.-]+:[\w.-]+(?::[\w.=,-]+)?$/;   // arduino-cli's name for a kind of board, e.g. esp32:esp32:esp32
+  function checkedProject(p) {
+    if (!p || typeof p !== 'object' || !Array.isArray(p.sections) || !p.sections.length) return null;
+    const kind = KIND_FILES[p.kind] ? p.kind : 'python';
+    const sections = p.sections.map(s => (s && KIND_FILES[kind].includes(s.file) && /^[\w-]{1,40}$/.test(s.id) ? { id: s.id, file: s.file, text: typeof s.text === 'string' ? s.text : '' } : null));
+    if (sections.includes(null) || new Set(sections.map(s => s.id)).size !== sections.length || sections.length > KIND_FILES[kind].length) return null;
+    const out = { version: 1, lang: 'python', kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: sections.some(s => s.id === p.active) ? p.active : sections[sections.length - 1].id };
+    if (typeof p.board === 'string' && BOARD_ID.test(p.board)) out.board = p.board;
+    return out;
+  }
+
   const PROJECT_KEY = 'intuicode.project.v1';
   const PREVIOUS_KEY = 'intuicode.previous.v1';
   function loadProject() {
-    const p = store.get(PROJECT_KEY, null);
-    if (p && p.version === 1 && Array.isArray(p.sections) && p.sections.length) return p;
-    return projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {});
+    return checkedProject(store.get(PROJECT_KEY, null)) || projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {});
   }
   let saveTimer = null;
   function save() {
@@ -306,7 +319,7 @@
     box.innerHTML = `<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim())}</div></div>
         <div class="ex-arrow" aria-hidden="true">→</div>
-        <div class="ex-cell"><span class="ex-lbl">${LANG_NAME[secLang(sec)]} · ${fileName(sec)} ${pyLines.length ? 'line ' + pyLines.join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
+        <div class="ex-cell"><span class="ex-lbl">${LANG_NAME[secLang(sec)]} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
       </div>
       ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}`;
   }
@@ -325,7 +338,7 @@
       const errs = r ? r.info.reduce((n, i) => n + (skip(i) ? 0 : i.errs.length), 0) : 0;
       const warns = r ? r.info.reduce((n, i) => n + (skip(i) ? 0 : i.warns.length), 0) : 0;
       const badge = errs ? `<span class="ti-badge" title="${errs} problem${errs > 1 ? 's' : ''}">${errs}</span>` : warns ? `<span class="ti-badge warn" title="${warns} warning${warns > 1 ? 's' : ''}">${warns}</span>` : '';
-      return `<button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${s.id}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${meta.title}</span>${badge}<span class="ti-file">${fileName(s)}</span></button>`;
+      return `<button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${meta.title}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}</span></button>`;
     }).join('');
   }
 
@@ -345,7 +358,7 @@
     pc.textContent = items.length ? String(items.length) : '';
     pc.className = 'count' + (errCount ? ' bad' : '');
     $('problems').innerHTML = items.length
-      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${p.s.id}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${SECTION_META[p.s.file].title} · line ${p.i + 1}</span>${withCode(p.msg)}</span></button></li>`).join('')
+      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${SECTION_META[p.s.file].title} · line ${p.i + 1}</span>${withCode(p.msg)}</span></button></li>`).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
     return errCount;
   }
@@ -769,9 +782,31 @@
 
   /* ---------- Website preview ---------- */
 
-  // Runs inside the preview: forwards console messages and errors, and handles Pick.
-  const PREVIEW_HELPER = `(() => {
+  // Runs inside the preview: forwards console messages and errors, handles Pick, and stands in for
+  // the browser's storage. The preview is sandboxed into an origin of its own, where localStorage
+  // isn't available, so the page's saved values are kept by the editor (per project) and handed back
+  // each time the preview is rebuilt.
+  const PAGE_STORE_KEY = 'intuicode.pagestorage.v1';
+  const previewHelper = () => `(() => {
     const send = (m) => parent.postMessage(Object.assign({ intuicode: true }, m), '*');
+    const saved = ${JSON.stringify(store.get(PAGE_STORE_KEY, {})[project.name] || {}).replace(/</g, '\\u003c')};
+    const storage = (data, changed) => {
+      const has = (k) => Object.prototype.hasOwnProperty.call(data, k);
+      return {
+        getItem: (k) => (has(String(k)) ? data[String(k)] : null),
+        setItem: (k, v) => { data[String(k)] = String(v); changed(); },
+        removeItem: (k) => { delete data[String(k)]; changed(); },
+        clear: () => { Object.keys(data).forEach(k => delete data[k]); changed(); },
+        key: (i) => (i < Object.keys(data).length ? Object.keys(data)[i] : null),
+        get length() { return Object.keys(data).length; },
+      };
+    };
+    let usable = true;
+    try { window.localStorage.getItem('x'); } catch (e) { usable = false; }
+    if (!usable) {
+      Object.defineProperty(window, 'localStorage', { value: storage(saved, () => send({ type: 'storage', data: saved })), configurable: true });
+      Object.defineProperty(window, 'sessionStorage', { value: storage({}, () => {}), configurable: true });
+    }
     const text = (a) => a.map(x => { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (e) { return String(x); } }).join(' ');
     for (const level of ['log', 'info', 'warn', 'error']) { const orig = console[level]; console[level] = (...a) => { send({ type: 'log', level, text: text(a) }); orig.apply(console, a); }; }
     window.addEventListener('error', (e) => send({ type: 'error', text: e.message, line: e.lineno }));
@@ -814,14 +849,29 @@
   }
   function runWebsite(announce) {
     if (!compiled) compile();
-    previewInfo = WEB.previewDocument(compiled, PREVIEW_HELPER);
-    $('preview').srcdoc = previewInfo.html;
+    previewInfo = WEB.previewDocument(compiled, previewHelper());
+    showPreviewPage(previewInfo.html);
     setPicking(false);
     if (announce) {
       showBottom('preview');
       const errs = project.sections.reduce((n, s) => n + (secResult(s.id) ? secResult(s.id).info.reduce((k, i) => k + i.errs.length, 0) : 0), 0);
       tLine(`▶ Preview updated.${errs ? ` ${errs} sentence${errs > 1 ? 's have' : ' has'} a problem, so parts may be missing.` : ''}`, 't-sys');
     }
+  }
+  /* In the desktop app the page is served from its own address (preview://), because the editor's
+   * Content-Security-Policy forbids inline scripts and a srcdoc page would inherit it. In a browser
+   * it goes in srcdoc. Either way the sandbox keeps it in an origin of its own. */
+  let previewSeq = 0;
+  async function showPreviewPage(html) {
+    const frame = $('preview'), seq = ++previewSeq;
+    if (desk.on && TAURI.core.convertFileSrc) {
+      try {
+        await invoke('set_preview', { html });
+        if (seq === previewSeq) { frame.removeAttribute('srcdoc'); frame.src = TAURI.core.convertFileSrc(`page-${seq}.html`, 'preview'); }
+        return;
+      } catch (_) { /* no preview address: use srcdoc */ }
+    }
+    if (seq === previewSeq) frame.srcdoc = html;
   }
   function schedulePreview() {
     if (project.kind !== 'website' || $('previewWrap').hidden) return;
@@ -841,6 +891,11 @@
   window.addEventListener('message', (e) => {
     if (e.source !== $('preview').contentWindow || !e.data || !e.data.intuicode) return;
     const d = e.data;
+    if (d.type === 'storage') {
+      const all = store.get(PAGE_STORE_KEY, {});
+      if (d.data && typeof d.data === 'object' && JSON.stringify(d.data).length < 1_000_000) { all[project.name] = d.data; store.set(PAGE_STORE_KEY, all); }
+      return;
+    }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
       let where = '';
@@ -888,7 +943,7 @@
     if (low === 'run' || low === 'python main.py' || low === 'python3 main.py') return run();
     if (low === 'index') return openIndex();
     if (low === 'restore') {
-      const prev = store.get(PREVIOUS_KEY, null);
+      const prev = checkedProject(store.get(PREVIOUS_KEY, null));
       if (!prev) return tLine('There is no earlier project to restore.', 't-sys');
       return replaceProject(prev, `Restored "${prev.name}".`);
     }
@@ -1223,9 +1278,12 @@
   const curAnalysis = () => { const f = curFile(); const i = f && fileInfo(f.name); return i ? i.analysis : null; };
   const shortPath = (p) => (proj && proj.name && p.startsWith(proj.name + '/') ? p.slice(proj.name.length + 1) : p);
 
-  /* [[path]] and [[path#name]] in reader text become links to that file. */
+  /* [[path]] and [[path#name]] in reader text become links to that file. The text is already
+   * escaped HTML, so the path is turned back into plain text before being escaped once for the link. */
+  const unescHtml = (s) => s.replace(/&(amp|lt|gt|quot);/g, (m, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"' }[e]));
   function linkify(html) {
-    return html.replace(/\[\[([^\]#]+)(?:#([^\]]+))?\]\]/g, (m, path, name) => {
+    return html.replace(/\[\[([^\]#]+)(?:#([^\]]+))?\]\]/g, (m, escPath, escName) => {
+      const path = unescHtml(escPath), name = escName && unescHtml(escName);
       const label = name ? `<code>${escHtml(name)}</code> <span class="dim">(${escHtml(shortPath(path))})</span>` : `<code>${escHtml(shortPath(path))}</code>`;
       return `<button type="button" class="linklike" data-file="${escHtml(path)}"${name ? ` data-name="${escHtml(name)}"` : ''}>${label}</button>`;
     });
@@ -1343,8 +1401,9 @@
     if (overview) return renderProject();
     const info = fileInfo(file.name);
     $('rdName').textContent = shortPath(file.name);
-    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + (info && (info.imported_by.length || info.imports.length) ? `<span class="rd-links">${info.imports.length ? ' Uses ' + info.imports.map(p => `[[${p}]]`).join(', ') + '.' : ''}${info.imported_by.length ? ' Used by ' + info.imported_by.map(p => `[[${p}]]`).join(', ') + '.' : ''}</span>` : '') : `<span class="bad-text">This file can't be read as Python. ${escHtml(a.error)}</span>`) : 'Reading…';
-    $('rdOverview').innerHTML = linkify($('rdOverview').innerHTML);
+    const fileLinks = (paths) => paths.map(p => `[[${escHtml(p)}]]`).join(', ');
+    const links = info && (info.imported_by.length || info.imports.length) ? linkify(`<span class="rd-links">${info.imports.length ? ' Uses ' + fileLinks(info.imports) + '.' : ''}${info.imported_by.length ? ' Used by ' + fileLinks(info.imported_by) + '.' : ''}</span>`) : '';
+    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + links : `<span class="bad-text">This file can't be read as Python. ${escHtml(a.error)}</span>`) : 'Reading…';
     const secs = a && (a.ok || (a.sections && a.sections.length)) ? a.sections : [];
     const fileLang = langOfPath(file.name);
     const canSay = /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
@@ -1830,8 +1889,9 @@
   const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   const join = (a, b) => a.replace(/[\\/]+$/, '') + '/' + b;
 
+  /* The app's own folder dialog: the desktop layer only lets the window use folders picked here. */
   async function pickFolder(title) {
-    try { return await invoke('plugin:dialog|open', { options: { directory: true, multiple: false, title } }); }
+    try { return await invoke('pick_folder', { title }); }
     catch (e) { tLine('The folder picker could not open: ' + e, 't-err'); return null; }
   }
   function showFolder() {
@@ -1879,10 +1939,10 @@
     const meta = await read('.intuicode/project.json');
     if (meta) {
       let saved;
-      try { saved = JSON.parse(meta); } catch (_) { saved = null; }
-      if (saved && Array.isArray(saved.sections)) {
+      try { saved = checkedProject(JSON.parse(meta)); } catch (_) { saved = null; }
+      if (saved) {
         desk.folder = folder;
-        replaceProject({ ...saved, version: 1 }, `Opened ${baseName(folder)}.`);
+        replaceProject(saved, `Opened ${baseName(folder)}.`);
         // did anyone change the code outside IntuiCode?
         compile();
         const changed = [];

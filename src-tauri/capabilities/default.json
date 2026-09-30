@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the IntuiCode window may use",
+  "description": "What the IntuiCode window may use (folders are picked with the app's own pick_folder command)",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default"]
 }

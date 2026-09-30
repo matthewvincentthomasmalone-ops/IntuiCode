@@ -116,7 +116,9 @@
           <button type="button" class="btn small term-btn" id="btnClear">Clear</button>
         </div>
         <div class="preview-wrap" id="previewWrap" hidden>
-          <iframe id="preview" title="Live preview of the page" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+          <!-- no allow-same-origin: the page runs in an origin of its own, so it can't reach the editor
+               (or, in the desktop app, its commands). It talks to the editor only with postMessage. -->
+          <iframe id="preview" title="Live preview of the page" sandbox="allow-scripts allow-forms allow-modals"></iframe>
         </div>
         <div class="term-body" id="termBody">
           <div id="termLog" class="term-log"></div>
