@@ -32,6 +32,12 @@ Tick each one. If something is off, note what you did and what the terminal said
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
+**Tutor**
+- [ ] Build **Number guessing game**, press **Tutor**, and click a line: a balloon explains a Python habit on it.
+- [ ] Press **✎ Your turn** under the explanation and write the line in Python: a wrong answer says so; a right one
+      (spacing doesn't matter) says "Exactly right". After three, **Write this line as Python** appears.
+- [ ] Read mode → Try the example project → `app.py` → **Style tour**: Next walks through the file's habits.
+
 **Python (Write mode)**
 - [ ] Blueprints → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.

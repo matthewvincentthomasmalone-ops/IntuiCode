@@ -113,6 +113,61 @@ class Sentences(unittest.TestCase):
         self.assertIn("open the file DATA_FILE for writing as f", R.to_sentences(read("tests/corpus/inventory_cli.py")))
 
 
+STYLE_SAMPLE = '''import os
+import sys
+
+import requests
+
+from my_local_package import local_helper
+
+CONFIG_CONSTANT = "production"
+
+
+class DataProcessor:
+    """Processes user information securely."""
+
+    def __init__(self, user_id):
+        self.user_id = user_id
+        self._cache = {}  # Internal-use attribute
+
+
+def fetch_system_status():
+    """Retrieves current platform operating status."""
+    return "Active"
+
+
+if __name__ == "__main__":
+    # Execution starts here when run from terminal
+    status = fetch_system_status()
+    print(f"System: {status}")
+'''
+
+
+class Style(unittest.TestCase):
+    def test_tour_follows_the_file(self):
+        cards = [(p["line"], p["card"]) for p in R.style_points(STYLE_SAMPLE)]
+        self.assertEqual(cards, [
+            (1, "imports"), (6, "from-import"), (8, "constant"), (11, "class"), (11, "indentation"), (12, "docstring"),
+            (14, "def"), (14, "init"), (15, "self"), (16, "private"), (16, "dict"), (19, "snake-case"), (21, "return"),
+            (24, "main-guard"), (27, "print"), (27, "f-string")])
+
+    def test_every_place_and_clean_errors(self):
+        every = R.style_points(STYLE_SAMPLE, every=True)
+        self.assertEqual([p["line"] for p in every if p["card"] == "imports"], [1, 2, 4, 6])
+        self.assertEqual([p["name"] for p in every if p["card"] == "self"], ["user_id", "_cache"])
+        bad = json.loads(R.style_points_json("if x\n"))
+        self.assertFalse(bad["ok"])
+        self.assertIn("Line 1", bad["error"])
+
+    def test_nested_habits(self):
+        src = ("def ask(prompt='Age? ', *rest) -> int:\n    return int(input(prompt))\n"
+               "for i, n in enumerate(nums):\n    if n is None or n in seen:\n        break\n"
+               "try:\n    x = 1\nexcept:\n    pass\n")
+        cards = {p["card"] for p in R.style_points(src)}
+        self.assertTrue({"default-args", "star-args", "type-hints", "input-number", "enumerate", "is-none", "in-check", "break", "try", "bare-except"} <= cards)
+        self.assertNotIn("input", cards)   # int(input(...)) is explained once, as asking for a number
+
+
 class Project(unittest.TestCase):
     def setUp(self):
         self.p = R.analyze_project(taskboard())

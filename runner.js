@@ -237,6 +237,7 @@ def _pb_reset():
           },
           toSentences: (src, forceRaw) => JSON.parse(R.to_sentences_json(src, JSON.stringify(forceRaw || []))),
           compare: (a, b) => JSON.parse(R.compare_json(a, b)),
+          stylePoints: (src, every) => JSON.parse(R.style_points_json(src, !!every)),
         };
       })().catch((e) => { reader = null; throw e; });
     }

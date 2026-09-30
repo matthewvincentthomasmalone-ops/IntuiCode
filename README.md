@@ -70,6 +70,19 @@ over and over
 In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
 uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
+**Tutor: think in the language's style**
+
+Press **Tutor** in the menu bar. As you write, a tip balloon points out how Python likes things said,
+the first time you use each habit (imports first, CAPITALS for settings, `self`, the `__main__`
+guard, f-strings…), with the why behind it. Now and then it asks you to write one of your sentences
+as real Python yourself, and checks the answer with the same exact comparison that proves round
+trips: right or wrong, never a guess. Once you've written a habit right three times, its notes step
+back, and **Write this line as Python** turns the sentence into the code you now know (checked to
+make exactly the same program). In Read mode, **Style tour** walks through the habits of any Python
+file, in reading order, so code an AI wrote for you becomes code you can read and take over.
+The habits are found with Python's own parser (`style_points` in `lang/python_reader.py`); the notes
+are in `lang/tutor.js`. The tutor speaks Python so far.
+
 **Read: existing code → sections → plain English**
 
 Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as

@@ -323,14 +323,16 @@
     if (li === typingLine && inf.errs.length) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
     else inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
     inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
-    inf.notes.forEach(n => items.push(`<li>${withCode(n)}</li>`));
+    // with the tutor on, the notes step back once every habit on this line is one you know
+    const cards = tutor.on ? cardsForSentence(sec, li) : [];
+    if (!(cards.length && cards.every(known))) inf.notes.forEach(n => items.push(`<li>${withCode(n)}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim()).map(i => i + 1);
     box.innerHTML = `<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim())}</div></div>
         <div class="ex-arrow" aria-hidden="true">→</div>
         <div class="ex-cell"><span class="ex-lbl">${LANG_NAME[secLang(sec)]} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
       </div>
-      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}`;
+      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${tutorExplainHtml(sec, li, cards)}`;
   }
 
   function iconSvg(path) {
@@ -388,11 +390,13 @@
     clearTimeout(compileTimer);
     compile();
     renderOverlay(); renderPython(); renderExplain(); renderTree(); renderProblems();
+    tutorSoon();
     schedulePreview();
   }
 
   function openSection(id, line) {
     activeSec().text = ta.value;
+    hideTip();
     typingLine = -1;
     project.active = id;
     ta.value = activeSec().text;
@@ -430,6 +434,7 @@
     [...gutterInner.children].forEach((g, i) => g.classList.toggle('cur', i === cur));
     linkPython(scrollPy);
     renderExplain();
+    tutorSoon(900);
   }
 
   /* ------------------------------------------------------------------ */
@@ -557,6 +562,7 @@
 
   function onEdit() {
     runtimeMark = null;
+    if (!tip.hidden) hideTip();
     autosave();
     typingLine = caretLine();
     activeSec().text = ta.value;
@@ -567,7 +573,7 @@
   }
 
   ta.addEventListener('input', () => { onEdit(); updateAc(); });
-  ta.addEventListener('scroll', () => { syncScroll(); if (!ac.hidden) updateAc(); });
+  ta.addEventListener('scroll', () => { syncScroll(); if (!ac.hidden) updateAc(); placeTip(); });
   ta.addEventListener('click', () => { closeAc(); afterCaretMove(true); });
   ta.addEventListener('keyup', (e) => {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key) && ac.hidden) afterCaretMove(true);
@@ -644,6 +650,207 @@
     setTimeout(() => { btn.textContent = label; }, 1800);
   }
   $('btnCopy').addEventListener('click', () => { const r = secResult(activeSec().id); if (r) copyText(r.text, $('btnCopy'), 'Copy'); });
+
+  /* ------------------------------------------------------------------ */
+  /* Tutor: how the language likes things said, and lines to write      */
+  /* yourself. Habits are found by the reader (Python's own parser); an  */
+  /* answer is checked with the same exact comparison as round trips.    */
+  /* ------------------------------------------------------------------ */
+
+  const TUTOR = window.IntuiTutor;
+  const TUTOR_KEY = 'intuicode.tutor.v1';
+  const tutor = Object.assign({ on: false, seen: {}, practised: {} }, store.get(TUTOR_KEY, {}));
+  const tutorRun = { reader: null, loading: null, styles: {}, timer: null, offered: new Set(), lastOffer: 0, exercise: null };
+  const tip = $('tip');
+  const saveTutor = () => store.set(TUTOR_KEY, { on: tutor.on, seen: tutor.seen, practised: tutor.practised });
+  const known = (card) => (tutor.practised[card] || 0) >= TUTOR.FADE_AFTER;
+  const cardOf = (card) => TUTOR.CARDS.python[card];
+
+  function loadTutorReader() {
+    if (tutorRun.reader || tutorRun.loading) return;
+    tutorRun.loading = Runner.reader((s) => setStatus(s))
+      .then(R => { tutorRun.reader = R; renderExplain(); tutorSoon(300); })
+      .catch(() => { /* Python couldn't start: the terminal has said so */ })
+      .finally(() => { tutorRun.loading = null; });
+  }
+
+  function setTutor(on) {
+    tutor.on = on;
+    saveTutor();
+    $('btnTutor').setAttribute('aria-pressed', String(on));
+    hideTip();
+    if (on) {
+      tLine('Tutor is on. As you write, I\'ll point out how Python likes things said, and now and then ask you to write a line yourself. (It speaks Python so far.)', 't-sys');
+      loadTutorReader();
+      tutorSoon(600);
+    }
+    renderExplain();
+  }
+  $('btnTutor').addEventListener('click', () => setTutor(!tutor.on));
+
+  /* The habits in a Python section's code, per code line (worked out once per version of the code). */
+  function tutorStyles(sec) {
+    const r = secResult(sec.id);
+    if (!r || secLang(sec) !== 'python' || !tutorRun.reader) return null;
+    const cached = tutorRun.styles[sec.id];
+    if (cached && cached.text === r.text) return cached;
+    const res = tutorRun.reader.stylePoints(r.text, true);
+    const byLine = [];
+    if (res.ok) for (const p of res.points) (byLine[p.line - 1] = byLine[p.line - 1] || []).push(p.card);
+    return (tutorRun.styles[sec.id] = { text: r.text, byLine });
+  }
+  /* The habits shown by the code a sentence became. */
+  function cardsForSentence(sec, li) {
+    const st = tutorStyles(sec), r = secResult(sec.id);
+    if (!st || !r || !r.info[li]) return [];
+    return [...new Set(r.info[li].py.flatMap(i => st.byLine[i] || []))].filter(cardOf);
+  }
+  /* The one line of Python a sentence became, if it's a sentence (not already code or a note). */
+  function exerciseFor(sec, li) {
+    const r = secResult(sec.id);
+    if (!r || !r.info[li] || secLang(sec) !== 'python' || r.info[li].errs.length) return null;
+    const text = sec.text.split('\n')[li] || '';
+    if (!text.trim() || /^\s*(?:raw python|python|raw|note|comment)\s*:|^\s*#/i.test(text)) return null;
+    return TUTOR.exerciseLine(r.info[li].py.map(i => r.lines[i].text));
+  }
+
+  function tutorExplainHtml(sec, li, cards) {
+    if (!tutor.on) return '';
+    const lang = secLang(sec);
+    if (lang !== 'python') return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> The tutor speaks Python so far. ${escHtml(LANG_NAME[lang] || 'This language')} is next on its list.</div>`;
+    if (!tutorRun.reader) return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> Getting ready…</div>`;
+    const ex = exerciseFor(sec, li);
+    if (!cards.length && !ex) return '';
+    const allKnown = cards.length && cards.every(known);
+    const items = cards.map(c => (known(c)
+      ? `<li class="known">✓ ${withCode(cardOf(c).title)} <span class="dim">· you know this one</span></li>`
+      : `<li><b>${withCode(cardOf(c).title)}.</b> ${withCode(cardOf(c).say)}</li>`));
+    const act = !ex ? '' : allKnown ? `<button type="button" class="btn small" data-tutor="code" title="Replace this sentence with the line of Python it stands for">Write this line as Python</button>`
+      : `<button type="button" class="btn small" data-tutor="turn">✎ Your turn</button>`;
+    return `<div class="ex-tutor"><div class="ex-tutor-h"><span class="ex-lbl">In Python</span>${act}</div>${items.length ? `<ul>${items.join('')}</ul>` : ''}</div>`;
+  }
+  $('explain').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tutor]');
+    if (!b) return;
+    if (b.dataset.tutor === 'turn') showExercise(caretLine());
+    else if (b.dataset.tutor === 'code') writeAsCode(caretLine());
+  });
+
+  /* Tip balloons, beside the line they're about */
+  function hideTip() { tip.hidden = true; tip.dataset.line = ''; tutorRun.exercise = null; }
+  function placeTip() {
+    if (tip.hidden || tip.dataset.line === '') return;
+    const line = +tip.dataset.line;
+    const below = PAD_T + (line + 1) * LH - ta.scrollTop + 8;
+    const above = PAD_T + line * LH - ta.scrollTop - tip.offsetHeight - 8;
+    const flip = below + tip.offsetHeight > $('editor').clientHeight - 6 && above > 0;
+    tip.classList.toggle('up', flip);
+    tip.style.top = (flip ? above : below) + 'px';
+    tip.style.left = ($('gutter').offsetWidth + PAD_L) + 'px';
+  }
+  function showTip(li, html, kind) {
+    tip.innerHTML = html;
+    tip.dataset.kind = kind;
+    tip.dataset.line = li;
+    tip.hidden = false;
+    placeTip();
+  }
+  function showNote(li, card) {
+    const c = cardOf(card);
+    tutor.seen[card] = true;
+    saveTutor();
+    showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">i</span><span>In Python: ${withCode(c.title)}</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
+      <p>${withCode(c.say)}</p><p class="tip-more" hidden>${withCode(c.more)}</p>
+      <div class="tip-actions"><button type="button" class="btn small" data-act="more">Why?</button><button type="button" class="btn small primary" data-act="close">Got it</button></div>`, 'note');
+  }
+  function showExercise(li) {
+    const sec = activeSec();
+    const expected = exerciseFor(sec, li);
+    if (!expected || !tutorRun.reader) return false;
+    tutorRun.exercise = { expected, cards: cardsForSentence(sec, li) };
+    showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">✎</span><span>Your turn</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
+      <p>Write this sentence as one line of Python:</p>
+      <div class="tip-say">${escHtml((sec.text.split('\n')[li] || '').trim())}</div>
+      <input class="tip-in" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Your line of Python">
+      <p class="tip-result" hidden></p>
+      <div class="tip-actions"><button type="button" class="btn small" data-act="show">Show me</button><button type="button" class="btn small primary" data-act="check">Check</button></div>`, 'exercise');
+    tip.querySelector('.tip-in').focus();
+    return true;
+  }
+  function checkExercise() {
+    const ex = tutorRun.exercise, input = tip.querySelector('.tip-in'), out = tip.querySelector('.tip-result');
+    if (!ex || !input.value.trim()) return;
+    const res = tutorRun.reader.compare(TUTOR.probe(ex.expected), TUTOR.probe(input.value));
+    out.hidden = false;
+    if (res.same) {
+      const learned = [];
+      for (const c of ex.cards) { const was = known(c); tutor.practised[c] = (tutor.practised[c] || 0) + 1; if (!was && known(c)) learned.push(cardOf(c).title); }
+      saveTutor();
+      out.className = 'tip-result ok';
+      out.innerHTML = '✓ Exactly right: Python reads your line the same way.' + (learned.length ? ` You know this one now: ${learned.map(withCode).join(', ')}. Its notes will step back.` : '');
+      renderExplain();
+    } else {
+      out.className = 'tip-result no';
+      const why = res.error && (res.error.match(/: (.*)\)\.$/) || [])[1];   // "…can't be read (line 1: invalid syntax)."
+      out.innerHTML = res.error ? `Python can't read that yet${why ? ` (${escHtml(why)})` : ''}. Check the brackets, the quotes and any <code>:</code> at the end.`
+        : 'Not quite: Python reads your line differently. Try again, or press Show me.';
+    }
+    placeTip();
+  }
+  tip.addEventListener('click', (e) => {
+    const act = (e.target.closest('[data-act]') || {}).dataset;
+    if (!act) return;
+    if (act.act === 'close') { hideTip(); ta.focus(); }
+    else if (act.act === 'more') { tip.querySelector('.tip-more').hidden = false; e.target.closest('[data-act]').remove(); placeTip(); }
+    else if (act.act === 'check') checkExercise();
+    else if (act.act === 'show') { const out = tip.querySelector('.tip-result'); out.hidden = false; out.className = 'tip-result'; out.innerHTML = `The line is: <code class="tip-code">${hlPy(tutorRun.exercise.expected)}</code>`; placeTip(); }
+  });
+  tip.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('tip-in')) { e.preventDefault(); checkExercise(); }
+    if (e.key === 'Escape') { e.stopPropagation(); hideTip(); ta.focus(); }
+  });
+
+  /* When writing pauses: a note for a habit met for the first time, or now and then a line to write yourself. */
+  function tutorSoon(delay = 1400) {
+    clearTimeout(tutorRun.timer);
+    if (tutor.on) tutorRun.timer = setTimeout(tutorCheck, delay);
+  }
+  function tutorCheck() {
+    if (!tutor.on || mode !== 'write' || !tip.hidden || !$('bpModal').hidden || !$('newModal').hidden) return;
+    const sec = activeSec();
+    if (secLang(sec) !== 'python') return;
+    if (!tutorRun.reader) return loadTutorReader();
+    const lines = ta.value.split('\n');
+    let li = caretLine();
+    if (!(lines[li] || '').trim() && li > 0) li -= 1;   // just pressed Enter: the line just written
+    const cards = cardsForSentence(sec, li);
+    const fresh = cards.find(c => !tutor.seen[c]);
+    if (fresh) return showNote(li, fresh);
+    const text = (lines[li] || '').trim();
+    if (cards.some(c => !known(c)) && !tutorRun.offered.has(text) && Date.now() - tutorRun.lastOffer > 45000 && exerciseFor(sec, li)) {
+      tutorRun.offered.add(text);
+      tutorRun.lastOffer = Date.now();
+      showExercise(li);
+    }
+  }
+
+  /* A known habit, written as the real line: the sentence becomes a python: line, checked to make exactly the same program. */
+  function writeAsCode(li) {
+    const sec = activeSec(), code = exerciseFor(sec, li), before = secResult(sec.id) && secResult(sec.id).text;
+    if (!code || !tutorRun.reader) return;
+    const lines = ta.value.split('\n'), original = lines[li];
+    const start = lines.slice(0, li).reduce((n, l) => n + l.length + 1, 0);
+    insertText(original.match(/^\s*/)[0] + 'python: ' + code, start, start + original.length);
+    compile();
+    const res = tutorRun.reader.compare(before, secResult(sec.id).text);
+    if (!res.same) {   // (it would lose an import the sentence brought in, say): put the sentence back
+      insertText(original, start, start + ta.value.split('\n')[li].length);
+      tLine('That line needs something the sentence brings along (an import, say), so it stays a sentence for now.', 't-sys');
+      return;
+    }
+    tLine(`Line ${li + 1} is now written in Python, by you: ${code}`, 't-ok');
+    refreshAll();
+  }
 
   /* ------------------------------------------------------------------ */
   /* Terminal and running                                                */
@@ -1291,6 +1498,7 @@
 
   function setMode(next) {
     mode = next;
+    hideTip();
     $('modeWrite').setAttribute('aria-selected', String(next === 'write'));
     $('modeRead').setAttribute('aria-selected', String(next === 'read'));
     $('writeView').hidden = next !== 'write';
@@ -1428,6 +1636,7 @@
     $('rdOutlineWrap').hidden = !file;
     $('btnSummarise').disabled = !a || !a.ok;
     $('btnToSentences').disabled = !a || !a.ok;
+    $('btnTour').disabled = !a || !a.ok || !file || langOfPath(file.name) !== 'python';
     if (!files.length) {
       $('rdName').textContent = 'No code imported yet';
       $('rdOverview').textContent = 'Import Python, such as a project an AI wrote for you, to see it split into sections and explained in plain English.';
@@ -1594,6 +1803,7 @@
     const box = $('rdSum');
     $('rdOutline').querySelectorAll('.ol-item').forEach(b => b.classList.toggle('on', !!readFocus && readFocus.type === 'section' && +b.dataset.sec === readFocus.id));
     if (!a || !a.ok) { markLines(null, null, 'focus'); box.innerHTML = a ? `<p class="sum-empty">${escHtml(a.error || '')}</p>` : ''; return; }
+    if (readFocus && readFocus.type === 'tour') return renderTour(box);
     if (readFocus && readFocus.type === 'section') {
       const s = a.sections.find(x => x.id === readFocus.id);
       if (s) { markLines(s.start, s.end, 'focus'); box.innerHTML = summaryHtml(s, `${KIND_LABEL[s.kind]} · lines ${s.start}–${s.end}`); return; }
@@ -1678,10 +1888,50 @@
     return false;
   };
   $('rdSum').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tour]');
+    if (t) return tourStep(t.dataset.tour, t.dataset.file);
     if (onReadLink(e)) return;
     if (e.target.id === 'rdImport') openImport();
     if (e.target.id === 'rdExample') loadExampleProject();
   });
+
+  /* Style tour: the habits a Python file shows, in reading order, each with why it's said that way. */
+  const BLOCK_CARDS = new Set(['class', 'def', 'init', 'indentation', 'if', 'for-in', 'range', 'enumerate', 'while', 'with-open', 'try', 'main-guard', 'decorator', 'async', 'default-args', 'star-args', 'type-hints', 'snake-case', 'private']);
+  async function startTour() {
+    const file = curFile();
+    if (!file || langOfPath(file.name) !== 'python') return;
+    const R = await Runner.reader((s) => setStatus(s));
+    const res = R.stylePoints(file.source, false);
+    if (!res.ok) { $('rdSum').innerHTML = `<p class="sum-empty">${escHtml(res.error)}</p>`; return; }
+    readFocus = { type: 'tour', file: file.name, points: res.points.filter(p => cardOf(p.card)), i: 0 };
+    renderFocus();
+  }
+  function renderTour(box) {
+    const t = readFocus, p = t.points[t.i];
+    if (!p) { markLines(null, null, 'focus'); box.innerHTML = '<p class="sum-empty">This file doesn\'t show any of the habits the tour knows yet.</p>'; return; }
+    const c = cardOf(p.card), last = t.i === t.points.length - 1;
+    const first = markLines(p.line, BLOCK_CARDS.has(p.card) ? p.line : p.end, 'focus');
+    if (first) $('rdCode').scrollTop = first.offsetTop - $('rdCode').clientHeight / 3;
+    const order = proj ? proj.order.filter(x => /\.py$/i.test(x)) : [];
+    const nextFile = last ? order[order.indexOf(t.file) + 1] : null;
+    box.innerHTML = `<div class="sum-kind">Style tour · ${t.i + 1} of ${t.points.length}</div>
+      <h3>${withCode(c.title)}</h3>
+      <p class="sum-head">${withCode(c.say)}</p>
+      <p class="tour-more">${withCode(c.more)}</p>
+      <p class="dim">Line ${p.line}${p.name ? ` · <code>${escHtml(p.name)}</code>` : ''}</p>
+      <div class="bp-actions">
+        <button type="button" class="btn small" data-tour="prev"${t.i ? '' : ' disabled'}>← Previous</button>
+        ${last ? '' : '<button type="button" class="btn small primary" data-tour="next">Next →</button>'}
+        ${nextFile ? `<button type="button" class="btn small primary" data-tour="file" data-file="${escHtml(nextFile)}">Next file: ${escHtml(shortPath(nextFile))} →</button>` : ''}
+      </div>
+      ${last ? `<p class="sum-tip">That's the tour of this file.${nextFile ? ' The reading order continues with the next file.' : ''} Press <b>Open as sentences</b> to take the wheel.</p>` : ''}`;
+  }
+  function tourStep(dir, path) {
+    if (dir === 'file') { openFile(path); startTour(); return; }
+    readFocus.i = Math.max(0, Math.min(readFocus.points.length - 1, readFocus.i + (dir === 'next' ? 1 : -1)));
+    renderFocus();
+  }
+  $('btnTour').addEventListener('click', startTour);
   $('rdOverview').addEventListener('click', onReadLink);
   $('rdFiles').addEventListener('click', (e) => {
     const b = e.target.closest('.tree-item');
@@ -2376,7 +2626,8 @@
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewProject(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
     if (e.key === 'Escape') {
-      if (!$('newModal').hidden) closeNewProject();
+      if (!tip.hidden) hideTip();
+      else if (!$('newModal').hidden) closeNewProject();
       else if (!$('fileList').hidden) setFileMenu(false);
       else if (!$('bpModal').hidden) closeBlueprints();
       else if (!$('impModal').hidden) closeImport();
@@ -2396,13 +2647,15 @@
     if (project.kind === 'website') runWebsite(false);
     tLine('IntuiCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
+    $('btnTutor').setAttribute('aria-pressed', String(tutor.on));
     setTimeout(async () => {
       await ensurePython();
+      if (tutor.on) loadTutorReader();
       if (reads.files.length) { await analyse(); if (mode === 'read') renderRead(); }
     }, 1200);
   }
 
-  window.addEventListener('resize', () => { measure(); syncScroll(); });
+  window.addEventListener('resize', () => { measure(); syncScroll(); placeTip(); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measure(); syncScroll(); });
   start();
 })();

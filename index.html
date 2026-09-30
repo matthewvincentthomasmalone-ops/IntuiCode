@@ -29,6 +29,7 @@
         </div>
       </div>
       <button type="button" id="btnBlueprints" class="btn ghost">Blueprints</button>
+      <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
       <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
     </div>
@@ -73,6 +74,7 @@
               <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Sentences"></textarea>
               <div class="ac" id="ac" role="listbox" hidden></div>
             </div>
+            <div class="tip" id="tip" role="status" aria-live="polite" hidden></div>
           </div>
         </div>
 
@@ -100,6 +102,7 @@
             <p id="rdOverview"></p>
           </div>
           <div class="read-tools">
+            <button type="button" id="btnTour" class="btn small" disabled title="Walk through this file's Python habits, in reading order">Style tour</button>
             <button type="button" id="btnSummarise" class="btn primary small" disabled>Summarise selection</button>
             <button type="button" id="btnToSentences" class="btn small" disabled>Open as sentences</button>
           </div>
@@ -227,5 +230,6 @@
 <script src="lang/web_read.js"></script>
 <script src="lang/convert.js"></script>
 <script src="lang/blueprints.js"></script>
+<script src="lang/tutor.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

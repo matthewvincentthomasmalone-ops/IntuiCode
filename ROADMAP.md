@@ -24,6 +24,13 @@ directions, using rules rather than AI. This file records where it is going and 
 | 4 | Desktop app (Tauri): real files, real Python, Git; installers for Windows, macOS and Linux built by GitHub | done |
 | 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | done (first version) |
 | 6 | Everything into sentences: HTML, CSS, JavaScript, C++ and Arduino → sentences with exactness checks; C++ classes; Arduino in Write mode; Visual Studio's compiler; tests of the real desktop app | done |
+| 7 | Tutor and style tour (Python): tip balloons on a language's habits, "Your turn" lines checked exactly, notes that fade as you learn, and a style tour of any file | done (Python; the other languages next) |
+| 8 | Project builder: questions that narrow a project down (App › PC › DAW…), components you tick, and a project map of ordered steps, each marked Walk, Hallway or Horizon | next |
+
+The direction, since step 7: IntuiCode is for people who build ambitious things with help (often
+AI's) and want to stay the author: to understand their project at any stage, change it themselves,
+and learn to think in each language's style as they go. The tutor teaches that style; the project
+builder is a horizon to aim for, and for the hardest parts, a hallway.
 
 ### Step 3 notes
 

@@ -129,6 +129,26 @@ try {
     await waitFor('the error', logHas('Go to Main program, line 2'), 60000);
   });
 
+  await check('the tutor points out a Python habit, and checks a line you write', async () => {
+    await blueprint('Empty script');
+    await setSentences('create list names with "Ann", "Bo"\nfor each name in names\n    show name');
+    await click('btnTutor');
+    await js(() => { const ta = document.getElementById('ta'); const p = ta.value.indexOf('for each') + 3; ta.focus(); ta.setSelectionRange(p, p); ta.dispatchEvent(new Event('click')); return true; });
+    await waitFor('a tip balloon', () => js(() => !document.getElementById('tip').hidden && /In Python/.test(document.getElementById('tip').innerText)), 120000);
+    const verdict = await js(() => {
+      const tip = document.getElementById('tip');
+      tip.querySelector('.btn.primary[data-act="close"]').click();
+      document.querySelector('[data-tutor="turn"]').click();
+      tip.querySelector('.tip-in').value = 'for name in names :';
+      tip.querySelector('[data-act="check"]').click();
+      const out = tip.querySelector('.tip-result').innerText;
+      tip.querySelector('[data-act="close"]').click();
+      document.getElementById('btnTutor').click();   // tutor off again for the tests after this one
+      return out;
+    });
+    if (!/Exactly right/.test(verdict)) throw new Error(verdict);
+  });
+
   await check('runs a shell command with $', async () => {
     await clearTerminal();
     await typeInTerminal('$ echo shell-says-hi');

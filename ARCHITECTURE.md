@@ -15,6 +15,7 @@ the desktop app.
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
+| `lang/tutor.js` | Style cards (a language's habits, and why), and how "Your turn" answers are checked |
 | `lang/ts_patch.js` | A fix to the tree-sitter runtime for pages with SVG or custom elements |
 
 Engine files must not touch the page (no `document`, no DOM). The shell (`app.js`,

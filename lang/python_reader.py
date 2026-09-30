@@ -1540,6 +1540,218 @@ ROLE_ORDER = ["entry", "settings", "models", "helpers", "routes", "script", "pac
 MODEL_BASES = re.compile(r"(^|\.)(Model|Base|BaseModel|SQLModel|Document|Schema|DeclarativeBase)$")
 
 
+# --------------------------------------------------------------------------
+# Style points: where a file shows one of Python's habits (for the tutor and the style tour)
+# --------------------------------------------------------------------------
+
+class _StyleFinder(ast.NodeVisitor):
+    """Walks a file and notes each habit it shows. The card names match lang/tutor.js."""
+
+    def __init__(self):
+        self.found = []
+        self.depth = 0          # inside a def or class
+        self.parents = []       # the defs and classes around the current node
+        self.skip = set()       # calls already explained by an outer call (input inside int(...))
+
+    def add(self, card, node, name=""):
+        self.found.append({"card": card, "line": node.lineno, "end": getattr(node, "end_lineno", None) or node.lineno, "name": name})
+
+    def _doc(self, node):
+        if node.body and is_docstring(node.body[0]):
+            self.add("docstring", node.body[0])
+
+    def _inside(self, node):
+        self.depth += 1
+        self.parents.append(node)
+        self.generic_visit(node)
+        self.parents.pop()
+        self.depth -= 1
+
+    def visit_Import(self, node):
+        self.add("imports", node, node.names[0].name)
+        if any(a.asname for a in node.names):
+            self.add("import-as", node, next(a.asname for a in node.names if a.asname))
+
+    def visit_ImportFrom(self, node):
+        self.add("imports", node, node.module or "")
+        self.add("from-import", node, node.module or "")
+
+    def visit_Assign(self, node):
+        for t in node.targets:
+            if isinstance(t, ast.Name):
+                if self.depth == 0 and re.fullmatch(r"[A-Z][A-Z0-9_]+", t.id):
+                    self.add("constant", node, t.id)
+                elif "_" in t.id.strip("_") and t.id == t.id.lower():
+                    self.add("snake-case", node, t.id)
+            elif isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self" \
+                    and t.attr.startswith("_") and not t.attr.startswith("__"):
+                self.add("private", node, t.attr)
+        if isinstance(node.value, ast.List):
+            self.add("list", node)
+        elif isinstance(node.value, ast.Dict):
+            self.add("dict", node)
+        self.generic_visit(node)
+
+    def _function(self, node):
+        self.add("def", node, node.name)
+        if node.name == "__init__" and self.parents and isinstance(self.parents[-1], ast.ClassDef):
+            self.add("init", node)
+        elif node.name.startswith("_") and not node.name.startswith("__"):
+            self.add("private", node, node.name)
+        if "_" in node.name.strip("_") and node.name == node.name.lower() and not node.name.startswith("__"):
+            self.add("snake-case", node, node.name)
+        a = node.args
+        if a.defaults or any(d is not None for d in a.kw_defaults):
+            self.add("default-args", node, node.name)
+        if a.vararg or a.kwarg:
+            self.add("star-args", node, node.name)
+        if node.returns or any(x.annotation for x in a.posonlyargs + a.args + a.kwonlyargs):
+            self.add("type-hints", node, node.name)
+        if node.decorator_list:
+            self.add("decorator", node.decorator_list[0], node.name)
+        if isinstance(node, ast.AsyncFunctionDef):
+            self.add("async", node, node.name)
+        self.add("indentation", node)
+        self._doc(node)
+        self._inside(node)
+
+    visit_FunctionDef = visit_AsyncFunctionDef = _function
+
+    def visit_ClassDef(self, node):
+        self.add("class", node, node.name)
+        if node.decorator_list:
+            self.add("decorator", node.decorator_list[0], node.name)
+        self.add("indentation", node)
+        self._doc(node)
+        self._inside(node)
+
+    def visit_If(self, node):
+        if is_main_guard(node):
+            self.add("main-guard", node)
+        else:
+            self.add("if", node)
+            self.add("indentation", node)
+        self.generic_visit(node)
+
+    def visit_For(self, node):
+        it = node.iter
+        called = it.func.id if isinstance(it, ast.Call) and isinstance(it.func, ast.Name) else ""
+        self.add({"range": "range", "enumerate": "enumerate"}.get(called, "for-in"), node)
+        self.add("indentation", node)
+        self.generic_visit(node)
+
+    visit_AsyncFor = visit_For
+
+    def visit_While(self, node):
+        self.add("while", node)
+        self.add("indentation", node)
+        self.generic_visit(node)
+
+    def visit_With(self, node):
+        if any(isinstance(i.context_expr, ast.Call) and isinstance(i.context_expr.func, ast.Name) and i.context_expr.func.id == "open" for i in node.items):
+            self.add("with-open", node)
+        self.add("indentation", node)
+        self.generic_visit(node)
+
+    visit_AsyncWith = visit_With
+
+    def visit_Try(self, node):
+        self.add("try", node)
+        self.add("indentation", node)
+        self.generic_visit(node)
+
+    visit_TryStar = visit_Try
+
+    def visit_ExceptHandler(self, node):
+        if node.type is None:
+            self.add("bare-except", node)
+        self.generic_visit(node)
+
+    def visit_Return(self, node):
+        if node.value is not None:
+            self.add("return", node)
+        self.generic_visit(node)
+
+    def visit_Break(self, node):
+        self.add("break", node)
+
+    def visit_Global(self, node):
+        self.add("global", node, ", ".join(node.names))
+
+    def visit_AugAssign(self, node):
+        self.add("augmented", node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node):
+        self.add("type-hints", node)
+        self.generic_visit(node)
+
+    def visit_JoinedStr(self, node):
+        self.add("f-string", node)
+        self.generic_visit(node)
+
+    def visit_ListComp(self, node):
+        self.add("comprehension", node)
+        self.generic_visit(node)
+
+    visit_SetComp = visit_DictComp = visit_GeneratorExp = visit_ListComp
+
+    def visit_Lambda(self, node):
+        self.add("lambda", node)
+        self.generic_visit(node)
+
+    def visit_Await(self, node):
+        self.add("async", node)
+        self.generic_visit(node)
+
+    def visit_Compare(self, node):
+        if any(isinstance(o, (ast.Is, ast.IsNot)) for o in node.ops) and any(isinstance(c, ast.Constant) and c.value is None for c in node.comparators):
+            self.add("is-none", node)
+        if any(isinstance(o, (ast.In, ast.NotIn)) for o in node.ops):
+            self.add("in-check", node)
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        f = node.func
+        if id(node) not in self.skip:
+            if isinstance(f, ast.Name):
+                inner = node.args[0] if node.args else None
+                if f.id in ("int", "float") and isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id == "input":
+                    self.add("input-number", node)
+                    self.skip.add(id(inner))
+                elif f.id == "input":
+                    self.add("input", node)
+                elif f.id == "print":
+                    self.add("print", node)
+            elif isinstance(f, ast.Attribute) and f.attr == "append":
+                self.add("list", node)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        if isinstance(node.value, ast.Name) and node.value.id == "self":
+            self.add("self", node, node.attr)
+        self.generic_visit(node)
+
+
+def style_points(source, every=False):
+    """Where a file shows one of Python's habits, in reading order: [{card, line, end, name}].
+    `card` names a style card in lang/tutor.js. The first place for each card, or every place (every=True)."""
+    tree = ast.parse(source)
+    finder = _StyleFinder()
+    if tree.body and is_docstring(tree.body[0]):
+        finder.add("docstring", tree.body[0])
+    finder.visit(tree)
+    points = sorted(finder.found, key=lambda p: p["line"])   # stable: the order found within a line stays
+    if every:
+        return points
+    seen, first = set(), []
+    for p in points:
+        if p["card"] not in seen:
+            seen.add(p["card"])
+            first.append(p)
+    return first
+
+
 def keep_path(path):
     """Which uploaded files are worth reading. Returns 'py', 'extra', 'secret' or None."""
     parts = path.replace("\\", "/").split("/")
@@ -1918,6 +2130,17 @@ def to_sentences_json(source, force_raw_json="[]"):
         return json.dumps({"ok": False, "error": f"The code can't be read: {e or 'it is too big'}."})
 
 
+def style_points_json(source, every=False):
+    try:
+        return json.dumps({"ok": True, "points": style_points(source, bool(every))})
+    except SyntaxError as e:
+        return json.dumps({"ok": False, "error": f"Line {e.lineno}: {e.msg}" if e.lineno else e.msg})
+    except RecursionError:
+        return json.dumps({"ok": False, "error": TOO_DEEP})
+    except (ValueError, MemoryError) as e:
+        return json.dumps({"ok": False, "error": f"The code can't be read: {e or 'it is too big'}."})
+
+
 def _read(path):
     with open(path, encoding="utf-8-sig") as f:   # -sig: a byte-order mark (Notepad adds one) isn't code
         return f.read()
@@ -1941,6 +2164,11 @@ def _cli(argv):
         print(json.dumps(compare(_read(argv[2]), _read(argv[3]))))
     elif cmd == "compare-json":        # stdin: JSON list of [original, generated] -> JSON list of results
         print(json.dumps([compare(a, b) for a, b in json.load(sys.stdin)]))
+    elif cmd == "style":
+        for p in style_points(_read(argv[2])):
+            print(f"  line {p['line']:<4} {p['card']:<14} {p['name']}")
+    elif cmd == "style-json":          # stdin: JSON list of sources -> JSON list of style_points_json results
+        print(json.dumps([json.loads(style_points_json(src, True)) for src in json.load(sys.stdin)]))
     elif cmd == "project":
         files = []
         for base, dirs, names in os.walk(argv[2]):
