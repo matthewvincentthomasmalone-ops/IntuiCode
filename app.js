@@ -97,8 +97,16 @@
 
   const activeSec = () => project.sections.find(s => s.id === project.active) || project.sections[project.sections.length - 1];
 
-  function replaceProject(next, message) {
+  /* Swap in another project. In the desktop app it is linked to `folder` (null: not saved anywhere
+   * yet), so autosave can never write one project's files into another project's folder. */
+  function replaceProject(next, message, folder = null) {
     activeSec().text = ta.value;
+    if (desk.on) {
+      if (desk.folder && desk.dirty) saveProject('quiet');   // finish saving the old project to its own folder
+      clearTimeout(desk.saveTimer);
+      desk.folder = folder;
+      desk.dirty = !folder;
+    }
     store.set(PREVIOUS_KEY, project);
     project = next;
     runtimeMark = null;
@@ -110,6 +118,7 @@
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
     if (project.kind === 'website') runWebsite(false);
+    if (desk.on) showFolder();
     if (message) tLine(message + ' (Your previous project is kept: type "restore" in the terminal to swap back.)', 't-sys');
   }
 
@@ -945,7 +954,8 @@
     if (low === 'restore') {
       const prev = checkedProject(store.get(PREVIOUS_KEY, null));
       if (!prev) return tLine('There is no earlier project to restore.', 't-sys');
-      return replaceProject(prev, `Restored "${prev.name}".`);
+      // it isn't linked to the open folder (that holds the project being swapped out)
+      return replaceProject(prev, `Restored "${prev.name}".` + (desk.on ? ' It isn\'t saved in a folder: press Save to keep it.' : ''));
     }
     if (low === 'files' || low === 'ls') {
       return tLine(project.name + '/\n' + project.sections.map(s => `  ${fileName(s).padEnd(13)} ${SECTION_META[s.file].title}: ${SECTION_META[s.file].purpose}`).join('\n'), 't-help');
@@ -1199,7 +1209,7 @@
       const bp = BP.parse(bpSource(bpSel));
       if (bp.errors.length) return;
       closeBlueprints();
-      if (bp.kind === 'project') { desk.folder = null; desk.dirty = true; replaceProject(projectFromBlueprint(bp, bpValues), `Built "${bp.title}" from its blueprint. Press Run to try it.` + (desk.on ? ' Press Save to keep it as files.' : '')); showFolder(); }
+      if (bp.kind === 'project') replaceProject(projectFromBlueprint(bp, bpValues), `Built "${bp.title}" from its blueprint. Press Run to try it.` + (desk.on ? ' Press Save to keep it as files.' : ''));
       else { insertSnippet(BP.fill(bp, bpValues).here); tLine(`Added "${bp.title}" to ${SECTION_META[activeSec().file].title}.`, 't-sys'); }
     }
     if (id === 'bpCopyEdit') {
@@ -1726,9 +1736,7 @@
     try { out = await codeToProject(file, files); }
     catch (e) { tLine('Could not turn this code into sentences: ' + e.message, 't-err'); return; }
     if (!out) return;
-    if (desk.on) { desk.folder = null; desk.dirty = true; }
     replaceProject(out.project, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
-    showFolder();
     reportConversion(out.results);
   }
 
@@ -1906,6 +1914,7 @@
   /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
   async function saveProject(pick) {
     if (!desk.on) return;
+    clearTimeout(desk.saveTimer);
     if (!desk.folder) {
       if (pick === 'quiet') return;   // autosave only writes to a folder that was chosen
       const f = await pickFolder('Choose a folder to save this project in');
@@ -1914,12 +1923,13 @@
     }
     activeSec().text = ta.value;
     compile();
+    // everything to write is taken now: another project may be opened while the files are written
+    const folder = desk.folder, names = project.sections.map(fileName);
+    const files = project.sections.map((s, i) => [names[i], secResult(s.id).text]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
     try {
-      for (const s of project.sections) await invoke('write_text', { path: join(desk.folder, fileName(s)), content: secResult(s.id).text });
-      await invoke('write_text', { path: join(desk.folder, '.intuicode/project.json'), content: JSON.stringify({ ...project, folder: undefined }, null, 2) });
-      desk.dirty = false;
-      showFolder();
-      if (pick !== 'quiet') tLine(`Saved to ${desk.folder}: ${project.sections.map(fileName).join(', ')} (and your sentences, in .intuicode/).`, 't-sys');
+      for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
+      if (desk.folder === folder) { desk.dirty = false; showFolder(); }
+      if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')} (and your sentences, in .intuicode/).`, 't-sys');
     } catch (e) { tLine('Could not save: ' + e, 't-err'); }
   }
   function autosave() {
@@ -1941,8 +1951,7 @@
       let saved;
       try { saved = checkedProject(JSON.parse(meta)); } catch (_) { saved = null; }
       if (saved) {
-        desk.folder = folder;
-        replaceProject(saved, `Opened ${baseName(folder)}.`);
+        replaceProject(saved, `Opened ${baseName(folder)}.`, folder);
         // did anyone change the code outside IntuiCode?
         compile();
         const changed = [];
@@ -1980,10 +1989,7 @@
           // Only work in the folder itself when saving writes the same files back, unchanged.
           const same = out.exact && ((out.project.kind === 'arduino' && pick.name === `${top}/${top}.ino`) || (out.project.kind === 'cpp' && pick.name === `${top}/main.cpp`)
             || (out.project.kind === 'website' && pick.name === `${top}/index.html` && out.results.length === 1 + !!at('style.css') + !!at('script.js') && !files.some(f => /\.css$/i.test(f.name) && f.name !== `${top}/style.css`) && !files.some(f => /\.js$/i.test(f.name) && f.name !== `${top}/script.js`)));
-          desk.folder = same ? folder : null;
-          desk.dirty = !same;
-          replaceProject(out.project, same ? `Opened ${top} and turned its code into sentences.` : `Opened ${top}'s code as sentences in a new, unsaved project (the folder itself is left as it is, because saving would lay it out differently). Press Save to keep it.`);
-          showFolder();
+          replaceProject(out.project, same ? `Opened ${top} and turned its code into sentences.` : `Opened ${top}'s code as sentences in a new, unsaved project (the folder itself is left as it is, because saving would lay it out differently). Press Save to keep it.`, same ? folder : null);
           reportConversion(out.results);
           return;
         }
@@ -1997,9 +2003,7 @@
         const res = await sentencesFor(src);
         sections.push({ id: file, file, text: res ? res.text : src.split('\n').map(l => 'python: ' + l).join('\n') });
       }
-      desk.folder = folder;
-      replaceProject({ version: 1, lang: 'python', kind: 'python', name: slug(baseName(folder)), sections, active: 'main' }, `Opened ${baseName(folder)} and turned its Python into sentences.`);
-      showFolder();
+      replaceProject({ version: 1, lang: 'python', kind: 'python', name: slug(baseName(folder)), sections, active: 'main' }, `Opened ${baseName(folder)} and turned its Python into sentences.`, folder);
       return;
     }
     const files = await invoke('read_folder', { path: folder });
