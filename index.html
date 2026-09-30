@@ -22,6 +22,7 @@
         <button type="button" id="btnFile" class="btn ghost" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList">File</button>
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
+          <button type="button" role="menuitem" id="btnBuilder">Project builder…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
           <div class="menu-sep" role="separator"></div>
@@ -41,6 +42,11 @@
         <div class="side-h">Project</div>
         <div class="tree-root" id="treeRoot"></div>
         <nav id="tree" class="tree"></nav>
+        <div id="planWrap" hidden>
+          <div class="side-h">Project map</div>
+          <p class="plan-path" id="planPath"></p>
+          <ol id="plan" class="plan"></ol>
+        </div>
         <div class="side-h">Problems <span id="probCount" class="count"></span></div>
         <ul id="problems" class="problems"></ul>
       </div>
@@ -186,10 +192,35 @@
         <input id="newName" value="My project" spellcheck="false" autocomplete="off">
       </div>
       <label class="new-save" id="newSaveRow" hidden><input type="checkbox" id="newSave" checked> Choose a folder for it now</label>
+      <p class="new-alt">Or <button type="button" class="linklike" id="newToBuilder">answer a few questions</button>, and get a project made of the parts that kind of project is built from, in order.</p>
       <div class="imp-actions">
         <span class="imp-note">The project you have now is kept: type "restore" in the terminal to swap back.</span>
         <button type="button" class="btn primary" id="newGo">Create project</button>
       </div>
+    </div>
+  </div>
+
+  <div class="modal" id="builderModal" hidden>
+    <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="bldTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="bldTitle">Project builder</h2>
+          <p>Answer a few questions. You'll get a project made of the parts that kind of project is built from, in the order you'd build them, each marked Walk, Hallway or Horizon.</p>
+        </div>
+        <button type="button" class="btn small" id="bldClose">Close</button>
+      </div>
+      <nav class="bld-path" id="bldPath" aria-label="Your answers so far"></nav>
+      <div class="bld-body" id="bldBody"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="stepModal" hidden>
+    <div class="modal-card step-card" role="dialog" aria-modal="true" aria-labelledby="stepTitle">
+      <div class="modal-h">
+        <div><h2 id="stepTitle">Step</h2></div>
+        <button type="button" class="btn small" id="stepClose">Close</button>
+      </div>
+      <div id="stepBody"></div>
     </div>
   </div>
 
@@ -231,5 +262,6 @@
 <script src="lang/convert.js"></script>
 <script src="lang/blueprints.js"></script>
 <script src="lang/tutor.js"></script>
+<script src="lang/builder.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

@@ -32,6 +32,12 @@ Tick each one. If something is off, note what you did and what the terminal said
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
+**Project builder**
+- [ ] File → Project builder… → App → PC → Audio workstation (DAW). Tick Mixer, Build my project: the Project map
+      lists the steps in order, and Problems lists the hallway ‹blanks›.
+- [ ] Click a step: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the blanks and
+      Run: the terminal shows the peak and RMS levels, and `output.wav` plays.
+
 **Tutor**
 - [ ] Build **Number guessing game**, press **Tutor**, and click a line: a balloon explains a Python habit on it.
 - [ ] Press **✎ Your turn** under the explanation and write the line in Python: a wrong answer says so; a right one

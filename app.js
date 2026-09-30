@@ -75,6 +75,18 @@
     if (sections.includes(null) || new Set(sections.map(s => s.id)).size !== sections.length || sections.length > KIND_FILES[kind].length) return null;
     const out = { version: 1, lang: 'python', kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: sections.some(s => s.id === p.active) ? p.active : sections[sections.length - 1].id };
     if (typeof p.board === 'string' && BOARD_ID.test(p.board)) out.board = p.board;
+    // the project builder's map: steps in order, each a name, a depth and plain-language notes
+    if (p.plan && typeof p.plan === 'object' && Array.isArray(p.plan.steps)) {
+      const str = (v, n = 3000) => (typeof v === 'string' ? v.slice(0, n) : '');
+      out.plan = {
+        title: str(p.plan.title, 120),
+        path: Array.isArray(p.plan.path) ? p.plan.path.slice(0, 8).map(x => str(x, 80)) : [],
+        steps: p.plan.steps.slice(0, 60).filter(s => s && /^[\w-]{1,40}$/.test(s.id) && Number.isInteger(s.n)).map(s => ({
+          id: s.id, n: s.n, name: str(s.name, 120), depth: ['walk', 'hallway', 'horizon'].includes(s.depth) ? s.depth : 'horizon',
+          summary: str(s.summary), usual: str(s.usual), learn: str(s.learn),
+        })),
+      };
+    }
     return out;
   }
 
@@ -312,7 +324,7 @@
     const text = ta.value.split('\n')[li] || '';
     const box = $('explain');
     if (!r || !text.trim()) {
-      box.innerHTML = `<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
+      box.innerHTML = `${planBanner(li)}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
         <div class="ex-hint"><span>Start from an idea: open <b>Blueprints</b> and fill in the blanks.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Put your cursor on any line to see how it becomes ${sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]}.</span></div>`;
       return;
     }
@@ -327,7 +339,7 @@
     const cards = tutor.on ? cardsForSentence(sec, li) : [];
     if (!(cards.length && cards.every(known))) inf.notes.forEach(n => items.push(`<li>${withCode(n)}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim()).map(i => i + 1);
-    box.innerHTML = `<div class="ex-map">
+    box.innerHTML = `${planBanner(li)}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim())}</div></div>
         <div class="ex-arrow" aria-hidden="true">→</div>
         <div class="ex-cell"><span class="ex-lbl">${LANG_NAME[secLang(sec)]} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
@@ -389,7 +401,7 @@
   function refreshAll() {
     clearTimeout(compileTimer);
     compile();
-    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderProblems();
+    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderPlan(); renderProblems();
     tutorSoon();
     schedulePreview();
   }
@@ -730,6 +742,8 @@
     return `<div class="ex-tutor"><div class="ex-tutor-h"><span class="ex-lbl">In Python</span>${act}</div>${items.length ? `<ul>${items.join('')}</ul>` : ''}</div>`;
   }
   $('explain').addEventListener('click', (e) => {
+    const step = e.target.closest('[data-plan]');
+    if (step) return openStep(+step.dataset.plan);
     const b = e.target.closest('[data-tutor]');
     if (!b) return;
     if (b.dataset.tutor === 'turn') showExercise(caretLine());
@@ -816,7 +830,7 @@
     if (tutor.on) tutorRun.timer = setTimeout(tutorCheck, delay);
   }
   function tutorCheck() {
-    if (!tutor.on || mode !== 'write' || !tip.hidden || !$('bpModal').hidden || !$('newModal').hidden) return;
+    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])')) return;
     const sec = activeSec();
     if (secLang(sec) !== 'python') return;
     if (!tutorRun.reader) return loadTutorReader();
@@ -2127,6 +2141,155 @@
   });
   $('newName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createNewProject(); } });
 
+  /* ------------------------------------------------------------------ */
+  /* Project builder: questions -> a kit of components -> a project     */
+  /* with a map of ordered steps (Walk, Hallway, Horizon)                */
+  /* ------------------------------------------------------------------ */
+
+  const BUILDER = window.IntuiBuilder;
+  const bld = { trail: [], kit: null, ticked: new Set() };   // trail: the options chosen so far
+  const depthChip = (d) => `<span class="depth d-${d}">${BUILDER.DEPTHS[d].label}</span>`;
+
+  function openBuilder() {
+    setFileMenu(false);
+    closeNewProject();
+    bld.trail = []; bld.kit = null;
+    $('builderModal').hidden = false;
+    renderBuilder();
+  }
+  function closeBuilder() { $('builderModal').hidden = true; }
+
+  function renderBuilder() {
+    const lib = BUILDER.library;
+    $('bldPath').innerHTML = [`<button type="button" class="bld-crumb" data-back="0">Start</button>`]
+      .concat(bld.trail.map((t, i) => `<span class="bld-sep" aria-hidden="true">›</span><button type="button" class="bld-crumb" data-back="${i + 1}"${i === bld.trail.length - 1 ? ' aria-current="step"' : ''}>${escHtml(t.label)}</button>`)).join('');
+    if (bld.kit) return renderKit(lib.kits[bld.kit]);
+    const q = lib.questions[bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start'];
+    $('bldBody').innerHTML = `<h3 class="bld-ask">${escHtml(q.ask)}</h3>
+      <div class="new-kinds bld-options">${q.options.map((o, i) => `<button type="button" class="new-kind" data-opt="${i}"><b>${escHtml(o.label)}</b><span>${escHtml(o.means)}</span></button>`).join('')}</div>`;
+    const first = $('bldBody').querySelector('.new-kind');
+    if (first) first.focus();
+  }
+
+  function renderKit(kit) {
+    const lib = BUILDER.library;
+    if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the library isn\'t written yet. Go back and choose another path.</p>'; return; }
+    let n = 0;
+    const rows = kit.steps.map(s => {
+      const c = lib.components[s.id];
+      if (!c) return '';
+      const on = s.always || bld.ticked.has(s.id);
+      return `<div class="bld-step${on ? ' on' : ''}">
+        <label><input type="checkbox" data-step="${escHtml(s.id)}"${on ? ' checked' : ''}${s.always ? ' disabled' : ''}>
+          <span class="bld-n">${on ? ++n : ''}</span>
+          <span class="bld-main"><span class="bld-name"><b>${escHtml(c.name)}</b> ${depthChip(c.depth)}${s.always ? ' <span class="dim">always part of it</span>' : ''}</span>
+          <span class="bld-sum">${withCode(c.summary)}</span></span></label>
+        ${c.usual || c.learn ? `<details class="bld-more"><summary>More</summary>${c.usual ? `<p><b>Usually made with:</b> ${withCode(c.usual)}</p>` : ''}${c.learn ? `<p><b>Learn first:</b> ${withCode(c.learn)}</p>` : ''}</details>` : ''}
+      </div>`;
+    }).join('');
+    const scroll = $('bldBody').querySelector('.bld-steps') ? $('bldBody').querySelector('.bld-steps').scrollTop : 0;
+    const name = $('bldName') ? $('bldName').value : kit.title;
+    $('bldBody').innerHTML = `<div class="bld-kit-h"><h3>${escHtml(kit.title)}</h3><p>${escHtml(kit.about)}</p>
+        <p class="bld-legend">${Object.keys(BUILDER.DEPTHS).map(d => `<span>${depthChip(d)} ${withCode(BUILDER.DEPTHS[d].means)}</span>`).join('')}</p></div>
+      <div class="bld-steps">${rows}</div>
+      <div class="imp-actions bld-actions">
+        <div class="imp-row new-name"><label for="bldName">Name</label><input id="bldName" value="${escHtml(name)}" spellcheck="false" autocomplete="off"></div>
+        <span class="imp-note">${n} step${n === 1 ? '' : 's'}, in this order. The project you have now is kept: type "restore" in the terminal to swap back.</span>
+        <button type="button" class="btn primary" id="bldGo">Build my project</button>
+      </div>`;
+    $('bldBody').querySelector('.bld-steps').scrollTop = scroll;
+  }
+
+  function builderGo() {
+    const kit = BUILDER.library.kits[bld.kit];
+    const name = ($('bldName').value || '').trim() || kit.title;
+    const { project: next } = BUILDER.build(BUILDER.library, kit.id, [...bld.ticked], slug(name), bld.trail.map(t => t.label));
+    closeBuilder();
+    replaceProject(next, `Built "${name}" with the project builder: ${next.plan.steps.length} steps, in the order you'd build them. The project map on the left explains each one.`);
+    const blanks = project.sections.reduce((k, s) => k + (s.text.match(/‹[^›]*›/g) || []).length, 0);
+    if (blanks) tLine(`Hallway steps have ${blanks} ‹blank${blanks === 1 ? '' : 's'}› for you to fill in: Problems on the left lists them.`, 't-sys');
+  }
+
+  $('bldClose').addEventListener('click', closeBuilder);
+  $('builderModal').addEventListener('click', (e) => { if (e.target.id === 'builderModal') closeBuilder(); });
+  $('bldPath').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-back]');
+    if (!b) return;
+    bld.trail = bld.trail.slice(0, +b.dataset.back); bld.kit = null;
+    renderBuilder();
+  });
+  $('bldBody').addEventListener('click', (e) => {
+    const opt = e.target.closest('[data-opt]');
+    if (opt) {
+      const lib = BUILDER.library;
+      const q = lib.questions[bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start'];
+      const o = q.options[+opt.dataset.opt];
+      bld.trail.push({ label: o.label, next: o.next });
+      if (o.kit) {
+        bld.kit = o.kit;
+        const kit = lib.kits[o.kit];
+        bld.ticked = new Set(o.ticked || (kit ? kit.steps.filter(s => s.ticked).map(s => s.id) : []));
+      }
+      return renderBuilder();
+    }
+    if (e.target.id === 'bldGo') builderGo();
+  });
+  $('bldBody').addEventListener('change', (e) => {
+    const box = e.target.closest('[data-step]');
+    if (!box) return;
+    if (box.checked) bld.ticked.add(box.dataset.step); else bld.ticked.delete(box.dataset.step);
+    renderKit(BUILDER.library.kits[bld.kit]);
+  });
+  $('btnBuilder').addEventListener('click', openBuilder);
+  $('newToBuilder').addEventListener('click', openBuilder);
+
+  /* The project map: the plan's steps, in order. Each opens a window about its role in the whole. */
+  function renderPlan() {
+    const plan = project.plan;
+    $('planWrap').hidden = !plan;
+    if (!plan) return;
+    $('planPath').textContent = plan.path.join(' › ');
+    $('plan').innerHTML = plan.steps.map(s => `<li><button type="button" class="plan-step" data-plan="${s.n}"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}</button></li>`).join('');
+  }
+  const stepText = (sec) => (sec.id === project.active ? ta.value : sec.text);
+  /* The step the cursor is in: the last "── Step n ·" note at or above it, in this folder. */
+  function planBanner(li) {
+    const plan = project.plan;
+    if (!plan) return '';
+    const text = ta.value;
+    let here = null;
+    for (const s of plan.steps) { const at = BUILDER.stepLine(text, s); if (at >= 0 && at <= li && (!here || at > here.at)) here = { s, at }; }
+    if (!here) return '';
+    const s = here.s;
+    return `<div class="ex-step"><span class="ex-lbl">Step ${s.n} of ${plan.steps.length}</span> <b>${escHtml(s.name)}</b> ${depthChip(s.depth)} <button type="button" class="linklike" data-plan="${s.n}">What it's for</button></div>`;
+  }
+  function openStep(n) {
+    const plan = project.plan, step = plan && plan.steps.find(s => s.n === n);
+    if (!step) return;
+    const places = project.sections.map(sec => ({ sec, line: BUILDER.stepLine(stepText(sec), step) })).filter(p => p.line >= 0);
+    $('stepTitle').textContent = `Step ${step.n} of ${plan.steps.length} · ${step.name}`;
+    $('stepBody').innerHTML = `<p class="step-depth">${depthChip(step.depth)} ${withCode(BUILDER.DEPTHS[step.depth].means)}</p>
+      <h4>Its role in the project</h4><p>${withCode(step.summary)}</p>
+      ${step.usual ? `<h4>Usually made with</h4><p>${withCode(step.usual)}</p>` : ''}
+      ${step.learn ? `<h4>Learn first</h4><p>${withCode(step.learn)}</p>` : ''}
+      ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(SECTION_META[p.sec.file].title)}</button>`).join('')}</div>` : ''}
+      <div class="bp-actions step-nav">
+        <button type="button" class="btn small" data-step-to="${step.n - 1}"${step.n > 1 ? '' : ' disabled'}>← Step ${step.n - 1 || ''}</button>
+        <button type="button" class="btn small" data-step-to="${step.n + 1}"${step.n < plan.steps.length ? '' : ' disabled'}>Step ${step.n < plan.steps.length ? step.n + 1 : ''} →</button>
+      </div>`;
+    $('stepModal').hidden = false;
+  }
+  function closeStep() { $('stepModal').hidden = true; }
+  $('plan').addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) openStep(+b.dataset.plan); });
+  $('stepClose').addEventListener('click', closeStep);
+  $('stepModal').addEventListener('click', (e) => {
+    if (e.target.id === 'stepModal') return closeStep();
+    const to = e.target.closest('[data-step-to]');
+    if (to) return openStep(+to.dataset.stepTo);
+    const go = e.target.closest('[data-go-sec]');
+    if (go) { closeStep(); setMode('write'); if (go.dataset.goSec !== project.active) openSection(go.dataset.goSec); goToLine(+go.dataset.goLine); }
+  });
+
   async function loadExampleProject() {
     closeImport();
     try {
@@ -2627,6 +2790,8 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
     if (e.key === 'Escape') {
       if (!tip.hidden) hideTip();
+      else if (!$('stepModal').hidden) closeStep();
+      else if (!$('builderModal').hidden) closeBuilder();
       else if (!$('newModal').hidden) closeNewProject();
       else if (!$('fileList').hidden) setFileMenu(false);
       else if (!$('bpModal').hidden) closeBlueprints();

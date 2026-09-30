@@ -149,6 +149,25 @@ try {
     if (!/Exactly right/.test(verdict)) throw new Error(verdict);
   });
 
+  await check('the project builder narrows a project down and lays out its steps', async () => {
+    const r = await js(() => {
+      const pick = (label) => { const b = [...document.querySelectorAll('#bldBody [data-opt]')].find(x => x.textContent.trim().startsWith(label)); if (!b) throw new Error('No option ' + label); b.click(); };
+      document.getElementById('btnFile').click();
+      document.getElementById('btnBuilder').click();
+      pick('App'); pick('PC'); pick('Audio workstation');
+      const mixer = document.querySelector('#bldBody [data-step="mixer"]'); if (!mixer.checked) mixer.click();
+      document.getElementById('bldName').value = 'e2e studio';
+      document.getElementById('bldGo').click();
+      const steps = [...document.querySelectorAll('#plan .plan-step')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
+      const blanks = [...document.querySelectorAll('#problems li')].filter(li => /Fill in the/.test(li.textContent)).length;
+      document.querySelectorAll('#plan .plan-step')[3].click();
+      const title = document.getElementById('stepTitle').textContent;
+      document.getElementById('stepClose').click();
+      return { steps, blanks, title, open: !document.getElementById('builderModal').hidden };
+    });
+    if (r.open || r.steps.length < 4 || !/^1\s*Sound in and out/.test(r.steps[0]) || !r.steps.some(s => /Mixer/.test(s) && /Hallway/i.test(s)) || r.blanks < 1 || !/^Step 4 of/.test(r.title)) throw new Error(JSON.stringify(r));
+  });
+
   await check('runs a shell command with $', async () => {
     await clearTerminal();
     await typeInTerminal('$ echo shell-says-hi');

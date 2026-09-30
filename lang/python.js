@@ -367,6 +367,7 @@
     // 6. Check every name.
     q = q.replace(/(?<![\w.⟦⟪])([A-Za-z_]\w*)\b(?!⟫)/g, (m, id, off, whole) => {
       if (PY_KEYWORDS.has(id) || bound.has(id)) return id;
+      if (id === '_' && x.info.errs.some(e => e.startsWith('Fill in the'))) return id; // an unfilled ‹slot›, already reported
       if (/^\s*=(?!=)/.test(whole.slice(off + m.length))) return id; // keyword argument, e.g. end=""
       const low = id.toLowerCase();
       if (x.syms.has(id)) {

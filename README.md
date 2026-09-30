@@ -70,6 +70,24 @@ over and over
 In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
 uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
+**Project builder: a map before you start**
+
+File → **Project builder…** asks a few questions to narrow down what you're making (App › PC › Audio
+workstation, a webpage, an online service, a gadget…), then lists the parts such a project usually
+has, in the order you'd build them. Tick the ones you want and IntuiCode lays them out in your
+folders as sentences, with a **Project map** beside the folders. Each step says how much is done
+for you:
+
+- **Walk**: written out in full, to read, run and change.
+- **Hallway**: the structure is there and the key parts are named; you fill in the ‹blanks›, with
+  notes to guide you (a DAW's EQ gives you the filter and leaves its transfer-function numbers to you).
+- **Horizon**: what it is, what it's usually made with, and what to learn first. Too big to write
+  for you, but now you know where it goes.
+
+Click a step for its role in the project and a jump to its sentences; the explanation panel says
+which step your cursor is in. The questions, parts and steps are plain text in `lang/builder.js`
+(the format is at the top of the file), so they can be edited or added to like blueprints.
+
 **Tutor: think in the language's style**
 
 Press **Tutor** in the menu bar. As you write, a tip balloon points out how Python likes things said,
