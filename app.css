@@ -2,11 +2,11 @@
   /* Layout: IDE shell. Project folders | sentences ⇄ Python, side by side | explain strip + terminal beneath.
    * Look: "pink Windows 95". Very light pink behind everything; oxblood, mint, peach and honey for frames,
    * bevels, highlights and details; one dark "movie terminal". Always light: there is no dark theme. */
-  --paper: #FCE9EF;
-  --panel: #FFF3F6;
-  --panel-2: #F8DCE4;
-  --field: #FFF8FA;
-  --rule: #E0AFBC;
+  --paper: #F9E1E9;
+  --panel: #FCEBF0;
+  --panel-2: #F5D5DF;
+  --field: #FDF0F4;
+  --rule: #DDA6B5;
   --ink: #2A0F16;
   --ink-2: #5C2A36;
   --ink-3: #7A4B57;
@@ -20,7 +20,7 @@
   --num: #9A4812;
   --op: #7A2E78;
   --var: #1D6470;
-  --com: #85616B;
+  --com: #775360;
   --fn: #9E461A;
   --good: #1C6A4E;
   --warn: #875700;
@@ -41,14 +41,15 @@
   --mint: #A8E6CE;
   --peach: #FFC6A5;
   --honey: #F2B640;
-  --bevel-hi: #FFFFFF;
-  --bevel-lo: #D69AAA;
+  --bevel-hi: #FFF4F7;
+  --bevel-lo: #D292A3;
   --bevel-dark: #5B1426;
   --title: linear-gradient(90deg, #4E1020 0%, #7C2238 55%, #A8455C 100%);
-  --title-ink: #FFFFFF;
-  --title-dim: #F6D2DA;
-  --face: linear-gradient(#FFF9FB, #F6DCE4);
-  --face-hover: linear-gradient(#FFFFFF, #FBE6EC);
+  --title-ink: #FFF1F5;
+  --title-dim: #F4CDD7;
+  --face: linear-gradient(#FDEEF3, #F3D3DD);
+  --face-hover: linear-gradient(#FFF3F6, #F8DEE6);
+  --pressed: #EFC9D4;
   --raised: inset 1px 1px 0 var(--bevel-hi), inset -1px -1px 0 var(--bevel-lo);
   --sunken: inset 1px 1px 0 var(--bevel-lo), inset 2px 2px 0 rgba(91, 20, 38, .14), inset -1px -1px 0 var(--bevel-hi);
   --texture: radial-gradient(rgba(242, 182, 64, .20) 1px, transparent 1.4px) 0 0 / 6px 6px,
@@ -540,12 +541,12 @@ select.blank { text-align: left; cursor: pointer; }
 }
 .btn:hover { background: var(--face-hover); }
 .btn:active, .btn[aria-expanded="true"], .btn[aria-pressed="true"] {
-  background: #F4D3DC; color: var(--ink); border-color: var(--bevel-dark); box-shadow: var(--sunken);
+  background: var(--pressed); color: var(--ink); border-color: var(--bevel-dark); box-shadow: var(--sunken);
 }
 .btn:focus-visible { outline: 2px dotted var(--oxblood); outline-offset: -6px; }
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { border-color: var(--bevel-dark); background: var(--face-hover); box-shadow: var(--raised); }
-.btn.ghost[aria-expanded="true"] { border-color: var(--bevel-dark); background: #F4D3DC; box-shadow: var(--sunken); }
+.btn.ghost[aria-expanded="true"] { border-color: var(--bevel-dark); background: var(--pressed); box-shadow: var(--sunken); }
 /* the default button (Run): honey, with the heavier frame Windows gives a default button */
 .btn.primary {
   background: linear-gradient(#FFDB88, #F2B640); color: var(--oxblood); border-color: var(--oxblood);
@@ -669,7 +670,7 @@ kbd { border: 1px solid var(--bevel-dark); border-radius: 2px; background: var(-
 
 /* Chunky scrollbars with a dithered track */
 ::-webkit-scrollbar { width: 15px; height: 15px; }
-::-webkit-scrollbar-track { background: repeating-conic-gradient(#F4D3DC 0 25%, var(--panel) 0 50%) 0 0 / 2px 2px; }
+::-webkit-scrollbar-track { background: repeating-conic-gradient(var(--pressed) 0 25%, var(--panel) 0 50%) 0 0 / 2px 2px; }
 ::-webkit-scrollbar-thumb { background: var(--face); border: 1px solid var(--bevel-dark); box-shadow: var(--raised); }
 ::-webkit-scrollbar-thumb:hover { background: var(--face-hover); }
 ::-webkit-scrollbar-corner { background: var(--panel-2); }
