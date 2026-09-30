@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadEngine } from './helpers/engine.mjs';
+import { execFileSync } from 'node:child_process';
+import { loadEngine, PYTHON } from './helpers/engine.mjs';
 
 const { L } = loadEngine();
 
@@ -48,6 +49,12 @@ const CASES = [
   ['define f\n    description: Does f.\n    description:\n    description: More.\n    description:\n    give back 1', 'def f():\n    """Does f.\n\n    More.\n    """\n    return 1'],
   // text in triple quotes over several python: lines keeps its spaces
   ['python: def f(item):\n    python: """Doc:\n    python:\n    python:         item: the thing\n    python:     """\n    python: return item', 'def f(item):\n    """Doc:\n\n        item: the thing\n    """\n    return item'],
+  // a tool run inside a value: its brackets stay with its name, before "length of" and the like apply
+  ['define all notes\n    give back ["a", "b"]\nshow "{length of all notes()}"', 'def all_notes():\n    return ["a", "b"]\nprint(f"{len(all_notes())}")'],
+  ['define open database\n    give back 1\nset db to open database()', 'def open_database():\n    return 1\ndb = open_database()'],
+  ['define all notes\n    give back ["a"]\nshow length of all notes ()\nshow first item of all notes()\nshow all notes() as text', 'def all_notes():\n    return ["a"]\nprint(len(all_notes()))\nprint(all_notes()[0])\nprint(str(all_notes()))'],
+  ['define get name\n    give back " a "\nshow length of get name().strip()', 'def get_name():\n    return " a "\nprint(len(get_name().strip()))'],
+  ['define notes using x\n    give back [x]\nset x to 1\nshow length of notes(sorted([x]))\nset y to max (x, 2)', 'def notes(x):\n    return [x]\nx = 1\nprint(len(notes(sorted([x]))))\ny = max(x, 2)'],
 ];
 
 for (const [sentences, expected] of CASES) {
@@ -75,6 +82,11 @@ const ERRORS = [
   ['if x is 1', /Nothing is indented/],
   ['please', /only has filler/],
   ['    show "x"', /indented, but the line above/],
+  // brackets that would apply to the result of "length of x" (len(x) (…)): never silently wrong
+  ['set x to [1]\nshow length of x (0)', /brackets after "length of x" don't belong to anything/],
+  ['set x to [[1]]\nshow length of x [0]', /write them right after it, with no space: `x\[…\]`/],
+  ['define f using a\n    give back [a]\nshow length of f(f(f(f(f(1)))))', /can't follow the brackets/],
+  ['define f using a\n    give back [a]\nshow length of f(1', /can't follow the brackets/],
 ];
 for (const [sentences, re] of ERRORS) {
   test(`explains a problem: ${sentences.trim()}`, () => {
@@ -85,6 +97,11 @@ for (const [sentences, re] of ERRORS) {
 test('unknown names are warnings with a suggestion', () => {
   const out = py('set score to 1\nshow scroe');
   assert.ok(out.warnings.some(w => /Did you mean `score`/.test(w)));
+});
+
+test('a tool run inside {…} in text runs the tool, not what "length of" gives back', () => {
+  const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'define all notes\n    give back ["a", "b"]\nshow "{length of all notes()} notes"' }] }).results.main;
+  assert.equal(execFileSync(PYTHON, ['-c', r.text], { encoding: 'utf8' }).trim(), '2 notes');
 });
 
 test('tools that change outside values get `global`', () => {

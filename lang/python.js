@@ -142,8 +142,11 @@
   /* Expressions: phrase swaps                                           */
   /* ------------------------------------------------------------------ */
 
-  // An operand: a protected string, a number, a name (with calls/indexes), or a bracketed group.
-  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*(?:\.\w+)*(?:\([^()]*\)|\[[^\[\]]*\])*|\([^()]*\)|\[[^\[\]]*\])`;
+  // Brackets with brackets inside, up to 4 deep (a regular expression can't count further).
+  const nest = (o, c) => { let s = `[^${o}${c}]*`; for (let i = 0; i < 3; i++) s = `(?:[^${o}${c}]|${o}${s}${c})*`; return o + s + c; };
+  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]');
+  // An operand: a protected string, a number, a name or a bracketed group, then any .names, calls and indexes.
+  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|${PAREN}|${SQUARE})(?:\.[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
   // "\b" can't sit before quoted text (⟦0⟧), so operands use a look-behind instead.
   const R = (src) => new RegExp(src.replace(/\\b\(OPD\)/g, '(?<![\\w.])(OPD)').replace(/OPD/g, OPD), 'gi');
 
@@ -211,6 +214,8 @@
     { re: /\botherwise\b/gi, to: ' else ', note: '`a if condition else b` picks one of two values in a single line.' },
     { re: /\b(and|or|not)\b/gi, to: (m) => m.toLowerCase() },
   ];
+  // Rules ending in an operand, like "length of x": what follows it must not belong to it (see tExpr).
+  for (const r of EXPR_RULES) r.endsInOperand = r.re.source.endsWith(`(${OPD})`);
 
   /* ------------------------------------------------------------------ */
   /* The per-line context: collects notes, warnings, errors              */
@@ -318,6 +323,19 @@
   /* Expression translation                                              */
   /* ------------------------------------------------------------------ */
 
+  /* Brackets right after a phrase like "length of x" would apply to its result: len(x) (…) runs the
+     number len gives back. That is an error on the line, never Python that is silently wrong. */
+  function looseBrackets(m, q, strs, x) {
+    const after = q.slice(m.index + m[0].length), last = m[m.length - 1];
+    const said = (t) => t.trim().replace(/⟦(\d+)⟧/g, (_, i) => strs[+i]);
+    if (/^\s+[([]/.test(after)) {
+      const br = after.trim()[0] === '(' ? '(…)' : '[…]';
+      x.err(`The brackets after "${said(m[0])}" don't belong to anything.` + (/^[A-Za-z_]\w*$/.test(last) ? ` If they go with ${code(last)}, write them right after it, with no space: ${code(last + br)}.` : ''));
+    } else if (/^[([]/.test(after)) {
+      x.err(`The translator can't follow the brackets in "${said(m[0] + after.match(/^\S*/)[0])}": too many inside each other, or one isn't closed. Work out the inner part on the line before and store it, or write this line as python:.`);
+    }
+  }
+
   function tExpr(src, x, opts = {}) {
     let s = String(src == null ? '' : src).trim();
     if (!s) { x.err('Something is missing here: a value or a condition.'); return 'None'; }
@@ -330,8 +348,13 @@
     if (/["]/.test(q)) { x.err('A piece of text is missing its closing quote mark (").'); q = q.replace(/"/g, ''); }
     if (/(^|\s)'|'(\s|$)/.test(q)) { x.err("A piece of text is missing its closing quote mark (')."); }
 
-    // 2. Multi-word names -> snake_case names.
-    for (const m of multiNames(x.env)) q = q.replace(m.re, ' ' + m.py + ' ');
+    // 2. Multi-word names -> snake_case names. Brackets or a .name right after one stay attached: all_notes().
+    for (const m of multiNames(x.env)) q = q.replace(m.re, (w, off, all) => ' ' + m.py + (/^(?:[([]|\.[A-Za-z_])/.test(all.slice(off + w.length)) ? '' : ' '));
+    // 2b. A tool's name and its brackets belong together even with a space between: "all notes ()" runs all_notes.
+    q = q.replace(/(?<![\w.])([A-Za-z_]\w*)\s+\(/g, (w, id) => {
+      const kind = x.syms.get(id)?.kind;
+      return (kind ? kind === 'function' || kind === 'class' : BUILTINS.has(id)) ? id + '(' : w;
+    });
 
     // 3. Filler words.
     q = q.replace(/\bthe\b/gi, ' ').replace(/\s+/g, ' ').trim();
@@ -355,6 +378,7 @@
       let guard = 0, prev;
       do {
         prev = q;
+        if (r.endsInOperand) for (const m of q.matchAll(r.re)) looseBrackets(m, q, strs, x);
         q = q.replace(r.re, r.to);
         if (q !== prev) {
           if (r.note) x.note(r.note);
