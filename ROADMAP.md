@@ -25,7 +25,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 5 | C++: Read mode first, then Write basics; compile with the local toolchain in the desktop app | done (first version) |
 | 6 | Everything into sentences: HTML, CSS, JavaScript, C++ and Arduino → sentences with exactness checks; C++ classes; Arduino in Write mode; Visual Studio's compiler; tests of the real desktop app | done |
 | 7 | Tutor and style tour (Python): tip balloons on a language's habits, "Your turn" lines checked exactly, notes that fade as you learn, and a style tour of any file | done (Python, C++ and Arduino; HTML, CSS and JavaScript next) |
-| 8 | Project builder: questions that narrow a project down (App › PC › DAW…), components you tick, and a project map of ordered steps, each marked Walk, Hallway or Horizon | done (Python and Arduino kits; editing the library in the app next) |
+| 8 | Project builder: questions that narrow a project down (App › PC › DAW…), components you tick, and a project map of ordered steps, each marked Walk, Hallway or Horizon | done (Python, website and Arduino kits, with hallway steps in each; the library can be edited in the app) |
 
 The direction, since step 7: IntuiCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,

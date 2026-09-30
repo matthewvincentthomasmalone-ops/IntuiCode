@@ -2175,24 +2175,33 @@
   /* ------------------------------------------------------------------ */
 
   const BUILDER = window.IntuiBuilder;
-  const bld = { trail: [], kit: null, ticked: new Set() };   // trail: the options chosen so far
+  const bld = { trail: [], kit: null, ticked: new Set(), edit: null };   // trail: the options chosen so far; edit: the library editor
   const depthChip = (d) => `<span class="depth d-${d}">${BUILDER.DEPTHS[d].label}</span>`;
+  // Your own questions, kits and steps, as plain text. They come after the built-in ones, so one with the same id replaces it.
+  const MY_KITS_KEY = 'intuicode.kits.v1';
+  let myKits = store.get(MY_KITS_KEY, []);   // [{ id, source }]
+  let bldLib = null;
+  const bldLibrary = () => bldLib || (bldLib = BUILDER.libraryWith(myKits.map(m => m.source)));
+  const saveKits = () => { store.set(MY_KITS_KEY, myKits); bldLib = null; };
 
   function openBuilder() {
     setFileMenu(false);
     closeNewProject();
-    bld.trail = []; bld.kit = null;
+    bld.trail = []; bld.kit = null; bld.edit = null;
     $('builderModal').hidden = false;
     renderBuilder();
   }
   function closeBuilder() { $('builderModal').hidden = true; }
 
   function renderBuilder() {
-    const lib = BUILDER.library;
+    if (bld.edit) return renderKitEditor();
+    const lib = bldLibrary();
     $('bldPath').innerHTML = [`<button type="button" class="bld-crumb" data-back="0">Start</button>`]
-      .concat(bld.trail.map((t, i) => `<span class="bld-sep" aria-hidden="true">›</span><button type="button" class="bld-crumb" data-back="${i + 1}"${i === bld.trail.length - 1 ? ' aria-current="step"' : ''}>${escHtml(t.label)}</button>`)).join('');
+      .concat(bld.trail.map((t, i) => `<span class="bld-sep" aria-hidden="true">›</span><button type="button" class="bld-crumb" data-back="${i + 1}"${i === bld.trail.length - 1 ? ' aria-current="step"' : ''}>${escHtml(t.label)}</button>`)).join('')
+      + '<button type="button" class="bld-crumb bld-edit-lib" id="bldEditLib">Change the questions and steps</button>';
     if (bld.kit) return renderKit(lib.kits[bld.kit]);
-    const q = lib.questions[bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start'];
+    const qid = bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start', q = lib.questions[qid];
+    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the library. Go back, or add it with "Change the questions and steps".</p>`; return; }
     $('bldBody').innerHTML = `<h3 class="bld-ask">${escHtml(q.ask)}</h3>
       <div class="new-kinds bld-options">${q.options.map((o, i) => `<button type="button" class="new-kind" data-opt="${i}"><b>${escHtml(o.label)}</b><span>${escHtml(o.means)}</span></button>`).join('')}</div>`;
     const first = $('bldBody').querySelector('.new-kind');
@@ -2200,7 +2209,7 @@
   }
 
   function renderKit(kit) {
-    const lib = BUILDER.library;
+    const lib = bldLibrary();
     if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the library isn\'t written yet. Go back and choose another path.</p>'; return; }
     let n = 0;
     const rows = kit.steps.map(s => {
@@ -2229,9 +2238,9 @@
   }
 
   function builderGo() {
-    const kit = BUILDER.library.kits[bld.kit];
+    const kit = bldLibrary().kits[bld.kit];
     const name = ($('bldName').value || '').trim() || kit.title;
-    const { project: next } = BUILDER.build(BUILDER.library, kit.id, [...bld.ticked], slug(name), bld.trail.map(t => t.label));
+    const { project: next } = BUILDER.build(bldLibrary(), kit.id, [...bld.ticked], slug(name), bld.trail.map(t => t.label));
     closeBuilder();
     replaceProject(next, `Built "${name}" with the project builder: ${next.plan.steps.length} steps, in the order you'd build them. The project map on the left explains each one.`);
     const blanks = project.sections.reduce((k, s) => k + (s.text.match(/‹[^›]*›/g) || []).length, 0);
@@ -2241,15 +2250,132 @@
   $('bldClose').addEventListener('click', closeBuilder);
   $('builderModal').addEventListener('click', (e) => { if (e.target.id === 'builderModal') closeBuilder(); });
   $('bldPath').addEventListener('click', (e) => {
+    if (e.target.id === 'bldEditLib') { bld.edit = { sel: null, text: null, editing: null }; return renderBuilder(); }
+    if (e.target.id === 'bldEditDone') { bld.edit = null; bld.trail = []; bld.kit = null; return renderBuilder(); }
     const b = e.target.closest('[data-back]');
     if (!b) return;
     bld.trail = bld.trail.slice(0, +b.dataset.back); bld.kit = null;
     renderBuilder();
   });
+
+  /* The library editor: every question, kit and step, as the plain text it is. A built-in entry is changed
+   * by editing a copy: yours has the same id, so it replaces the built-in one (delete yours to put it back). */
+  const ENTRY_GROUP = { question: 'Questions', kit: 'Kits', component: 'Steps' };
+  const NEW_ENTRY = {
+    component: 'component: my-step\nname: My step\ndepth: walk\nsummary: Its role in the whole project, in plain words.\nusual: What people usually make it with.\nlearn: What to learn first.\n== main\nshow "Hello from my step"',
+    kit: 'kit: my-kit\ntitle: My kind of project\nlayout: structured\nabout: One line shown above its list of steps.\nsteps: my-step!',
+    question: 'question: my-question\nask: What should it do?\noption: Something | What that means | kit my-kit',
+  };
+  const kitSource = (sel) => (sel.src === 'built' ? BUILDER.BUILT_IN[sel.i] : myKits[sel.i].source);
+  function kitEntries() {
+    const mine = myKits.map((m, i) => ({ ...BUILDER.describeEntry(m.source), src: 'mine', i }));
+    const yours = new Set(mine.map(m => m.kind + ':' + m.id));
+    const built = BUILDER.BUILT_IN.map((s, i) => ({ ...BUILDER.describeEntry(s), src: 'built', i })).map(b => ({ ...b, replaced: yours.has(b.kind + ':' + b.id) }));
+    return { built, mine };
+  }
+  /* What the whole library says about an entry (a kit listing a step that isn't written yet, say), with this text in its place. */
+  function kitLinkProblems(text, editing) {
+    const d = BUILDER.describeEntry(text);
+    if (!d.id) return [];
+    const sources = myKits.map(m => m.source);
+    if (editing && editing.src === 'mine') sources[editing.i] = text; else sources.push(text);
+    return BUILDER.libraryWith(sources).problems.filter(p => p.includes(`"${d.id}"`));
+  }
+  const kitProblemsHtml = (own, link) => own.map(p => `<div>${escHtml(p)}</div>`).join('') + link.map(p => `<div class="kit-link">${escHtml(p)} (Fine while you write it; the builder skips it until then.)</div>`).join('');
+
+  function renderKitEditor() {
+    const ed = bld.edit, { built, mine } = kitEntries();
+    const listScroll = $('bldBody').querySelector('.kit-ed .bp-list') ? $('bldBody').querySelector('.kit-ed .bp-list').scrollTop : 0;
+    $('bldPath').innerHTML = '<button type="button" class="bld-crumb" id="bldEditDone">← Back to the questions</button><span class="bld-sep" aria-hidden="true">·</span><span class="dim">Questions, kits and steps, as plain text. Your changes are kept on this computer.</span>';
+    const item = (e) => `<button type="button" class="bp-item${ed.sel && ed.sel.src === e.src && ed.sel.i === e.i ? ' on' : ''}" data-ent="${e.src}:${e.i}"><b>${escHtml(e.title || 'Untitled')}</b><span>${escHtml(e.id || '?')}${e.src === 'mine' ? ' · yours' : e.replaced ? ' · replaced by yours' : ''}${e.problems.length ? ' · needs fixing' : ''}</span></button>`;
+    const group = (kind) => { const list = [...mine.filter(e => e.kind === kind), ...built.filter(e => e.kind === kind)]; return list.length ? `<div class="bp-group">${ENTRY_GROUP[kind]}</div>` + list.map(item).join('') : ''; };
+    const unread = mine.filter(e => !e.kind);
+    $('bldBody').innerHTML = `<div class="bp-layout kit-ed">
+      <nav class="bp-list" aria-label="Questions, kits and steps">
+        <div class="bp-mk kit-new"><button type="button" class="btn small" data-new="component">New step</button><button type="button" class="btn small" data-new="kit">New kit</button><button type="button" class="btn small" data-new="question">New question</button></div>
+        ${group('question')}${group('kit')}${group('component')}${unread.length ? '<div class="bp-group">Not readable yet</div>' + unread.map(item).join('') : ''}
+      </nav>
+      <div class="bp-detail" id="kitDetail"></div></div>`;
+    $('bldBody').querySelector('.kit-ed .bp-list').scrollTop = listScroll;
+    renderKitDetail();
+  }
+
+  function renderKitDetail() {
+    const ed = bld.edit, box = $('kitDetail');
+    if (ed.text != null) {
+      const d = BUILDER.describeEntry(ed.text);
+      box.innerHTML = `<div class="bp-edit">
+        <label class="ex-lbl" for="kitSrc">${ed.editing && ed.editing.src === 'mine' ? 'Your entry' : ed.editing ? 'Your copy (same id, so it replaces the built-in one; change the id on the first line to add a new one instead)' : 'Your new entry'}</label>
+        <textarea id="kitSrc" spellcheck="false">${escHtml(ed.text)}</textarea>
+        <div class="bp-errors" id="kitErrors">${kitProblemsHtml(d.problems, kitLinkProblems(ed.text, ed.editing))}</div>
+        <details class="bp-help"><summary>How the text works</summary>
+          <ul>
+            <li><code>question: id</code>, <code>ask:</code> the question, then one <code>option: label | what it means | where it leads</code> per answer. It leads to another question's id, or to <code>kit id</code>, optionally with the steps it ticks: <code>kit webpage: hero, gallery</code>. The first question is <code>start</code>.</li>
+            <li><code>kit: id</code>, <code>title:</code>, <code>layout:</code> <code>script</code>, <code>structured</code>, <code>website</code> or <code>arduino</code>, <code>about:</code>, and <code>steps:</code> in build order: <code>!</code> after a step means always included, <code>*</code> ticked at first.</li>
+            <li><code>component: id</code> (a step), <code>name:</code>, <code>depth:</code> <code>walk</code>, <code>hallway</code> or <code>horizon</code>, <code>summary:</code> its role, <code>usual:</code> what it's usually made with, <code>learn:</code> what to learn first.</li>
+            <li>A step's sentences go under a folder: <code>== settings</code>, <code>== tools</code> or <code>== main</code> (Python); <code>== structure</code>, <code>== styling</code> or <code>== mechanics</code> (website); <code>== settings</code>, <code>== start</code> or <code>== loop</code> (Arduino).</li>
+            <li>A hallway step leaves <code>‹blanks›</code> to fill in, with a hint inside: <code>set gain to ‹a number from 0 to 1›</code>. A walk step has none.</li>
+          </ul>
+        </details>
+        <div class="bp-actions"><button type="button" class="btn primary" id="kitSave"${d.problems.length ? ' disabled' : ''}>Save</button><button type="button" class="btn" id="kitCancel">Cancel</button></div>
+      </div>`;
+      $('kitSrc').addEventListener('input', (e) => {
+        ed.text = e.target.value;
+        const p = BUILDER.describeEntry(ed.text);
+        $('kitErrors').innerHTML = kitProblemsHtml(p.problems, kitLinkProblems(ed.text, ed.editing));
+        $('kitSave').disabled = !!p.problems.length;
+      });
+      return;
+    }
+    if (!ed.sel) {
+      box.innerHTML = `<h3 class="bp-title">Make the builder yours</h3>
+        <p>Every question the builder asks, every kind of project it knows (a kit) and every step in them is a short piece of plain text. Pick one on the left to read it.</p>
+        <p>To change a built-in one, edit a copy: yours replaces it, and deleting yours puts the original back. Or start something new: a step first, then a kit that lists it, then an option in a question that leads to the kit.</p>`;
+      return;
+    }
+    const src = kitSource(ed.sel), d = BUILDER.describeEntry(src), mine = ed.sel.src === 'mine';
+    const replaced = !mine && myKits.some(m => { const x = BUILDER.describeEntry(m.source); return x.kind === d.kind && x.id === d.id; });
+    const overrides = mine && BUILDER.BUILT_IN.some(s => { const x = BUILDER.describeEntry(s); return x.kind === d.kind && x.id === d.id; });
+    box.innerHTML = `<div class="bp-kind">${escHtml({ question: 'Question', kit: 'Kit', component: 'Step' }[d.kind] || 'Entry')} · ${escHtml(d.id || '?')}${mine ? ' · yours' : ' · built in'}</div>
+      <h3 class="bp-title">${escHtml(d.title || 'Untitled')}</h3>
+      ${d.problems.length || mine ? `<div class="bp-errors">${kitProblemsHtml(d.problems, mine ? kitLinkProblems(src, ed.sel) : [])}</div>` : ''}
+      <pre class="kit-src">${escHtml(src)}</pre>
+      <div class="bp-actions">
+        ${mine ? `<button type="button" class="btn" id="kitEdit">Edit</button><button type="button" class="btn ghost" id="kitDelete">${overrides ? 'Delete mine (the built-in one comes back)' : 'Delete'}</button>`
+          : replaced ? '<span class="bp-note">Yours replaces this one: it\'s listed as "yours".</span>' : '<button type="button" class="btn" id="kitCopyEdit">Edit a copy</button>'}
+        <button type="button" class="btn ghost" id="kitCopyText">Copy as text</button>
+      </div>`;
+  }
+
+  $('bldBody').addEventListener('click', (e) => {
+    if (!bld.edit) return;
+    const ed = bld.edit;
+    const ent = e.target.closest('[data-ent]');
+    if (ent) { const [src, i] = ent.dataset.ent.split(':'); ed.sel = { src, i: +i }; ed.text = null; ed.editing = null; return renderKitEditor(); }
+    const nw = e.target.closest('[data-new]');
+    if (nw) { ed.sel = null; ed.editing = null; ed.text = NEW_ENTRY[nw.dataset.new]; renderKitEditor(); $('kitSrc').focus(); return; }
+    const id = e.target.id;
+    if (id === 'kitCopyEdit' || id === 'kitEdit') { ed.text = kitSource(ed.sel); ed.editing = { ...ed.sel }; renderKitDetail(); $('kitSrc').focus(); }
+    if (id === 'kitCancel') { ed.text = null; ed.editing = null; renderKitDetail(); }
+    if (id === 'kitCopyText') copyText(kitSource(ed.sel), e.target, 'Copy as text');
+    if (id === 'kitDelete') {
+      if (e.target.dataset.confirm !== 'yes') { e.target.dataset.confirm = 'yes'; e.target.textContent = 'Click again to delete'; return; }
+      myKits.splice(ed.sel.i, 1); saveKits(); ed.sel = null; renderKitEditor();
+    }
+    if (id === 'kitSave') {
+      if (BUILDER.describeEntry(ed.text).problems.length) return;
+      let at;
+      if (ed.editing && ed.editing.src === 'mine') { at = ed.editing.i; myKits[at].source = ed.text; }
+      else { myKits.push({ id: Date.now().toString(36), source: ed.text }); at = myKits.length - 1; }
+      saveKits();
+      ed.sel = { src: 'mine', i: at }; ed.text = null; ed.editing = null;
+      renderKitEditor();
+    }
+  });
   $('bldBody').addEventListener('click', (e) => {
     const opt = e.target.closest('[data-opt]');
     if (opt) {
-      const lib = BUILDER.library;
+      const lib = bldLibrary();
       const q = lib.questions[bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start'];
       const o = q.options[+opt.dataset.opt];
       bld.trail.push({ label: o.label, next: o.next });
@@ -2266,7 +2392,7 @@
     const box = e.target.closest('[data-step]');
     if (!box) return;
     if (box.checked) bld.ticked.add(box.dataset.step); else bld.ticked.delete(box.dataset.step);
-    renderKit(BUILDER.library.kits[bld.kit]);
+    renderKit(bldLibrary().kits[bld.kit]);
   });
   $('btnBuilder').addEventListener('click', openBuilder);
   $('newToBuilder').addEventListener('click', openBuilder);

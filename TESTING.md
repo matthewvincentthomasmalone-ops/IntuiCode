@@ -37,6 +37,8 @@ Tick each one. If something is off, note what you did and what the terminal said
       lists the steps in order, and Problems lists the hallway ‹blanks›.
 - [ ] Click a step: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the blanks and
       Run: the terminal shows the peak and RMS levels, and `output.wav` plays.
+- [ ] In the builder, **Change the questions and steps** → the EQ step → Edit a copy, change its name, Save. Back to
+      the questions → App → PC → DAW: the EQ row has your name. Delete yours: the original comes back.
 
 **Tutor**
 - [ ] Build **Number guessing game**, press **Tutor**, and click a line: a balloon explains a Python habit on it.

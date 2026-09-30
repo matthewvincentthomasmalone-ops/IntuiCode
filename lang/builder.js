@@ -1264,6 +1264,40 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     return { head, sections, options };
   }
 
+  /* One entry on its own: what it is, its id, a title for lists, and its own problems (what the whole
+   * library says about it, like a kit listing a step that doesn't exist yet, comes from parseLibrary). */
+  const FOLDERS = ['settings', 'tools', 'main', 'structure', 'styling', 'mechanics', 'start', 'loop'];
+  function describeEntry(text) {
+    const { head, sections, options } = parseEntry(text);
+    const kind = ['question', 'kit', 'component'].find(k => head[k] != null) || null;
+    const id = kind ? head[kind] : '';
+    const problems = [];
+    if (!kind) problems.push('The first line says what this is: "question: …", "kit: …" or "component: …".');
+    else if (!/^[\w-]+$/.test(id)) problems.push(`"${id}" can't be an id: use letters, numbers and dashes, like my-step.`);
+    if (kind === 'question') {
+      if (!head.ask) problems.push('Add "ask:" with the question itself.');
+      if (!options.length) problems.push('Add at least one "option: label | what it means | where it leads" (the id of the next question, or "kit" and a kit\'s id).');
+      options.forEach((o, i) => { if (!o.label || (!o.next && !o.kit)) problems.push(`Option ${i + 1} needs a label and where it leads, like "option: PC | Windows, macOS or Linux | pc".`); });
+    }
+    if (kind === 'kit') {
+      if (head.layout && !LAYOUT_FILES[head.layout]) problems.push(`"layout: ${head.layout}" isn't one of script, structured, website or arduino.`);
+      if (!head.steps) problems.push('Add "steps:" with its components in build order, like "steps: first!, second*, third".');
+    }
+    if (kind === 'component') {
+      if (!head.name) problems.push('Add "name:" with its plain-language name.');
+      if (!DEPTHS[head.depth]) problems.push('Add "depth: walk", "depth: hallway" or "depth: horizon".');
+      if (!head.summary) problems.push('Add "summary:" with its role in the whole project, in plain words.');
+      for (const s of Object.keys(sections)) if (!FOLDERS.includes(s)) problems.push(`"== ${s}" isn't a folder. Use settings, tools or main (Python), structure, styling or mechanics (website), or settings, start or loop (Arduino).`);
+      const blanks = Object.values(sections).some(ls => ls.some(l => /‹[^›]*›/.test(l) && !/^\s*(?:note|comment)\s*:/i.test(l)));
+      if (head.depth === 'hallway' && !blanks) problems.push('A hallway step leaves ‹blanks› to fill in: put at least one in its sentences, like "set gain to ‹a number from 0 to 1›".');
+      if (head.depth === 'walk' && blanks) problems.push('A walk step is written in full: fill in its ‹blanks›, or make it "depth: hallway".');
+    }
+    return { kind, id, title: kind === 'question' ? head.ask || id : head.title || head.name || id, problems };
+  }
+
+  /* The built-in library with someone's own entries after it: an entry of theirs with the same id replaces the built-in one. */
+  const libraryWith = (mine) => parseLibrary([...BUILT_IN, ...(mine || [])]);
+
   /* All entries -> { questions, kits, components, problems }. Problems are listed, not thrown, so one
    * broken entry someone wrote doesn't stop the rest from working. */
   function parseLibrary(entries) {
@@ -1340,5 +1374,5 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
   }
 
   const library = parseLibrary(BUILT_IN);
-  window.IntuiBuilder = { BUILT_IN, DEPTHS, parseEntry, parseLibrary, build, stepLine, library };
+  window.IntuiBuilder = { BUILT_IN, DEPTHS, parseEntry, parseLibrary, describeEntry, libraryWith, build, stepLine, library };
 })();

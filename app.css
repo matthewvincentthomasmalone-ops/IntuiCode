@@ -745,6 +745,12 @@ kbd { border: 1px solid var(--bevel-dark); border-radius: 2px; background: var(-
 .step-depth { color: var(--ink-2); }
 .step-go { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .step-nav { justify-content: space-between; }
+/* Changing the builder's questions, kits and steps */
+.bld-edit-lib { margin-left: auto; font-weight: 600; }
+.kit-ed { min-height: 0; }
+.kit-new { flex-direction: row; flex-wrap: wrap; margin: 0 8px 6px; }
+.kit-src { margin: 8px 0 0; padding: 10px 12px; font: 13px/1.55 var(--f-say); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--field); box-shadow: var(--sunken); max-height: 52vh; overflow: auto; }
+.bp-errors .kit-link { color: var(--warn); }
 
 /* Chunky scrollbars with a dithered track */
 ::-webkit-scrollbar { width: 15px; height: 15px; }

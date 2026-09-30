@@ -90,6 +90,33 @@ test('the library reads without problems', () => {
   assert.ok(lib.questions.start, 'the first question is "start"');
 });
 
+test('every built-in entry passes the editor\'s own checks', () => {
+  const bad = B.BUILT_IN.map(s => B.describeEntry(s)).filter(d => d.problems.length).map(d => `${d.id}: ${d.problems.join(' / ')}`);
+  assert.deepEqual(plain(bad), []);
+});
+
+test('the editor explains a broken entry, and yours replace the built-in ones with the same id', () => {
+  const problems = (text) => plain(B.describeEntry(text).problems).join('\n');
+  assert.match(problems('name: no first line'), /The first line says what this is/);
+  assert.match(problems('component: my step\nname: x\ndepth: walk\nsummary: y'), /can't be an id/);
+  assert.match(problems('component: s\nname: x\ndepth: deep\nsummary: y'), /depth: walk/);
+  assert.match(problems('component: s\nname: x\ndepth: hallway\nsummary: y\n== main\nshow "hi"'), /leaves ‹blanks›/);
+  assert.match(problems('component: s\nname: x\ndepth: walk\nsummary: y\n== main\nset a to ‹b›'), /written in full/);
+  assert.match(problems('component: s\nname: x\ndepth: walk\nsummary: y\n== middle\nshow 1'), /isn't a folder/);
+  assert.match(problems('kit: k\nlayout: phone'), /isn't one of script/);
+  assert.match(problems('question: q\nask: Why?\noption: Only a label'), /needs a label and where it leads/);
+  assert.equal(problems('component: s\nname: x\ndepth: hallway\nsummary: y\nnote: a ‹blank› in a note doesn\'t count\n== main\nset a to ‹b›'), '');
+  // yours come after the built-in entries: the same id replaces one, a new id adds one
+  const mine = B.libraryWith(['component: eq\nname: My EQ\ndepth: horizon\nsummary: Later.', 'question: start\nask: Mine?\noption: A greeter | Says hello | kit greeter',
+    'kit: greeter\ntitle: A greeter\nlayout: script\nsteps: hello!', 'component: hello\nname: Hello\ndepth: walk\nsummary: Says hello.\n== main\nshow "hello"']);
+  assert.equal(mine.components.eq.name, 'My EQ');
+  assert.equal(mine.questions.start.ask, 'Mine?');
+  assert.deepEqual(plain(mine.problems), []);
+  const { project } = B.build(mine, 'greeter', [], 'hi', []);
+  assert.equal(compile(project).results.main.text.trim(), '# ── Step 1 · Hello (Walk) ──\nprint("hello")');
+  assert.equal(B.library.components.eq.name, 'EQ: shaping the tone', 'the built-in library is untouched');
+});
+
 test('every question leads to a real question or kit, with real ticked steps, and every kit can be reached', () => {
   const seen = new Set(['start']), kitsReached = new Set(), queue = ['start'];
   while (queue.length) {

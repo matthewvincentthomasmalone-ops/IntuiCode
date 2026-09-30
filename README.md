@@ -85,8 +85,14 @@ for you:
   for you, but now you know where it goes.
 
 Click a step for its role in the project and a jump to its sentences; the explanation panel says
-which step your cursor is in. The questions, parts and steps are plain text in `lang/builder.js`
-(the format is at the top of the file), so they can be edited or added to like blueprints.
+which step your cursor is in.
+
+The questions, kits and steps are plain text, and **Change the questions and steps** (in the
+builder) lets you read and edit every one of them. Edit a copy of a built-in step and yours
+replaces it (delete yours to get the original back); or write your own step, a kit that lists it,
+and an answer to a question that leads there. Each entry is checked as you type (a hallway step
+needs ‹blanks›, a walk step none), and your entries are kept on your computer. The built-in library,
+and the format, are in `lang/builder.js`.
 
 **Tutor: think in the language's style**
 
