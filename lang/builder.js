@@ -23,6 +23,9 @@
  *   shelf: games                           its kind: where it sits in the Library and in the questions (see SHELVES)
  *   platform: phone                        where it runs: pc, phone, web or board (from the layout if left out)
  *   asks: webpage                          optional: a question of its own, asked before its steps
+ *   module: Snake                          optional: kits that are versions of one module are offered together
+ *   version: Website · annotated            …each as one version of it
+ *   annotated: yes                         its steps' teach: lines become notes (otherwise they're left out)
  *   about: One line shown above the list.
  *   steps: sound!, fader*, eq*, mixer, monitoring      in build order; ! always in, * ticked at first
  *
@@ -33,6 +36,7 @@
  *   usual: What people usually use for it (mostly for horizon steps).
  *   learn: What to learn first.
  *   == tools                               sentences for a folder: settings, tools, main (Python),
+ *   teach: what this adds, and why         (in sentences: a note, but only in annotated kits)
  *   define apply fader using samples, …    structure, styling, mechanics (website), or settings,
  *                                          start, loop (Arduino: they go around "when the board
  *                                          starts" and "over and over")
@@ -50,6 +54,7 @@
    * making?" lists the shelves, and each shelf's question lists its kits, so a kit (yours too) appears in
    * planning as soon as it says which shelf it sits on. Kits and blueprints also say where they run. */
   const SHELVES = [
+    { id: 'modules', title: 'Learning modules', ask: 'Which module?', about: 'Classic games built step by step, in order: Snake, then Invaders, then a night sky, then a side-scrolling platformer. The annotated versions say what each part adds, and why.' },
     { id: 'games', title: 'Games', ask: 'Which game?', about: 'Things to play: platformers, top-down adventures, puzzles, word games, one-thumb phone games.' },
     { id: 'productivity', title: 'Productivity', ask: 'Which kind of productivity app?', about: 'To-dos, notes, planners and timers: tools for getting things done.' },
     { id: 'money', title: 'Money', ask: 'Which money app?', about: 'Budgets, shared bills and subscriptions.' },
@@ -1309,6 +1314,8 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       if (!head.steps) problems.push('Add "steps:" with its components in build order, like "steps: first!, second*, third".');
       if (head.shelf && !SHELVES.some(x => x.id === head.shelf)) problems.push(`"shelf: ${head.shelf}" isn't a shelf of the Library. Use one of: ${SHELVES.map(x => x.id).join(', ')}.`);
       if (head.platform && !PLATFORMS[head.platform]) problems.push(`"platform: ${head.platform}" isn't one of ${Object.keys(PLATFORMS).join(', ')}.`);
+      if (head.annotated && !/^(yes|no|true|false)$/i.test(head.annotated)) problems.push('"annotated:" is yes or no.');
+      if (head.version && !head.module) problems.push('A kit with "version:" also says which "module:" it\'s a version of.');
     }
     if (kind === 'component') {
       if (!head.name) problems.push('Add "name:" with its plain-language name.');
@@ -1333,15 +1340,34 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     const shelves = SHELVES.filter(sh => sh.ask).concat([{ id: 'other', title: 'Your other kits', ask: 'Which kit?', about: 'Kits that don\'t say which shelf they sit on.' }]);
     const on = (sh) => kits.filter(k => (sh.id === 'other' ? !SHELVES.some(x => x.id === k.shelf && x.ask) : k.shelf === sh.id));
     const option = (k) => ({ label: k.title, means: `${PLATFORMS[k.platform]} · ${k.about}`, next: k.asks && lib.questions[k.asks] ? k.asks : null, kit: k.asks && lib.questions[k.asks] ? null : k.id, ticked: null });
-    // a shelf with one kit needs no question of its own: its answer leads straight to the kit
+    const slugOf = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    /* A shelf's choices: its kits, with the versions of one module gathered into one choice and a question of their own. */
+    const choices = (list) => {
+      const out = [], modules = new Map();
+      for (const k of list) {
+        if (!k.module) { out.push(option(k)); continue; }
+        if (!modules.has(k.module)) { modules.set(k.module, []); out.push({ module: k.module }); }
+        modules.get(k.module).push(k);
+      }
+      return out.map(o => {
+        if (!o.module) return o;
+        const versions = modules.get(o.module), id = 'module-' + slugOf(o.module);
+        if (versions.length === 1) return { ...option(versions[0]), label: o.module };
+        if (!lib.questions[id]) lib.questions[id] = { id, ask: `Which version of ${o.module.replace(/^\d+\s*·\s*/, '')}?`, made: true,
+          options: versions.map(k => ({ ...option(k), label: k.version || k.title })) };
+        return { label: o.module, means: `${versions.length} versions: ${[...new Set(versions.map(k => PLATFORMS[k.platform]))].join(', ')}${versions.some(k => k.annotated) ? ', with notes on what each part adds' : ''}. ${versions[0].about}`, next: id, kit: null, ticked: null };
+      });
+    };
+    // a shelf with one choice needs no question of its own: its answer leads straight to it
     for (const sh of shelves) {
-      const id = 'shelf-' + sh.id;
-      if (on(sh).length > 1 && !lib.questions[id]) lib.questions[id] = { id, ask: sh.ask, options: on(sh).map(option), made: true };
+      const id = 'shelf-' + sh.id, list = choices(on(sh));
+      if (list.length > 1 && !lib.questions[id]) lib.questions[id] = { id, ask: sh.ask, options: list, made: true };
+      else if (list.length === 1) sh.only = list[0];
     }
     if (!lib.questions.start) lib.questions.start = { id: 'start', ask: 'What are you making?', made: true,
       options: shelves.filter(sh => on(sh).length).map(sh => (lib.questions['shelf-' + sh.id]
         ? { label: sh.title, means: sh.about, next: 'shelf-' + sh.id, kit: null, ticked: null }
-        : { ...option(on(sh)[0]), label: sh.title, means: sh.about })) };
+        : { ...(sh.only || option(on(sh)[0])), label: sh.title, means: sh.about })) };
   }
 
   /* All entries -> { questions, kits, components, problems }. Problems are listed, not thrown, so one
@@ -1355,6 +1381,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
         lib.kits[head.kit] = {
           id: head.kit, title: head.title || head.kit, layout: head.layout || 'structured', about: head.about || '', shelf: head.shelf || '',
           platform: PLATFORMS[head.platform] ? head.platform : ({ website: 'web', arduino: 'board' }[head.layout] || 'pc'), asks: head.asks || '',
+          module: head.module || '', version: head.version || '', annotated: /^(yes|true)$/i.test(head.annotated || ''),
           steps: (head.steps || '').split(',').map(x => x.trim()).filter(Boolean).map(x => ({ id: x.replace(/[!*]+$/, ''), always: /!$/.test(x), ticked: /[!*]$/.test(x) })),
         };
       } else if (head.component) {
@@ -1391,8 +1418,10 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     const text = Object.fromEntries(files.map(f => [f, []]));
     const arduino = { settings: [], start: [], loop: [] };
     const add = (list, lines) => { if (list.length) list.push(''); list.push(...lines); };
+    const taught = (lines) => lines.flatMap(l => { const m = l.match(/^(\s*)teach\s*:\s?(.*)$/i); return !m ? [l] : kit.annotated ? [`${m[1]}note: ${m[2]}`] : []; });
     steps.forEach((c, i) => {
       const header = stepNote(i + 1, c);
+      c = { ...c, sections: Object.fromEntries(Object.entries(c.sections).map(([f, ls]) => [f, taught(ls)])) };
       if (kit.layout === 'arduino') {
         for (const part of ['settings', 'start', 'loop']) {
           if (!c.sections[part]) continue;

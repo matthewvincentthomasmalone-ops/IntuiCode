@@ -108,6 +108,21 @@ test('the Library: every kit and project blueprint is on a shelf, and every shel
   assert.deepEqual(plain(B.pathToKit(lib, 'webpage')).map(o => o.label).slice(-1), ['Something else'], 'the answer that keeps the kit\'s own ticks');
 });
 
+test('learning modules: versions of a module are asked together, and teach: lines are notes only when annotated', () => {
+  const step = 'component: m-step\nname: A step\ndepth: walk\nsummary: Shows a word.\n== main\nteach: This line shows a word, so you can see it runs.\nshow "hi"';
+  const kit = (id, version, annotated) => `kit: ${id}\ntitle: Mod ${version}\nlayout: script\nshelf: modules\nplatform: pc\nmodule: 9 · Mod\nversion: ${version}\nannotated: ${annotated}\nabout: A test module.\nsteps: m-step!`;
+  const mine = B.libraryWith([step, kit('mod-plain', 'Python', 'no'), kit('mod-notes', 'Python · annotated', 'yes')]);
+  assert.deepEqual(plain(mine.problems), []);
+  const q = mine.questions['module-9-mod'];
+  assert.ok(q, 'the module has a question of its own');
+  assert.deepEqual(plain(q.options.map(o => [o.label, o.kit])), [['Python', 'mod-plain'], ['Python · annotated', 'mod-notes']]);
+  assert.ok(Object.values(mine.questions).some(x => x.options.some(o => o.next === 'module-9-mod')), 'the module is offered once, leading to its versions');
+  const text = (id) => B.build(mine, id, [], 't', []).project.sections[0].text;
+  assert.match(text('mod-notes'), /^note: This line shows a word, so you can see it runs\.$/m);
+  assert.doesNotMatch(text('mod-plain'), /This line shows a word/);
+  assert.equal(L.compileProject({ sections: [{ id: 'main', file: 'main', text: text('mod-notes') }] }).results.main.info.flatMap(i => i.errs).length, 0);
+});
+
 test('every built-in entry passes the editor\'s own checks', () => {
   const bad = B.BUILT_IN.map(s => B.describeEntry(s)).filter(d => d.problems.length).map(d => `${d.id}: ${d.problems.join(' / ')}`);
   assert.deepEqual(plain(bad), []);
