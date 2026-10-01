@@ -137,6 +137,8 @@ try {
     await blueprint('Empty script');
     await setSentences('create list names with "Ann", "Bo"\nfor each name in names\n    show name');
     await click('btnTutor');
+    // (the code is written a moment after typing stops)
+    await waitFor('the code line', () => js(() => [...document.querySelectorAll('#pycode .pl')].some(e => /for name in names/.test(e.textContent))), 10000);
     if (!(await pickCode(/for name in names/))) throw new Error('no code line to pick');
     await waitFor('a Python balloon by the code', () => js(() => !document.getElementById('tip').hidden && /In Python/.test(document.getElementById('tip').innerText) && document.getElementById('tip').dataset.pane === 'code'), 120000);
     const verdict = await js(() => {
@@ -192,6 +194,7 @@ try {
   await check('the tutor speaks C++ too, and checks a line of C++ exactly', async () => {
     await blueprint('C++ guessing game');
     await click('btnTutor');
+    await waitFor('the code line', () => js(() => [...document.querySelectorAll('#pycode .pl')].some(e => /guesses \+= 1;/.test(e.textContent))), 10000);
     if (!(await pickCode(/guesses \+= 1;/))) throw new Error('no code line to pick');
     await waitFor('the C++ notes', () => js(() => /In C\+\+/i.test((document.querySelector('.ex-tutor') || {}).textContent || '') && !!document.querySelector('[data-tutor="turn"]')), 120000);
     const verdict = await js(() => {
