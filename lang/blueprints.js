@@ -9,8 +9,11 @@
  *   title: Countdown
  *   kind: snippet                      project | snippet
  *   layout: script                     projects only: script | structured | website | cpp | arduino
- *   shelf: pc                          projects only: where it sits in the Library (pc, phone, web,
- *                                      service, gadget, lessons or start; see lang/builder.js)
+ *   shelf: games                       projects only: its kind, where it sits in the Library (games,
+ *                                      productivity, money, health, learning, creative, social, tools,
+ *                                      web, service, gadget, lessons or start; see SHELVES in lang/builder.js)
+ *   platform: phone                    projects only: where it runs (pc, phone, web, board; from the layout
+ *                                      if left out)
  *   about: One line shown in the list.
  *   story:
  *   Count down from [start: 10] to [stop at: 1], then show [finish: "Lift off!"].
@@ -147,7 +150,7 @@ if not ok
     show "That withdrawal was refused."
 `,
 `title: C++ guessing game
-shelf: pc
+shelf: games
 kind: project
 layout: cpp
 about: The number guessing game, in C++.
@@ -217,7 +220,7 @@ when cta is clicked
 [end]
 `,
 `title: To-do list page
-shelf: web
+shelf: productivity
 kind: project
 layout: website
 about: Type tasks into a box and they appear in a list.
@@ -267,7 +270,7 @@ when new-task is sent
 [end]
 `,
 `title: Number guessing game
-shelf: pc
+shelf: games
 kind: project
 layout: structured
 about: The computer picks a number and the player guesses it.
@@ -317,7 +320,7 @@ if guesses left is 0
     show "Out of guesses. It was" and secret
 `,
 `title: Quiz
-shelf: pc
+shelf: learning
 kind: project
 layout: structured
 about: Random maths questions with a score at the end.
@@ -360,7 +363,7 @@ repeat questions times
 show "You scored {score} out of {questions}."
 `,
 `title: Terminal to-do list
-shelf: pc
+shelf: productivity
 kind: project
 layout: structured
 about: A to-do list you use by typing commands.
@@ -527,14 +530,14 @@ show "Picked:" and picked [thing]
   function parse(text) {
     const errors = [];
     const lines = text.replace(/\r/g, '').split('\n');
-    const meta = { title: '', kind: 'project', layout: 'script', about: '', shelf: '' };
+    const meta = { title: '', kind: 'project', layout: 'script', about: '', shelf: '', platform: '' };
     let i = 0;
     for (; i < lines.length; i++) {
       const l = lines[i];
       if (/^story\s*:/i.test(l)) { i++; break; }
-      const m = l.match(/^(title|kind|layout|about|shelf)\s*:\s*(.*)$/i);
+      const m = l.match(/^(title|kind|layout|about|shelf|platform)\s*:\s*(.*)$/i);
       if (m) meta[m[1].toLowerCase()] = m[2].trim();
-      else if (l.trim()) errors.push(`Line ${i + 1}: expected "title:", "kind:", "layout:", "shelf:", "about:" or "story:".`);
+      else if (l.trim()) errors.push(`Line ${i + 1}: expected "title:", "kind:", "layout:", "shelf:", "platform:", "about:" or "story:".`);
     }
     const story = [];
     for (; i < lines.length && !/^==\s*\w/.test(lines[i]); i++) story.push(lines[i]);
@@ -552,7 +555,8 @@ show "Picked:" and picked [thing]
     meta.kind = /snippet/i.test(meta.kind) ? 'snippet' : 'project';
     meta.layout = /arduino|sketch|board/i.test(meta.layout) ? 'arduino' : /c\+\+|cpp/i.test(meta.layout) ? 'cpp' : /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
     // A project with no shelf goes where its kind of project usually does.
-    meta.shelf = (meta.shelf || (meta.layout === 'arduino' ? 'gadget' : meta.layout === 'website' ? 'web' : 'pc')).toLowerCase();
+    meta.shelf = (meta.shelf || (meta.layout === 'arduino' ? 'gadget' : meta.layout === 'website' ? 'web' : 'tools')).toLowerCase();
+    meta.platform = (meta.platform || (meta.layout === 'arduino' ? 'board' : meta.layout === 'website' ? 'web' : 'pc')).toLowerCase();
     if (!meta.title) errors.push('Add a "title:" line.');
     if (!Object.keys(sections).length) errors.push('Add at least one section, e.g. "== main" (or "== here" for a snippet).');
     const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'arduino' ? ['sketch'] : meta.layout === 'cpp' ? ['program'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];

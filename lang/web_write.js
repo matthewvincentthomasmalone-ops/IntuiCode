@@ -551,7 +551,18 @@
     const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_$][\w$]*(?:\.[\w$]+)*(?:\([^()]*\)|\[[^\[\]]*\])*)`;
     const R = (p) => new RegExp(p.replace(/OPD/g, OPD), 'gi');
     q = q.replace(/\bthe\b/gi, ' ');
-    q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `document.getElementById("${toId(id)}").${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : m; });
+    // games: a key held down (with "keep track of the keys"), where a tap was, a drawing area's size
+    q = q.replace(/(?:\bkey\s+)?⟦(\d+)⟧\s+is\s+(?:held(?:\s+down)?|down)\b/gi, (m, n) => {
+      if (!x.vars.has('keysDown')) inf.errs.push('Keys held down need "keep track of the keys", once, near the top of Mechanics.');
+      strs.push(JSON.stringify(keyName(strs[+n])));
+      note(inf, '`keysDown.has(…)` is true while that key is held down, so movement keeps going for as long as you hold it.');
+      return ` keysDown.has(⟦${strs.length - 1}⟧) `;
+    });
+    q = q.replace(/\b(?:tap|click|pointer)(?:'s)?\s+(x|y)\b/gi, (m, a) => ` event.offset${a.toUpperCase()} `);
+    // (an element's id goes in as quoted text, so the names below leave it alone)
+    const byId = (id) => { strs.push(`"${toId(id)}"`); return `document.getElementById(⟦${strs.length - 1}⟧)`; };
+    q = q.replace(R(String.raw`\b(width|height) of ([\w-]+)`), (m, wh, id) => (x.shared.ids[toId(id)] ? `${byId(id)}.${wh.toLowerCase()}` : m));
+    q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `${byId(id)}.${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : m; });
     q = q.replace(R(String.raw`\bfirst item (?:of|in) (OPD)`), '$1[0]').replace(R(String.raw`\blast item (?:of|in) (OPD)`), '$1[$1.length - 1]');
     q = q.replace(R(String.raw`\bitem (OPD) (?:of|in) (OPD)`), '$2[$1]');
     q = q.replace(R(String.raw`\b(?:length|size) of (OPD)`), '$1.length').replace(R(String.raw`\bhow many (?:items )?in (OPD)`), '$1.length');
@@ -570,7 +581,7 @@
     // names: page elements used bare become the element
     q = q.replace(/(?<![\w$.⟦])([A-Za-z_$][\w$-]*)(?![\w$⟧])/g, (m, id, off) => {
       if (params.has(id)) return id;
-      if (/^(true|false|null|undefined|Math|Number|String|document|window|console|JSON|Date|localStorage|this|new|typeof|await|async|function|return)$/.test(id)) return id;
+      if (/^(true|false|null|undefined|Math|Number|String|document|window|console|JSON|Date|localStorage|this|new|typeof|await|async|function|return|event)$/.test(id)) return id;
       if (x.vars.has(id) || x.fns.has(id)) return id;
       const el = x.shared.ids[toId(id)];
       if (el && !x.vars.has(id)) return `document.getElementById("${toId(id)}")`;
@@ -594,6 +605,13 @@
     return q;
   }
 
+  /* "left", "space", "a" -> the key names the browser uses ("ArrowLeft", " ", "a"). */
+  function keyName(said) {
+    const k = String(said).trim().replace(/^["'`]|["'`]$/g, '');
+    const named = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', space: ' ', 'space bar': ' ', spacebar: ' ', enter: 'Enter', return: 'Enter', escape: 'Escape', esc: 'Escape', shift: 'Shift', tab: 'Tab' };
+    return named[k.toLowerCase()] || (k.length === 1 ? k.toLowerCase() : k);
+  }
+
   function elementRef(name, x, inf) {
     const id = toId(name);
     const el = x.shared.ids[id];
@@ -615,6 +633,7 @@
       if ((m = s.match(/^(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\s+(?:called\s+)?([A-Za-z_$][\w$]*)/i))) x.vars.add(m[1]);
       if ((m = s.match(/\band store (?:it |the reply )?in\s+([A-Za-z_$][\w$]*)$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s/i))) x.vars.add(m[1]);
+      if (/^keep track of (?:the )?keys$/i.test(s)) x.vars.add('keysDown');
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p)); }
       if ((m = s.match(/^(?:js|javascript|raw)\s*:(.*)$/i))) {
         for (const d of m[1].matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
@@ -672,7 +691,7 @@
         if (nextIsElse) { stack.push(b); scopes[scopes.length - 1] = new Map(); break; }
         scopes.pop();
         while (out.length && out[out.length - 1].text === '') out.pop();
-        push('  '.repeat(stack.length) + b.close, b.src);
+        for (const c of [].concat(b.close)) push('  '.repeat(stack.length) + c, b.src);
       }
       const pad = '  '.repeat(stack.length);
       const open = (head, close, kind) => { push(pad + head, i); stack.push({ ind, close, kind, src: i }); scopes.push(new Map()); };
@@ -694,6 +713,26 @@
         note(inf, 'Runs the indented lines once the page has finished loading.');
         return open(`document.addEventListener("DOMContentLoaded", ${needsAsync(i) ? 'async ' : ''}() => {`, '});', 'fn');
       }
+      if ((m = M(/^when (?:a|any) key is pressed$/i))) {
+        note(inf, 'A `keydown` listener on the whole page: `event.key` is the key that was pressed ("ArrowLeft", " " for space, "a").');
+        return open('document.addEventListener("keydown", (event) => {', '});', 'fn');
+      }
+      if ((m = M(/^when (?:the )?key\s+(.+?)\s+is pressed$/i))) {
+        const k = keyName(m[1]);
+        note(inf, `Runs once each time ${code(JSON.stringify(k))} is pressed. To move while a key is held down, use "if … is held" inside "every frame" instead.`);
+        open('document.addEventListener("keydown", (event) => {', '});', 'fn');
+        push('  '.repeat(stack.length) + `if (event.key !== ${JSON.stringify(k)}) return;`, i);
+        return;
+      }
+      if ((m = M(/^when (?:the )?(?:screen|page) is (?:tapped|touched)$/i))) {
+        note(inf, '`pointerdown` happens for a finger and for a mouse button alike, so the same lines work on a phone and a computer. "tap x" and "tap y" say where it was.');
+        return open('document.addEventListener("pointerdown", (event) => {', '});', 'fn');
+      }
+      if ((m = M(/^when\s+(.+?)\s+is\s+(?:tapped|touched)$/i))) {
+        const el = elementRef(m[1], x, inf);
+        note(inf, `\`pointerdown\` on ${code(el.id)}: a finger or a mouse. "tap x" and "tap y" are measured from its top left corner.`);
+        return open(`${el.js}.addEventListener("pointerdown", (event) => {`, '});', 'fn');
+      }
       if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)$/i))) {
         const ev = { clicked: 'click', pressed: 'click', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit' }[m[2].toLowerCase()];
         const el = elementRef(m[1], x, inf);
@@ -702,6 +741,17 @@
         open(`${el.js}.addEventListener("${ev}", ${needsAsync(i) ? 'async ' : ''}${isForm || usesEvent(i) ? '(event)' : '()'} => {`, '});', 'fn');
         if (isForm) push('  '.repeat(stack.length) + 'event.preventDefault();', i);
         return;
+      }
+      if (/^every frame$/i.test(s)) {
+        note(inf, '`requestAnimationFrame` runs the indented lines just before the screen is redrawn, usually 60 times a second, and asks for the next frame at the end.');
+        return open('requestAnimationFrame(function frame() {', ['  requestAnimationFrame(frame);', '});'], 'fn');
+      }
+      if (/^keep track of (?:the )?keys$/i.test(s)) {
+        note(inf, 'Remembers which keys are held down right now: added on `keydown`, taken out on `keyup`. A `Set` holds each key once.');
+        declare('keysDown', 'const');
+        say('const keysDown = new Set();');
+        say('document.addEventListener("keydown", (event) => keysDown.add(event.key));');
+        return say('document.addEventListener("keyup", (event) => keysDown.delete(event.key));');
       }
       if ((m = M(/^every\s+(\S+)\s+seconds?$/i))) { note(inf, '`setInterval` runs the indented lines again and again. The time is in milliseconds (1000 = 1 second).'); return open(`setInterval(${needsAsync(i) ? 'async ' : ''}() => {`, `}, ${Math.round(parseFloat(m[1]) * 1000)});`, 'fn'); }
       if ((m = M(/^after\s+(\S+)\s+seconds?$/i))) { note(inf, '`setTimeout` runs the indented lines once, after a delay in milliseconds.'); return open(`setTimeout(${needsAsync(i) ? 'async ' : ''}() => {`, `}, ${Math.round(parseFloat(m[1]) * 1000)});`, 'fn'); }
@@ -717,6 +767,50 @@
         const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
         note(inf, '`textContent` sets plain text safely: anything typed by users is shown as text, never run as code.');
         return say(`${el.js}.${prop} = ${E(m[2], inf)};`);
+      }
+      // --- drawing on a drawing area (a canvas), and sound
+      const isCanvas = (name) => (x.shared.ids[toId(name)] || {}).tag === 'canvas';
+      const colour = (t) => { t = t.trim(); return /^["'`]/.test(t) || x.vars.has(t) || !/^#?[\w-]+$/.test(t) ? E(t, inf) : JSON.stringify(t); };
+      const draw = (el, body) => { say('{'); push(pad + `  const pen = ${el.js}.getContext("2d");`, i); for (const l of body) push(pad + '  ' + l, i); say('}'); };
+      const penNote = () => note(inf, 'A drawing area is drawn on through its 2D "context", here called `pen`: set a colour, then fill a shape. Across is x, from the left; down is y, from the top.');
+      if ((m = M(/^(?:clear|empty)\s+(?:the drawing area\s+)?(.+)$/i)) && isCanvas(m[1])) {
+        const el = elementRef(m[1], x, inf);
+        note(inf, '`clearRect` wipes the whole drawing area, ready to draw the next frame.');
+        return say(`${el.js}.getContext("2d").clearRect(0, 0, ${el.js}.width, ${el.js}.height);`);
+      }
+      if ((m = M(/^fill\s+(.+?)\s+with\s+(.+)$/i)) && isCanvas(m[1])) {
+        const el = elementRef(m[1], x, inf); penNote();
+        return draw(el, [`pen.fillStyle = ${colour(m[2])};`, `pen.fillRect(0, 0, ${el.js}.width, ${el.js}.height);`]);
+      }
+      if ((m = M(/^draw (?:a |an )?(?:rectangle|box|square|block)\s+at\s+(.+?)\s*,\s*(.+?)\s+(?:sized|size|of size)\s+(.+?)\s+by\s+(.+?)\s+in\s+(.+?)\s+on\s+(.+)$/i))) {
+        const el = elementRef(m[6], x, inf); penNote();
+        return draw(el, [`pen.fillStyle = ${colour(m[5])};`, `pen.fillRect(${E(m[1], inf)}, ${E(m[2], inf)}, ${E(m[3], inf)}, ${E(m[4], inf)});`]);
+      }
+      if ((m = M(/^draw (?:a )?(?:circle|dot|ball)\s+at\s+(.+?)\s*,\s*(.+?)\s+(?:with (?:a )?)?radius\s+(.+?)\s+in\s+(.+?)\s+on\s+(.+)$/i))) {
+        const el = elementRef(m[5], x, inf);
+        note(inf, 'A circle is a path: `arc` goes round from 0 to 2π (a full turn, in radians), then `fill` colours it in.');
+        return draw(el, [`pen.fillStyle = ${colour(m[4])};`, 'pen.beginPath();', `pen.arc(${E(m[1], inf)}, ${E(m[2], inf)}, ${E(m[3], inf)}, 0, Math.PI * 2);`, 'pen.fill();']);
+      }
+      if ((m = M(/^draw (?:the )?text\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(?:in )?size\s+(\S+))?\s+in\s+(.+?)\s+on\s+(.+)$/i))) {
+        const el = elementRef(m[6], x, inf);
+        note(inf, '`fillText` draws text with its left end at x and its baseline (the line letters sit on) at y.');
+        return draw(el, [`pen.fillStyle = ${colour(m[5])};`, `pen.font = "${m[4] ? parseFloat(m[4]) || 16 : 16}px sans-serif";`, `pen.fillText(${E(m[1], inf)}, ${E(m[2], inf)}, ${E(m[3], inf)});`]);
+      }
+      if ((m = M(/^draw (?:a )?line\s+from\s+(.+?)\s*,\s*(.+?)\s+to\s+(.+?)\s*,\s*(.+?)\s+in\s+(.+?)\s+on\s+(.+)$/i))) {
+        const el = elementRef(m[6], x, inf);
+        note(inf, 'A line is a path: `moveTo` the start, `lineTo` the end, then `stroke` draws it.');
+        return draw(el, [`pen.strokeStyle = ${colour(m[5])};`, 'pen.lineWidth = 2;', 'pen.beginPath();', `pen.moveTo(${E(m[1], inf)}, ${E(m[2], inf)});`, `pen.lineTo(${E(m[3], inf)}, ${E(m[4], inf)});`, 'pen.stroke();']);
+      }
+      if ((m = M(/^play (?:a )?note (?:of )?(.+?)\s+for\s+(.+?)\s+seconds?$/i))) {
+        note(inf, 'The Web Audio API: an oscillator makes a tone at a pitch in hertz (440 is the note A), connected to the speakers, started now and stopped after the length. One sound output is shared by every note.');
+        say('{');
+        push(pad + '  window.sound = window.sound || new AudioContext();', i);
+        push(pad + '  const note = window.sound.createOscillator();', i);
+        push(pad + `  note.frequency.value = ${E(m[1], inf)};`, i);
+        push(pad + '  note.connect(window.sound.destination);', i);
+        push(pad + '  note.start();', i);
+        push(pad + `  note.stop(window.sound.currentTime + ${E(m[2], inf)});`, i);
+        return say('}');
       }
       if ((m = M(/^(?:clear|empty)\s+(.+)$/i))) {
         const el = elementRef(m[1], x, inf);
@@ -819,7 +913,7 @@
       const idx = lines.findIndex(l => new RegExp(`^\\s*define\\s+${name}\\b`, 'i').test(l));
       return idx >= 0 && needsAsync(idx);
     }
-    while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); push('  '.repeat(stack.length) + b.close, b.src); }
+    while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of [].concat(b.close)) push('  '.repeat(stack.length) + c, b.src); }
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
     return { lines: out, info, text: out.map(o => o.text).join('\n').replace(/\n{3,}/g, '\n\n') + '\n' };
   }
@@ -888,6 +982,7 @@
     T('Controls', 'add a drop-down called ‹name› with "‹a›", "‹b›"', '<select><option>…', '', ['structure']),
     T('Controls', 'add a checkbox called ‹name› saying "‹text›"', '<input type="checkbox">', '', ['structure']),
     T('Media', 'add a picture of "‹file.jpg›" described as "‹what it shows›"', '<img src="…" alt="…">', 'The description is read aloud by screen readers.', ['structure']),
+    T('Media', 'add a drawing area called ‹game› ‹480› by ‹270›', '<canvas id="game" width="480" height="270">', 'Where a game or a picture is drawn, from Mechanics.', ['structure']),
     T('Media', 'add a link to "‹https://…›" saying "‹text›"', '<a href="…">…</a>', '', ['structure']),
     T('Layout', 'add a section called ‹name›', '<section id="name">', 'Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel.', ['structure']),
     T('Layout', 'add a list called ‹name›', '<ul id="name">', 'Indent "add a list item "…"" under it.', ['structure']),
@@ -902,6 +997,18 @@
     T('Events', 'when ‹form› is sent', 'form.addEventListener("submit", …)', 'The page won\'t reload.', ['mechanics']),
     T('Events', 'when the page has loaded', 'DOMContentLoaded', '', ['mechanics']),
     T('Events', 'every ‹2› seconds', 'setInterval(…, 2000)', '', ['mechanics']),
+    T('Games', 'every frame', 'requestAnimationFrame(…)', 'About 60 times a second: move things, then draw them.', ['mechanics']),
+    T('Games', 'keep track of the keys', 'keysDown: a Set', 'Once, near the top of Mechanics. Then "if "left" is held".', ['mechanics']),
+    T('Games', 'if "‹left›" is held', 'if (keysDown.has("ArrowLeft"))', 'left, right, up, down, space, or a letter.', ['mechanics']),
+    T('Games', 'when the key "‹space›" is pressed', 'keydown, for one key', 'Once per press. For holding a key down, use "is held" inside "every frame".', ['mechanics']),
+    T('Games', 'when the screen is tapped', 'pointerdown', 'A finger or a mouse. "tap x" and "tap y" say where.', ['mechanics']),
+    T('Drawing', 'clear ‹game›', 'clearRect(…)', 'Wipes a drawing area, ready for the next frame.', ['mechanics']),
+    T('Drawing', 'fill ‹game› with "‹skyblue›"', 'fillRect(0, 0, …)', '', ['mechanics']),
+    T('Drawing', 'draw a rectangle at ‹x›, ‹y› sized ‹40› by ‹20› in "‹tomato›" on ‹game›', 'fillRect(x, y, 40, 20)', 'x across from the left, y down from the top.', ['mechanics']),
+    T('Drawing', 'draw a circle at ‹x›, ‹y› with radius ‹10› in "‹gold›" on ‹game›', 'arc(…) + fill()', '', ['mechanics']),
+    T('Drawing', 'draw text "‹Score: {score}›" at ‹10›, ‹24› in "‹white›" on ‹game›', 'fillText(…)', 'Add "size 24" before "in" for bigger text.', ['mechanics']),
+    T('Drawing', 'draw a line from ‹x1›, ‹y1› to ‹x2›, ‹y2› in "‹white›" on ‹game›', 'lineTo(…) + stroke()', '', ['mechanics']),
+    T('Sound', 'play a note of ‹440› for ‹0.2› seconds', 'an oscillator (Web Audio)', '440 hertz is the note A; 880 is the A above.', ['mechanics']),
     T('Page', 'get the text of ‹name› and store in ‹value›', 'let value = name.value', 'Reads what was typed in a box.', ['mechanics']),
     T('Page', 'set the text of ‹name› to ‹value›', 'name.textContent = value', '', ['mechanics']),
     T('Page', 'add ‹value› to the list ‹name›', 'createElement("li") …', 'Adds a new item to a list on the page.', ['mechanics']),

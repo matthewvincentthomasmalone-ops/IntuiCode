@@ -20,7 +20,9 @@
  *   kit: daw                               the components for one kind of project
  *   title: Audio workstation (DAW)
  *   layout: structured                     script | structured | website | arduino
- *   shelf: pc                              where it sits in the Library (see SHELVES)
+ *   shelf: games                           its kind: where it sits in the Library and in the questions (see SHELVES)
+ *   platform: phone                        where it runs: pc, phone, web or board (from the layout if left out)
+ *   asks: webpage                          optional: a question of its own, asked before its steps
  *   about: One line shown above the list.
  *   steps: sound!, fader*, eq*, mixer, monitoring      in build order; ! always in, * ticked at first
  *
@@ -44,38 +46,28 @@
     horizon: { label: 'Horizon', means: 'Explained and pointed at: what it is, what\'s usually used for it, and what to learn first. Not something to write in sentences yet.' },
   };
 
-  /* The Library's shelves: what you're making, in the same shape as the questions. A shelf's path is the
-   * answers that lead to it, so "plan one" can open the builder right there. Kits and blueprints both say
-   * which shelf they sit on. */
+  /* The Library's shelves, by kind of project. The builder's questions are made from them: "What are you
+   * making?" lists the shelves, and each shelf's question lists its kits, so a kit (yours too) appears in
+   * planning as soon as it says which shelf it sits on. Kits and blueprints also say where they run. */
   const SHELVES = [
-    { id: 'pc', title: 'Apps for a PC', about: 'Programs for Windows, macOS or Linux: tools you type into, windows with buttons, sound.', path: ['App', 'PC'] },
-    { id: 'phone', title: 'Phone apps', about: 'Apps for iPhone and Android, starting from the web.', path: ['App', 'Phone'] },
-    { id: 'web', title: 'Websites', about: 'Pages people visit in a browser.', path: ['Webpage'] },
-    { id: 'service', title: 'Online services', about: 'Something people sign up for and use online: a server, data, accounts.', path: ['Online service (SaaS)'] },
-    { id: 'gadget', title: 'Gadgets', about: 'Devices on a board like an Arduino or an ESP32: lights, buttons, sensors, sound.', path: ['Gadget'] },
+    { id: 'games', title: 'Games', ask: 'Which game?', about: 'Things to play: platformers, top-down adventures, puzzles, word games, one-thumb phone games.' },
+    { id: 'productivity', title: 'Productivity', ask: 'Which kind of productivity app?', about: 'To-dos, notes, planners and timers: tools for getting things done.' },
+    { id: 'money', title: 'Money', ask: 'Which money app?', about: 'Budgets, shared bills and subscriptions.' },
+    { id: 'health', title: 'Health & habits', ask: 'Which health or habit app?', about: 'Habits, workouts, breathing and water.' },
+    { id: 'learning', title: 'Learning', ask: 'What should it teach?', about: 'Flashcards, typing, quizzes: practice that adapts.' },
+    { id: 'creative', title: 'Creative & media', ask: 'Which creative app?', about: 'Drawing, music, sound and photos.' },
+    { id: 'social', title: 'Social & sharing', ask: 'Which social app?', about: 'Message walls, link pages: things people share.' },
+    { id: 'tools', title: 'Tools & utilities', ask: 'Which tool?', about: 'Weather, passwords, converters, files: small things that save time.' },
+    { id: 'web', title: 'Websites', ask: 'Which kind of website?', about: 'Pages people visit in a browser.' },
+    { id: 'service', title: 'Online services', ask: 'Which online service?', about: 'Something people sign up for and use online: a server, data, accounts.' },
+    { id: 'gadget', title: 'Gadgets', ask: 'Which gadget?', about: 'Devices on a board like an Arduino or an ESP32: lights, buttons, sensors, sound.' },
     { id: 'lessons', title: 'One idea at a time', about: 'Small programs that each show one way of thinking: lists, classes.' },
     { id: 'start', title: 'Starting points', about: 'Empty projects, laid out and ready for your own sentences.' },
-  ];
+  ].map(sh => ({ ...sh, path: sh.ask ? [sh.title] : null }));
+  /* Where a project runs. */
+  const PLATFORMS = { pc: 'PC', phone: 'Phone', web: 'Web', board: 'Board' };
 
-  const BUILT_IN = [
-`question: start
-ask: What kind of project are you looking to build?
-option: App | A program that runs on a computer or a phone | app
-option: Webpage | A site people visit in their browser | webpage
-option: Online service (SaaS) | Something people sign up for and use online | kit saas
-option: Gadget | A device you build with a board like an Arduino or an ESP32 | kit gadget`,
-
-`question: app
-ask: Where will it run?
-option: PC | Windows, macOS or Linux | pc
-option: Phone | iPhone or Android | kit phone`,
-
-`question: pc
-ask: What kind of PC app?
-option: Audio workstation (DAW) | Make, shape, mix and play sound | kit daw
-option: Terminal tool | A program you type into: quick, simple, and a good first project | kit terminal
-option: Desktop window app | Windows with buttons, boxes and lists | kit window`,
-
+  const CORE = [
 `question: webpage
 ask: What is the site for?
 option: Showing my work | A portfolio: pictures of what you make, a little about you, and a way to get in touch | kit webpage: header, hero, about, gallery, contact, footer, mobile, publish
@@ -88,7 +80,8 @@ option: Something else | Start from the usual parts and choose | kit webpage`,
 `kit: daw
 title: Audio workstation (DAW)
 layout: structured
-shelf: pc
+shelf: creative
+platform: pc
 about: A small sound studio in Python: make or load a sound, shape it with faders and EQ, meter it, mix tracks and play the result. The parts a big DAW builds in real time are here as horizon steps.
 steps: sound!, fader*, eq*, mixer, meters*, transport!, monitoring, recording, plugins, timeline`,
 
@@ -284,6 +277,8 @@ learn: Classes for tracks and clips; drawing on a canvas; turning a mouse positi
 title: Webpage
 layout: website
 shelf: web
+platform: web
+asks: webpage
 about: A one-page website, top to bottom: a header with a menu, a big welcome, a few words about you, a gallery, a contact form and a footer, arranged for phones as well as computers. Getting it online, counted and found are horizon steps.
 steps: page!, header*, hero*, about*, gallery*, contact*, footer*, mobile*, theme, publish*, analytics, seo`,
 
@@ -489,7 +484,8 @@ learn: The title and description in search results; alt text; why speed and phon
 `kit: terminal
 title: Terminal tool
 layout: structured
-shelf: pc
+shelf: tools
+platform: pc
 about: A program you type into, and a good first project. It keeps a list of records, each a name and an amount (spending, reading, workouts…), saved in a file, with a menu of commands, careful checks on what's typed, and a report. Plain Python: nothing to install.
 steps: records!, save-file!, typing-checks!, menu!, add-record*, list-records*, remove-record, report*, package`,
 
@@ -692,7 +688,8 @@ learn: What bundling does; building on Windows, macOS and Linux separately; code
 `kit: window
 title: Desktop window app
 layout: script
-shelf: pc
+shelf: productivity
+platform: pc
 about: A small desktop app with a real window, made with tkinter, the window toolkit that comes with Python: a list you can add to, remove from and edit, saved to a file, with a menu bar. It's written top to bottom in one file, the way small tkinter apps usually are. Turning it into an app people double-click is a horizon step.
 steps: window!, item-list!, entry*, remove-item*, edit-item, open-save*, menubar*, mainloop!, package, bigger-apps`,
 
@@ -873,6 +870,7 @@ learn: grid, for layouts in rows and columns; keeping the data separate from the
 title: Online service (SaaS)
 layout: structured
 shelf: service
+platform: web
 about: The inside of an online service, here a small notes service: a database that remembers everything, checks on what people send, a web server that answers browsers and apps, and an admin page for you. Accounts, payments, email and hosting are horizon steps: they're where real services rely on trusted libraries and providers rather than home-made code.
 steps: database!, input-checks!, server*, admin, accounts, payments, email, hosting*`,
 
@@ -1037,6 +1035,7 @@ learn: Environment variables; development and production servers; reading logs; 
 title: Gadget (Arduino)
 layout: arduino
 shelf: gadget
+platform: board
 about: A small device on an Arduino board: a heartbeat light, a button, a sensor and a buzzer, all working at once, with messages to your computer. A screen, WiFi, batteries and a case are horizon steps. The pins are for an Arduino Uno, and easy to change.
 steps: board!, heartbeat*, button*, sensor*, buzzer, screen, wifi, battery, enclosure`,
 
@@ -1157,7 +1156,8 @@ learn: Soldering; measuring parts and leaving room for cables; basic 3D design.`
 `kit: phone
 title: Phone app
 layout: website
-shelf: phone
+shelf: health
+platform: phone
 about: Phone apps are big projects, so this kit starts with the part you can build today: a phone-friendly web app that works in any phone's browser. The native parts (the toolkit, screens, storage, notifications, the app stores) are horizon steps, each with what people use and what to learn first.
 steps: web-app!, publish*, installable, toolkit*, screens, phone-storage, notifications, app-stores*`,
 
@@ -1285,6 +1285,10 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     return { head, sections, options };
   }
 
+  /* The core library, then the kit packs (lang/kits/*.js, loaded before this file), which add entries with
+   * (window.IntuiKitPacks = window.IntuiKitPacks || []).push(...entries). */
+  const BUILT_IN = [...CORE, ...((typeof window !== 'undefined' && window.IntuiKitPacks) || [])];
+
   /* One entry on its own: what it is, its id, a title for lists, and its own problems (what the whole
    * library says about it, like a kit listing a step that doesn't exist yet, comes from parseLibrary). */
   const FOLDERS = ['settings', 'tools', 'main', 'structure', 'styling', 'mechanics', 'start', 'loop'];
@@ -1304,6 +1308,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       if (head.layout && !LAYOUT_FILES[head.layout]) problems.push(`"layout: ${head.layout}" isn't one of script, structured, website or arduino.`);
       if (!head.steps) problems.push('Add "steps:" with its components in build order, like "steps: first!, second*, third".');
       if (head.shelf && !SHELVES.some(x => x.id === head.shelf)) problems.push(`"shelf: ${head.shelf}" isn't a shelf of the Library. Use one of: ${SHELVES.map(x => x.id).join(', ')}.`);
+      if (head.platform && !PLATFORMS[head.platform]) problems.push(`"platform: ${head.platform}" isn't one of ${Object.keys(PLATFORMS).join(', ')}.`);
     }
     if (kind === 'component') {
       if (!head.name) problems.push('Add "name:" with its plain-language name.');
@@ -1320,6 +1325,25 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
   /* The built-in library with someone's own entries after it: an entry of theirs with the same id replaces the built-in one. */
   const libraryWith = (mine) => parseLibrary([...BUILT_IN, ...(mine || [])]);
 
+  /* The questions the shelves make: "start" lists the shelves that have kits, and each shelf's question
+   * ("shelf-games") lists its kits, or the kit's own question first when it has one ("asks: webpage").
+   * A question written by hand with the same id wins. Kits on no known shelf get a shelf of their own. */
+  function shelfQuestions(lib) {
+    const kits = Object.values(lib.kits);
+    const shelves = SHELVES.filter(sh => sh.ask).concat([{ id: 'other', title: 'Your other kits', ask: 'Which kit?', about: 'Kits that don\'t say which shelf they sit on.' }]);
+    const on = (sh) => kits.filter(k => (sh.id === 'other' ? !SHELVES.some(x => x.id === k.shelf && x.ask) : k.shelf === sh.id));
+    const option = (k) => ({ label: k.title, means: `${PLATFORMS[k.platform]} · ${k.about}`, next: k.asks && lib.questions[k.asks] ? k.asks : null, kit: k.asks && lib.questions[k.asks] ? null : k.id, ticked: null });
+    // a shelf with one kit needs no question of its own: its answer leads straight to the kit
+    for (const sh of shelves) {
+      const id = 'shelf-' + sh.id;
+      if (on(sh).length > 1 && !lib.questions[id]) lib.questions[id] = { id, ask: sh.ask, options: on(sh).map(option), made: true };
+    }
+    if (!lib.questions.start) lib.questions.start = { id: 'start', ask: 'What are you making?', made: true,
+      options: shelves.filter(sh => on(sh).length).map(sh => (lib.questions['shelf-' + sh.id]
+        ? { label: sh.title, means: sh.about, next: 'shelf-' + sh.id, kit: null, ticked: null }
+        : { ...option(on(sh)[0]), label: sh.title, means: sh.about })) };
+  }
+
   /* All entries -> { questions, kits, components, problems }. Problems are listed, not thrown, so one
    * broken entry someone wrote doesn't stop the rest from working. */
   function parseLibrary(entries) {
@@ -1330,6 +1354,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       else if (head.kit) {
         lib.kits[head.kit] = {
           id: head.kit, title: head.title || head.kit, layout: head.layout || 'structured', about: head.about || '', shelf: head.shelf || '',
+          platform: PLATFORMS[head.platform] ? head.platform : ({ website: 'web', arduino: 'board' }[head.layout] || 'pc'), asks: head.asks || '',
           steps: (head.steps || '').split(',').map(x => x.trim()).filter(Boolean).map(x => ({ id: x.replace(/[!*]+$/, ''), always: /!$/.test(x), ticked: /[!*]$/.test(x) })),
         };
       } else if (head.component) {
@@ -1339,6 +1364,8 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
         };
       } else lib.problems.push('An entry needs "question:", "kit:" or "component:" on its first line.');
     }
+    shelfQuestions(lib);
+    for (const k of Object.values(lib.kits)) if (k.asks && !lib.questions[k.asks]) lib.problems.push(`The kit "${k.id}" asks a question "${k.asks}" that doesn't exist.`);
     for (const q of Object.values(lib.questions)) for (const o of q.options) {
       if (o.kit && !lib.kits[o.kit]) lib.problems.push(`The question "${q.id}" leads to a kit "${o.kit}" that doesn't exist.`);
       if (o.next && !lib.questions[o.next]) lib.problems.push(`The question "${q.id}" leads to a question "${o.next}" that doesn't exist.`);
@@ -1428,5 +1455,5 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
   }
 
   const library = parseLibrary(BUILT_IN);
-  window.IntuiBuilder = { BUILT_IN, DEPTHS, SHELVES, parseEntry, parseLibrary, describeEntry, libraryWith, build, stepLine, pathToKit, followLabels, library };
+  window.IntuiBuilder = { BUILT_IN, DEPTHS, SHELVES, PLATFORMS, parseEntry, parseLibrary, describeEntry, libraryWith, build, stepLine, pathToKit, followLabels, library };
 })();

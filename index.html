@@ -22,13 +22,14 @@
         <button type="button" id="btnFile" class="btn ghost" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList">File</button>
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
-          <button type="button" role="menuitem" id="btnBuilder">Project builder…</button>
+          <button type="button" role="menuitem" id="btnBuilder">Plan a project…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnImport">Import code…</button>
         </div>
       </div>
+      <button type="button" id="btnPlan" class="btn ghost" title="Plan a project step by step: what you're making, its steps, then build">Plan</button>
       <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Library</button>
       <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
@@ -69,7 +70,7 @@
               <h2 id="secTitle">Main program</h2>
               <p id="secPurpose">What happens, step by step, when you press Run</p>
             </div>
-            <span class="file-tag">sentences</span>
+            <div class="pane-tools"><span class="file-tag">sentences</span><button type="button" class="btn small max-btn" data-max="say" aria-pressed="false" title="Full screen: the sentences (Esc to come back)" aria-label="Full screen: the sentences"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div>
           <div class="editor" id="editor">
             <div class="gutter" id="gutter"><div id="gutterInner"></div></div>
@@ -93,7 +94,7 @@
             </div>
             <div class="pane-tools">
               <span class="file-tag" id="pyFile">main.py</span>
-              <button type="button" class="btn small" id="btnCopy">Copy</button>
+              <button type="button" class="btn small" id="btnCopy">Copy</button><button type="button" class="btn small max-btn" data-max="code" aria-pressed="false" title="Full screen: the code (Esc to come back)" aria-label="Full screen: the code"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
           </div>
           <div class="pycode" id="pycode" tabindex="0" aria-label="Generated Python"></div>
@@ -130,7 +131,7 @@
           <span class="py-status" id="pyStatus">Python not loaded</span>
           <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
           <button type="button" class="btn small term-btn" id="btnStop" hidden>Stop</button>
-          <button type="button" class="btn small term-btn" id="btnClear">Clear</button>
+          <button type="button" class="btn small term-btn" id="btnClear">Clear</button><button type="button" class="btn small term-btn max-btn" data-max="term" aria-pressed="false" title="Full screen: the terminal (Esc to come back)" aria-label="Full screen: the terminal"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
         <div class="preview-wrap" id="previewWrap" hidden>
           <!-- no allow-same-origin: the page runs in an origin of its own, so it can't reach the editor
@@ -199,7 +200,7 @@
         <input id="newName" value="My project" spellcheck="false" autocomplete="off">
       </div>
       <label class="new-save" id="newSaveRow" hidden><input type="checkbox" id="newSave" checked> Choose a folder for it now</label>
-      <p class="new-alt">Or <button type="button" class="linklike" id="newToBuilder">answer a few questions</button>, and get a project made of the parts that kind of project is built from, in order.</p>
+      <p class="new-alt">Or <button type="button" class="linklike" id="newToBuilder">plan a project</button>: say what you're making, choose its steps, and get them laid out in the order you'd build them.</p>
       <div class="imp-actions">
         <span class="imp-note">The project you have now is kept: type "restore" in the terminal to swap back.</span>
         <button type="button" class="btn primary" id="newGo">Create project</button>
@@ -211,11 +212,12 @@
     <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="bldTitle">
       <div class="modal-h">
         <div>
-          <h2 id="bldTitle">Project builder</h2>
-          <p>Answer a few questions. You'll get a project made of the parts that kind of project is built from, in the order you'd build them, each marked Walk, Hallway or Horizon.</p>
+          <h2 id="bldTitle">Plan a project</h2>
+          <p>Say what you're making, choose its steps, and build. Each step is marked Walk (written for you), Hallway (you fill in the key parts) or Horizon (what to learn next).</p>
         </div>
         <button type="button" class="btn small" id="bldClose">Close</button>
       </div>
+      <ol class="bld-stages" id="bldStages" aria-label="Planning"></ol>
       <nav class="bld-path" id="bldPath" aria-label="Your answers so far"></nav>
       <div class="bld-body" id="bldBody"></div>
     </div>
@@ -271,6 +273,10 @@
 <script src="lang/tutor.js"></script>
 <script src="lang/glossary_terms.js"></script>
 <script src="lang/glossary.js"></script>
+<!-- kit packs: lang/kits/*.js, before the builder -->
+<script src="lang/kits/everyday.js"></script>
+<script src="lang/kits/games.js"></script>
+<script src="lang/kits/makers.js"></script>
 <script src="lang/builder.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

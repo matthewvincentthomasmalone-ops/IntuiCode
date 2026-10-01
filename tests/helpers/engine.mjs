@@ -14,6 +14,21 @@ export const PYTHON = ['python3', 'python', 'py'].find((p) => {
   catch (_) { return false; }
 }) || 'python3';
 
+/* The kit packs (lang/kits), in the order index.html loads them, and the project builder after them. */
+export const KIT_PACKS = readdirSync(path.join(ROOT, 'lang/kits')).filter(f => f.endsWith('.js')).sort().map(f => 'lang/kits/' + f);
+export function loadBuilder() {
+  const ctx = { console };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  for (const f of [...KIT_PACKS, 'lang/builder.js']) vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  return ctx.IntuiBuilder;
+}
+/* Test answers for the blanks in hallway steps, from tests/kit-answers/*.json. */
+export function kitAnswers() {
+  const dir = path.join(ROOT, 'tests/kit-answers');
+  return Object.assign({}, ...readdirSync(dir).filter(f => f.endsWith('.json')).sort().map(f => JSON.parse(readFileSync(path.join(dir, f), 'utf8'))));
+}
+
 export function loadEngine() {
   const ctx = { console };
   ctx.window = ctx;

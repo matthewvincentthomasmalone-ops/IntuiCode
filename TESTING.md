@@ -32,15 +32,19 @@ Tick each one. If something is off, note what you did and what the terminal said
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
-**Project builder**
-- [ ] **Library**: shelves (Apps for a PC, Phone apps, Websites, Online services, Gadgets…) each hold kits and
-      blueprints. A kit's **Choose its steps…** opens the builder at that kit; **Plan one ›** opens it at the shelf.
-- [ ] File → Project builder… → App → PC → Audio workstation (DAW). Tick Mixer, Build my project: the Project map
-      lists the steps in order, and Problems lists the hallway ‹blanks›.
-- [ ] Click a step: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the blanks and
-      Run: the terminal shows the peak and RMS levels, and `output.wav` plays.
-- [ ] In the builder, **Change the questions and steps** → the EQ step → Edit a copy, change its name, Save. Back to
-      the questions → App → PC → DAW: the EQ row has your name. Delete yours: the original comes back.
+**Planning and the Library**
+- [ ] **Library**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
+      top show only those. A kit's **Choose its steps…** opens planning at that kit; **Plan one ›** at its kind.
+- [ ] **Plan** (menu bar) → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
+      works**, **The usual** and **Everything** change **Your plan**; **Preview its sentences** shows a step's sentences.
+      Tick Mixer, Build my project: the Project map lists the steps in order, and Problems lists the hallway ‹blanks›.
+- [ ] Click a step in the Project map: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the
+      blanks and Run: the terminal shows the peak and RMS levels, and `output.wav` plays.
+- [ ] **Change this kit…**: move a step, untick Always, add a step from the library (search "save"), write a new step;
+      the check under the steps says whether the kit builds. Save: planning uses your version. Delete yours (in the
+      list on the left): the original comes back.
+- [ ] Build a game from the Library (Games): it plays in the preview with the keys or a tap.
+- [ ] The corner button on the sentences, the code and the terminal: each fills the work area; Esc comes back.
 
 **Tutor**
 - [ ] Build **Number guessing game**, press **Tutor**, and click a sentence: the strip shows how it's said, and a balloon

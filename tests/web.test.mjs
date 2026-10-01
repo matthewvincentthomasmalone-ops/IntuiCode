@@ -32,6 +32,30 @@ test('‹blanks›: one problem per line, text blanks stay visible, and the scri
   assert.doesNotThrow(() => new vm.Script(js), 'a blank must not break the rest of the script');
 });
 
+test('games: a frame loop, keys held and pressed, taps, drawing and a note, all as sentences', () => {
+  const r = site('add a drawing area called game 480 by 270', '', [
+    'keep track of the keys', 'set px to 40', 'set py to 200', 'set fall to 0',
+    'when the key "space" is pressed', '    set fall to -9',
+    'when the screen is tapped', '    set px to tap x',
+    'every frame', '    if "left" is held', '        decrease px by 3',
+    '    increase fall by 0.5', '    increase py by fall',
+    '    clear game', '    fill game with "midnightblue"', '    draw a rectangle at px, py sized 20 by 20 in "tomato" on game',
+    '    draw a circle at 400, 60 with radius 18 in gold on game', '    draw text "x: {px}" at 10, 24 size 18 in "white" on game',
+    '    draw a line from 0, 220 to the width of game, 220 in "#5fd" on game', '    play a note of 440 for 0.05 seconds'].join('\n'));
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  assert.deepEqual(plain(r.results.mechanics.info.flatMap(i => i.warns)), []);
+  const js = r.results.mechanics.text;
+  assert.doesNotThrow(() => new vm.Script(js));
+  assert.match(js, /const keysDown = new Set\(\);/);
+  assert.match(js, /if \(event\.key !== " "\) return;/, 'space is " "');
+  assert.match(js, /px = event\.offsetX;/);
+  assert.match(js, /requestAnimationFrame\(function frame\(\) \{[\s\S]*if \(keysDown\.has\("ArrowLeft"\)\)[\s\S]*requestAnimationFrame\(frame\);\n\}\);/);
+  assert.match(js, /pen\.fillStyle = "gold";/, 'a bare colour word is a colour');
+  assert.match(js, /pen\.lineTo\(document\.getElementById\("game"\)\.width, 220\);/);
+  assert.match(js, /note\.frequency\.value = 440;/);
+  assert.match(site('add a drawing area called game', '', 'if "left" is held\n    show 1').results.mechanics.info[0].errs.join(' '), /keep track of the keys/);
+});
+
 test('structure: a button inside a form sends the form', () => {
   assert.match(site('add a form called f\n    add a button called go saying "Go"').results.structure.text, /<button id="go" type="submit">/);
 });

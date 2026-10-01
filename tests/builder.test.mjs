@@ -7,14 +7,10 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import { ROOT, PYTHON, loadEngine } from './helpers/engine.mjs';
+import { ROOT, PYTHON, loadEngine, loadBuilder, kitAnswers } from './helpers/engine.mjs';
 
 const { L, WEB, CPP, BP } = loadEngine();
-const ctx = { console };
-ctx.window = ctx;
-vm.createContext(ctx);
-vm.runInContext(readFileSync(path.join(ROOT, 'lang/builder.js'), 'utf8'), ctx, { filename: 'lang/builder.js' });
-const B = ctx.IntuiBuilder;
+const B = loadBuilder();
 const lib = B.library;
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
@@ -40,6 +36,7 @@ const FILLS = {
   '‹the name they typed›': 'name',
   '‹how long a reading must hold still, in milliseconds: 50 is usual›': '50',
   '‹what a pressed button reads, with the pull-up: HIGH or LOW›': 'LOW',
+  ...kitAnswers(),   // the kit packs' blanks
 };
 
 const kits = Object.values(lib.kits);
@@ -98,7 +95,7 @@ test('the Library: every kit and project blueprint is on a shelf, and every shel
     if (bp.kind === 'project') assert.ok(shelves.has(bp.shelf), `blueprint "${bp.title}" is on a shelf (${bp.shelf})`);
   }
   assert.equal(BP.parse('title: x\nkind: project\nlayout: arduino\nstory:\nx\n== sketch\nturn pin 13 on').shelf, 'gadget', 'no shelf: where its kind usually goes');
-  for (const sh of B.SHELVES.filter(s => s.path)) {
+  for (const sh of B.SHELVES.filter(s => s.path && kits.some(k => k.shelf === s.id))) {
     const chain = plain(B.followLabels(lib, sh.path));
     assert.equal(chain.length, sh.path.length, `shelf ${sh.id}: its answers exist`);
     const last = chain[chain.length - 1];
@@ -108,7 +105,7 @@ test('the Library: every kit and project blueprint is on a shelf, and every shel
     const path = plain(B.pathToKit(lib, k.id));
     assert.ok(path && path[path.length - 1].kit === k.id, `kit ${k.id} can be reached`);
   }
-  assert.deepEqual(plain(B.pathToKit(lib, 'webpage')).map(o => o.label), ['Webpage', 'Something else'], 'the answer that keeps the kit\'s own ticks');
+  assert.deepEqual(plain(B.pathToKit(lib, 'webpage')).map(o => o.label).slice(-1), ['Something else'], 'the answer that keeps the kit\'s own ticks');
 });
 
 test('every built-in entry passes the editor\'s own checks', () => {

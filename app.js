@@ -1158,6 +1158,27 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Full screen: the sentences, the code or the terminal fill the work  */
+  /* area; the same button, or Esc, brings the others back.              */
+  /* ------------------------------------------------------------------ */
+
+  let maxed = '';
+  function setMax(which) {
+    maxed = maxed === which ? '' : which;
+    const ws = document.querySelector('.workspace');
+    ws.classList.remove('max-say', 'max-code', 'max-term');
+    if (maxed) ws.classList.add('max-' + maxed);
+    document.querySelectorAll('.max-btn').forEach(b => {
+      const on = b.dataset.max === maxed;
+      b.setAttribute('aria-pressed', String(on));
+      b.title = (on ? 'Back to all the windows' : 'Full screen: ' + b.getAttribute('aria-label').replace(/^Full screen: /, '')) + ' (Esc)';
+    });
+    measure(); syncScroll(); placeTip();
+    if (maxed === 'term') termIn.focus(); else if (maxed === 'say') ta.focus(); else if (maxed === 'code') pycode.focus();
+  }
+  document.addEventListener('click', (e) => { const b = e.target.closest('.max-btn'); if (b) setMax(b.dataset.max); });
+
+  /* ------------------------------------------------------------------ */
   /* Ctrl+H: the words in a selection (or the section the cursor is in),  */
   /* explained, for the side you're working in. In the code, its terms;  */
   /* in the sentences, only the words that aren't everyday English, and  */
@@ -1737,30 +1758,37 @@
   /* The Library: shelves by what you're making (the project builder's own questions), each holding the
    * builder's kits (a whole kind of project, planned step by step) and blueprints (a story with blanks). */
   const bpOn = (sel) => !!bpSel && bpSel.src === sel.src && (sel.src === 'kit' ? bpSel.id === sel.id : bpSel.i === sel.i);
+  let bpPlatform = '';   // the Library's filter: '' (everything), or pc, phone, web, board
+  const platTag = (p) => `<em class="bp-plat plat-${escHtml(p)}">${escHtml(BUILDER.PLATFORMS[p] || p)}</em>`;
   function renderBpList() {
     const lib = bldLibrary();
+    const scroll = $('bpList').scrollTop;
     const built = BP.BUILT_IN.map((src, i) => ({ bp: BP.parse(src), sel: { src: 'built', i } }));
     const mine = myBlueprints.map((m, i) => ({ bp: BP.parse(m.source), sel: { src: 'mine', i } }));
-    const item = ({ bp, sel }) => `<button type="button" class="bp-item${bpOn(sel) ? ' on' : ''}" data-src="${sel.src}" data-i="${sel.i}"><b>${escHtml(bp.title || 'Untitled')}</b><span>${escHtml(bp.about || '')}</span></button>`;
+    const fits = (platform) => !bpPlatform || platform === bpPlatform;
+    const item = ({ bp, sel }) => `<button type="button" class="bp-item${bpOn(sel) ? ' on' : ''}" data-src="${sel.src}" data-i="${sel.i}"><b>${escHtml(bp.title || 'Untitled')}</b><span>${bp.kind === 'project' ? platTag(bp.platform) : ''}${escHtml(bp.about || '')}</span></button>`;
     const kitItem = (k) => {
       const depths = k.steps.map(s => lib.components[s.id]).filter(Boolean).map(c => c.depth);
-      return `<button type="button" class="bp-item bp-kit${bpOn({ src: 'kit', id: k.id }) ? ' on' : ''}" data-src="kit" data-kit="${escHtml(k.id)}"><b>${escHtml(k.title)}</b><span><em class="bp-tag">Kit</em>${depths.length} steps: ${['walk', 'hallway', 'horizon'].map(d => [depths.filter(x => x === d).length, d]).filter(([n]) => n).map(([n, d]) => n + ' ' + d).join(', ')}</span></button>`;
+      return `<button type="button" class="bp-item bp-kit${bpOn({ src: 'kit', id: k.id }) ? ' on' : ''}" data-src="kit" data-kit="${escHtml(k.id)}"><b>${escHtml(k.title)}</b><span>${platTag(k.platform)}<em class="bp-tag">Plan</em>${depths.length} steps: ${['walk', 'hallway', 'horizon'].map(d => [depths.filter(x => x === d).length, d]).filter(([n]) => n).map(([n, d]) => n + ' ' + d).join(', ')}</span></button>`;
     };
     const group = (label, list) => list.length ? `<div class="bp-group">${label}</div>` + list.map(item).join('') : '';
     const shelves = BUILDER.SHELVES.map(sh => {
-      const kits = Object.values(lib.kits).filter(k => k.shelf === sh.id);
-      const bps = built.filter(x => x.bp.kind === 'project' && x.bp.shelf === sh.id);
+      const kits = Object.values(lib.kits).filter(k => k.shelf === sh.id && fits(k.platform));
+      const bps = built.filter(x => x.bp.kind === 'project' && x.bp.shelf === sh.id && fits(x.bp.platform));
       if (!kits.length && !bps.length) return '';
-      const plan = sh.path ? `<button type="button" class="bp-plan" data-shelf="${sh.id}" title="Answer the project builder's questions from here">Plan one ›</button>` : '';
+      const plan = sh.path && kits.length ? `<button type="button" class="bp-plan" data-shelf="${sh.id}" title="Plan a ${escHtml(sh.title.toLowerCase())} project, choosing its steps">Plan one ›</button>` : '';
       return `<div class="bp-group bp-shelf"><span>${escHtml(sh.title)}</span>${plan}</div>${kits.map(kitItem).join('')}${bps.map(item).join('')}`;
     }).join('');
-    const myKitsOff = Object.values(lib.kits).filter(k => !BUILDER.SHELVES.some(sh => sh.id === k.shelf));
-    $('bpList').innerHTML = shelves
-      + group(`Add to ${SECTION_META[activeSec().file].title}`, built.filter(x => x.bp.kind === 'snippet'))
+    const myKitsOff = Object.values(lib.kits).filter(k => !BUILDER.SHELVES.some(sh => sh.id === k.shelf) && fits(k.platform));
+    const chip = (p, label) => `<button type="button" class="bp-filter${bpPlatform === p ? ' on' : ''}" data-platform="${p}" aria-pressed="${bpPlatform === p}">${label}</button>`;
+    $('bpList').innerHTML = `<div class="bp-filters" role="group" aria-label="Where it runs">${chip('', 'All')}${Object.entries(BUILDER.PLATFORMS).map(([p, label]) => chip(p, label)).join('')}</div>`
+      + (shelves || '<p class="bp-none">Nothing here runs there yet.</p>')
+      + (bpPlatform ? '' : group(`Add to ${SECTION_META[activeSec().file].title}`, built.filter(x => x.bp.kind === 'snippet')))
       + `<div class="bp-group">Yours</div>`
       + myKitsOff.map(kitItem).join('')
       + (mine.length ? mine.map(item).join('') : myKitsOff.length ? '' : '<p class="bp-none">None yet. Edit a copy of any blueprint, or turn your current project into one.</p>')
       + `<div class="bp-mk"><button type="button" class="btn small" id="bpFromProject">Make one from this project</button><button type="button" class="btn small" id="bpPaste">Write or paste one</button></div>`;
+    $('bpList').scrollTop = scroll;
   }
 
   /* A kit in the Library: its steps in build order, each with its depth, and a way into the builder. */
@@ -1867,6 +1895,8 @@
   $('bpList').addEventListener('click', (e) => {
     const it = e.target.closest('.bp-item');
     if (it) { bpSel = it.dataset.src === 'kit' ? { src: 'kit', id: it.dataset.kit } : { src: it.dataset.src, i: +it.dataset.i }; bpValues = {}; bpEditing = null; renderBpList(); renderBpDetail(); return; }
+    const pf = e.target.closest('[data-platform]');
+    if (pf) { bpPlatform = pf.dataset.platform; renderBpList(); return; }
     const shelf = e.target.closest('[data-shelf]');
     if (shelf) { closeBlueprints(); openBuilderAt(BUILDER.SHELVES.find(sh => sh.id === shelf.dataset.shelf).path); return; }
     if (e.target.id === 'bpFromProject') {
@@ -2590,7 +2620,7 @@
   /* ------------------------------------------------------------------ */
 
   const BUILDER = window.IntuiBuilder;
-  const bld = { trail: [], kit: null, ticked: new Set(), edit: null };   // trail: the options chosen so far; edit: the library editor
+  const bld = { trail: [], kit: null, ticked: new Set(), edit: null, preview: new Set() };   // trail: the options chosen so far; edit: the library editor
   const depthChip = (d) => `<span class="depth d-${d}">${BUILDER.DEPTHS[d].label}</span>`;
   // Your own questions, kits and steps, as plain text. They come after the built-in ones, so one with the same id replaces it.
   const MY_KITS_KEY = 'intuicode.kits.v1';
@@ -2602,7 +2632,7 @@
   function openBuilder() {
     setFileMenu(false);
     closeNewProject();
-    bld.trail = []; bld.kit = null; bld.edit = null;
+    bld.trail = []; bld.kit = null; bld.edit = null; bld.preview = new Set();
     $('builderModal').hidden = false;
     renderBuilder();
   }
@@ -2623,56 +2653,93 @@
     bld.ticked = new Set(kit ? kit.steps.filter(s => s.ticked).map(s => s.id) : []);
     renderBuilder();
   }
-  /* Straight to one entry in the library editor (yours if you've changed it, or the built-in one). */
+  /* Straight to one entry in the library editor, in its form (yours if you've changed it, or a copy of the built-in one). */
   function openKitEditorAt(kind, id) {
     openBuilder();
     const { built, mine } = kitEntries();
     const e = mine.find(x => x.kind === kind && x.id === id) || built.find(x => x.kind === kind && x.id === id);
-    bld.edit = { sel: e ? { src: e.src, i: e.i } : null, text: null, editing: null };
+    bld.edit = { sel: e ? { src: e.src, i: e.i } : null, text: null, editing: null, form: null };
+    if (e && kind !== 'question') { bld.edit.editing = { src: e.src, i: e.i }; bld.edit.form = formFrom(kitSource(e)); }
     renderBuilder();
   }
 
+  /* The three stages of planning, always in view: what you're making, its steps, its name. */
+  function renderStages(stage) {
+    const names = ['What you\'re making', 'Its steps', 'Name it and build'];
+    $('bldStages').innerHTML = names.map((n, i) => `<li class="${i + 1 < stage ? 'done' : i + 1 === stage ? 'now' : ''}"${i + 1 === stage ? ' aria-current="step"' : ''}><span class="bld-stage-n">${i + 1 < stage ? '✓' : i + 1}</span>${n}</li>`).join('');
+  }
   function renderBuilder() {
+    $('bldStages').hidden = !!bld.edit;
     if (bld.edit) return renderKitEditor();
     const lib = bldLibrary();
+    renderStages(bld.kit ? 2 : 1);
     $('bldPath').innerHTML = [`<button type="button" class="bld-crumb" data-back="0">Start</button>`]
       .concat(bld.trail.map((t, i) => `<span class="bld-sep" aria-hidden="true">›</span><button type="button" class="bld-crumb" data-back="${i + 1}"${i === bld.trail.length - 1 ? ' aria-current="step"' : ''}>${escHtml(t.label)}</button>`)).join('')
-      + '<button type="button" class="bld-crumb bld-edit-lib" id="bldEditLib">Change the questions and steps</button>';
+      + '<button type="button" class="bld-crumb bld-edit-lib" id="bldEditLib">Change the kits and steps</button>';
     if (bld.kit) return renderKit(lib.kits[bld.kit]);
     const qid = bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start', q = lib.questions[qid];
-    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the library. Go back, or add it with "Change the questions and steps".</p>`; return; }
+    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the library. Go back, or add it with "Change the kits and steps".</p>`; return; }
+    const tag = (o) => (o.kit && lib.kits[o.kit] ? platTag(lib.kits[o.kit].platform) : '');
     $('bldBody').innerHTML = `<h3 class="bld-ask">${escHtml(q.ask)}</h3>
-      <div class="new-kinds bld-options">${q.options.map((o, i) => `<button type="button" class="new-kind" data-opt="${i}"><b>${escHtml(o.label)}</b><span>${escHtml(o.means)}</span></button>`).join('')}</div>`;
+      <div class="new-kinds bld-options">${q.options.map((o, i) => `<button type="button" class="new-kind" data-opt="${i}"><b>${escHtml(o.label)}</b><span>${tag(o)}${escHtml(o.means.replace(/^(PC|Phone|Web|Board) · /, ''))}</span></button>`).join('')}</div>
+      <p class="bld-alt">Or <button type="button" class="linklike" id="bldToLibrary">browse every kit and blueprint in the Library</button>.</p>`;
     const first = $('bldBody').querySelector('.new-kind');
     if (first) first.focus();
   }
 
+  const FOLDER_LABEL = { settings: 'Settings', tools: 'Tools', main: 'Main program', structure: 'Structure', styling: 'Styling', mechanics: 'Mechanics', start: 'when the board starts', loop: 'over and over' };
+  const LAYOUT_LABEL = { script: 'Python, one file', structured: 'Python: Settings, Tools and Main program', website: 'A website: Structure, Styling and Mechanics', arduino: 'An Arduino sketch' };
+  const LAYOUT_FOLDERS = { script: ['main'], structured: ['settings', 'tools', 'main'], website: ['structure', 'styling', 'mechanics'], arduino: ['settings', 'start', 'loop'] };
+  /* A step's sentences, as they'll be written, folder by folder. */
+  function stepPreview(c) {
+    const parts = Object.entries(c.sections || {}).filter(([, ls]) => ls.some(l => l.trim()));
+    if (!parts.length) return '<p class="dim bld-preview-none">No sentences: this step is a direction to aim for, explained in its summary.</p>';
+    return parts.map(([f, ls]) => `<div class="bld-preview-f"><span class="ex-lbl">${escHtml(FOLDER_LABEL[f] || f)}</span><pre>${ls.join('\n').replace(/\n+$/, '').split('\n').map(l => hlLine(l)).join('\n')}</pre></div>`).join('');
+  }
   function renderKit(kit) {
     const lib = bldLibrary();
     if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the library isn\'t written yet. Go back and choose another path.</p>'; return; }
+    const chosen = kit.steps.filter(s => lib.components[s.id] && (s.always || bld.ticked.has(s.id)));
     let n = 0;
     const rows = kit.steps.map(s => {
       const c = lib.components[s.id];
       if (!c) return '';
-      const on = s.always || bld.ticked.has(s.id);
+      const on = s.always || bld.ticked.has(s.id), open = bld.preview.has(s.id);
       return `<div class="bld-step${on ? ' on' : ''}">
         <label><input type="checkbox" data-step="${escHtml(s.id)}"${on ? ' checked' : ''}${s.always ? ' disabled' : ''}>
           <span class="bld-n">${on ? ++n : ''}</span>
           <span class="bld-main"><span class="bld-name"><b>${escHtml(c.name)}</b> ${depthChip(c.depth)}${s.always ? ' <span class="dim">always part of it</span>' : ''}</span>
           <span class="bld-sum">${withCode(c.summary)}</span></span></label>
-        ${c.usual || c.learn ? `<details class="bld-more"><summary>More</summary>${c.usual ? `<p><b>Usually made with:</b> ${withCode(c.usual)}</p>` : ''}${c.learn ? `<p><b>Learn first:</b> ${withCode(c.learn)}</p>` : ''}</details>` : ''}
+        <div class="bld-step-tools">
+          <button type="button" class="linklike" data-preview="${escHtml(s.id)}" aria-expanded="${open}">${open ? 'Hide its sentences' : c.depth === 'horizon' ? 'What it involves' : 'Preview its sentences'}</button>
+          ${c.usual || c.learn ? `<details class="bld-more"><summary>Usually made with, learn first</summary>${c.usual ? `<p><b>Usually made with:</b> ${withCode(c.usual)}</p>` : ''}${c.learn ? `<p><b>Learn first:</b> ${withCode(c.learn)}</p>` : ''}</details>` : ''}
+        </div>
+        ${open ? `<div class="bld-preview">${stepPreview(c)}</div>` : ''}
       </div>`;
     }).join('');
     const scroll = $('bldBody').querySelector('.bld-steps') ? $('bldBody').querySelector('.bld-steps').scrollTop : 0;
     const name = $('bldName') ? $('bldName').value : kit.title;
-    $('bldBody').innerHTML = `<div class="bld-kit-h"><h3>${escHtml(kit.title)}</h3><p>${escHtml(kit.about)}</p>
-        <p class="bld-legend">${Object.keys(BUILDER.DEPTHS).map(d => `<span>${depthChip(d)} ${withCode(BUILDER.DEPTHS[d].means)}</span>`).join('')}</p></div>
-      <div class="bld-steps">${rows}</div>
-      <div class="imp-actions bld-actions">
-        <div class="imp-row new-name"><label for="bldName">Name</label><input id="bldName" value="${escHtml(name)}" spellcheck="false" autocomplete="off"></div>
-        <span class="imp-note">${n} step${n === 1 ? '' : 's'}, in this order. The project you have now is kept: type "restore" in the terminal to swap back.</span>
-        <button type="button" class="btn primary" id="bldGo">Build my project</button>
-      </div>`;
+    const count = (d) => chosen.filter(s => lib.components[s.id].depth === d).length;
+    const preset = (id, label, title) => `<button type="button" class="bld-preset" data-preset="${id}" title="${escHtml(title)}">${label}</button>`;
+    $('bldBody').innerHTML = `<div class="bld-kit">
+      <div class="bld-kit-main">
+        <div class="bld-kit-h"><h3>${escHtml(kit.title)} ${platTag(kit.platform)}</h3><p>${escHtml(kit.about)}</p></div>
+        <div class="bld-presets" role="group" aria-label="Start from"><span class="dim">Start from</span>
+          ${preset('min', 'The smallest that works', 'Only the steps it can\'t do without')}${preset('usual', 'The usual', 'The steps most projects like this have')}${preset('all', 'Everything', 'Every step, horizons included')}</div>
+        <div class="bld-steps">${rows}</div>
+      </div>
+      <aside class="bld-plan" aria-label="Your plan">
+        <h4>Your plan</h4>
+        <ol class="bld-plan-list">${chosen.map(s => { const c = lib.components[s.id]; return `<li><span>${escHtml(c.name)}</span>${depthChip(c.depth)}</li>`; }).join('')}</ol>
+        <p class="bld-plan-sum">${chosen.length} step${chosen.length === 1 ? '' : 's'}${['walk', 'hallway', 'horizon'].filter(count).map(d => ` · ${count(d)} ${d}`).join('')}</p>
+        <ul class="bld-plan-key">${['walk', 'hallway', 'horizon'].map(d => `<li>${depthChip(d)} ${escHtml({ walk: 'written for you, ready to run', hallway: 'the shape is there; you fill in the ‹blanks›', horizon: 'what it is and what to learn: for later' }[d])}</li>`).join('')}</ul>
+        <label class="bld-name-l" for="bldName">Name</label>
+        <input id="bldName" value="${escHtml(name)}" spellcheck="false" autocomplete="off">
+        <button type="button" class="btn primary bld-go" id="bldGo">Build my project</button>
+        <p class="imp-note">The project you have now is kept: type "restore" in the terminal to swap back.</p>
+        <button type="button" class="linklike bld-change" id="bldChange">Change this kit…</button>
+      </aside>
+    </div>`;
     $('bldBody').querySelector('.bld-steps').scrollTop = scroll;
   }
 
@@ -2681,7 +2748,7 @@
     const name = ($('bldName').value || '').trim() || kit.title;
     const { project: next } = BUILDER.build(bldLibrary(), kit.id, [...bld.ticked], slug(name), bld.trail.map(t => t.label));
     closeBuilder();
-    replaceProject(next, `Built "${name}" with the project builder: ${next.plan.steps.length} steps, in the order you'd build them. The project map on the left explains each one.`);
+    replaceProject(next, `Built "${name}" from its plan: ${next.plan.steps.length} steps, in the order you'd build them. The project map on the left explains each one.`);
     const blanks = project.sections.reduce((k, s) => k + (s.text.match(/‹[^›]*›/g) || []).length, 0);
     if (blanks) tLine(`Hallway steps have ${blanks} ‹blank${blanks === 1 ? '' : 's'}› for you to fill in: Problems on the left lists them.`, 't-sys');
   }
@@ -2689,20 +2756,24 @@
   $('bldClose').addEventListener('click', closeBuilder);
   $('builderModal').addEventListener('click', (e) => { if (e.target.id === 'builderModal') closeBuilder(); });
   $('bldPath').addEventListener('click', (e) => {
-    if (e.target.id === 'bldEditLib') { bld.edit = { sel: null, text: null, editing: null }; return renderBuilder(); }
-    if (e.target.id === 'bldEditDone') { bld.edit = null; bld.trail = []; bld.kit = null; return renderBuilder(); }
+    if (e.target.id === 'bldEditLib') { bld.edit = { sel: null, text: null, editing: null, form: null }; return renderBuilder(); }
+    if (e.target.id === 'bldEditDone') { const k = bld.edit && bld.edit.fromKit; bld.edit = null; if (k && bldLibrary().kits[k]) { bld.kit = k; } else { bld.trail = []; bld.kit = null; } return renderBuilder(); }
     const b = e.target.closest('[data-back]');
     if (!b) return;
     bld.trail = bld.trail.slice(0, +b.dataset.back); bld.kit = null;
     renderBuilder();
   });
 
-  /* The library editor: every question, kit and step, as the plain text it is. A built-in entry is changed
-   * by editing a copy: yours has the same id, so it replaces the built-in one (delete yours to put it back). */
-  const ENTRY_GROUP = { question: 'Questions', kit: 'Kits', component: 'Steps' };
+  /* ------------------------------------------------------------------ */
+  /* Changing the kits and steps: forms for kits and steps (plain text   */
+  /* underneath, and "Edit as text" for anything the forms don't cover). */
+  /* A built-in entry is changed as a copy: yours has the same id, so it */
+  /* replaces the built-in one; delete yours to put it back.             */
+  /* ------------------------------------------------------------------ */
+  const ENTRY_GROUP = { kit: 'Kits', component: 'Steps', question: 'Questions' };
   const NEW_ENTRY = {
     component: 'component: my-step\nname: My step\ndepth: walk\nsummary: Its role in the whole project, in plain words.\nusual: What people usually make it with.\nlearn: What to learn first.\n== main\nshow "Hello from my step"',
-    kit: 'kit: my-kit\ntitle: My kind of project\nlayout: structured\nabout: One line shown above its list of steps.\nsteps: my-step!',
+    kit: 'kit: my-kit\ntitle: My kind of project\nlayout: website\nshelf: tools\nplatform: web\nabout: One line shown above its list of steps.\nsteps: ',
     question: 'question: my-question\nask: What should it do?\noption: Something | What that means | kit my-kit',
   };
   const kitSource = (sel) => (sel.src === 'built' ? BUILDER.BUILT_IN[sel.i] : myKits[sel.i].source);
@@ -2716,23 +2787,64 @@
   function kitLinkProblems(text, editing) {
     const d = BUILDER.describeEntry(text);
     if (!d.id) return [];
+    return BUILDER.libraryWith(sourcesWith(text, editing)).problems.filter(p => p.includes(`"${d.id}"`));
+  }
+  /* Your entries, with this text saved in place of the one being edited (or added). */
+  function sourcesWith(text, editing) {
     const sources = myKits.map(m => m.source);
     if (editing && editing.src === 'mine') sources[editing.i] = text; else sources.push(text);
-    return BUILDER.libraryWith(sources).problems.filter(p => p.includes(`"${d.id}"`));
+    return sources;
   }
   const kitProblemsHtml = (own, link) => own.map(p => `<div>${escHtml(p)}</div>`).join('') + link.map(p => `<div class="kit-link">${escHtml(p)} (Fine while you write it; the builder skips it until then.)</div>`).join('');
+
+  /* An entry's text as a form, and back. Head lines the form doesn't show are kept as they are. */
+  function formFrom(text) {
+    const { head, sections } = BUILDER.parseEntry(text);
+    if (head.kit != null) return { kind: 'kit', id: head.kit, head, steps: (head.steps || '').split(',').map(x => x.trim()).filter(Boolean).map(x => ({ id: x.replace(/[!*]+$/, ''), always: /!$/.test(x), ticked: /[!*]$/.test(x) })) };
+    if (head.component != null) return { kind: 'component', id: head.component, head, sections: Object.fromEntries(Object.entries(sections).map(([f, ls]) => [f, ls.join('\n')])) };
+    return null;
+  }
+  const oneLine = (v) => String(v || '').replace(/\s*\n\s*/g, ' ').trim();
+  function formText(f) {
+    const lines = [`${f.kind}: ${f.id}`];
+    const order = f.kind === 'kit' ? ['title', 'layout', 'shelf', 'platform', 'asks', 'about'] : ['name', 'depth', 'summary', 'usual', 'learn'];
+    for (const k of order) if (oneLine(f.head[k])) lines.push(`${k}: ${oneLine(f.head[k])}`);
+    for (const [k, v] of Object.entries(f.head)) if (k !== f.kind && k !== 'steps' && !order.includes(k) && oneLine(v)) lines.push(`${k}: ${oneLine(v)}`);
+    if (f.kind === 'kit') lines.push('steps: ' + f.steps.map(s => s.id + (s.always ? '!' : s.ticked ? '*' : '')).join(', '));
+    else if (f.head.depth !== 'horizon') for (const [folder, t] of Object.entries(f.sections || {})) if (String(t).trim()) lines.push(`== ${folder}`, String(t).replace(/\s+$/, ''));
+    return lines.join('\n');
+  }
+  /* Does the kit build? Its project, made with these entries saved, compiled: problems other than blanks to fill. */
+  function buildCheck(sources, kitId, onlySteps) {
+    const lib = BUILDER.libraryWith(sources), kit = lib.kits[kitId];
+    if (!kit) return null;
+    const ids = (onlySteps || kit.steps.map(s => s.id)).filter(id => lib.components[id]);
+    let p, res;
+    try {
+      p = BUILDER.build(lib, kitId, ids, 'check', []).project;
+      res = p.kind === 'website' ? WEB.compileWebsite(p) : p.kind === 'arduino' ? CPP.compileCppProject(p) : LANG.compileProject(p);
+    } catch (e) { return { problems: ['It couldn\'t be put together: ' + e.message], blanks: 0, steps: ids.length }; }
+    const problems = [];
+    let blanks = 0;
+    for (const s of p.sections) (res.results[s.id] ? res.results[s.id].info : []).forEach((inf, i) => inf.errs.forEach(e => (/^Fill in the ‹/.test(e) ? blanks++ : problems.push(`${FOLDER_LABEL[s.file] || s.file} · line ${i + 1}: ${e}`))));
+    return { problems, blanks, steps: ids.length, missing: kit.steps.filter(s => !lib.components[s.id]).map(s => s.id) };
+  }
+  const checkHtml = (c, what) => (!c ? '' : c.problems.length
+    ? `<div class="kf-check bad"><b>${escHtml(what)} has ${c.problems.length} problem${c.problems.length === 1 ? '' : 's'}:</b><ul>${c.problems.slice(0, 6).map(p => `<li>${withCode(p)}</li>`).join('')}</ul></div>`
+    : `<div class="kf-check ok">✓ ${escHtml(what)} builds with no problems${c.blanks ? `, leaving ${c.blanks} ‹blank${c.blanks === 1 ? '' : 's'}› to fill in` : ''}.${c.missing && c.missing.length ? ` (Not written yet, so left out: ${c.missing.map(escHtml).join(', ')}.)` : ''}</div>`);
 
   function renderKitEditor() {
     const ed = bld.edit, { built, mine } = kitEntries();
     const listScroll = $('bldBody').querySelector('.kit-ed .bp-list') ? $('bldBody').querySelector('.kit-ed .bp-list').scrollTop : 0;
-    $('bldPath').innerHTML = '<button type="button" class="bld-crumb" id="bldEditDone">← Back to the questions</button><span class="bld-sep" aria-hidden="true">·</span><span class="dim">Questions, kits and steps, as plain text. Your changes are kept on this computer.</span>';
-    const item = (e) => `<button type="button" class="bp-item${ed.sel && ed.sel.src === e.src && ed.sel.i === e.i ? ' on' : ''}" data-ent="${e.src}:${e.i}"><b>${escHtml(e.title || 'Untitled')}</b><span>${escHtml(e.id || '?')}${e.src === 'mine' ? ' · yours' : e.replaced ? ' · replaced by yours' : ''}${e.problems.length ? ' · needs fixing' : ''}</span></button>`;
-    const group = (kind) => { const list = [...mine.filter(e => e.kind === kind), ...built.filter(e => e.kind === kind)]; return list.length ? `<div class="bp-group">${ENTRY_GROUP[kind]}</div>` + list.map(item).join('') : ''; };
+    $('bldPath').innerHTML = `<button type="button" class="bld-crumb" id="bldEditDone">← Back to ${ed.fromKit ? 'planning' : 'the questions'}</button><span class="bld-sep" aria-hidden="true">·</span><span class="dim">Kits and their steps. Your changes are kept on this computer.</span>`;
+    const isOn = (e) => ed.sel && ed.sel.src === e.src && ed.sel.i === e.i;
+    const item = (e) => `<button type="button" class="bp-item${isOn(e) ? ' on' : ''}" data-ent="${e.src}:${e.i}"><b>${escHtml(e.title || 'Untitled')}</b><span>${escHtml(e.id || '?')}${e.src === 'mine' ? ' · yours' : e.replaced ? ' · replaced by yours' : ''}${e.problems.length ? ' · needs fixing' : ''}</span></button>`;
+    const group = (kind) => { const list = [...mine.filter(e => e.kind === kind), ...built.filter(e => e.kind === kind)]; return list.length ? `<details class="kit-group"${kind !== 'question' ? ' open' : ''}><summary class="bp-group">${ENTRY_GROUP[kind]} <span class="dim">${list.length}</span></summary>${list.map(item).join('')}</details>` : ''; };
     const unread = mine.filter(e => !e.kind);
     $('bldBody').innerHTML = `<div class="bp-layout kit-ed">
-      <nav class="bp-list" aria-label="Questions, kits and steps">
-        <div class="bp-mk kit-new"><button type="button" class="btn small" data-new="component">New step</button><button type="button" class="btn small" data-new="kit">New kit</button><button type="button" class="btn small" data-new="question">New question</button></div>
-        ${group('question')}${group('kit')}${group('component')}${unread.length ? '<div class="bp-group">Not readable yet</div>' + unread.map(item).join('') : ''}
+      <nav class="bp-list" aria-label="Kits and steps">
+        <div class="bp-mk kit-new"><button type="button" class="btn small" data-new="kit">New kit</button><button type="button" class="btn small" data-new="component">New step</button><button type="button" class="btn small" data-new="question">New question</button></div>
+        ${group('kit')}${group('component')}${group('question')}${unread.length ? '<div class="bp-group">Not readable yet</div>' + unread.map(item).join('') : ''}
       </nav>
       <div class="bp-detail" id="kitDetail"></div></div>`;
     $('bldBody').querySelector('.kit-ed .bp-list').scrollTop = listScroll;
@@ -2741,22 +2853,21 @@
 
   function renderKitDetail() {
     const ed = bld.edit, box = $('kitDetail');
+    if (ed.form && !ed.asText) return ed.form.kind === 'kit' ? renderKitForm(box) : renderStepForm(box);
     if (ed.text != null) {
       const d = BUILDER.describeEntry(ed.text);
       box.innerHTML = `<div class="bp-edit">
-        <label class="ex-lbl" for="kitSrc">${ed.editing && ed.editing.src === 'mine' ? 'Your entry' : ed.editing ? 'Your copy (same id, so it replaces the built-in one; change the id on the first line to add a new one instead)' : 'Your new entry'}</label>
+        <label class="ex-lbl" for="kitSrc">${ed.editing && ed.editing.src === 'mine' ? 'Your entry, as text' : ed.editing ? 'Your copy, as text (same id, so it replaces the built-in one; change the id on the first line to add a new one instead)' : 'Your new entry, as text'}</label>
         <textarea id="kitSrc" spellcheck="false">${escHtml(ed.text)}</textarea>
         <div class="bp-errors" id="kitErrors">${kitProblemsHtml(d.problems, kitLinkProblems(ed.text, ed.editing))}</div>
         <details class="bp-help"><summary>How the text works</summary>
           <ul>
-            <li><code>question: id</code>, <code>ask:</code> the question, then one <code>option: label | what it means | where it leads</code> per answer. It leads to another question's id, or to <code>kit id</code>, optionally with the steps it ticks: <code>kit webpage: hero, gallery</code>. The first question is <code>start</code>.</li>
-            <li><code>kit: id</code>, <code>title:</code>, <code>layout:</code> <code>script</code>, <code>structured</code>, <code>website</code> or <code>arduino</code>, <code>about:</code>, and <code>steps:</code> in build order: <code>!</code> after a step means always included, <code>*</code> ticked at first.</li>
-            <li><code>component: id</code> (a step), <code>name:</code>, <code>depth:</code> <code>walk</code>, <code>hallway</code> or <code>horizon</code>, <code>summary:</code> its role, <code>usual:</code> what it's usually made with, <code>learn:</code> what to learn first.</li>
-            <li>A step's sentences go under a folder: <code>== settings</code>, <code>== tools</code> or <code>== main</code> (Python); <code>== structure</code>, <code>== styling</code> or <code>== mechanics</code> (website); <code>== settings</code>, <code>== start</code> or <code>== loop</code> (Arduino).</li>
-            <li>A hallway step leaves <code>‹blanks›</code> to fill in, with a hint inside: <code>set gain to ‹a number from 0 to 1›</code>. A walk step has none.</li>
+            <li><code>kit: id</code>, <code>title:</code>, <code>layout:</code> <code>script</code>, <code>structured</code>, <code>website</code> or <code>arduino</code>, <code>shelf:</code> its kind (${BUILDER.SHELVES.filter(s => s.ask).map(s => `<code>${s.id}</code>`).join(', ')}), <code>platform:</code> pc, phone, web or board, <code>about:</code>, and <code>steps:</code> in build order: <code>!</code> after a step means always included, <code>*</code> ticked at first.</li>
+            <li><code>component: id</code> (a step), <code>name:</code>, <code>depth:</code> <code>walk</code>, <code>hallway</code> or <code>horizon</code>, <code>summary:</code> its role, <code>usual:</code> what it's usually made with, <code>learn:</code> what to learn first, then its sentences under a folder: <code>== settings</code>, <code>== tools</code>, <code>== main</code> (Python); <code>== structure</code>, <code>== styling</code>, <code>== mechanics</code> (website); <code>== settings</code>, <code>== start</code>, <code>== loop</code> (Arduino).</li>
+            <li><code>question: id</code>, <code>ask:</code>, then <code>option: label | what it means | where it leads</code>. The builder makes its own questions from the kinds; a question of your own is for a kit that asks something first (<code>asks: id</code> on the kit).</li>
           </ul>
         </details>
-        <div class="bp-actions"><button type="button" class="btn primary" id="kitSave"${d.problems.length ? ' disabled' : ''}>Save</button><button type="button" class="btn" id="kitCancel">Cancel</button></div>
+        <div class="bp-actions"><button type="button" class="btn primary" id="kitSave"${d.problems.length ? ' disabled' : ''}>Save</button><button type="button" class="btn" id="kitCancel">Cancel</button>${ed.form ? '<button type="button" class="btn ghost" id="kfForm">Back to the form</button>' : ''}</div>
       </div>`;
       $('kitSrc').addEventListener('input', (e) => {
         ed.text = e.target.value;
@@ -2767,9 +2878,9 @@
       return;
     }
     if (!ed.sel) {
-      box.innerHTML = `<h3 class="bp-title">Make the builder yours</h3>
-        <p>Every question the builder asks, every kind of project it knows (a kit) and every step in them is a short piece of plain text. Pick one on the left to read it.</p>
-        <p>To change a built-in one, edit a copy: yours replaces it, and deleting yours puts the original back. Or start something new: a step first, then a kit that lists it, then an option in a question that leads to the kit.</p>`;
+      box.innerHTML = `<h3 class="bp-title">Make the planner yours</h3>
+        <p>Every kind of project the planner knows is a <b>kit</b>: a title, its kind, where it runs, and its <b>steps</b> in build order. Each step has a depth (Walk, Hallway or Horizon), a summary, and the sentences it writes.</p>
+        <p>Pick a kit on the left to change it: reorder its steps, add steps from any other kit, mark them always included or ticked at first, or write new ones. A built-in kit is changed as a copy that replaces it; deleting yours brings the original back. A new kit appears in the planner under its kind as soon as it's saved.</p>`;
       return;
     }
     const src = kitSource(ed.sel), d = BUILDER.describeEntry(src), mine = ed.sel.src === 'mine';
@@ -2780,22 +2891,184 @@
       ${d.problems.length || mine ? `<div class="bp-errors">${kitProblemsHtml(d.problems, mine ? kitLinkProblems(src, ed.sel) : [])}</div>` : ''}
       <pre class="kit-src">${escHtml(src)}</pre>
       <div class="bp-actions">
-        ${mine ? `<button type="button" class="btn" id="kitEdit">Edit</button><button type="button" class="btn ghost" id="kitDelete">${overrides ? 'Delete mine (the built-in one comes back)' : 'Delete'}</button>`
-          : replaced ? '<span class="bp-note">Yours replaces this one: it\'s listed as "yours".</span>' : '<button type="button" class="btn" id="kitCopyEdit">Edit a copy</button>'}
+        ${mine ? `<button type="button" class="btn primary" id="kitEdit">Change it</button><button type="button" class="btn ghost" id="kitDelete">${overrides ? 'Delete mine (the built-in one comes back)' : 'Delete'}</button>`
+          : replaced ? '<span class="bp-note">Yours replaces this one: it\'s listed as "yours".</span>' : '<button type="button" class="btn primary" id="kitCopyEdit">Change it (as your copy)</button>'}
+        ${d.kind === 'kit' ? '<button type="button" class="btn" id="kitPlan">Plan with it</button>' : ''}
         <button type="button" class="btn ghost" id="kitCopyText">Copy as text</button>
       </div>`;
   }
 
+  /* The kit form */
+  function renderKitForm(box) {
+    const ed = bld.edit, f = ed.form, lib = BUILDER.libraryWith(myKits.map(m => m.source));
+    const opt = (v, label, cur) => `<option value="${escHtml(v)}"${v === cur ? ' selected' : ''}>${escHtml(label)}</option>`;
+    const comp = (id) => (ed.newSteps && ed.newSteps[id]) || lib.components[id];
+    const check = buildCheck(sourcesWith(formText(f), ed.editing).concat(Object.values(ed.newSteps || {}).map(c => c.text)), f.id);
+    box.innerHTML = `<div class="kf">
+      <div class="bp-kind">Kit · ${escHtml(f.id)}${ed.editing && ed.editing.src === 'built' ? ' · your copy replaces the built-in one when saved' : ed.editing ? ' · yours' : ' · new'}</div>
+      <div class="kf-grid">
+        <label class="kf-wide">Title<input data-f="title" value="${escHtml(f.head.title || '')}" spellcheck="false"></label>
+        <label>Kind<select data-f="shelf">${BUILDER.SHELVES.filter(s => s.ask).map(s => opt(s.id, s.title, f.head.shelf)).join('')}</select></label>
+        <label>Runs on<select data-f="platform">${Object.entries(BUILDER.PLATFORMS).map(([p, l]) => opt(p, l, f.head.platform || ({ website: 'web', arduino: 'board' }[f.head.layout] || 'pc'))).join('')}</select></label>
+        <label>Made of<select data-f="layout">${Object.entries(LAYOUT_LABEL).map(([l, t]) => opt(l, t, f.head.layout || 'structured')).join('')}</select></label>
+        <label class="kf-wide">About (one line, shown above its steps)<textarea data-f="about" rows="2">${escHtml(f.head.about || '')}</textarea></label>
+      </div>
+      <h4 class="kf-h">Steps, in the order you'd build them</h4>
+      <ol class="kf-steps">${f.steps.map((s, i) => { const c = comp(s.id); return `<li data-i="${i}">
+          <span class="bld-n">${i + 1}</span>
+          <span class="kf-step-name">${c ? `<b>${escHtml(c.name)}</b> ${depthChip(c.depth)}` : `<b>${escHtml(s.id)}</b> <span class="kit-link">not written yet</span>`}<span class="dim kf-id">${escHtml(s.id)}</span></span>
+          <label class="kf-tog" title="Always part of a project made from this kit"><input type="checkbox" data-tog="always"${s.always ? ' checked' : ''}> Always</label>
+          <label class="kf-tog" title="Ticked when the planner opens"><input type="checkbox" data-tog="ticked"${s.ticked || s.always ? ' checked' : ''}${s.always ? ' disabled' : ''}> Ticked at first</label>
+          <span class="kf-step-btns"><button type="button" class="btn small" data-move="-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button type="button" class="btn small" data-move="1" aria-label="Move down"${i < f.steps.length - 1 ? '' : ' disabled'}>↓</button><button type="button" class="btn small" data-edit-step="${escHtml(s.id)}">Edit</button><button type="button" class="btn small ghost" data-remove aria-label="Remove ${escHtml(c ? c.name : s.id)}">Remove</button></span>
+        </li>`; }).join('') || '<li class="dim kf-empty">No steps yet: add one below.</li>'}</ol>
+      <div class="kf-add"><button type="button" class="btn small" id="kfAdd" aria-expanded="${!!ed.picking}">+ Add a step from the library</button><button type="button" class="btn small" id="kfNewStep">+ Write a new step</button></div>
+      ${ed.picking ? pickerHtml(lib, f) : ''}
+      ${checkHtml(check, 'The kit')}
+      <div class="bp-actions"><button type="button" class="btn primary" id="kfSave">Save${ed.editing && ed.editing.src === 'built' ? ' as yours' : ''}</button><button type="button" class="btn" id="kfCancel">Cancel</button><button type="button" class="btn ghost" id="kfText">Edit as text</button></div>
+    </div>`;
+    if (ed.picking) { const s = $('kfPickSearch'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  }
+  /* Every step in the library, by kit, to add to this one (those whose sentences fit how it's made first). */
+  function pickerHtml(lib, f) {
+    const q = (bld.edit.pickQuery || '').toLowerCase();
+    const folders = new Set(LAYOUT_FOLDERS[f.head.layout || 'structured']);
+    const fits = (c) => Object.keys(c.sections || {}).every(k => folders.has(k));
+    const have = new Set(f.steps.map(s => s.id));
+    const byKit = Object.values(lib.kits).map(k => ({ k, cs: k.steps.map(s => lib.components[s.id]).filter(c => c && !have.has(c.id) && fits(c) && (!q || (c.name + ' ' + c.summary + ' ' + k.title).toLowerCase().includes(q))) })).filter(x => x.cs.length);
+    const seen = new Set();
+    return `<div class="kf-picker"><input id="kfPickSearch" type="search" placeholder="Find a step: timer, save, score…" value="${escHtml(bld.edit.pickQuery || '')}" spellcheck="false" autocomplete="off">
+      <div class="kf-pick-list">${byKit.map(({ k, cs }) => { const fresh = cs.filter(c => !seen.has(c.id) && seen.add(c.id)); return fresh.length ? `<div class="kf-pick-g">${escHtml(k.title)}</div>${fresh.map(c => `<button type="button" class="kf-pick" data-add="${escHtml(c.id)}"><b>${escHtml(c.name)}</b> ${depthChip(c.depth)}<span>${escHtml(firstSentence(c.summary))}</span></button>`).join('')}` : ''; }).join('') || '<p class="dim">No steps that fit how this kit is made match that.</p>'}</div>
+      <p class="dim kf-pick-note">Only steps whose sentences fit ${escHtml(LAYOUT_LABEL[f.head.layout || 'structured'])} are listed.</p></div>`;
+  }
+
+  /* The step form: its name, depth, role, and its sentences, folder by folder. */
+  function renderStepForm(box) {
+    const ed = bld.edit, f = ed.form, lib = BUILDER.libraryWith(myKits.map(m => m.source));
+    const ctx = ed.back && ed.back.kind === 'kit' ? ed.back : null;
+    const layout = ctx ? ctx.head.layout || 'structured' : (Object.values(lib.kits).find(k => k.steps.some(s => s.id === f.id)) || {}).layout || 'structured';
+    const folders = [...new Set(LAYOUT_FOLDERS[layout].concat(Object.keys(f.sections || {})))];
+    const text = formText(f), d = BUILDER.describeEntry(text);
+    let check = null;
+    const kitId = ctx ? ctx.id : (Object.values(lib.kits).find(k => k.steps.some(s => s.id === f.id)) || {}).id;
+    if (kitId && f.head.depth !== 'horizon') {
+      const k = lib.kits[kitId] || { steps: [] };
+      const always = (ctx ? ctx.steps : k.steps).filter(s => s.always).map(s => s.id);
+      check = buildCheck(sourcesWith(text, ed.editing).concat(ctx ? [formText(ctx)] : []), kitId, [...new Set(always.concat(f.id))]);
+    }
+    box.innerHTML = `<div class="kf">
+      <div class="bp-kind">Step · ${escHtml(f.id)}${ed.editing && ed.editing.src === 'built' ? ' · your copy replaces the built-in one when saved' : ed.editing ? ' · yours' : ' · new'}${ctx ? ` · in ${escHtml(ctx.head.title || ctx.id)}` : ''}</div>
+      <div class="kf-grid">
+        <label class="kf-wide">Name<input data-f="name" value="${escHtml(f.head.name || '')}" spellcheck="false"></label>
+      </div>
+      <div class="kf-depth" role="radiogroup" aria-label="Depth">${Object.keys(BUILDER.DEPTHS).map(dp => `<button type="button" role="radio" aria-checked="${f.head.depth === dp}" class="kf-depth-b${f.head.depth === dp ? ' on' : ''}" data-depth="${dp}">${depthChip(dp)}<span>${escHtml(BUILDER.DEPTHS[dp].means)}</span></button>`).join('')}</div>
+      <div class="kf-grid">
+        <label class="kf-wide">Its role in the whole project<textarea data-f="summary" rows="3">${escHtml(f.head.summary || '')}</textarea></label>
+        <label class="kf-wide">Usually made with<input data-f="usual" value="${escHtml(f.head.usual || '')}"></label>
+        <label class="kf-wide">Learn first<input data-f="learn" value="${escHtml(f.head.learn || '')}"></label>
+      </div>
+      ${f.head.depth === 'horizon' ? '<p class="dim">A horizon step has no sentences: its summary, what it\'s usually made with and what to learn first are the step.</p>' : `<h4 class="kf-h">Its sentences${f.head.depth === 'hallway' ? ', with ‹blanks› for the parts to fill in' : ''}</h4>
+      ${folders.map(fo => `<label class="kf-sec"><span class="ex-lbl">${escHtml(FOLDER_LABEL[fo] || fo)}</span><textarea data-sec="${fo}" rows="${Math.min(14, Math.max(3, String((f.sections || {})[fo] || '').split('\n').length + 1))}" spellcheck="false">${escHtml((f.sections || {})[fo] || '')}</textarea></label>`).join('')}`}
+      <div class="bp-errors" id="kfErrors">${kitProblemsHtml(d.problems, [])}</div>
+      <div id="kfStepCheck">${check ? checkHtml(check, `${ctx ? ctx.head.title || ctx.id : lib.kits[kitId] ? lib.kits[kitId].title : 'Its kit'}, with this step,`) : ''}</div>
+      <div class="bp-actions"><button type="button" class="btn primary" id="kfSave"${d.problems.length ? ' disabled' : ''}>Save${ctx ? ' and go back to the kit' : ed.editing && ed.editing.src === 'built' ? ' as yours' : ''}</button><button type="button" class="btn" id="kfCancel">${ctx ? 'Back to the kit' : 'Cancel'}</button><button type="button" class="btn ghost" id="kfText">Edit as text</button></div>
+    </div>`;
+  }
+
+  /* Save the form (or the text) as yours: replace your copy, or add it (a copy of a built-in entry keeps its id, so it replaces it). */
+  function saveEntry(text, editing) {
+    if (editing && editing.src === 'mine') { myKits[editing.i].source = text; saveKits(); return { src: 'mine', i: editing.i }; }
+    const d = BUILDER.describeEntry(text);
+    const at = myKits.findIndex(m => { const x = BUILDER.describeEntry(m.source); return x.kind === d.kind && x.id === d.id; });
+    if (at >= 0) { myKits[at].source = text; saveKits(); return { src: 'mine', i: at }; }
+    myKits.push({ id: Date.now().toString(36), source: text });
+    saveKits();
+    return { src: 'mine', i: myKits.length - 1 };
+  }
+  const uniqueId = (base, taken) => { let id = base, n = 2; while (taken(id)) id = `${base}-${n++}`; return id; };
+
   $('bldBody').addEventListener('click', (e) => {
     if (!bld.edit) return;
-    const ed = bld.edit;
+    const ed = bld.edit, lib = () => BUILDER.libraryWith(myKits.map(m => m.source));
     const ent = e.target.closest('[data-ent]');
-    if (ent) { const [src, i] = ent.dataset.ent.split(':'); ed.sel = { src, i: +i }; ed.text = null; ed.editing = null; return renderKitEditor(); }
+    if (ent) { const [src, i] = ent.dataset.ent.split(':'); ed.sel = { src, i: +i }; ed.text = null; ed.editing = null; ed.form = null; ed.back = null; ed.asText = false; return renderKitEditor(); }
     const nw = e.target.closest('[data-new]');
-    if (nw) { ed.sel = null; ed.editing = null; ed.text = NEW_ENTRY[nw.dataset.new]; renderKitEditor(); $('kitSrc').focus(); return; }
+    if (nw) {
+      ed.sel = null; ed.editing = null; ed.back = null; ed.asText = false;
+      const taken = (id) => !!(lib().kits[id] || lib().components[id] || lib().questions[id]);
+      const text = NEW_ENTRY[nw.dataset.new].replace(/^(\w+): my-(\w+)/, (m, k, w) => `${k}: ${uniqueId('my-' + w, taken)}`);
+      ed.form = formFrom(text); ed.text = ed.form ? null : text;
+      renderKitEditor();
+      return;
+    }
+    const f = ed.form;
+    // the kit form
+    const row = e.target.closest('.kf-steps li[data-i]');
+    if (f && f.kind === 'kit' && row) {
+      const i = +row.dataset.i;
+      const mv = e.target.closest('[data-move]');
+      if (mv) { const j = i + +mv.dataset.move; if (j >= 0 && j < f.steps.length) { [f.steps[i], f.steps[j]] = [f.steps[j], f.steps[i]]; renderKitDetail(); } return; }
+      if (e.target.closest('[data-remove]')) { f.steps.splice(i, 1); return renderKitDetail(); }
+      const es = e.target.closest('[data-edit-step]');
+      if (es) {
+        const id = es.dataset.editStep, fresh = ed.newSteps && ed.newSteps[id];
+        const { built, mine } = kitEntries();
+        const entry = mine.find(x => x.kind === 'component' && x.id === id) || built.find(x => x.kind === 'component' && x.id === id);
+        ed.back = { ...f, steps: f.steps.map(s => ({ ...s })), _editing: ed.editing, _sel: ed.sel };
+        ed.editing = fresh ? null : entry ? { src: entry.src, i: entry.i } : null;
+        ed.form = formFrom(fresh ? fresh.text : entry ? kitSource(entry) : NEW_ENTRY.component.replace('my-step', id));
+        return renderKitDetail();
+      }
+    }
     const id = e.target.id;
-    if (id === 'kitCopyEdit' || id === 'kitEdit') { ed.text = kitSource(ed.sel); ed.editing = { ...ed.sel }; renderKitDetail(); $('kitSrc').focus(); }
-    if (id === 'kitCancel') { ed.text = null; ed.editing = null; renderKitDetail(); }
+    if (f && f.kind === 'kit' && id === 'kfAdd') { ed.picking = !ed.picking; ed.pickQuery = ''; return renderKitDetail(); }
+    const add = e.target.closest('[data-add]');
+    if (f && f.kind === 'kit' && add) { f.steps.push({ id: add.dataset.add, always: false, ticked: true }); ed.picking = false; return renderKitDetail(); }
+    if (f && f.kind === 'kit' && id === 'kfNewStep') {
+      const taken = (x) => !!(lib().components[x] || (ed.newSteps && ed.newSteps[x]));
+      const sid = uniqueId(`${f.id}-step`, taken), folder = LAYOUT_FOLDERS[f.head.layout || 'structured'];
+      ed.back = { ...f, steps: f.steps.map(s => ({ ...s })), _editing: ed.editing, _sel: ed.sel };
+      ed.editing = null;
+      ed.form = { kind: 'component', id: sid, isNew: true, head: { component: sid, name: 'A new step', depth: 'walk', summary: '', usual: '', learn: '' }, sections: { [folder[folder.length - 1]]: '' } };
+      return renderKitDetail();
+    }
+    const dp = e.target.closest('[data-depth]');
+    if (f && f.kind === 'component' && dp) { f.head.depth = dp.dataset.depth; return renderKitDetail(); }
+    if (id === 'kfText') { ed.asText = true; ed.text = formText(f); return renderKitDetail(); }
+    if (id === 'kfForm') { const back = formFrom(ed.text); if (back) { ed.form = back; ed.asText = false; ed.text = null; } return renderKitDetail(); }
+    if (id === 'kfCancel') {
+      if (f && f.kind === 'component' && ed.back) { const k = ed.back; ed.form = { ...k }; ed.editing = k._editing; ed.sel = k._sel; ed.back = null; return renderKitDetail(); }
+      ed.form = null; ed.text = null; ed.editing = null; ed.asText = false;
+      return renderKitEditor();
+    }
+    if (id === 'kfSave') {
+      if (f.kind === 'component') {
+        const text = formText(f);
+        if (BUILDER.describeEntry(text).problems.length) return;
+        if (ed.back) {   // back to the kit: a new step is kept with the kit until the kit is saved
+          const k = ed.back;
+          if (f.isNew) { ed.newSteps = { ...(ed.newSteps || {}), [f.id]: { text, name: f.head.name, depth: f.head.depth } }; if (!k.steps.some(s => s.id === f.id)) k.steps.push({ id: f.id, always: false, ticked: true }); }
+          else saveEntry(text, ed.editing);
+          ed.form = { ...k }; ed.editing = k._editing; ed.sel = k._sel; ed.back = null;
+          return renderKitEditor();
+        }
+        ed.sel = saveEntry(text, ed.editing); ed.form = null; ed.editing = null;
+        return renderKitEditor();
+      }
+      // the kit, and any new steps written for it
+      for (const st of Object.values(ed.newSteps || {})) saveEntry(st.text, null);
+      ed.newSteps = null;
+      ed.sel = saveEntry(formText(f), ed.editing); ed.form = null; ed.editing = null; ed.picking = false;
+      return renderKitEditor();
+    }
+    // the read-only view and the text editor
+    if (id === 'kitCopyEdit' || id === 'kitEdit') {
+      ed.editing = { ...ed.sel };
+      const form = formFrom(kitSource(ed.sel));
+      if (form) { ed.form = form; ed.asText = false; } else ed.text = kitSource(ed.sel);
+      return renderKitDetail();
+    }
+    if (id === 'kitPlan') { const d = BUILDER.describeEntry(kitSource(ed.sel)); return openBuilderAtKit(d.id); }
+    if (id === 'kitCancel') { ed.text = null; ed.asText = false; if (!ed.form) ed.editing = null; return ed.form ? renderKitDetail() : renderKitEditor(); }
     if (id === 'kitCopyText') copyText(kitSource(ed.sel), e.target, 'Copy as text');
     if (id === 'kitDelete') {
       if (e.target.dataset.confirm !== 'yes') { e.target.dataset.confirm = 'yes'; e.target.textContent = 'Click again to delete'; return; }
@@ -2803,15 +3076,41 @@
     }
     if (id === 'kitSave') {
       if (BUILDER.describeEntry(ed.text).problems.length) return;
-      let at;
-      if (ed.editing && ed.editing.src === 'mine') { at = ed.editing.i; myKits[at].source = ed.text; }
-      else { myKits.push({ id: Date.now().toString(36), source: ed.text }); at = myKits.length - 1; }
-      saveKits();
-      ed.sel = { src: 'mine', i: at }; ed.text = null; ed.editing = null;
+      ed.sel = saveEntry(ed.text, ed.editing); ed.text = null; ed.editing = null; ed.form = null; ed.asText = false;
       renderKitEditor();
     }
   });
+  // typing in the forms: fields update the form; the check runs again after a pause
+  let kfTimer = null;
+  $('bldBody').addEventListener('input', (e) => {
+    const ed = bld.edit;
+    if (!ed || !ed.form) return;
+    if (e.target.id === 'kfPickSearch') { ed.pickQuery = e.target.value; return renderKitDetail(); }
+    const fld = e.target.dataset.f, sec = e.target.dataset.sec;
+    if (!fld && !sec) return;
+    if (fld) ed.form.head[fld] = e.target.value;
+    if (sec) ed.form.sections = { ...(ed.form.sections || {}), [sec]: e.target.value };
+    clearTimeout(kfTimer);
+    kfTimer = setTimeout(() => {   // re-check without redrawing the field being typed in
+      if (ed.form.kind !== 'component') return;
+      const p = BUILDER.describeEntry(formText(ed.form));
+      if ($('kfErrors')) $('kfErrors').innerHTML = kitProblemsHtml(p.problems, []);
+      if ($('kfSave')) $('kfSave').disabled = !!p.problems.length;
+    }, 300);
+  });
+  $('bldBody').addEventListener('change', (e) => {
+    const ed = bld.edit;
+    if (ed && ed.form && ed.form.kind === 'kit') {
+      if (e.target.dataset.f) { ed.form.head[e.target.dataset.f] = e.target.value; return renderKitDetail(); }
+      const tog = e.target.dataset.tog, row = e.target.closest('li[data-i]');
+      if (tog && row) { const s = ed.form.steps[+row.dataset.i]; s[tog] = e.target.checked; if (tog === 'always' && s.always) s.ticked = true; return renderKitDetail(); }
+    }
+    if (ed && ed.form && ed.form.kind === 'component' && (e.target.dataset.sec || e.target.dataset.f)) return renderKitDetail();   // the build check, once a field is left
+  });
+
+  // planning
   $('bldBody').addEventListener('click', (e) => {
+    if (bld.edit) return;
     const opt = e.target.closest('[data-opt]');
     if (opt) {
       const lib = bldLibrary();
@@ -2825,15 +3124,28 @@
       }
       return renderBuilder();
     }
+    const pv = e.target.closest('[data-preview]');
+    if (pv) { const id = pv.dataset.preview; if (bld.preview.has(id)) bld.preview.delete(id); else bld.preview.add(id); return renderKit(bldLibrary().kits[bld.kit]); }
+    const pr = e.target.closest('[data-preset]');
+    if (pr) {
+      const kit = bldLibrary().kits[bld.kit];
+      bld.ticked = new Set(pr.dataset.preset === 'all' ? kit.steps.map(s => s.id) : pr.dataset.preset === 'usual' ? kit.steps.filter(s => s.ticked).map(s => s.id) : []);
+      return renderKit(kit);
+    }
     if (e.target.id === 'bldGo') builderGo();
+    if (e.target.id === 'bldChange') { const k = bld.kit; openKitEditorAt('kit', k); bld.edit.fromKit = k; renderBuilder(); }
+    if (e.target.id === 'bldToLibrary') { closeBuilder(); openBlueprints(); }
   });
   $('bldBody').addEventListener('change', (e) => {
+    if (bld.edit) return;
     const box = e.target.closest('[data-step]');
     if (!box) return;
     if (box.checked) bld.ticked.add(box.dataset.step); else bld.ticked.delete(box.dataset.step);
     renderKit(bldLibrary().kits[bld.kit]);
   });
+  $('bldBody').addEventListener('focusin', (e) => { if (e.target.id === 'bldName' && !bld.edit) renderStages(3); });
   $('btnBuilder').addEventListener('click', openBuilder);
+  $('btnPlan').addEventListener('click', openBuilder);
   $('newToBuilder').addEventListener('click', openBuilder);
 
   /* The project map: the plan's steps, in order. Each opens a window about its role in the whole. */
@@ -3389,6 +3701,7 @@
     }
     if (e.key === 'Escape') {
       if (!gloss.hidden) closeGlossary();
+      else if (maxed && tip.hidden && !document.querySelector('.modal:not([hidden])') && ac.hidden) setMax(maxed);
       else if (!tip.hidden) hideTip();
       else if (!$('stepModal').hidden) closeStep();
       else if (!$('builderModal').hidden) closeBuilder();

@@ -212,7 +212,8 @@ try {
       const pick = (label) => { const b = [...document.querySelectorAll('#bldBody [data-opt]')].find(x => x.textContent.trim().startsWith(label)); if (!b) throw new Error('No option ' + label); b.click(); };
       document.getElementById('btnFile').click();
       document.getElementById('btnBuilder').click();
-      pick('App'); pick('PC'); pick('Audio workstation');
+      pick('Creative & media');
+      if (document.querySelector('#bldBody [data-opt]')) pick('Audio workstation');   // (a shelf with one kit goes straight to it)
       const mixer = document.querySelector('#bldBody [data-step="mixer"]'); if (!mixer.checked) mixer.click();
       document.getElementById('bldName').value = 'e2e studio';
       document.getElementById('bldGo').click();
@@ -224,6 +225,28 @@ try {
       return { steps, blanks, title, open: !document.getElementById('builderModal').hidden };
     });
     if (r.open || r.steps.length < 4 || !/^1\s*Sound in and out/.test(r.steps[0]) || !r.steps.some(s => /Mixer/.test(s) && /Hallway/i.test(s)) || r.blanks < 1 || !/^Step 4 of/.test(r.title)) throw new Error(JSON.stringify(r));
+  });
+
+  await check('planning has stages, presets and a kit editor; each window can go full screen', async () => {
+    const r = await js(() => {
+      const vis = (sel) => { const el = document.querySelector(sel); return !!el && el.offsetWidth > 0; };
+      document.getElementById('btnPlan').click();
+      const stages = document.querySelectorAll('#bldStages li').length;
+      [...document.querySelectorAll('#bldBody [data-opt]')].find(b => /Creative/.test(b.textContent)).click();
+      const dawOpt = [...document.querySelectorAll('#bldBody [data-opt]')].find(b => /Audio workstation/.test(b.textContent)); if (dawOpt) dawOpt.click();
+      document.querySelector('[data-preset="min"]').click();
+      const smallest = document.querySelectorAll('.bld-plan-list li').length;
+      document.querySelector('[data-preset="all"]').click();
+      const all = document.querySelectorAll('.bld-plan-list li').length;
+      document.getElementById('bldChange').click();
+      const form = { steps: document.querySelectorAll('.kf-steps li[data-i]').length, check: (document.querySelector('.kf-check') || {}).textContent || '' };
+      document.getElementById('bldClose').click();
+      document.querySelector('.max-btn[data-max="term"]').click();
+      const maxTerm = { term: vis('.term'), say: vis('.pane-say') };
+      document.querySelector('.max-btn[data-max="term"]').click();
+      return { stages, smallest, all, form, maxTerm, back: vis('.pane-say') };
+    });
+    if (r.stages !== 3 || !(r.smallest < r.all) || r.form.steps < 5 || !/builds with no problems/.test(r.form.check) || !r.maxTerm.term || r.maxTerm.say || !r.back) throw new Error(JSON.stringify(r));
   });
 
   await check('runs a shell command with $', async () => {

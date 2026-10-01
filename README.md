@@ -28,12 +28,27 @@ rounded corners 8" and used with "when save is clicked". A live preview updates 
 **Pick from the page** puts an element's name into your sentence, and messages and errors from
 the page appear in the terminal, linked back to the sentence that caused them.
 
-Blueprints live in the **Library**, on shelves by what you're making (Apps for a PC, Phone apps,
-Websites, Online services, Gadgets, One idea at a time, Starting points), beside the project
-builder's kits for the same kinds of project. A kit plans a whole project step by step; a blueprint
-writes its sentences from a story with blanks. Each shelf can open the project builder right there.
-Blueprints are plain text: you can edit any of them, save your own, or turn your current project into
-a blueprint and put blanks where your projects usually differ (`shelf:` says where it sits).
+Everything you can start from is in the **Library**, by kind of project: Games, Productivity, Money,
+Health & habits, Learning, Creative & media, Social & sharing, Tools & utilities, Websites, Online
+services and Gadgets, then One idea at a time and Starting points. Each project says where it runs (PC,
+Phone, Web or Board), and the chips at the top show only those. A **kit** plans a whole kind of project
+step by step; a **blueprint** writes its sentences from a story with blanks. Blueprints are plain text:
+you can edit any of them, save your own, or turn your current project into a blueprint and put blanks
+where your projects usually differ (`shelf:` says which kind it is, `platform:` where it runs).
+
+**Games** are sentences too. A drawing area in Structure, then in Mechanics:
+
+```
+keep track of the keys
+every frame
+    if "left" is held
+        decrease player x by 4
+    clear game
+    draw a rectangle at player x, 200 sized 20 by 20 in "tomato" on game
+    draw text "Score: {score}" at 10, 24 in "white" on game
+when the screen is tapped
+    play a note of 440 for 0.1 seconds
+```
 
 **C++** projects use the same sentences. Types are worked out from values
 (text → `std::string`, whole numbers → `int`) and every choice is explained; you can also name
@@ -74,13 +89,13 @@ over and over
 In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
 uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
-**Project builder: a map before you start**
+**Plan a project: a map before you start**
 
-File → **Project builder…** asks a few questions to narrow down what you're making (App › PC › Audio
-workstation, a webpage, an online service, a gadget…), then lists the parts such a project usually
-has, in the order you'd build them. Tick the ones you want and IntuiCode lays them out in your
-folders as sentences, with a **Project map** beside the folders. Each step says how much is done
-for you:
+**Plan** (in the menu bar, or from a kit in the Library) asks what you're making, by the same kinds as the
+Library, then lists the steps that kind of project usually has, in the order you'd build them. Start from
+the smallest that works, the usual, or everything; preview any step's sentences; and watch **Your plan**
+fill in beside them before you name it and build. IntuiCode lays the steps out in your folders as
+sentences, with a **Project map** beside the folders. Each step says how much is done for you:
 
 - **Walk**: written out in full, to read, run and change.
 - **Hallway**: the structure is there and the key parts are named; you fill in the ‹blanks›, with
@@ -91,12 +106,17 @@ for you:
 Click a step for its role in the project and a jump to its sentences; the explanation panel says
 which step your cursor is in.
 
-The questions, kits and steps are plain text, and **Change the questions and steps** (in the
-builder) lets you read and edit every one of them. Edit a copy of a built-in step and yours
-replaces it (delete yours to get the original back); or write your own step, a kit that lists it,
-and an answer to a question that leads there. Each entry is checked as you type (a hallway step
-needs ‹blanks›, a walk step none), and your entries are kept on your computer. The built-in library,
-and the format, are in `lang/builder.js`.
+**Change this kit** (in planning, or from a kit in the Library) opens it as a form: its title, kind, where it
+runs and what it's made of; its steps, which you can reorder, remove, mark as always included or ticked at
+first, edit, add from any other kit, or write from scratch, with a Walk/Hallway/Horizon switch and its
+sentences folder by folder. A check builds the kit as you go and says whether it works. A built-in kit is
+changed as your copy, which replaces it (delete yours to get the original back), and a new kit appears in
+planning under its kind as soon as it's saved. Everything underneath is plain text (**Edit as text**), kept
+on your computer. The built-in library and its format are in `lang/builder.js`, and more kits are in the
+packs in `lang/kits/`.
+
+**Full screen:** the corner button on the sentences, the code and the terminal makes that window fill the
+work area; the same button, or Esc, brings the others back.
 
 **Two sides, and the help follows the one you're in**
 
