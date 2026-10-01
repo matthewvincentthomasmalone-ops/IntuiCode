@@ -1,0 +1,22 @@
+{
+  "‹how strong it looks: 1 minus days divided by FADE_DAYS, but never under 0.2›": "Math.max(0.2, 1 minus days divided by FADE_DAYS)",
+  "‹every #word in the text: text.match(/#[\\w-]+/g) or an empty list›": "text.match(/#[\\w-]+/g) or empty list",
+  "‹show it when nothing is chosen, or when its tags contain the chosen one: chosen is nothing or …›": "chosen is nothing or tagsIn(note.text) contains chosen",
+  "‹the stage, from 0: sessions mod the number of stages, which is length of STAGES›": "sessions mod length of STAGES",
+  "‹how many full sets of stages so far: sessions divided by length of STAGES, rounded down with Math.floor›": "Math.floor(sessions divided by length of STAGES)",
+  "‹this block is happening now: start is at most minutesNow and …›": "start is at most minutesNow and minutesNow is less than start plus SLOT_MINUTES",
+  "‹this block is over: start plus SLOT_MINUTES is …›": "start plus SLOT_MINUTES is at most minutesNow",
+  "‹a new month: there is a last month and it is not this month›": "lastMonth is not nothing and lastMonth is not thisMonth",
+  "‹0 to start fresh, or envelope.spent minus envelope.budget to carry over›": "envelope.spent minus envelope.budget",
+  "‹the smaller of what the debtor owes and what the creditor is owed: Math.min(0 minus item debtor of balances, …)›": "Math.min(0 minus item debtor of balances, item creditor of balances)",
+  "‹nothing left worth paying: amount is less than half a penny›": "amount is less than 0.005",
+  "‹a yearly price shared over the 12 months: its price divided by 12›": "sub[\"price\"] divided by 12",
+  "‹what they all cost in a year›": "monthly times 12",
+  "‹days from today until it renews: (renews minus today).days›": "(renews minus today).days",
+  "‹it renews soon›": "days is at most soon days",
+  "‹today isn't marked yet: not markedDaysAgo(0)›": "not markedDaysAgo(0)",
+  "‹the day back days ago is marked›": "markedDaysAgo(back)",
+  "‹one of the last three seconds, not yet pipped: secondsLeft is at least 1 and secondsLeft is at most 3 and …›": "secondsLeft is at least 1 and secondsLeft is at most 3 and secondsLeft is not lastPip",
+  "‹the time is up and a whole box is complete: tick is at least minutes times 60 and tick mod (4 times SIDE) is …›": "tick is at least minutes times 60 and tick mod (4 times SIDE) is 0",
+  "‹whole boxes so far: tick divided by (4 times SIDE)›": "tick divided by (4 times SIDE)"
+}
