@@ -43,11 +43,16 @@ Tick each one. If something is off, note what you did and what the terminal said
       the questions → App → PC → DAW: the EQ row has your name. Delete yours: the original comes back.
 
 **Tutor**
-- [ ] Build **Number guessing game**, press **Tutor**, and click a line: a balloon explains a Python habit on it.
-- [ ] Press **✎ Your turn** under the explanation and write the line in Python: a wrong answer says so; a right one
-      (spacing doesn't matter) says "Exactly right". After three, **Write this line as Python** appears.
+- [ ] Build **Number guessing game**, press **Tutor**, and click a sentence: the strip shows how it's said, and a balloon
+      explains a way of talking to the program. **✎ Say it yourself** covers the sentence: another way of saying it
+      that makes the same Python is "Right".
+- [ ] Click a line of the Python: the lamp moves to that pane, the strip lists its terms and your names, and a balloon
+      by the code explains a Python habit. **✎ Write it yourself** covers the code: a right line (spacing doesn't
+      matter) says "Exactly right". After three, **Write this line as Python** appears.
+- [ ] **Ctrl+H** on a line of code: a window with its terms, examples and related terms. On an everyday sentence: the
+      shapes it follows. On a website sentence with `hero` or `cta`: those words, explained.
 - [ ] Read mode → Try the example project → `app.py` → **Style tour**: Next walks through the file's habits.
-- [ ] Build **C++ guessing game** with Tutor on: click `increase guesses by 1`, **✎ Your turn**, write `guesses += 1;`:
+- [ ] Build **C++ guessing game** with Tutor on: click the code line `guesses += 1;`, **✎ Write it yourself**, write `guesses += 1;`:
       "Exactly right". `guesses++;` is "Not quite" (the same result, said differently).
 - [ ] Build **Arduino: button and light**: the notes say "In Arduino C++" (pinMode, INPUT_PULLUP, …).
 - [ ] Read mode → import `samples/cpp/blink/blink.ino` → **Style tour**: setup and loop, pinMode, delay…

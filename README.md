@@ -98,16 +98,34 @@ and an answer to a question that leads there. Each entry is checked as you type 
 needs ‹blanks›, a walk step none), and your entries are kept on your computer. The built-in library,
 and the format, are in `lang/builder.js`.
 
+**Two sides, and the help follows the one you're in**
+
+Everything under the panes (the explanation, the tutor, the glossary) follows the side you're working
+in, marked by the lamp on its title plate. In the **sentences**, it's about how things are said: the
+shape a sentence follows (`while ‹condition›`, with your words in its parts), and how to talk to the
+program (blocks, names, `store in`, quotes, `called`, groups, pins…). Click a line of the **code**, and
+it's about the code: what each term in the line is, the names you made, and why it's written that way.
+↑ and ↓ move through the code; Enter or a double-click goes to its sentence.
+
+**Ctrl+H** explains the words in a selection, or in the section the cursor is in (the line and anything
+indented under it). In the code, every term gets a definition, an example and related terms you can
+follow. In the sentences only the words that aren't everyday English get one (`hero`, `cta`, `pull-up`,
+`give back`…); where a section is all everyday words, it shows the shapes those sentences follow, and
+others in the same family, instead. The terms are plain data in `lang/glossary_terms.js`; finding them is
+`lang/glossary.js`.
+
 **Tutor: think in the language's style**
 
-Press **Tutor** in the menu bar. As you write, a tip balloon points out how the language likes things said,
-the first time you use each habit (in Python: imports first, CAPITALS for settings, `self`, the `__main__`
-guard, f-strings…), with the why behind it. Now and then it asks you to write one of your sentences
-as real Python yourself, and checks the answer with the same exact comparison that proves round
-trips: right or wrong, never a guess. Once you've written a habit right three times, its notes step
-back, and **Write this line as Python** turns the sentence into the code you now know (checked to
-make exactly the same program). In Read mode, **Style tour** walks through the habits of any Python
-or C++ file, in reading order, so code an AI wrote for you becomes code you can read and take over.
+Press **Tutor** in the menu bar. In the sentences, a balloon introduces each way of talking to the program
+the first time you use it, and **✎ Say it yourself** covers a sentence and asks you to say its code in
+words: any sentence that makes exactly the same program is right, so other ways of saying it count. In
+the code, a balloon points out how the language likes things said the first time you meet each habit
+(in Python: imports first, CAPITALS for settings, `self`, the `__main__` guard, f-strings…), with the why
+behind it, and **✎ Write it yourself** covers the code and asks you to write it, checked with the same exact
+comparison that proves round trips: right or wrong, never a guess. Once you've written a habit right three
+times, its notes step back, and **Write this line as Python** turns the sentence into the code you now
+know (checked to make exactly the same program). In Read mode, **Style tour** walks through the habits of
+any Python or C++ file, in reading order, so code an AI wrote for you becomes code you can read and take over.
 
 The tutor speaks **C++ and Arduino** too: kinds before names (`int guesses = 0;`), `std::`, `const`,
 the `;` and the braces, `cout <<`, references, classes with `public:` and `this->`, and on a board

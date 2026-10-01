@@ -106,6 +106,9 @@
   let runtimeMark = null;  // {sec, line, msg}
   let typingLine = -1;     // errors on the line being typed wait until the cursor leaves it
   let mode = 'write';
+  // Which side you're working in: the sentences ('say') or the code ('code', at line codeIdx of the code).
+  // The explain strip, the tutor and Ctrl+H all follow it.
+  let pane = 'say', codeIdx = -1;
 
   const activeSec = () => project.sections.find(s => s.id === project.active) || project.sections[project.sections.length - 1];
 
@@ -245,6 +248,9 @@
     gutterInner.style.transform = `translateY(${-ta.scrollTop}px)`;
     placeBand(bandCur, caretLine());
     if (!bandLink.hidden) placeBand(bandLink, +bandLink.dataset.line);
+    const mask = $('bandMask');
+    if (!mask.hidden) placeBand(mask, +mask.dataset.line);
+    placeTip();
   }
   function placeBand(el, line) { el.style.top = (PAD_T + line * LH - ta.scrollTop) + 'px'; }
 
@@ -297,6 +303,11 @@
       const hasNote = o.note || (o.src >= 0 && r.info[o.src] && r.info[o.src].notes.length);
       return `<div class="pl${o.src < 0 ? ' hdr' : ''}${hasNote ? ' note' : ''}" data-i="${i}" data-src="${o.src}"><span class="ln">${i + 1}</span><span class="pc">${hlCode(secLang(sec), o.text) || ' '}</span></div>`;
     }).join('');
+    if (pane === 'code' && codeIdx >= 0) {   // the picked line stays picked as the code changes
+      codeIdx = Math.min(codeIdx, r.lines.length - 1);
+      const el = pycode.children[codeIdx];
+      if (el) el.classList.add('picked');
+    }
     linkPython();
   }
 
@@ -317,7 +328,11 @@
     }
   }
 
+  /* The explain strip follows the side you're working in: in the sentences it's about how the sentence is
+   * said (its shape, its words, how to talk to the program); in the code it's about the code (what each
+   * term is, your names, why it's written that way). */
   function renderExplain() {
+    if (pane === 'code' && mode === 'write' && codeIdx >= 0) return renderExplainCode();
     const sec = activeSec();
     const r = secResult(sec.id);
     const li = caretLine();
@@ -325,7 +340,7 @@
     const box = $('explain');
     if (!r || !text.trim()) {
       box.innerHTML = `${planBanner(li)}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
-        <div class="ex-hint"><span>Start from an idea: open the <b>Library</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Put your cursor on any line to see how it becomes ${sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]}.</span></div>`;
+        <div class="ex-hint"><span>Start from an idea: open the <b>Library</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> explains the words in a line or a selection</span><span>Click a line of ${escHtml(tutorSays(sec))} on the right to learn about the code itself.</span></div>`;
       return;
     }
     const inf = r.info[li] || { py: [], notes: [], warns: [], errs: [] };
@@ -335,16 +350,111 @@
     if (li === typingLine && inf.errs.length) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
     else inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
     inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
-    // with the tutor on, the notes step back once every habit on this line is one you know
-    const cards = tutor.on ? cardsForSentence(sec, li) : [];
-    if (!(cards.length && cards.every(known))) inf.notes.forEach(n => items.push(`<li>${withCode(n)}</li>`));
-    const pyLines = inf.py.filter(i => r.lines[i].text.trim()).map(i => i + 1);
+    const pyLines = inf.py.filter(i => r.lines[i].text.trim());
+    const why = inf.notes.length && pyLines.length ? `<button type="button" class="linklike ex-why" data-pick="${pyLines[0]}">${inf.notes.length === 1 ? 'A note' : inf.notes.length + ' notes'} on the ${escHtml(tutorSays(sec))}: click its line on the right</button>` : '';
     box.innerHTML = `${planBanner(li)}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim())}</div></div>
         <div class="ex-arrow" aria-hidden="true">→</div>
-        <div class="ex-cell"><span class="ex-lbl">${LANG_NAME[secLang(sec)]} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
+        <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.map(i => i + 1).join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
       </div>
-      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${tutorExplainHtml(sec, li, cards)}`;
+      ${shapeHtml(sec, text)}
+      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${sayTutorHtml(sec, li)}
+      <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
+  }
+
+  /* In the code: one line of it, what's in it, and where it came from. */
+  function renderExplainCode() {
+    const sec = activeSec(), r = secResult(sec.id), o = r && r.lines[codeIdx];
+    if (!o) { setPane('say'); return renderExplain(); }
+    const lang = secLang(sec), src = o.src, sentence = src >= 0 ? (ta.value.split('\n')[src] || '').trim() : '';
+    const inf = src >= 0 && r.info[src] ? r.info[src] : { notes: [], warns: [], errs: [] };
+    const items = [];
+    inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
+    const notes = (o.note ? [o.note] : []).concat(inf.notes);
+    $('explain').innerHTML = `${src >= 0 ? planBanner(src) : ''}<div class="ex-map">
+        <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} line ${codeIdx + 1}</span><div class="ex-py">${hlCode(lang, o.text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
+        <div class="ex-arrow" aria-hidden="true">←</div>
+        <div class="ex-cell"><span class="ex-lbl">${src >= 0 ? `From your sentence · <button type="button" class="linklike" data-go-say="${src}">line ${src + 1}</button>` : 'Added for you'}</span><div class="ex-say">${src >= 0 ? escHtml(sentence) : '<span class="dim">IntuiCode adds this so the program is complete: it has no sentence of its own.</span>'}</div></div>
+      </div>
+      ${partsHtml(sec, o.text)}
+      ${notes.length ? `<div class="ex-why-box"><span class="ex-lbl">Why it's written this way</span><ul class="ex-notes">${notes.map(n => `<li>${withCode(n)}</li>`).join('')}</ul></div>` : ''}
+      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${codeTutorHtml(sec, codeIdx)}
+      <p class="ex-foot"><span><kbd>↑</kbd><kbd>↓</kbd> other lines · <kbd>Enter</kbd> its sentence</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> the terms here, explained</span></p>`;
+  }
+
+  /* What's in a line of code: its terms from the glossary, and the names you made. */
+  const GLOSS = window.IntuiGlossary;
+  const glossLang = (sec) => (sec.file === 'sketch' ? 'arduino' : secLang(sec));
+  const firstSentence = (s) => (String(s).match(/^.*?[.!?](?=\s|$)/) || [s])[0];
+  function yourNames(text) {
+    const syms = compiled && compiled.syms;
+    if (!syms || !syms.values) return [];
+    const byPy = new Map();
+    for (const v of syms.values()) if (v && v.py) byPy.set(v.py, v);
+    const out = [];
+    for (const m of String(text).replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '').matchAll(/[A-Za-z_][\w-]*/g)) {
+      const v = byPy.get(m[0]);
+      if (v && !out.includes(v)) out.push(v);
+    }
+    return out;
+  }
+  const NAME_KIND = { function: 'a tool you defined', class: 'a class you defined', element: 'a part of the page you named', group: 'a group (CSS class) you made', number: 'a number you set', text: 'text you set', list: 'a list you made', value: 'a value you set', dict: 'a dictionary you made' };
+  function partsHtml(sec, text) {
+    const terms = GLOSS ? GLOSS.find(glossLang(sec), text) : [];
+    const names = yourNames(text).filter(v => !terms.some(e => (e.m || [e.t]).includes(v.py)));
+    if (!terms.length && !names.length) return '';
+    return `<div class="ex-parts"><span class="ex-lbl">What's here</span><ul>
+      ${terms.slice(0, 8).map(e => `<li><button type="button" class="ex-term" data-term="${escHtml(e.t)}" title="More about ${escHtml(e.t)}">${escHtml(e.t)}</button><span>${withCode(firstSentence(e.s))}</span></li>`).join('')}
+      ${names.slice(0, 6).map(v => `<li><code class="ex-name">${escHtml(v.py)}</code><span>Your name: ${escHtml(NAME_KIND[v.kind] || 'a name you made')}.</span></li>`).join('')}
+    </ul></div>`;
+  }
+
+  /* The shape a sentence follows: the template it fits, with your words in its ‹parts›. Lines that fit none
+   * get their words sorted into what IntuiCode knows and what you named. */
+  const shapeCache = new Map();
+  function shapesFor(sec) {
+    const key = secLang(sec) + ':' + sec.file;
+    if (shapeCache.has(key)) return shapeCache.get(key);
+    const PK = packFor(sec);
+    const list = PK.templates.filter(PK.filter).map(t => {
+      const parts = t.pattern.split(/(‹[^›]*›|…)/);
+      const slots = parts.filter(p => /^‹|^…$/.test(p));
+      const re = new RegExp('^' + parts.map(p => (/^‹|^…$/.test(p) ? '(.+?)' : p.trim() ? p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') : p.replace(/\s+/g, '\\s*'))).join('') + '$', 'i');
+      return { t, re, slots, lit: t.pattern.replace(/‹[^›]*›|…/g, '').replace(/\s+/g, '').length };
+    }).sort((a, b) => b.lit - a.lit);
+    shapeCache.set(key, list);
+    return list;
+  }
+  function matchShape(sec, line) {
+    let s = String(line).trim();
+    const lead = s.match(LANG.FILLER.lead);
+    if (lead && lead[0].length < s.length) s = s.slice(lead[0].length);
+    for (const x of shapesFor(sec)) { const m = s.match(x.re); if (m && x.lit) return { ...x, values: m.slice(1) }; }
+    return null;
+  }
+  function shapeHtml(sec, line) {
+    if (/^\s*(?:note|comment)\s*:/i.test(line)) return '';
+    const m = matchShape(sec, line);
+    if (m) {
+      const shape = escHtml(m.t.pattern).replace(/‹[^›]*›|…/g, (p) => `<span class="ex-slot">${p}</span>`);
+      const filled = m.slots.map((p, i) => [p, m.values[i]]).filter(([p, v]) => v && p !== '…' && v.trim() !== p.slice(1, -1));
+      return `<div class="ex-shape"><span class="ex-lbl">How it's said · ${escHtml(m.t.group)}</span><div class="ex-shape-row"><code class="ex-shape-pat">${shape}</code>${filled.length ? `<span class="ex-shape-fill">${filled.map(([p, v]) => `<span class="ex-slot">${escHtml(p)}</span> is <b>${escHtml(v.trim())}</b>`).join(' · ')}</span>` : ''}</div>${m.t.tip ? `<p class="ex-shape-tip">${withCode(m.t.tip)}</p>` : ''}</div>`;
+    }
+    // no template: sort the words
+    const box = document.createElement('div');
+    box.innerHTML = hlLine(line.trim(), '', nameSets());
+    const roles = { known: [], names: [], values: [] };
+    for (const el of box.querySelectorAll('span')) {
+      const w = el.textContent.trim();
+      if (!w) continue;
+      if (/s-kw|s-op|s-conn/.test(el.className)) roles.known.push(w);
+      else if (/s-var|s-fn/.test(el.className)) roles.names.push(w);
+      else if (/s-str|s-num/.test(el.className)) roles.values.push(w);
+    }
+    const list = (a) => [...new Set(a)].slice(0, 8).map(w => `<code>${escHtml(w)}</code>`).join(' ');
+    if (!roles.known.length && !roles.names.length) return '';
+    return `<div class="ex-shape"><span class="ex-lbl">How it's said</span><div class="ex-shape-row ex-roles">${roles.known.length ? `<span>Words IntuiCode knows: ${list(roles.known)}</span>` : ''}${roles.names.length ? `<span>Your names: ${list(roles.names)}</span>` : ''}${roles.values.length ? `<span>Values: ${list(roles.values)}</span>` : ''}</div></div>`;
   }
 
   function iconSvg(path) {
@@ -409,6 +519,7 @@
   function openSection(id, line) {
     activeSec().text = ta.value;
     hideTip();
+    setPane('say');
     typingLine = -1;
     project.active = id;
     ta.value = activeSec().text;
@@ -439,6 +550,7 @@
   }
 
   function afterCaretMove(scrollPy) {
+    if (pane !== 'say') setPane('say');
     ensureCaretVisible();
     syncScroll();
     const cur = caretLine();
@@ -638,17 +750,58 @@
     if (mode === 'read') updateSummariseButton();
   });
 
+  /* The two sides. Working in the sentences, everything below them is about how things are said; working in
+   * the code (click a line of it), it's about the code. */
+  function setPane(p) {
+    if (pane === p) return;
+    pane = p;
+    document.querySelector('.pane-say').classList.toggle('focused', p === 'say');
+    document.querySelector('.pane-py').classList.toggle('focused', p === 'code');
+    if (p === 'say') { codeIdx = -1; pycode.querySelectorAll('.pl.picked').forEach(el => el.classList.remove('picked')); showLinkBand(); }
+    if (!tip.hidden && tip.dataset.pane !== p && tip.dataset.kind !== 'exercise') hideTip();
+  }
+  /* The sentence line marked on the left: the one a picked line of code came from. */
+  function showLinkBand(line) {
+    if (line == null && pane === 'code' && codeIdx >= 0) { const r = secResult(activeSec().id); line = r && r.lines[codeIdx] ? r.lines[codeIdx].src : -1; }
+    if (line == null || line < 0) { bandLink.hidden = true; return; }
+    bandLink.hidden = false; bandLink.dataset.line = line;
+    placeBand(bandLink, line);
+  }
+  function pickCode(i, scroll) {
+    const r = secResult(activeSec().id);
+    if (!r || i < 0 || i >= r.lines.length) return;
+    setPane('code');
+    codeIdx = i;
+    pycode.querySelectorAll('.pl.picked').forEach(el => el.classList.remove('picked'));
+    const el = pycode.children[i];
+    if (el) { el.classList.add('picked'); if (scroll) el.scrollIntoView({ block: 'nearest' }); }
+    if (document.activeElement !== pycode && !tip.contains(document.activeElement)) pycode.focus({ preventScroll: true });
+    showLinkBand();
+    renderExplain();
+    if (el) el.scrollIntoView({ block: 'nearest' });   // (the strip below may have grown and narrowed the code)
+    tutorSoon(900);
+  }
   pycode.addEventListener('mouseover', (e) => {
     const pl = e.target.closest('.pl');
-    if (!pl || +pl.dataset.src < 0) { bandLink.hidden = true; return; }
-    bandLink.hidden = false; bandLink.dataset.line = pl.dataset.src;
-    placeBand(bandLink, +pl.dataset.src);
+    showLinkBand(pl && +pl.dataset.src >= 0 ? +pl.dataset.src : undefined);
   });
-  pycode.addEventListener('mouseleave', () => { bandLink.hidden = true; });
+  pycode.addEventListener('mouseleave', () => showLinkBand());
   pycode.addEventListener('click', (e) => {
+    const pl = e.target.closest('.pl');
+    if (pl) pickCode(+pl.dataset.i);
+  });
+  pycode.addEventListener('dblclick', (e) => {
     const pl = e.target.closest('.pl');
     if (pl && +pl.dataset.src >= 0) goToLine(+pl.dataset.src);
   });
+  pycode.addEventListener('focus', () => { if (pane !== 'code') { const first = pycode.querySelector('.pl.linked') || pycode.querySelector('.pl'); if (first) pickCode(+first.dataset.i); } });
+  pycode.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); pickCode(Math.max(0, codeIdx + (e.key === 'ArrowDown' ? 1 : -1)), true); }
+    else if (e.key === 'Enter') { e.preventDefault(); const r = secResult(activeSec().id); const src = r && r.lines[codeIdx] ? r.lines[codeIdx].src : -1; if (src >= 0) goToLine(src); }
+  });
+  pycode.addEventListener('scroll', placeTip);
+  ta.addEventListener('focus', () => { if (pane !== 'say') { setPane('say'); renderExplain(); } });
 
   $('tree').addEventListener('click', (e) => { const b = e.target.closest('.tree-item'); if (b) openSection(b.dataset.id); });
   $('problems').addEventListener('click', (e) => {
@@ -733,6 +886,33 @@
     if (!st || !r || !r.info[li]) return [];
     return [...new Set(r.info[li].py.flatMap(i => st.byLine[i] || []))].filter(cardOf);
   }
+  /* The habits on one line of the code. */
+  function cardsForCode(sec, idx) {
+    const st = tutorStyles(sec);
+    return st ? [...new Set(st.byLine[idx] || [])].filter(cardOf) : [];
+  }
+  /* How a sentence talks to the program: its habits, for the sentence side. */
+  const packOf = (sec) => (secLang(sec) === 'python' ? 'python' : sec.file === 'sketch' ? 'arduino' : secLang(sec) === 'cpp' ? 'cpp' : 'web');
+  const sayCards = (sec, line) => TUTOR.sayPoints(line, { pack: packOf(sec), file: sec.file, opens: packFor(sec).opens, filler: LANG.FILLER.lead }).map(c => 'say:' + c).filter(cardOf);
+  /* A sentence to say yourself: one that is a sentence (not exact code, a note or a blank) and makes code. */
+  function sayExercise(sec, li) {
+    const r = secResult(sec.id), inf = r && r.info[li], text = ta.value.split('\n')[li] || '';
+    if (!inf || inf.errs.length || !text.trim() || /‹[^›]*›/.test(text) || /^\s*(?:note|comment|python|raw python|raw|c\+\+|cpp|html|css|js|head|above main|outside main|at the top)\s*:/i.test(text)) return null;
+    const code = inf.py.map(i => r.lines[i].text).filter(t => t.trim());
+    return code.length ? { code, sentence: text.trim() } : null;
+  }
+  /* Your sentence in place of the real one: does the whole project come out exactly the same? */
+  function saysTheSame(sec, li, answer) {
+    const copy = JSON.parse(JSON.stringify(project));
+    const lines = ta.value.split('\n');
+    lines[li] = lines[li].match(/^\s*/)[0] + answer.trim();
+    copy.sections.find(s => s.id === sec.id).text = lines.join('\n');
+    let other;
+    try { other = project.kind === 'website' ? WEB.compileWebsite(copy) : isCpp() ? CPP.compileCppProject(copy) : LANG.compileProject(copy); } catch (e) { return { same: false, error: 'IntuiCode couldn\'t read that sentence.' }; }
+    const mine = other.results[sec.id];
+    if (!mine || !mine.info[li] || mine.info[li].errs.length) return { same: false, error: mine && mine.info[li] && mine.info[li].errs[0] };
+    return { same: copy.sections.every(s => (other.results[s.id] || {}).text === (compiled.results[s.id] || {}).text) };
+  }
   /* The one line of code a sentence became, if it's a sentence (not already code or a note). */
   function exerciseFor(sec, li) {
     const r = secResult(sec.id), lang = tutorLang(sec);
@@ -742,79 +922,155 @@
     return TUTOR.exerciseLine(r.info[li].py.map(i => r.lines[i].text));
   }
 
-  function tutorExplainHtml(sec, li, cards) {
+  /* The tutor's part of the explain strip on the code side: the language's habits on this line, and a line
+   * to write yourself. (HTML, CSS and JavaScript have no habit notes yet: "What's here" does the teaching.) */
+  function codeTutorHtml(sec, idx) {
     if (!tutor.on) return '';
-    const lang = tutorLang(sec);
-    if (!lang) return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> The tutor speaks Python, C++ and Arduino so far. ${escHtml(LANG_NAME[secLang(sec)] || 'This language')} is next on its list.</div>`;
+    const lang = tutorLang(sec), r = secResult(sec.id), src = r && r.lines[idx] ? r.lines[idx].src : -1;
+    if (!lang) return '';
     if (!tutorReady(lang)) { loadTutorReader(lang); return `<div class="ex-tutor"><span class="ex-lbl">Tutor</span> Getting ready…</div>`; }
-    const ex = exerciseFor(sec, li);
+    const cards = cardsForCode(sec, idx);
+    const ex = src >= 0 ? exerciseFor(sec, src) : null;
     if (!cards.length && !ex) return '';
     const allKnown = cards.length && cards.every(known);
     const items = cards.map(c => (known(c)
       ? `<li class="known">✓ ${withCode(cardOf(c).title)} <span class="dim">· you know this one</span></li>`
       : `<li><b>${withCode(cardOf(c).title)}.</b> ${withCode(cardOf(c).say)}</li>`));
     const says = tutorSays(sec);
-    const canWrite = lang !== 'cpp' || !/^\}|\{\s*$/.test(ex);   // (a c++: line can't open or close a block of sentences)
-    const act = !ex ? '' : allKnown && canWrite ? `<button type="button" class="btn small" data-tutor="code" title="Replace this sentence with the line of ${escHtml(says)} it stands for">Write this line as ${escHtml(LANG_NAME[lang])}</button>`
-      : `<button type="button" class="btn small" data-tutor="turn">✎ Your turn</button>`;
+    const canWrite = lang !== 'cpp' || !/^\}|\{\s*$/.test(ex || '');   // (a c++: line can't open or close a block of sentences)
+    const act = !ex ? '' : allKnown && canWrite ? `<button type="button" class="btn small" data-tutor="code" title="Replace the sentence with the line of ${escHtml(says)} it stands for">Write this line as ${escHtml(LANG_NAME[lang])}</button>`
+      : `<button type="button" class="btn small" data-tutor="turn">✎ Write it yourself</button>`;
     return `<div class="ex-tutor"><div class="ex-tutor-h"><span class="ex-lbl">In ${escHtml(says)}</span>${act}</div>${items.length ? `<ul>${items.join('')}</ul>` : ''}</div>`;
   }
+  /* …and on the sentence side: how this sentence talks to the program, and a sentence to say yourself. */
+  function sayTutorHtml(sec, li) {
+    if (!tutor.on) return '';
+    const cards = sayCards(sec, ta.value.split('\n')[li] || '');
+    const canSay = !!sayExercise(sec, li);
+    if (!cards.length && !canSay) return '';
+    const fresh = cards.filter(c => !tutor.seen[c]), seen = cards.filter(c => tutor.seen[c]);
+    return `<div class="ex-tutor ex-tutor-say"><div class="ex-tutor-h"><span class="ex-lbl">Talking to the program</span>${canSay ? '<button type="button" class="btn small" data-tutor="say">✎ Say it yourself</button>' : ''}</div>
+      ${fresh.length ? `<ul>${fresh.map(c => `<li><b>${withCode(cardOf(c).title)}.</b> ${withCode(cardOf(c).say)}</li>`).join('')}</ul>` : ''}
+      ${seen.length ? `<p class="ex-tutor-seen">Also on this line: ${seen.map(c => `<button type="button" class="linklike" data-card="${c}">${withCode(cardOf(c).title)}</button>`).join(' · ')}</p>` : ''}</div>`;
+  }
   $('explain').addEventListener('click', (e) => {
-    const step = e.target.closest('[data-plan]');
-    if (step) return openStep(+step.dataset.plan);
-    const b = e.target.closest('[data-tutor]');
-    if (!b) return;
-    if (b.dataset.tutor === 'turn') showExercise(caretLine());
-    else if (b.dataset.tutor === 'code') writeAsCode(caretLine());
+    const t = (sel) => e.target.closest(sel);
+    let b;
+    if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
+    if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
+    if ((b = t('[data-go-say]'))) return goToLine(+b.dataset.goSay);
+    if ((b = t('[data-term]'))) return openGlossary(b.dataset.term);
+    if ((b = t('[data-card]'))) return showNote(pane === 'code' ? { pane: 'code', line: codeIdx } : { pane: 'say', line: caretLine() }, b.dataset.card);
+    if (!(b = t('[data-tutor]'))) return;
+    const r = secResult(activeSec().id);
+    const src = pane === 'code' && codeIdx >= 0 && r ? r.lines[codeIdx].src : caretLine();
+    if (b.dataset.tutor === 'turn') showExercise(src);
+    else if (b.dataset.tutor === 'code') writeAsCode(src);
+    else if (b.dataset.tutor === 'say') showSayExercise(caretLine());
   });
 
-  /* Tip balloons, beside the line they're about */
-  function hideTip() { tip.hidden = true; tip.dataset.line = ''; tutorRun.exercise = null; }
-  function placeTip() {
-    if (tip.hidden || tip.dataset.line === '') return;
-    const line = +tip.dataset.line;
-    const below = PAD_T + (line + 1) * LH - ta.scrollTop + 8;
-    const above = PAD_T + line * LH - ta.scrollTop - tip.offsetHeight - 8;
-    const flip = below + tip.offsetHeight > $('editor').clientHeight - 6 && above > 0;
-    tip.classList.toggle('up', flip);
-    tip.style.top = (flip ? above : below) + 'px';
-    tip.style.left = ($('gutter').offsetWidth + PAD_L) + 'px';
+  /* Tip balloons, beside the line they're about: a line of the sentences, or a line of the code. */
+  document.body.appendChild(tip);   // (fixed to the window, so it can sit by either pane)
+  function unmask() {
+    $('bandMask').hidden = true;
+    pycode.querySelectorAll('.pl.masked').forEach(el => el.classList.remove('masked'));
   }
-  function showTip(li, html, kind) {
+  function hideTip() { tip.hidden = true; tip.dataset.line = ''; tutorRun.exercise = null; unmask(); }
+  function placeTip() {
+    if (tip.hidden || tip.dataset.line === '' || mode !== 'write') return;
+    const line = +tip.dataset.line;
+    let top, bottom, left, box;
+    if (tip.dataset.pane === 'code') {
+      const el = pycode.children[line];
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      box = pycode.getBoundingClientRect();
+      top = r.top; bottom = r.bottom; left = box.left + 54;
+    } else {
+      const cw = codewrap.getBoundingClientRect();
+      box = $('editor').getBoundingClientRect();
+      top = cw.top + PAD_T + line * LH - ta.scrollTop; bottom = top + LH; left = cw.left + PAD_L;
+    }
+    const h = tip.offsetHeight;
+    if (bottom < box.top || top > box.bottom) { tip.style.visibility = 'hidden'; return; }   // its line is scrolled out of sight
+    tip.style.visibility = '';
+    const flip = bottom + 8 + h > box.bottom - 6 && top - 8 - h > box.top;
+    tip.classList.toggle('up', flip);
+    tip.style.top = Math.round(flip ? top - 8 - h : bottom + 8) + 'px';
+    tip.style.left = Math.round(Math.max(8, Math.min(left, window.innerWidth - tip.offsetWidth - 8))) + 'px';
+  }
+  function showTip(at, html, kind) {
     tip.innerHTML = html;
     tip.dataset.kind = kind;
-    tip.dataset.line = li;
+    tip.dataset.pane = at.pane;
+    tip.dataset.line = at.line;
     tip.hidden = false;
     placeTip();
   }
-  function showNote(li, card) {
+  function showNote(at, card) {
     const c = cardOf(card);
+    if (!c) return;
     tutor.seen[card] = true;
     saveTutor();
-    showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">i</span><span>In ${escHtml(tutorSays(activeSec()))}: ${withCode(c.title)}</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
+    const where = card.startsWith('say:') ? 'In the sentences' : `In ${escHtml(tutorSays(activeSec()))}`;
+    showTip(at, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">i</span><span>${where}: ${withCode(c.title)}</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
       <p>${withCode(c.say)}</p><p class="tip-more" hidden>${withCode(c.more)}</p>
       <div class="tip-actions"><button type="button" class="btn small" data-act="more">Why?</button><button type="button" class="btn small primary" data-act="close">Got it</button></div>`, 'note');
   }
+  /* Write it yourself: the code a sentence became is covered up, and you write it. */
   function showExercise(li) {
-    const sec = activeSec(), lang = tutorLang(sec);
+    const sec = activeSec(), lang = tutorLang(sec), r = secResult(sec.id);
     const expected = exerciseFor(sec, li);
     if (!expected || !tutorReady(lang)) return false;
-    tutorRun.exercise = { expected, lang, cards: cardsForSentence(sec, li) };
-    showTip(li, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">✎</span><span>Your turn</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
+    const lines = r.info[li].py.filter(i => r.lines[i].text.trim());
+    tutorRun.exercise = { kind: 'code', expected, lang, cards: cardsForSentence(sec, li) };
+    showTip({ pane: 'code', line: lines[0] }, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">✎</span><span>Your turn</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
       <p>Write this sentence as one line of ${escHtml(tutorSays(sec))}:</p>
       <div class="tip-say">${escHtml((sec.text.split('\n')[li] || '').trim())}</div>
       <input class="tip-in" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Your line of ${escHtml(LANG_NAME[lang])}">
       <p class="tip-result" hidden></p>
       <div class="tip-actions"><button type="button" class="btn small" data-act="show">Show me</button><button type="button" class="btn small primary" data-act="check">Check</button></div>`, 'exercise');
+    lines.forEach(i => pycode.children[i] && pycode.children[i].classList.add('masked'));
+    tip.querySelector('.tip-in').focus();
+    return true;
+  }
+  /* Say it yourself: the sentence is covered up, and you say the code in your own words. Any sentence that
+   * makes exactly the same program is right, so other ways of saying it count. */
+  function showSayExercise(li) {
+    const sec = activeSec(), ex = sayExercise(sec, li);
+    if (!ex) return false;
+    tutorRun.exercise = { kind: 'say', li, sentence: ex.sentence };
+    showTip({ pane: 'say', line: li }, `<div class="tip-h"><span class="tip-badge" aria-hidden="true">✎</span><span>Your turn</span><button type="button" class="tip-x" data-act="close" aria-label="Close">×</button></div>
+      <p>Say this ${escHtml(tutorSays(sec))} as a sentence:</p>
+      <div class="tip-say tip-code">${ex.code.map(l => hlCode(secLang(sec), l.trim())).join('<br>')}</div>
+      <input class="tip-in tip-in-say" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Your sentence">
+      <p class="tip-result" hidden></p>
+      <div class="tip-actions"><button type="button" class="btn small" data-act="show">Show me</button><button type="button" class="btn small primary" data-act="check">Check</button></div>`, 'exercise');
+    const m = $('bandMask');
+    m.hidden = false; m.dataset.line = li; placeBand(m, li);
     tip.querySelector('.tip-in').focus();
     return true;
   }
   function checkExercise() {
     const ex = tutorRun.exercise, input = tip.querySelector('.tip-in'), out = tip.querySelector('.tip-result');
     if (!ex || !input.value.trim()) return;
+    out.hidden = false;
+    if (ex.kind === 'say') {
+      const res = saysTheSame(activeSec(), ex.li, input.value);
+      if (res.same) {
+        out.className = 'tip-result ok';
+        out.innerHTML = input.value.trim().replace(/\s+/g, ' ').toLowerCase() === ex.sentence.replace(/\s+/g, ' ').toLowerCase()
+          ? '✓ Exactly right.'
+          : `✓ Right: that makes exactly the same ${escHtml(tutorSays(activeSec()))}. The line says <code>${escHtml(ex.sentence)}</code>; both work.`;
+      } else {
+        out.className = 'tip-result no';
+        out.innerHTML = res.error ? `Not yet: ${withCode(res.error)}` : 'Not quite: that makes different code. Try again, or press Show me.';
+      }
+      placeTip();
+      return;
+    }
     const cpp = ex.lang === 'cpp', name = LANG_NAME[ex.lang];
     const res = cpp ? TUTOR.cppCompare(tutorRun.cpp, ex.expected, input.value) : tutorRun.reader.compare(TUTOR.probe(ex.expected), TUTOR.probe(input.value));
-    out.hidden = false;
     if (res.same) {
       const learned = [];
       for (const c of ex.cards) { const was = known(c); tutor.practised[c] = (tutor.practised[c] || 0) + 1; if (!was && known(c)) learned.push(cardOf(c).title); }
@@ -830,41 +1086,54 @@
     }
     placeTip();
   }
+  const refocus = () => (tip.dataset.pane === 'code' ? pycode.focus() : ta.focus());
   tip.addEventListener('click', (e) => {
     const act = (e.target.closest('[data-act]') || {}).dataset;
     if (!act) return;
-    if (act.act === 'close') { hideTip(); ta.focus(); }
+    if (act.act === 'close') { refocus(); hideTip(); }
     else if (act.act === 'more') { tip.querySelector('.tip-more').hidden = false; e.target.closest('[data-act]').remove(); placeTip(); }
     else if (act.act === 'check') checkExercise();
-    else if (act.act === 'show') { const out = tip.querySelector('.tip-result'); out.hidden = false; out.className = 'tip-result'; out.innerHTML = `The line is: <code class="tip-code">${hlCode(tutorRun.exercise.lang, tutorRun.exercise.expected)}</code>`; placeTip(); }
+    else if (act.act === 'show') {
+      const ex = tutorRun.exercise, out = tip.querySelector('.tip-result');
+      out.hidden = false; out.className = 'tip-result';
+      out.innerHTML = ex.kind === 'say' ? `The sentence is: <code class="tip-code">${escHtml(ex.sentence)}</code>` : `The line is: <code class="tip-code">${hlCode(ex.lang, ex.expected)}</code>`;
+      placeTip();
+    }
   });
   tip.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.classList.contains('tip-in')) { e.preventDefault(); checkExercise(); }
-    if (e.key === 'Escape') { e.stopPropagation(); hideTip(); ta.focus(); }
+    if (e.key === 'Escape') { e.stopPropagation(); refocus(); hideTip(); }
   });
 
-  /* When writing pauses: a note for a habit met for the first time, or now and then a line to write yourself. */
+  /* When writing pauses: a note for a habit met for the first time (a sentence habit in the sentences, the
+   * language's own in the code), and in the code, now and then a line to write yourself. */
   function tutorSoon(delay = 1400) {
     clearTimeout(tutorRun.timer);
     if (tutor.on) tutorRun.timer = setTimeout(tutorCheck, delay);
   }
   function tutorCheck() {
-    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])')) return;
-    const sec = activeSec(), lang = tutorLang(sec);
-    if (!lang) return;
-    if (!tutorReady(lang)) return loadTutorReader(lang);
+    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])') || !$('gloss').hidden) return;
+    const sec = activeSec();
+    if (pane === 'code' && codeIdx >= 0) {
+      const lang = tutorLang(sec), r = secResult(sec.id);
+      if (!lang || !r || !r.lines[codeIdx]) return;
+      if (!tutorReady(lang)) return loadTutorReader(lang);
+      const cards = cardsForCode(sec, codeIdx);
+      const fresh = cards.find(c => !tutor.seen[c]);
+      if (fresh) return showNote({ pane: 'code', line: codeIdx }, fresh);
+      const src = r.lines[codeIdx].src, key = sec.id + ':' + (sec.text.split('\n')[src] || '').trim();
+      if (src >= 0 && cards.some(c => !known(c)) && !tutorRun.offered.has(key) && Date.now() - tutorRun.lastOffer > 45000 && exerciseFor(sec, src)) {
+        tutorRun.offered.add(key);
+        tutorRun.lastOffer = Date.now();
+        showExercise(src);
+      }
+      return;
+    }
     const lines = ta.value.split('\n');
     let li = caretLine();
     if (!(lines[li] || '').trim() && li > 0) li -= 1;   // just pressed Enter: the line just written
-    const cards = cardsForSentence(sec, li);
-    const fresh = cards.find(c => !tutor.seen[c]);
-    if (fresh) return showNote(li, fresh);
-    const text = (lines[li] || '').trim();
-    if (cards.some(c => !known(c)) && !tutorRun.offered.has(text) && Date.now() - tutorRun.lastOffer > 45000 && exerciseFor(sec, li)) {
-      tutorRun.offered.add(text);
-      tutorRun.lastOffer = Date.now();
-      showExercise(li);
-    }
+    const fresh = sayCards(sec, lines[li] || '').find(c => !tutor.seen[c]);
+    if (fresh) showNote({ pane: 'say', line: li }, fresh);
   }
 
   /* A known habit, written as the real line: the sentence becomes a python: (or c++:) line, checked to make
@@ -887,6 +1156,116 @@
     tLine(`Line ${li + 1} is now written in ${LANG_NAME[lang]}, by you: ${code}`, 't-ok');
     refreshAll();
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Ctrl+H: the words in a selection (or the section the cursor is in),  */
+  /* explained, for the side you're working in. In the code, its terms;  */
+  /* in the sentences, only the words that aren't everyday English, and  */
+  /* when there are none, the shapes those sentences follow instead.     */
+  /* ------------------------------------------------------------------ */
+
+  const gloss = $('gloss');
+  const glossState = { lang: '', entries: [], view: null };
+  /* A line, and if it opens a block, the lines indented under it. */
+  function sectionAround(lines, li) {
+    const ind = (l) => l.match(/^\s*/)[0].length;
+    const base = ind(lines[li] || '');
+    let end = li;
+    while (end + 1 < lines.length && (!lines[end + 1].trim() || ind(lines[end + 1]) > base)) end++;
+    while (end > li && !lines[end].trim()) end--;
+    return lines.slice(li, end + 1).join('\n');
+  }
+  function openGlossary(term) {
+    if (mode !== 'write') return;
+    const sec = activeSec(), r = secResult(sec.id);
+    const code = pane === 'code' && codeIdx >= 0 && r;
+    let text;
+    if (code) {
+      const sel = window.getSelection();
+      const picked = sel && !sel.isCollapsed && pycode.contains(sel.anchorNode) ? sel.toString() : '';
+      text = picked.trim() ? picked : sectionAround(r.lines.map(o => o.text), codeIdx);
+    } else {
+      const picked = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+      text = picked.trim() ? picked : sectionAround(ta.value.split('\n'), caretLine());
+    }
+    glossState.lang = code ? glossLang(sec) : 'say';
+    glossState.side = code ? 'code' : 'say';
+    glossState.text = text;
+    glossState.entries = code ? GLOSS.find(glossState.lang, text) : GLOSS.find('say', text, { pack: packOf(sec) });
+    if (term) {
+      const e = GLOSS.get(glossState.lang, term) || GLOSS.get(glossLang(sec), term);
+      if (e) glossState.entries = [e, ...glossState.entries.filter(x => x !== e)];
+    }
+    gloss.hidden = false;
+    renderGlossary();
+    placeGlossary();
+    requestAnimationFrame(placeGlossary);
+  }
+  function closeGlossary() { gloss.hidden = true; (glossState.side === 'code' ? pycode : ta).focus(); }
+  const glossEntry = (e) => `<article class="gl-entry" data-t="${escHtml(e.t)}">
+      <h4><code>${escHtml(e.t)}</code><span class="gl-kind">${escHtml(e.k || '')}</span></h4>
+      <p>${withCode(e.s)}</p>
+      ${e.eg ? `<pre class="gl-eg">${e.lang === 'say' ? escHtml(e.eg) : hlCode(e.lang === 'arduino' ? 'cpp' : e.lang, e.eg)}</pre>` : ''}
+      ${GLOSS.related(e).length ? `<p class="gl-see"><span class="dim">Related</span> ${GLOSS.related(e).map(x => `<button type="button" class="gl-chip" data-see="${escHtml(x.t)}" data-lang="${escHtml(x.lang)}">${escHtml(x.t)}</button>`).join('')}</p>` : ''}
+    </article>`;
+  /* The sentence shapes behind some sentences: the templates they fit, and others in the same family. */
+  function shapesHtml(sec, text) {
+    const PK = packFor(sec);
+    const fits = [...new Set(text.split('\n').map(l => matchShape(sec, l)).filter(Boolean).map(m => m.t))];
+    const groups = [...new Set(fits.map(t => t.group))];
+    const pool = PK.templates.filter(PK.filter);
+    const shown = groups.length ? groups : [...new Set(pool.map(t => t.group))].slice(0, 2);
+    return shown.map(g => {
+      const list = pool.filter(t => t.group === g);
+      return `<section class="gl-shapes"><h4>${escHtml(g)}</h4><ul>${list.map(t => `<li class="${fits.includes(t) ? 'here' : ''}"><code class="gl-pat">${escHtml(t.pattern).replace(/‹[^›]*›|…/g, (p) => `<span class="ex-slot">${p}</span>`)}</code><code class="gl-py">${hlCode(secLang(sec), t.py)}</code>${t.tip ? `<span class="gl-tip">${withCode(t.tip)}</span>` : ''}</li>`).join('')}</ul></section>`;
+    }).join('');
+  }
+  function renderGlossary(search) {
+    const sec = activeSec(), side = glossState.side;
+    const list = search != null
+      ? GLOSS.all(glossState.lang).filter(e => (e.t + ' ' + (e.m || []).join(' ')).toLowerCase().includes(search.toLowerCase())).slice(0, 30)
+      : glossState.entries;
+    const title = side === 'code' ? `Terms · ${tutorSays(sec)}` : 'Words · Sentences';
+    $('glossTitle').textContent = title;
+    let body;
+    if (search != null) body = list.length ? list.map(glossEntry).join('') : `<p class="gl-none">Nothing called "${escHtml(search)}" in the ${side === 'code' ? escHtml(tutorSays(sec)) : 'sentence'} glossary.</p>`;
+    else if (side === 'code') body = list.length ? list.map(glossEntry).join('') : '<p class="gl-none">Nothing here needs defining: it\'s your own names and values. Look a term up above.</p>';
+    else body = (list.length ? list.map(glossEntry).join('') + `<h3 class="gl-h">The shapes here</h3>` : `<p class="gl-lead">These are everyday words, so here are the shapes the sentences follow, with others in the same family. The marked ones are used here.</p>`) + shapesHtml(sec, glossState.text);
+    $('glossBody').innerHTML = body;
+    $('glossBody').scrollTop = 0;
+  }
+  /* Beside the side it's about, near the top. */
+  function placeGlossary() {
+    const host = (glossState.side === 'code' ? document.querySelector('.pane-py') : document.querySelector('.pane-say')).getBoundingClientRect();
+    const w = gloss.offsetWidth || 460;
+    const left = glossState.side === 'code' ? host.left - w - 10 : host.right + 10;
+    gloss.style.left = Math.round(Math.max(8, Math.min(left, window.innerWidth - w - 8))) + 'px';
+    gloss.style.top = Math.round(Math.max(56, host.top + 8)) + 'px';
+  }
+  gloss.addEventListener('click', (e) => {
+    if (e.target.closest('#glossClose')) return closeGlossary();
+    const chip = e.target.closest('[data-see]');
+    if (chip) {
+      const e2 = GLOSS.get(chip.dataset.lang, chip.dataset.see);
+      if (!e2) return;
+      $('glossSearch').value = '';
+      const at = glossState.entries.indexOf(e2);
+      if (at < 0) glossState.entries.splice(glossState.entries.indexOf(glossState.entries.find(x => x.t === chip.closest('.gl-entry').dataset.t)) + 1, 0, e2);
+      renderGlossary();
+      const el = [...$('glossBody').querySelectorAll('.gl-entry')].find(x => x.dataset.t === e2.t);
+      if (el) { el.scrollIntoView({ block: 'nearest' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 900); }
+    }
+  });
+  $('glossSearch').addEventListener('input', (e) => renderGlossary(e.target.value.trim() ? e.target.value.trim() : undefined));
+  gloss.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeGlossary(); } });
+  // the window can be moved by its title
+  $('glossHead').addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    const r = gloss.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const move = (m) => { gloss.style.left = Math.max(0, Math.min(m.clientX - dx, window.innerWidth - 60)) + 'px'; gloss.style.top = Math.max(0, Math.min(m.clientY - dy, window.innerHeight - 40)) + 'px'; };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  });
 
   /* ------------------------------------------------------------------ */
   /* Terminal and running                                                */
@@ -3002,8 +3381,15 @@
     // (a browser keeps Ctrl+N for a new window; the desktop app gets it)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewProject(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
+    // Ctrl+H: the words here, explained (it toggles; a browser's history is a menu away)
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'h' && mode === 'write') {
+      e.preventDefault();
+      if (!gloss.hidden && !gloss.contains(document.activeElement)) closeGlossary(); else openGlossary();
+      return;
+    }
     if (e.key === 'Escape') {
-      if (!tip.hidden) hideTip();
+      if (!gloss.hidden) closeGlossary();
+      else if (!tip.hidden) hideTip();
       else if (!$('stepModal').hidden) closeStep();
       else if (!$('builderModal').hidden) closeBuilder();
       else if (!$('newModal').hidden) closeNewProject();

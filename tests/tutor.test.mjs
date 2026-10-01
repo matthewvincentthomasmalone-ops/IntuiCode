@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import vm from 'node:vm';
-import { ROOT, PYTHON, compareMany, loadWebReader } from './helpers/engine.mjs';
+import { ROOT, PYTHON, compareMany, loadWebReader, loadEngine } from './helpers/engine.mjs';
+const plainList = (x) => JSON.parse(JSON.stringify(x));
 
 const ctx = { console };
 ctx.window = ctx;
@@ -111,6 +112,41 @@ test('an exercise is the one line a sentence became (imports and notes aside)', 
   assert.equal(T.exerciseLine(['# a note', '']), null);
   assert.equal(T.exerciseLine(['#include <cmath>', '    double r = std::sqrt(x);']), 'double r = std::sqrt(x);');
   assert.equal(T.exerciseLine(['// a note', '}']), null);
+});
+
+/* ---------- The sentences: how to talk to the program ---------- */
+test('sentence habits: found on real lines of each kind of project, and every one has a card', () => {
+  const { L, WEB, CPP } = loadEngine();
+  const ctx = (pack) => ({ pack, opens: pack === 'web' ? WEB.OPENS_BLOCK : pack === 'python' ? L.OPENS_BLOCK : CPP.OPENS_BLOCK, filler: L.FILLER.lead });
+  const cases = [
+    ['python', 'while guesses left is more than 0', ['compare', 'repeat', 'block']],
+    ['python', 'ask for a number "Your guess: " and store in guess', ['store', 'text']],
+    ['python', 'show "Hi {name}"', ['fill']],
+    ['python', 'then set high score to 0', ['filler', 'naming']],
+    ['python', 'otherwise', ['otherwise', 'block']],
+    ['python', 'for each name in names', ['each', 'block']],
+    ['python', 'define greet using name', ['define', 'block']],
+    ['python', 'run greet with "Sam" and store in reply', ['run', 'store', 'text']],
+    ['python', 'set gain to ‹a number›', ['slot', 'naming']],
+    ['python', 'note: why this is here', ['note']],
+    ['python', 'python: x = [i for i in range(3)]', ['raw']],
+    ['web', 'add a button called save saying "Save" in group card', ['called', 'group', 'text']],
+    ['web', 'style save: background navy, text colour white', ['styles']],
+    ['web', 'when save is clicked', ['event', 'block']],
+    ['web', 'on screens narrower than 600:', ['screens', 'block']],
+    ['arduino', 'when the board starts', ['board', 'block']],
+    ['arduino', 'make pin LED an output', ['pins']],
+    ['arduino', 'set unsigned long last to 0', ['kinds', 'naming']],
+  ];
+  const seen = new Set();
+  for (const [pack, line, want] of cases) {
+    const got = plainList(T.sayPoints(line, ctx(pack)));
+    assert.deepEqual(got.slice().sort(), want.slice().sort(), `${pack}: ${line}`);
+    got.forEach(c => seen.add(c));
+  }
+  const cards = Object.keys(T.CARDS.say);
+  assert.deepEqual(cards.filter(c => !seen.has(c)), [], 'every sentence card is found on some line');
+  for (const [id, c] of Object.entries(T.CARDS.say)) for (const part of ['title', 'say', 'more']) assert.ok(typeof c[part] === 'string' && c[part].length > (part === 'title' ? 3 : 10), `say.${id}.${part}`);
 });
 
 /* ---------- C++ and Arduino ---------- */

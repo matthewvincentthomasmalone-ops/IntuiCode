@@ -129,31 +129,70 @@ try {
     await waitFor('the error', logHas('Go to Main program, line 2'), 60000);
   });
 
-  await check('the tutor points out a Python habit, and checks a line you write', async () => {
+  // The tutor follows the side you're working in: sentence habits in the sentences, the language's in the code.
+  const pickCode = (re) => js((src) => { const pl = [...document.querySelectorAll('#pycode .pl')].find(e => new RegExp(src).test(e.textContent)); if (!pl) return false; pl.click(); return true; }, re.source);
+  const caretOn = (re) => js((src) => { const ta = document.getElementById('ta'); const lines = ta.value.split('\n'); const li = lines.findIndex(l => new RegExp(src).test(l)); const p = lines.slice(0, li).join('\n').length + (li ? 1 : 0) + 3; ta.focus(); ta.setSelectionRange(p, p); ta.dispatchEvent(new Event('click')); return li; }, re.source);
+
+  await check('the tutor in the code: a Python habit, and a line you write, checked exactly', async () => {
     await blueprint('Empty script');
     await setSentences('create list names with "Ann", "Bo"\nfor each name in names\n    show name');
     await click('btnTutor');
-    await js(() => { const ta = document.getElementById('ta'); const p = ta.value.indexOf('for each') + 3; ta.focus(); ta.setSelectionRange(p, p); ta.dispatchEvent(new Event('click')); return true; });
-    await waitFor('a tip balloon', () => js(() => !document.getElementById('tip').hidden && /In Python/.test(document.getElementById('tip').innerText)), 120000);
+    if (!(await pickCode(/for name in names/))) throw new Error('no code line to pick');
+    await waitFor('a Python balloon by the code', () => js(() => !document.getElementById('tip').hidden && /In Python/.test(document.getElementById('tip').innerText) && document.getElementById('tip').dataset.pane === 'code'), 120000);
     const verdict = await js(() => {
       const tip = document.getElementById('tip');
       tip.querySelector('.btn.primary[data-act="close"]').click();
       document.querySelector('[data-tutor="turn"]').click();
+      const masked = document.querySelectorAll('#pycode .pl.masked').length;
       tip.querySelector('.tip-in').value = 'for name in names :';
       tip.querySelector('[data-act="check"]').click();
       const out = tip.querySelector('.tip-result').innerText;
       tip.querySelector('[data-act="close"]').click();
+      return { out, masked };
+    });
+    if (!/Exactly right/.test(verdict.out) || verdict.masked < 1) throw new Error(JSON.stringify(verdict));
+  });
+
+  await check('the tutor in the sentences: how to talk to the program, and a sentence you say', async () => {
+    await caretOn(/for each name/);
+    await waitFor('a sentence balloon', () => js(() => !document.getElementById('tip').hidden && /In the sentences/.test(document.getElementById('tip').innerText)), 30000);
+    const r = await js(() => {
+      const tip = document.getElementById('tip');
+      tip.querySelector('[data-act="close"]').click();
+      const ta = document.getElementById('ta'); const lines = ta.value.split('\n'); const li = lines.findIndex(l => /show name/.test(l));
+      const p = lines.slice(0, li).join('\n').length + 1 + 6; ta.focus(); ta.setSelectionRange(p, p); ta.dispatchEvent(new Event('click'));
+      const shape = (document.querySelector('.ex-shape') || {}).textContent || '';
+      document.querySelector('[data-tutor="say"]').click();
+      const masked = !document.getElementById('bandMask').hidden;
+      const answer = (v) => { tip.querySelector('.tip-in').value = v; tip.querySelector('[data-act="check"]').click(); return tip.querySelector('.tip-result').innerText; };
+      const out = { shape, masked, other: answer('print name'), wrong: answer('show names') };
+      tip.querySelector('[data-act="close"]').click();
       document.getElementById('btnTutor').click();   // tutor off again for the tests after this one
       return out;
     });
-    if (!/Exactly right/.test(verdict)) throw new Error(verdict);
+    if (!/show ‹value›/.test(r.shape) || !r.masked || !/same Python/.test(r.other) || !/Not quite/.test(r.wrong)) throw new Error(JSON.stringify(r));
+  });
+
+  await check('Ctrl+H explains the terms in the code, and the shapes of everyday sentences', async () => {
+    const r = await js(() => {
+      const press = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', ctrlKey: true, bubbles: true }));
+      const pl = [...document.querySelectorAll('#pycode .pl')].find(e => /print\(name\)/.test(e.textContent)); pl.click();
+      press();
+      const code = { title: document.getElementById('glossTitle').textContent, terms: [...document.querySelectorAll('#glossBody .gl-entry h4 code')].map(c => c.textContent) };
+      press();
+      const ta = document.getElementById('ta'); ta.focus(); ta.setSelectionRange(2, 2); ta.dispatchEvent(new Event('click'));
+      press();
+      const say = { title: document.getElementById('glossTitle').textContent, shapes: document.querySelectorAll('#glossBody .gl-shapes li').length };
+      press();
+      return { code, say, closed: document.getElementById('gloss').hidden };
+    });
+    if (!/Python/.test(r.code.title) || !r.code.terms.some(t => /print/.test(t)) || !/Sentences/.test(r.say.title) || !r.say.shapes || !r.closed) throw new Error(JSON.stringify(r));
   });
 
   await check('the tutor speaks C++ too, and checks a line of C++ exactly', async () => {
     await blueprint('C++ guessing game');
     await click('btnTutor');
-    const place = () => js(() => { const ta = document.getElementById('ta'); const lines = ta.value.split('\n'); const li = lines.findIndex(l => /increase guesses by 1/.test(l)); const p = lines.slice(0, li).join('\n').length + 6; ta.focus(); ta.setSelectionRange(p, p); ta.dispatchEvent(new Event('click')); return true; });
-    await place();
+    if (!(await pickCode(/guesses \+= 1;/))) throw new Error('no code line to pick');
     await waitFor('the C++ notes', () => js(() => /In C\+\+/i.test((document.querySelector('.ex-tutor') || {}).textContent || '') && !!document.querySelector('[data-tutor="turn"]')), 120000);
     const verdict = await js(() => {
       const tip = document.getElementById('tip');

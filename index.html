@@ -63,7 +63,7 @@
 
     <main class="work" id="work">
       <section class="panes" id="writeView">
-        <div class="pane pane-say">
+        <div class="pane pane-say focused">
           <div class="pane-h">
             <div class="pane-title">
               <h2 id="secTitle">Main program</h2>
@@ -76,6 +76,7 @@
             <div class="codewrap" id="codewrap">
               <div class="band" id="bandCur"></div>
               <div class="band band-link" id="bandLink" hidden></div>
+              <div class="band band-mask" id="bandMask" hidden><span>your turn: say it in the balloon</span></div>
               <pre class="hl" id="hl" aria-hidden="true"></pre>
               <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Sentences"></textarea>
               <div class="ac" id="ac" role="listbox" hidden></div>
@@ -159,6 +160,12 @@
       </div>
       <div class="index-body" id="indexBody"></div>
     </aside>
+  </div>
+
+  <div class="gloss" id="gloss" role="dialog" aria-labelledby="glossTitle" hidden>
+    <div class="gloss-h" id="glossHead"><h2 id="glossTitle">Terms</h2><span class="gloss-key"><kbd>Ctrl</kbd>+<kbd>H</kbd></span><button type="button" class="tip-x" id="glossClose" aria-label="Close">×</button></div>
+    <div class="gloss-search"><input id="glossSearch" type="search" spellcheck="false" autocomplete="off" placeholder="Look up a term" aria-label="Look up a term"></div>
+    <div class="gloss-body" id="glossBody"></div>
   </div>
 
   <div class="modal" id="bpModal" hidden>
@@ -262,6 +269,8 @@
 <script src="lang/convert.js"></script>
 <script src="lang/blueprints.js"></script>
 <script src="lang/tutor.js"></script>
+<script src="lang/glossary_terms.js"></script>
+<script src="lang/glossary.js"></script>
 <script src="lang/builder.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

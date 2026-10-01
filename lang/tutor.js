@@ -475,6 +475,159 @@
     },
   };
 
+  /* The sentences themselves: how to talk to the program. Shown when you're working in the sentences. */
+  const say = {
+    block: {
+      title: 'A block: the lines indented under it',
+      say: 'A line such as `if …`, `when … is clicked` or `repeat 3 times` opens a block; the lines indented under it (Tab, or 4 spaces) belong to it.',
+      more: 'The block ends where the indentation steps back. That indentation is what gives the code its shape, whether the language marks blocks with a colon (Python) or with braces (C++, JavaScript).',
+    },
+    naming: {
+      title: 'Things are named as they\'re made',
+      say: '`set score to 0`, `create list names` and `constant LED is 13` make a name; after that, the name stands for the value.',
+      more: 'Names can have spaces: `high score` becomes `high_score` in Python. A name has to be made before a line can use it.',
+    },
+    store: {
+      title: '"and store in" keeps a result',
+      say: 'Ending a line with `and store in age` keeps what it produced (an answer, a reading, a tool\'s result) under that name.',
+      more: 'Without it the result is used once and gone. It becomes the `age = …` part of the code.',
+    },
+    text: {
+      title: 'Quotes mark exact text',
+      say: 'Words in quotes are used exactly as written, as a message or a label. Everything outside quotes is read as sentence words and names.',
+      more: 'So `show "score"` shows the word score, while `show score` shows the value named score.',
+    },
+    fill: {
+      title: 'A value inside text',
+      say: 'Curly brackets inside quotes drop in a value: `show "Hi {name}, you have {score} points"`.',
+      more: 'Two brackets, `{{`, give a bracket itself.',
+    },
+    compare: {
+      title: 'Tests read as English',
+      say: '`is`, `is not`, `is more than`, `is at least`, `contains`: a test is true or false, and the block under it runs when it\'s true.',
+      more: '`is` compares; `set … to …` stores. Two different jobs, as in the code (`==` and `=`).',
+    },
+    otherwise: {
+      title: 'otherwise',
+      say: 'Under an `if`, at the same indentation: what happens when the test was false. `otherwise if …` tries another test first.',
+      more: 'Only one branch runs: the first whose test is true, or the `otherwise` if none is.',
+    },
+    each: {
+      title: 'for each … in …',
+      say: '`for each name in names` goes through a list one item at a time; `name` is the current item inside the block.',
+      more: 'Name it as the singular of the list, and the lines inside read naturally: `show name`.',
+    },
+    repeat: {
+      title: 'Ways to repeat',
+      say: '`repeat 3 times`, `while …` (as long as a test holds) and `count i from 1 to 10` (with a number that changes each time).',
+      more: 'A `while` needs something inside it that can make its test false, or it never stops.',
+    },
+    define: {
+      title: 'A tool: steps with a name',
+      say: '`define greet using name` makes a tool: steps you can run again, with inputs. `give back …` hands a result to whoever ran it.',
+      more: 'Tools keep the main program short, and each one does one job. Name them after that job.',
+    },
+    run: {
+      title: 'run … with …',
+      say: '`run greet with "Sam"` runs a tool and hands it its inputs; add `and store in …` to keep what it gives back.',
+      more: 'Inputs go in the order the tool lists them after `using`.',
+    },
+    note: {
+      title: 'Notes are for people',
+      say: '`note: …` is a remark for whoever reads this; it becomes a comment in the code and changes nothing when it runs.',
+      more: 'Say why, not what: the sentence already says what.',
+    },
+    raw: {
+      title: 'Exact code, in its own words',
+      say: '`python:`, `c++:`, `html:`, `css:` or `js:` at the start of a line copies the rest exactly into the code.',
+      more: 'For anything the sentences don\'t cover yet. It sits in the right place, indented like any other line.',
+    },
+    filler: {
+      title: 'Filler is allowed',
+      say: 'Words like `please`, `then` or `now` at the start of a line are fine; they\'re left out of the code.',
+      more: 'Write the way you\'d say it. The faded words are the ones being left out.',
+    },
+    slot: {
+      title: 'A ‹blank› to fill in',
+      say: 'A ‹blank› marks a part for you to write; the words inside say what belongs there. Tab jumps to the next one.',
+      more: 'The line reports a problem until it\'s filled, and nothing else around it breaks in the meantime.',
+    },
+    called: {
+      title: '"called …" names a part of the page',
+      say: '`add a button called save` gives the button the name `save`; Styling and Mechanics use that name to find it.',
+      more: 'In the HTML it becomes `id="save"`. Each name is used once per page.',
+    },
+    group: {
+      title: 'Groups share a look',
+      say: '`in group card` puts parts of the page in a group, and `style group card: …` styles all of them at once.',
+      more: 'A group is a CSS class: one look, reused, and one place to change it.',
+    },
+    styles: {
+      title: 'Styles, separated by commas',
+      say: '`style save: background navy, text colour white, rounded corners 8`: each part between commas is one style.',
+      more: 'Numbers without a unit are pixels. A part the sentences don\'t know can be written as CSS itself: `letter-spacing: 2px`.',
+    },
+    event: {
+      title: 'when … happens',
+      say: 'Mechanics wait for something to happen (`is clicked`, `is sent`, `changes`, `the page has loaded`) and run the lines indented under it.',
+      more: 'Nothing in the block runs until then, and it runs again every time it happens.',
+    },
+    screens: {
+      title: 'Styles for small screens',
+      say: 'Styles indented under `on screens narrower than 600:` apply only when the window is narrower than that: phones, mostly.',
+      more: 'Write the usual look first, then only what changes on small screens.',
+    },
+    board: {
+      title: 'A sketch has two parts',
+      say: 'Lines at the left edge are settings. `when the board starts` runs once at power-on; `over and over` repeats forever.',
+      more: 'The board never stops: `over and over` is the whole life of the program after start-up.',
+    },
+    pins: {
+      title: 'Pins by number, or by name',
+      say: '`make pin 13 an output`, then `turn pin 13 on`. Naming a pin (`constant LED is 13`) lets the sentences read like the wiring.',
+      more: 'Change the wiring and only the constant changes.',
+    },
+    kinds: {
+      title: 'Kinds are worked out for you',
+      say: '`set total to 0` makes a whole number and `set price to 2.5` a decimal. To choose, say it: `set decimal total to 0`.',
+      more: 'C++ fixes a value\'s kind when it\'s made, so the first value you give decides it.',
+    },
+  };
+
+  /* The sentence habits on one line. ctx: { pack: 'python' | 'web' | 'cpp' | 'arduino', file, opens (regex of
+   * lines that open a block), filler (regex of leading filler) }. Most particular first. */
+  function sayPoints(line, ctx = {}) {
+    const s = String(line).trim(), out = [];
+    if (!s) return out;
+    const add = (c) => { if (!out.includes(c)) out.push(c); };
+    if (/^(?:note|comment)\s*:/i.test(s)) return ['note'];
+    if (/^(?:raw python|python|raw|c\+\+|cpp|html|css|js|head|above main|outside main|at the top)\s*:/i.test(s)) return ['raw'];
+    if (/‹[^›]*›/.test(s)) add('slot');
+    const lead = ctx.filler && s.match(ctx.filler);
+    if (lead && lead[0].length < s.length) add('filler');
+    const t = lead && lead[0].length < s.length ? s.slice(lead[0].length) : s;
+    if (ctx.pack === 'arduino' && /^(?:when the board starts|over and over)\b/i.test(t)) add('board');
+    if (ctx.pack === 'web' && /^on screens\b/i.test(t)) add('screens');
+    if (ctx.pack === 'web' && /^when\b.*\b(?:is clicked|is sent|changes|is typed in|has loaded|is pressed)\b/i.test(t)) add('event');
+    if (/^(?:otherwise|else)\b/i.test(t)) add('otherwise');
+    if (/^for (?:each|every)\b/i.test(t)) add('each');
+    if (/^(?:repeat|while|as long as|count|keep repeating|forever)\b/i.test(t)) add('repeat');
+    if (/^define\b(?!\s+(?:a\s+)?class)/i.test(t)) add('define');
+    if (/^(?:if|otherwise if|else if|while|repeat until|as long as)\b.*\b(?:is|contains)\b/i.test(t)) add('compare');
+    if (ctx.opens && ctx.opens.test(t)) add('block');
+    if (ctx.pack === 'web' && /\bcalled\s+[\w-]/i.test(t)) add('called');
+    if (ctx.pack === 'web' && /\b(?:in group|style group|belongs to group|create group)\b/i.test(t)) add('group');
+    if (ctx.pack === 'web' && /^style\s+[^:]+:/i.test(t)) add('styles');
+    if (ctx.pack === 'arduino' && /\bpin\b/i.test(t)) add('pins');
+    if ((ctx.pack === 'cpp' || ctx.pack === 'arduino') && /^set\s+[\w ]+?\s+to\s+/i.test(t)) add('kinds');
+    if (/^(?:set|create|constant)\s+(?!the\b|item\b)/i.test(t)) add('naming');
+    if (/^run\b/i.test(t)) add('run');
+    if (/\band store in\b/i.test(t)) add('store');
+    if (/"[^"]*\{[^}"]+\}[^"]*"/.test(t)) add('fill');
+    else if (/"/.test(t)) add('text');
+    return out;
+  }
+
   /* The habits in C++ code, found in tree-sitter's reading of it. parse(kind, source) is the reader's parser
    * (lang/web_read.js). Like Python's style_points: { ok, error, points: [{ card, line, end, name }] }, with
    * the first place each habit shows, or every place when every is true. */
@@ -604,5 +757,5 @@
 
   const FADE_AFTER = 3;   // right answers before a habit's notes shrink to "you know this"
 
-  window.IntuiTutor = { CARDS: { python, cpp }, probe, exerciseLine, cppStylePoints, cppCompare, cppSameProgram, FADE_AFTER };
+  window.IntuiTutor = { CARDS: { python, cpp, say }, probe, exerciseLine, sayPoints, cppStylePoints, cppCompare, cppSameProgram, FADE_AFTER };
 })();

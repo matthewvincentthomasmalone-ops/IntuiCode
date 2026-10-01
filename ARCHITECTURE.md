@@ -15,7 +15,9 @@ the desktop app.
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
-| `lang/tutor.js` | Style cards (a language's habits, and why) for Python and C++/Arduino, the C++ habit finder (on tree-sitter's parse), and how "Your turn" answers are checked |
+| `lang/tutor.js` | Style cards (a language's habits, and why) for Python and C++/Arduino, sentence cards (how to talk to the program), the C++ habit finder (on tree-sitter's parse), and how "Your turn" answers are checked |
+| `lang/glossary.js` | Finds a language's terms in code (tokens, tags, properties) or the less obvious words in sentences, for Ctrl+H and the code side of the explain strip |
+| `lang/glossary_terms.js` | The glossary itself: terms for Python, C++, Arduino, HTML, CSS, JavaScript and the sentences, as plain data |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
 | `lang/ts_patch.js` | A fix to the tree-sitter runtime for pages with SVG or custom elements |
 
