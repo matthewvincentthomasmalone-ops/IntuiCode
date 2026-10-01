@@ -177,6 +177,209 @@ test('structure: the doctype, the <html> tag and the usual settings can be left 
   assert.equal(html.match(/script\.js/g).length, 1);
 });
 
+/* ---------- sentences the kit packs needed ---------- */
+
+/* Just enough of a page to run Mechanics: elements by id, made elements, listeners, groups and timers. */
+function fakeDom(ids) {
+  const make = (tag, id = '') => {
+    const groups = new Set(), on = {};
+    const el = { tagName: tag.toUpperCase(), id, textContent: '', value: '', checked: false, hidden: false, style: {}, children: [], files: [],
+      classList: { add: (...c) => c.forEach(g => groups.add(g)), remove: (...c) => c.forEach(g => groups.delete(g)), contains: (c) => groups.has(c) },
+      append: (...k) => { el.children.push(...k); k.forEach(c => { c.parent = el; }); }, remove: () => { el.parent.children = el.parent.children.filter(c => c !== el); },
+      addEventListener: (ev, fn) => (on[ev] = on[ev] || []).push(fn), fire: async (ev, extra = {}) => { for (const fn of on[ev] || []) await fn({ target: el, preventDefault() {}, ...extra }); } };
+    return el;
+  };
+  const els = Object.fromEntries(ids.map(([tag, id]) => [id, make(tag, id)]));
+  const page = make('html');
+  const timers = [];
+  const ctx = { console: { log() {} }, Math, JSON, Promise, Error,
+    document: { getElementById: (id) => els[id] || null, createElement: (t) => make(t), addEventListener: page.addEventListener },
+    setInterval: (fn, ms) => timers.push({ fn, ms, every: true }), setTimeout: (fn, ms) => timers.push({ fn, ms, every: false }),
+    clearInterval: (n) => { timers[n - 1].stopped = true; }, clearTimeout: (n) => { timers[n - 1].stopped = true; } };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  return { ctx, els, page, timers, run: (js) => vm.runInContext(js, ctx) };
+}
+
+test('structure: number box settings, a time box, a slider, file pickers and named checkboxes', () => {
+  const r = site([
+    'add a number box called amount with hint "4.50", allowing decimals, from 0 to 1000',
+    'add a number box called rounds at least 1, in steps of 1',
+    'add a text box called pin with a number keypad',
+    'add a time box called wake',
+    'add a slider called volume from 0 to 11',
+    'add a file picker called photo for a picture',
+    'add a file picker called songs for several sounds',
+    'add a file picker called data for ".csv"',
+    'add a checkbox called reminders saying "Remind me"'].join('\n'), '',
+    'when reminders is changed\n    if reminders is ticked\n        untick reminders\n    otherwise\n        tick reminders\nwhen photo is changed\n    set picked to the file in photo\n    set all to the files in songs\n    show picked, all');
+  const html = r.results.structure.text, js = r.results.mechanics.text;
+  assert.deepEqual([...problems(r, 'structure'), ...problems(r, 'mechanics')], []);
+  assert.match(html, /<input id="amount" type="number" placeholder="4\.50" step="any" min="0" max="1000">/);
+  assert.match(html, /<input id="rounds" type="number" step="1" min="1">/);
+  assert.match(html, /<input id="pin" type="text" inputmode="numeric">/);
+  assert.match(html, /<input id="wake" type="time">/);
+  assert.match(html, /<input id="volume" type="range" min="0" max="11">/);
+  assert.match(html, /<input id="photo" type="file" accept="image\/\*">/);
+  assert.match(html, /<input id="songs" type="file" accept="audio\/\*" multiple>/);
+  assert.match(html, /<input id="data" type="file" accept="\.csv">/);
+  assert.match(js, /if \(document\.getElementById\("reminders"\)\.checked\) \{\n    document\.getElementById\("reminders"\)\.checked = false;/, 'a named checkbox is usable in Mechanics');
+  assert.match(js, /let picked = document\.getElementById\("photo"\)\.files\[0\];\n  let all = document\.getElementById\("songs"\)\.files;/);
+  assert.match(problems(site('add a number box called n in steps of lots'), 'structure').join(' '), /isn't a number/);
+  assert.match(problems(site('add a number box called n with sprinkles'), 'structure').join(' '), /I don't understand "with sprinkles"/);
+});
+
+test('styling: ::before and ::after, commas inside one value, currentColor and inherit, and "next" in a name', () => {
+  const r = site('add a list called cards\nadd a button called go saying "Go"\nadd a button called next-card saying "Next"', [
+    'before list items: content: attr(data-time), text colour the colour muted',
+    'after go: content: " ✎"',
+    'style #cards li::after: content: attr(data-left), font-weight: 400',
+    'style a:hover: bold',
+    'style go: transition: opacity 0.4s, transform 0.4s ease, bold, font-family: Georgia, serif',
+    'style go: box-shadow: inset 0 0 0 1px red, 0 2px 4px black, border 2 currentColor, background inherit',
+    'when headings is hovered: bold',
+    'next card belongs to group primary'].join('\n'));
+  const css = r.results.styling.text;
+  assert.deepEqual(problems(r, 'styling'), []);
+  assert.match(css, /^li::before \{\n  content: attr\(data-time\);\n  color: var\(--muted\);\n\}/m);
+  assert.match(css, /^#go::after \{\n  content: " ✎";\n\}/m);
+  assert.match(css, /^#cards li::after \{\n  content: attr\(data-left\);\n  font-weight: 400;\n\}/m, 'the first colon no longer ends the selector');
+  assert.match(css, /^a:hover \{\n  font-weight: bold;\n\}/m);
+  assert.match(css, /  transition: opacity 0\.4s, transform 0\.4s ease;\n  font-weight: bold;\n  font-family: Georgia, serif;/);
+  assert.match(css, /  box-shadow: inset 0 0 0 1px red, 0 2px 4px black;\n  border: 2px solid currentColor;\n  background: inherit;/);
+  assert.match(css, /^h1:hover, h2:hover, h3:hover \{/m, 'every selector in a list gets the hover');
+  assert.match(r.results.structure.text, /<button id="next-card" class="primary" type="button">/, '"next" stays part of the name');
+  assert.match(plain(site('add a button called go saying "Go"', 'after go: bold').results.styling.info[0].warns).join(' '), /without content/);
+});
+
+test('mechanics: one item of a list or a record, a field, nested items, and element names in set and run', () => {
+  const r = site('add a block called meter-fill\nadd a list called todo-list\nadd a drawing area called game 100 by 100', '', [
+    'create list grid with [0, 0], [0, 0]', 'set item 1 of item 0 of grid to 5', 'set last item of grid to [7]',
+    'set plans to {}', 'set time to "07:30"', 'set item time of plans to "Gym"', 'set "08:00" of plans to "Work"', 'set colour of plans to "red"',
+    'show item 1 of item 0 of grid, first item of last item of grid',
+    'set meter-fill.style.width to "50%"', 'set the width of game to 200', 'run todo-list.classList.add with "busy"', 'set n to length of todo-list.children'].join('\n'));
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /^grid\[0\]\[1\] = 5;\ngrid\[grid\.length - 1\] = \[7\];$/m);
+  assert.match(js, /^plans\[time\] = "Gym";\nplans\["08:00"\] = "Work";\nplans\.colour = "red";$/m);
+  assert.match(js, /console\.log\(grid\[0\]\[1\], grid\[grid\.length - 1\]\[0\]\);/);
+  assert.match(js, /^document\.getElementById\("meter-fill"\)\.style\.width = "50%";\ndocument\.getElementById\("game"\)\.width = 200;\ndocument\.getElementById\("todo-list"\)\.classList\.add\("busy"\);$/m);
+  assert.match(js, /let n = document\.getElementById\("todo-list"\)\.children\.length;/, 'a name with dashes is one value');
+  const d = fakeDom([['div', 'meter-fill'], ['ul', 'todo-list'], ['canvas', 'game']]);
+  d.run(js.replace(/console\.log\((.*)\);/, 'globalThis.shown = [$1];'));
+  assert.deepEqual(plain(d.run('grid')), [[0, 5], [7]]);
+  assert.deepEqual(plain(d.run('plans')), { '07:30': 'Gym', '08:00': 'Work', colour: 'red' });
+});
+
+test('mechanics: making elements, and reacting to them like elements from Structure', async () => {
+  const r = site('add a list called todo-list', '', [
+    'define addRow using label',
+    '    description: Adds a row to the list, with a Remove button.',
+    '    description: Clicking Remove takes the row away.',
+    '    make a new list item saying label in todo-list in group row and store in row',
+    '    make a new button saying "Remove" in row in group remove and store in button',
+    '    when button is clicked',
+    '        run row.remove',
+    '    put row in group fresh',
+    '    hide button',
+    '    if row is in group fresh',
+    '        reveal button',
+    '    make a new text saying "!" in row',
+    'run addRow with "Milk"', 'run addRow with "Bread"'].join('\n'));
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /^\/\*\*\n \* Adds a row to the list, with a Remove button\.\n \* Clicking Remove takes the row away\.\n \*\/\nfunction addRow\(label\) \{/m, 'descriptions go above the function, as JSDoc');
+  assert.match(js, /  const row = document\.createElement\("li"\);\n  row\.textContent = label;\n  row\.classList\.add\("row"\);\n  document\.getElementById\("todo-list"\)\.append\(row\);/);
+  assert.match(js, /  button\.addEventListener\("click", \(\) => \{\n    row\.remove\(\);/);
+  const d = fakeDom([['ul', 'todo-list']]);
+  d.run(js);
+  const list = d.els['todo-list'];
+  assert.deepEqual(list.children.map(c => c.textContent), ['Milk', 'Bread']);
+  const [milk] = list.children;
+  assert.ok(milk.classList.contains('row') && milk.classList.contains('fresh'));
+  assert.deepEqual(milk.children.map(c => [c.tagName, c.textContent, c.hidden]), [['BUTTON', 'Remove', false], ['SPAN', '!', false]]);
+  await milk.children[0].fire('click');
+  assert.deepEqual(list.children.map(c => c.textContent), ['Bread']);
+  assert.match(problems(site('', '', 'make a new button called b saying "x"'), 'mechanics').join(' '), /named at the end, with "and store in/);
+  // a name only ever set to a number or text doesn't hold an element, so these stay mistakes to point out
+  assert.match(problems(site('', '', 'set score to 0\nhide score'), 'mechanics').join(' '), /Nothing in Structure is called `score`/);
+  assert.match(problems(site('', '', 'set number of lives to 3'), 'mechanics').join(' '), /I don't recognise this sentence/);
+  assert.match(plain(site('', '', 'make a new button saying "x"').results.mechanics.info[0].warns).join(' '), /isn't put anywhere/);
+  assert.match(site('', '', 'make a new list called scores with 1, 2').results.mechanics.text, /let scores = \[1, 2\];/, 'a list of values, not a list on the page');
+});
+
+test('mechanics: a pointer released or moving, the screen released, a key let go', () => {
+  const r = site('add a drawing area called game 100 by 100', '', 'when game is released\n    show tap x\nwhen the pointer moves over game\n    show tap y\nwhen the screen is released\n    show "up"\nwhen the key "space" is released\n    show "space up"');
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /document\.getElementById\("game"\)\.addEventListener\("pointerup", \(event\) => \{\n  console\.log\(event\.offsetX\);/);
+  assert.match(js, /document\.getElementById\("game"\)\.addEventListener\("pointermove", \(event\) => \{\n  console\.log\(event\.offsetY\);/);
+  assert.match(js, /document\.addEventListener\("pointerup", \(event\) => \{/);
+  assert.match(js, /document\.addEventListener\("keyup", \(event\) => \{\n  if \(event\.key !== " "\) return;/);
+});
+
+test('mechanics: timers by a name or a value, and stopping them', () => {
+  const r = site('add a button called stop-it saying "Stop"', '', 'set gap to 2\nset ticker to nothing\nevery gap seconds as ticker\n    show "tick"\nafter 3 seconds as reminder\n    stop ticker\nevery second\n    show "s"\nwhen stop-it is clicked\n    stop reminder\n    stop repeating ticker');
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /^ticker = setInterval\(\(\) => \{\n  console\.log\("tick"\);\n\}, gap \* 1000\);$/m);
+  assert.match(js, /^let reminder = setTimeout\(\(\) => \{\n  clearInterval\(ticker\);\n\}, 3000\);$/m);
+  assert.match(js, /^setInterval\(\(\) => \{\n  console\.log\("s"\);\n\}, 1000\);$/m);
+  assert.match(js, /  clearTimeout\(reminder\);\n  clearInterval\(ticker\);/);
+  const d = fakeDom([['button', 'stop-it']]);
+  d.run(js);
+  d.timers[1].fn();
+  assert.ok(d.timers[0].stopped, 'the reminder stopped the repeat');
+  assert.match(problems(site('', '', 'stop clock'), 'mechanics').join(' '), /There's no timer called `clock`\. Name one when it starts, like: every 2 seconds as clock/);
+  assert.match(plain(site('add a button called go saying "Go"', '', 'when go is clicked\n    every 1 second as t\n        show 1').results.mechanics.info[1].warns).join(' '), /only lines inside it can stop it/);
+});
+
+test('mechanics: try, if it fails, in any case, and wait for', async () => {
+  const r = site('add a button called copy saying "Copy"\nadd a paragraph called copied ""', '', [
+    'when copy is clicked', '    try', '        wait for navigator.clipboard.writeText("x")', '        set the text of copied to "Copied."',
+    '    if it fails as problem', '        set the text of copied to "Not copied: {problem.message}"', '    in any case', '        show "done"'].join('\n'));
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /addEventListener\("click", async \(\) => \{\n  try \{\n    await navigator\.clipboard\.writeText\("x"\);\n    document\.getElementById\("copied"\)\.textContent = "Copied\.";\n  \} catch \(problem\) \{\n    document\.getElementById\("copied"\)\.textContent = `Not copied: \$\{problem\.message\}`;\n  \} finally \{\n    console\.log\("done"\);\n  \}\n\}\);/);
+  for (const works of [true, false]) {
+    const d = fakeDom([['button', 'copy'], ['p', 'copied']]);
+    d.ctx.navigator = { clipboard: { writeText: async () => { if (!works) throw new Error('blocked'); } } };
+    d.run(js);
+    await d.els.copy.fire('click');
+    assert.equal(d.els.copied.textContent, works ? 'Copied.' : 'Not copied: blocked');
+  }
+  // a tool that waits makes whatever runs it wait too
+  const chain = site('add a button called go saying "Go"', '', 'define load\n    wait for fetch("/x")\ndefine reload\n    run load\nwhen go is clicked\n    run reload').results.mechanics.text;
+  assert.match(chain, /async function load\(\) \{[\s\S]*async function reload\(\) \{\n  await load\(\);[\s\S]*addEventListener\("click", async \(\) => \{\n  await reload\(\);/);
+  assert.match(problems(site('', '', 'wait for fetch("/x")'), 'mechanics').join(' '), /only works inside a block that runs later/);
+  assert.match(problems(site('', '', 'if it fails\n    show 1'), 'mechanics').join(' '), /goes straight after the lines under a "try"/);
+  assert.match(site('', '', 'define check using n\n    if n is less than 0\n        fail with "Negative"').results.mechanics.text, /throw new Error\("Negative"\);/);
+});
+
+test('mechanics: the translator bugs the kit packs ran into', () => {
+  const r = site('add a drawing area called game 480 by 270\nadd a paragraph called status ""', '', [
+    'create list tasks', 'if tasks.some(t => t.done) and not tasks.every((a) => a.done)', '    show 1',
+    'set w to "b"', 'if w is in "abc" and w is not in "xyz"', '    show 2',
+    'set t to 30', 'draw a rectangle at 0, 0 sized t divided by 2 by t divided by 3 in "red" on game',
+    'set size to 20', 'draw text "Hi" at size, size size size in "white" on game',
+    'set gap to 10', 'set y to random number from gap plus 1 to (height of game minus gap)', 'set z to (random number from -3 to 3) divided by 40',
+    'set o to {status: 1, text: "x"}', 'set k to Object.keys(o)', 'set u to URL.createObjectURL(o)', 'show navigator.vibrate, crypto.randomUUID()'].join('\n'));
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  assert.deepEqual(plain(r.results.mechanics.info.flatMap(i => i.warns)), [], 'object keys and browser names are not unset names');
+  const js = r.results.mechanics.text;
+  assert.match(js, /if \(tasks\.some\(t => t\.done\) && !tasks\.every\(\(a\) => a\.done\)\) \{/, '=> stays an arrow in a condition');
+  assert.match(js, /if \("abc"\.includes\(w\) && !"xyz"\.includes\(w\)\) \{/);
+  assert.match(js, /pen\.fillRect\(0, 0, t \/ 2, t \/ 3\);/, '"divided by" is never the "by" of "sized … by …"');
+  assert.match(js, /pen\.font = `\$\{size\}px sans-serif`;\n  pen\.fillText\("Hi", size, size\);/, 'a value named size');
+  assert.match(js, /let y = \(Math\.floor\(Math\.random\(\) \* \(\(document\.getElementById\("game"\)\.height - gap\) - \(gap \+ 1\) \+ 1\)\) \+ \(gap \+ 1\)\);/);
+  assert.match(js, /let z = \(\(Math\.floor\(Math\.random\(\) \* \(3 - -3 \+ 1\)\) \+ -3\)\) \/ 40;/);
+  assert.match(js, /let o = \{status: 1, text: "x" ?\};/, 'a key is not the element with that name');
+  assert.match(site('', '', 'set o to { "a b": 1, "c": ["d"] }\nset e to o ? "y" : "n"').results.mechanics.text, /let o = \{ "a b": 1, "c": \["d"\] \};\nlet e = o \? "y" : "n";/, 'a quoted key keeps its colon close; a ? : choice keeps its spaces');
+  assert.doesNotThrow(() => new vm.Script(js));
+  const unclear = problems(site('add a drawing area called game 480 by 270', '', 'set gap to 1\nset y to random number from 0 to height of game minus gap'), 'mechanics');
+  assert.match(unclear.join(' '), /could mean two things\. Put brackets round what you mean: random number from 0 to \(height of game minus gap\), or \(random number from 0 to height of game\) minus gap\./);
+});
+
 /* ---------- the web reader ---------- */
 
 const W = await loadWebReader();

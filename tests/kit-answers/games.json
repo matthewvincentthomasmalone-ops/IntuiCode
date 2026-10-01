@@ -5,7 +5,7 @@
   "‹the new tile is inside the garden: newCol is at least 0 and newCol is less than cols and newRow is at least 0 and newRow is less than rows›": "newCol is at least 0 and newCol is less than cols and newRow is at least 0 and newRow is less than rows",
   "‹the slug is on the gardener's tile: slug.col is col and slug.row is row›": "slug.col is col and slug.row is row",
   "‹the slug and the plant are on the same tile: slug.col is plant.col and slug.row is plant.row›": "slug.col is plant.col and slug.row is plant.row",
-  "‹a new wind: random number from -3 to 3, divided by 40›": "random number from -3 to 3 divided by 40",
+  "‹a new wind: (random number from -3 to 3) divided by 40›": "(random number from -3 to 3) divided by 40",
   "‹a small part of the way to the target: (target minus wind) times 0.02›": "(target minus wind) times 0.02",
   "‹how far a streak drifts up or down each frame: target times 60›": "target times 60",
   "‹how many octaves away from note 69: (noteNumber minus 69) divided by 12›": "(noteNumber minus 69) divided by 12",

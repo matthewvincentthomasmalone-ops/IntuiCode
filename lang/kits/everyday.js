@@ -61,12 +61,12 @@ create list afterDraw
 define draw
     clear todos
     for each task in tasks
-        add task.text to the list todos
-        set row to the last item of todos.children
+        make a new list item saying task.text in todos and store in row
         if task.done
-            run row.classList.add with "done"
-        note: Clicking a task ticks it, or unticks it. () => makes a small tool on the spot, for this one task.
-        set row.onclick to () => tick(task)
+            put row in group done
+        note: Clicking a task ticks it, or unticks it.
+        when row is clicked
+            run tick with task
     if tasks is empty
         reveal all-clear
     otherwise
@@ -274,11 +274,11 @@ define showTags
                 add tag to seen
     run seen.sort
     for each tag in seen
-        add tag to the list filters
-        set chip to the last item of filters.children
+        make a new list item saying tag in filters and store in chip
         if tag is chosen
-            run chip.classList.add with "chosen"
-        set chip.onclick to () => choose(tag)
+            put chip in group chosen
+        when chip is clicked
+            run choose with tag
 
 define choose using tag
     if tag is chosen
@@ -309,7 +309,8 @@ define offerEdits
     repeat length of notes times counting with i
         set note to item i of notes
         set row to item i of board.children
-        set row.onclick to () => edit(note)
+        when row is clicked
+            run edit with note
 
 define edit using note
     ask "Change the note (empty it to delete it):", note.text and store in changed
@@ -503,8 +504,8 @@ define chime
         run tone with 660, 0
         run tone with 880, 0.25
         run tone with 1320, 0.5
-    if window.navigator.vibrate
-        run window.navigator.vibrate with [200, 100, 200]
+    if navigator.vibrate
+        run navigator.vibrate with [200, 100, 200]
 
 add chime to whenFinished`,
 
@@ -550,8 +551,8 @@ style big headings: space around 0
 style date-line: text colour the colour muted, space around 4 0 24
 style day: list-style: none, space inside 0, space around 0, background the colour card, border 1 the colour line, rounded corners 12, overflow: hidden
 style list items: in a row, gap 16, at least 44 tall, space inside 0 16, border-bottom: 1px solid var(--line), hand cursor
-note: The time at the start of every row, from its data-time. A style sentence can't name ::before yet (its colons end the name), so this line is CSS.
-css: li::before { content: attr(data-time); min-width: 48px; color: var(--muted); font-variant-numeric: tabular-nums; }
+note: The time at the start of every row: ::before adds a piece in front of the row's text, and attr() fills it with the row's data-time.
+before list items: content: attr(data-time), min-width: 48px, text colour the colour muted, font-variant-numeric: tabular-nums
 when list items is hovered: background the colour soft
 create group now: background the colour soft, box-shadow: inset 4px 0 0 var(--accent), bold
 create group past: text colour the colour muted`,
@@ -587,10 +588,10 @@ define draw
     clear day
     for each start in starts
         set time to clockTime(start)
-        add plans[time] or empty text to the list day
-        set slot to the last item of day.children
+        make a new list item saying plans[time] or empty text in day and store in slot
         set slot.dataset.time to time
-        set slot.onclick to () => plan(time)
+        when slot is clicked
+            run plan with time
     for each extra in afterDraw
         run extra
 
@@ -598,8 +599,7 @@ define plan using time
     ask "What's planned at {time}? (Empty it to clear the block.)", plans[time] or empty text and store in answer
     note: Cancel gives back nothing: then nothing changes.
     if answer is not nothing
-        note: There's no sentence yet for changing one entry of a record ("set item … of … to …" is Python only), so this line is JavaScript.
-        js: plans[time] = answer.trim();
+        set item time of plans to answer.trim()
         run draw
 
 set the text of date-line to new Date().toLocaleDateString(undefined, {"weekday": "long", "day": "numeric", "month": "long"})
@@ -699,7 +699,7 @@ add a main area called app
     add a list called cards
     add a form called spend-form
         add a label "How much did you spend?" for amount-box
-        add a number box called amount-box with hint "4.50"
+        add a number box called amount-box with hint "4.50", allowing decimals
         add a button called spend saying "Spend"
     add a paragraph called message "Tap an envelope, then type what you spent."
 == styling
@@ -719,8 +719,8 @@ style group caption: text colour the colour muted, space around 0 0 20
 style cards: list-style: none, space inside 0, space around 0, in a column, gap 10
 note: Each envelope is a card. The fill shows what's left: Mechanics sets its width with background-size.
 style #cards li: in a row, spread out, at least 56 tall, space inside 0 16, rounded corners 14, border 2 the colour line, background the colour card, background-image: linear-gradient(var(--fill), var(--fill)), background-repeat: no-repeat, background-size: 100% 100%, hand cursor, font-weight: 600
-note: What's left, on the right of each card, from its data-left. A style sentence can't name ::after yet, so this line is CSS.
-css: #cards li::after { content: attr(data-left); font-weight: 400; font-variant-numeric: tabular-nums; }
+note: What's left, on the right of each card: ::after adds a piece after the card's text, filled from its data-left.
+after #cards li: content: attr(data-left), font-weight: 400, font-variant-numeric: tabular-nums
 style #cards .chosen: border-color: var(--accent)
 style #cards .over: text colour the colour danger
 style spend-form: in a row, flex-wrap: wrap, gap 8, space around 24 0 0
@@ -764,14 +764,14 @@ define draw
         set envelope to item i of envelopes
         set left to envelope.budget minus envelope.spent
         increase total by left
-        add envelope.name to the list cards
-        set card to the last item of cards.children
+        make a new list item saying envelope.name in cards and store in card
         set card.dataset.left to "{money(left)} left"
         note: The fill: what's left as a share of the budget, as a width.
         set card.style.backgroundSize to "{Math.max(0, left divided by envelope.budget) times 100}% 100%"
         run card.classList.toggle with "chosen", i is chosen
         run card.classList.toggle with "over", left is less than 0
-        set card.onclick to () => choose(i)
+        when card is clicked
+            run choose with i
     set the text of total-left to money(total)
     for each extra in afterDraw
         run extra
@@ -788,13 +788,9 @@ run draw`,
 `component: envelope-spend
 name: Spending from an envelope
 depth: walk
-summary: Type what you spent and press Spend: it comes out of the chosen envelope, and the message says what's left, or how far over it has gone (an envelope can go below zero; hiding that would only hide the problem). A number box only accepts whole numbers unless it's given a step, and there's no sentence for that yet, so Mechanics sets step to "any" to allow pennies. not (amount is more than 0) also catches an empty or mistyped box.
+summary: Type what you spent and press Spend: it comes out of the chosen envelope, and the message says what's left, or how far over it has gone (an envelope can go below zero; hiding that would only hide the problem). A number box only accepts whole numbers unless it allows decimals, which the page's box does, so pennies work. not (amount is more than 0) also catches an empty or mistyped box.
 learn: Reading numbers from a box; checking before changing anything; why a test written as not (… more than 0) catches more than one written as … at most 0.
 == mechanics
-note: A number box takes whole numbers only, unless it has a step: "any" allows pennies.
-set amountBox to amount-box
-set amountBox.step to "any"
-
 when spend-form is sent
     get the text of amount-box and store in typed
     set amount to typed as number
@@ -888,7 +884,7 @@ add a main area called app
     add a paragraph called payer-hint "Add the people first."
     add a form called expense-form
         add a text box called what-box with hint "What for, like Dinner"
-        add a number box called cost-box with hint "How much, like 42.50"
+        add a number box called cost-box with hint "How much, like 42.50", allowing decimals
         add a button called add-expense saying "Add expense"
     add a list called spends
 == styling
@@ -934,10 +930,11 @@ create list afterDraw
 define draw
     clear crew
     for each person in people
-        add person to the list crew
-        set chip to the last item of crew.children
-        run chip.classList.toggle with "payer", person is payer
-        set chip.onclick to () => choosePayer(person)
+        make a new list item saying person in crew and store in chip
+        if person is payer
+            put chip in group payer
+        when chip is clicked
+            run choosePayer with person
     if payer is not nothing
         set the text of payer-hint to "Paid by {payer}. Tap another name to change it."
     for each extra in afterDraw
@@ -962,13 +959,10 @@ run draw`,
 `component: split-expenses
 name: Expenses
 depth: walk
-summary: Each expense is a record: what it was for, how much, and who paid. balancesOf is the maths everything else stands on: everyone shares every expense equally, so each person's balance is what they paid minus their share of everything; above zero they're owed money, below zero they owe it. Tap an expense to remove it (it asks first). Amounts need a step of "any" to allow pennies, which only Mechanics can set for now.
+summary: Each expense is a record: what it was for, how much, and who paid. balancesOf is the maths everything else stands on: everyone shares every expense equally, so each person's balance is what they paid minus their share of everything; above zero they're owed money, below zero they owe it. Tap an expense to remove it (it asks first).
 learn: Lists of records; adding up in a loop; positions in two lists that line up (people and balances); filter.
 == mechanics
 constant MONEY is "£"
-note: A number box takes whole numbers only, unless it has a step: "any" allows pennies.
-set costBox to cost-box
-set costBox.step to "any"
 note: Every expense: what it was for, how much, and who paid.
 create list expenses
 
@@ -988,9 +982,9 @@ define balancesOf
 define showExpenses
     clear spends
     for each spend in expenses
-        add "{spend.what}: {MONEY}{spend.amount.toFixed(2)}, paid by {spend.paidBy}" to the list spends
-        set row to the last item of spends.children
-        set row.onclick to () => removeExpense(spend)
+        make a new list item saying "{spend.what}: {MONEY}{spend.amount.toFixed(2)}, paid by {spend.paidBy}" in spends and store in row
+        when row is clicked
+            run removeExpense with spend
 
 define removeExpense using spend
     if confirm("Remove {spend.what}?")
@@ -1036,13 +1030,9 @@ define showBalances
         set person to item i of people
         set balance to item i of balances
         if balance is at least 0.005
-            add "{person} is owed {MONEY}{balance.toFixed(2)}" to the list tally
-            set row to the last item of tally.children
-            run row.classList.add with "owed"
+            make a new list item saying "{person} is owed {MONEY}{balance.toFixed(2)}" in tally in group owed
         otherwise if balance is at most -0.005
-            add "{person} owes {MONEY}{(0 minus balance).toFixed(2)}" to the list tally
-            set row to the last item of tally.children
-            run row.classList.add with "owes"
+            make a new list item saying "{person} owes {MONEY}{(0 minus balance).toFixed(2)}" in tally in group owes
         otherwise
             add "{person} is square" to the list tally
 
@@ -1500,14 +1490,16 @@ define draw
         set ago to 21 plus sinceMonday minus k
         set day to daysAgo(ago)
         set key to keyFor(day)
-        add day.getDate() to the list grid
-        set cell to the last item of grid.children
-        run cell.classList.toggle with "marked", marked contains key
-        run cell.classList.toggle with "today", ago is 0
+        make a new list item saying day.getDate() in grid and store in cell
+        if marked contains key
+            put cell in group marked
+        if ago is 0
+            put cell in group today
         if ago is less than 0
-            run cell.classList.add with "later"
+            put cell in group later
         otherwise
-            set cell.onclick to () => toggleDay(key)
+            when cell is clicked
+                run toggleDay with key
     for each extra in afterDraw
         run extra
 
@@ -1577,8 +1569,8 @@ summary: Tap the heading to change the habit to your own (walk, stretch, no suga
 learn: Making a heading tappable (and showing that it is); prompt with a starting value; saving a single piece of text.
 == styling
 style habit: hand cursor
-note: A pencil after the name. A style sentence can't name ::after yet, so this line is CSS.
-css: #habit::after { content: " ✎"; color: var(--muted); font-size: 20px; }
+note: A pencil after the name: ::after adds it at the end of the heading.
+after habit: content: " ✎", text colour the colour muted, text size 20
 == mechanics
 load "streak-habit" from the browser and store in habitName
 if habitName is not nothing
@@ -1818,12 +1810,15 @@ run refresh`,
 `component: interval-awake
 name: Keeping the screen on
 depth: walk
-summary: Phones dim and lock when nobody touches them, and a locked phone pauses the page, timer and all: mid-workout, that's the last thing you want. A wake lock asks the phone to keep the screen on. Not every browser has one, so it's only asked for where it exists, and the phone may still say no (on low battery, say), which .catch quietly accepts. The lock ends by itself when you switch away from the page.
-learn: Wake locks; checking a feature exists before using it; promises and .catch, in brief.
+summary: Phones dim and lock when nobody touches them, and a locked phone pauses the page, timer and all: mid-workout, that's the last thing you want. A wake lock asks the phone to keep the screen on. Not every browser has one, so it's only asked for where it exists, and the phone may still say no (on low battery, say), which "if it fails" quietly accepts. The lock ends by itself when you switch away from the page.
+learn: Wake locks; checking a feature exists before using it; waiting for an answer that comes later (wait for, a promise) and catching a refusal (try, if it fails).
 == mechanics
 when go is clicked
-    if window.navigator.wakeLock
-        set lock to window.navigator.wakeLock.request("screen").catch(() => nothing)`,
+    if navigator.wakeLock
+        try
+            wait for navigator.wakeLock.request("screen")
+        if it fails
+            note: The phone said no (on low battery, say). The timer works anyway, so there's nothing to do.`,
 
 `component: interval-watch
 name: On your wrist
@@ -1967,8 +1962,8 @@ constant BUZZES is [250, [60, 80, 60], 500, [60, 80, 60]]
 
 define buzz
     set side to Math.floor(tick divided by SIDE) mod 4
-    if window.navigator.vibrate
-        run window.navigator.vibrate with item side of BUZZES
+    if navigator.vibrate
+        run navigator.vibrate with item side of BUZZES
 
 add buzz to onSide`,
 

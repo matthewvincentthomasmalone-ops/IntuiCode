@@ -419,7 +419,7 @@ set the text of word-count to "6 words"
 
 define pickIndex using size
     note: A secure random whole number from 0 up to (not including) size. crypto.getRandomValues gives numbers nobody can predict.
-    set numbers to window.crypto.getRandomValues(new Uint32Array(1))
+    set numbers to crypto.getRandomValues(new Uint32Array(1))
     give back (first item of numbers) mod size
 
 define makePassphrase
@@ -471,9 +471,8 @@ define rateStrength
     otherwise if bits is at least 40
         set label to "Fair"
         set colour to "#e8590c"
-    set fill to meter-fill
-    set fill.style.width to "{Math.min(bits, 80) divided by 80 times 100}%"
-    set fill.style.background to colour
+    set meter-fill.style.width to "{Math.min(bits, 80) divided by 80 times 100}%"
+    set meter-fill.style.background to colour
     note: 2n ** … is a BigInt, a whole number of any size: ordinary numbers lose their last digits past about 9 million billion.
     set the text of strength to "{label}: {bits} bits, one of {(2n ** BigInt(bits)).toLocaleString()} possible passphrases."
 
@@ -522,7 +521,7 @@ when number-choice is changed
 name: Copy to the clipboard
 depth: walk
 summary: A Copy button, so the passphrase goes straight into a sign-up form. The clipboard needs the page's permission: a page opened from a web address gets it, but some previews block it, so the message says when to copy by hand instead. Clear your clipboard afterwards, or the next paste could show it somewhere it shouldn't be.
-learn: The clipboard API (navigator.clipboard); promises, which finish later and can fail.
+learn: The clipboard API (navigator.clipboard); promises, which finish later and can fail; wait for (await) with try and "if it fails".
 == structure
 add a button called copy saying "Copy"
 add a paragraph called copied ""
@@ -531,9 +530,12 @@ style copy: align-self: flex-start, font: inherit, space inside 10 20, rounded c
 style copied: text colour the colour muted, space around 0
 == mechanics
 when copy is clicked
-    set message to copied
-    note: Copying finishes later and can be refused. No sentence handles that yet, so this line is JavaScript: then(when it works, when it doesn't).
-    js: navigator.clipboard.writeText(passphrase).then(() => { message.textContent = "Copied."; }, () => { message.textContent = "The clipboard is blocked here: select the passphrase and copy it."; });`,
+    note: Copying finishes later and can be refused, so it's waited for, under try.
+    try
+        wait for navigator.clipboard.writeText(passphrase)
+        set the text of copied to "Copied."
+    if it fails
+        set the text of copied to "The clipboard is blocked here: select the passphrase and copy it."`,
 
 `component: pass-wordlist
 name: A real word list
@@ -609,7 +611,6 @@ if saved is not nothing
     set events to saved
 note: Tools other steps add: each is run for every event's row, so it can add to it.
 create list extras
-set eventList to event-list
 
 define timeLeft using entry
     set ms to entry.when minus Date.now()
@@ -630,11 +631,9 @@ define showEvents
     otherwise
         set the text of headline to "Add something to look forward to."
     for each entry in events
-        set row to document.createElement("li")
-        set row.textContent to "{entry.name}: {timeLeft(entry)}"
+        make a new list item saying "{entry.name}: {timeLeft(entry)}" in event-list and store in row
         for each extra in extras
             run extra with entry, row
-        run eventList.append with row
 
 when new-event is sent
     get the text of name-box and store in name
@@ -671,30 +670,24 @@ define drawBar using entry, row
     if entry.when is at most entry.added
         set share to 1
     set share to Math.min(Math.max(share, 0), 1)
-    set track to document.createElement("div")
-    set fill to document.createElement("div")
-    set track.className to "track"
-    set fill.className to "fill"
+    make a new block in row in group track and store in track
+    make a new block in track in group fill and store in fill
     set fill.style.width to "{Math.round(share times 100)}%"
-    run track.append with fill
-    run row.append with track
 
 add drawBar to extras`,
 
 `component: countdown-remove
 name: Removing an event
 depth: walk
-summary: Once a day has come and gone, or plans change, its event should go. This step adds a Remove button to every row, through extras, and removing keeps every event except that one (filter), then saves and redraws. The button is made in Mechanics, so its click is set there too (onclick) rather than with "when … is clicked", which needs a name from Structure.
-learn: filter, which keeps the items that pass a test; buttons made in Mechanics, and onclick.
+summary: Once a day has come and gone, or plans change, its event should go. This step adds a Remove button to every row, through extras, and removing keeps every event except that one (filter), then saves and redraws. The button is made in Mechanics and kept under a name, so "when button is clicked" works on it as it would on a button from Structure.
+learn: filter, which keeps the items that pass a test; buttons made in Mechanics, and reacting to them.
 == styling
 create group remove: font: inherit, text size 15, min-height: 40px, space around 10 0 0, space inside 0 14, rounded corners 999, border 1 the colour line, background transparent, text colour the colour muted, hand cursor
 == mechanics
 define removeButton using entry, row
-    set button to document.createElement("button")
-    set button.textContent to "Remove"
-    set button.className to "remove"
-    set button.onclick to () => removeEvent(entry)
-    run row.append with button
+    make a new button saying "Remove" in row in group remove and store in button
+    when button is clicked
+        run removeEvent with entry
 
 define removeEvent using entry
     set events to events.filter(e => e is not entry)
@@ -713,7 +706,7 @@ create group soon: border-left: 6px solid var(--accent)
 == mechanics
 define markSoon using entry, row
     if entry.when minus Date.now() is less than 7 times 86400000
-        run row.classList.add with "soon"
+        put row in group soon
 
 add markSoon to extras`,
 
@@ -940,20 +933,15 @@ note: Your links: what each button says and where it goes.
 create list links with { "label": "My shop", "url": "https://example.com/shop" }, { "label": "Latest video", "url": "https://example.com/video" }, { "label": "Newsletter", "url": "https://example.com/newsletter" }, { "label": "Email me", "url": "mailto:you@example.com" }
 note: Tools other steps add: each is run for every button, so it can add to it.
 create list extras
-set linkList to link-list
 
 define showLinks
     clear link-list
     for each link in links
-        set button to document.createElement("a")
-        set button.href to link.url
-        set button.textContent to link.label
-        set button.className to "link-button"
+        make a new link to link.url saying link.label in link-list in group link-button and store in button
         set button.target to "_blank"
         set button.rel to "noopener"
         for each extra in extras
             run extra with link, button
-        run linkList.append with button
 
 note: Drawn once every step has added its extras.
 when the page has loaded
@@ -963,7 +951,7 @@ when the page has loaded
 name: Counting taps
 depth: hallway
 summary: Which links do people use? Each tap is counted in the browser, under the link's address, and each button shows its count and its share of all taps. The honest limit: these are the taps in this browser only, yours. Counting every visitor's taps needs a server or an analytics service (a horizon step). You write the counting and the share.
-learn: Keys made from text ("taps-" plus the address); percentages; onclick for elements made in Mechanics.
+learn: Keys made from text ("taps-" plus the address); percentages; reacting to clicks on elements made in Mechanics.
 == styling
 create group taps: margin-left: auto, text size 13, text colour the colour muted, font-weight: normal, font-variant-numeric: tabular-nums
 == mechanics
@@ -980,14 +968,12 @@ define totalTaps
     give back total
 
 define addTapCount using link, button
-    set badge to document.createElement("span")
-    set badge.className to "taps"
     set share to 0
     if totalTaps() is more than 0
         set share to Math.round(‹this link's share of all taps, as a percentage: tapsFor(link) divided by totalTaps(), times 100›)
-    set badge.textContent to "{tapsFor(link)} · {share}%"
-    run button.append with badge
-    set button.onclick to () => recordTap(link)
+    make a new text saying "{tapsFor(link)} · {share}%" in button in group taps
+    when button is clicked
+        run recordTap with link
 
 define recordTap using link
     set count to ‹one more than before: tapsFor(link) plus 1›
@@ -1016,15 +1002,15 @@ if savedTheme is nothing
 
 define applyTheme using theme
     if theme is "dark"
-        run root.classList.add with "dark"
+        put root in group dark
         set the text of theme-switch to "☀ Light"
     otherwise
-        run root.classList.remove with "dark"
+        take root out of group dark
         set the text of theme-switch to "☾ Dark"
     save theme in the browser as "theme"
 
 when theme-switch is clicked
-    if root.classList.contains("dark")
+    if root is in group dark
         run applyTheme with "light"
     otherwise
         run applyTheme with "dark"
@@ -1135,7 +1121,8 @@ when the page has loaded
     repeat length of photos times counting with n
         set photo to item n of photos
         set chooser to item n of choosers
-        set chooser.onchange to () => applyFilter(photo, chooser.value)`,
+        when chooser is changed
+            run applyFilter with photo, chooser.value`,
 
 `component: booth-remember
 name: Remembering the looks
@@ -1158,7 +1145,8 @@ when the page has loaded
             set chooser.value to item n of looks
             run chooser.dispatchEvent with new Event("change")
     for each chooser in choosers
-        run chooser.addEventListener with "change", saveLooks`,
+        when chooser is changed
+            run saveLooks`,
 
 `component: booth-upload
 name: Try your own photo
@@ -1169,8 +1157,7 @@ learn: File pickers (input type="file"); object URLs; showing and hiding parts o
 add a section called own
     add a heading "Try your own photo"
     add a paragraph "Pick a photo from this device. It stays on your device." in group hint
-    note: There's no sentence for a file picker yet, so this line is HTML.
-    html: <input type="file" id="photo-file" accept="image/*">
+    add a file picker called photo-file for a picture
     add a card called own-card
         add a picture called own-photo of "" described as "The photo you picked" in group photo
         add a drop-down called own-filter with "none", "warm", "mono", "faded" in group filter-choice
@@ -1179,17 +1166,16 @@ style own: at most 1000 wide, centred, space around 24 auto 0, in a column, gap 
 style own-card: at most 320 wide
 == mechanics
 hide own-card
-set picker to document.getElementById("photo-file")
-set ownPhoto to own-photo
 
 define showPicked
-    set file to first item of picker.files
+    set file to the file in photo-file
     if file is nothing
         give back
-    set ownPhoto.src to window.URL.createObjectURL(file)
+    set own-photo.src to URL.createObjectURL(file)
     reveal own-card
 
-set picker.onchange to () => showPicked()`,
+when photo-file is changed
+    run showPicked`,
 
 `component: booth-download
 name: Saving the filtered photo
@@ -1254,34 +1240,43 @@ learn: AudioContext, oscillators, gain (volume) and filters; ramps (exponentialR
 == mechanics
 set audio to new AudioContext()
 
-note: No sentence makes sound yet, so this tool is JavaScript (js: lines). It plays one drum at the moment "at" on the audio clock.
 define playDrum using name, at
-    js: const out = audio.createGain();
-    js: out.connect(audio.destination);
-    js: if (name === "kick") {
-    js:   const tone = audio.createOscillator();
-    js:   tone.frequency.setValueAtTime(150, at);
-    js:   tone.frequency.exponentialRampToValueAtTime(40, at + 0.15);
-    js:   out.gain.setValueAtTime(1, at);
-    js:   out.gain.exponentialRampToValueAtTime(0.001, at + 0.3);
-    js:   tone.connect(out);
-    js:   tone.start(at);
-    js:   tone.stop(at + 0.3);
-    js:   return;
-    js: }
-    js: const seconds = name === "hat" ? 0.05 : 0.18;
-    js: const noise = audio.createBufferSource();
-    js: noise.buffer = audio.createBuffer(1, Math.round(audio.sampleRate * seconds), audio.sampleRate);
-    js: const samples = noise.buffer.getChannelData(0);
-    js: for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-    js: const hiss = audio.createBiquadFilter();
-    js: hiss.type = "highpass";
-    js: hiss.frequency.value = name === "hat" ? 7000 : 1500;
-    js: out.gain.setValueAtTime(name === "hat" ? 0.35 : 0.8, at);
-    js: out.gain.exponentialRampToValueAtTime(0.001, at + seconds);
-    js: noise.connect(hiss);
-    js: hiss.connect(out);
-    js: noise.start(at);`,
+    description: Plays one drum ("kick", "snare" or "hat") at the moment "at" on the audio clock.
+    note: Every drum goes through a gain (its volume) to the speakers.
+    set out to audio.createGain()
+    run out.connect with audio.destination
+    if name is "kick"
+        note: A kick: a low tone falling fast in pitch, and fading out.
+        set tone to audio.createOscillator()
+        run tone.frequency.setValueAtTime with 150, at
+        run tone.frequency.exponentialRampToValueAtTime with 40, at plus 0.15
+        run out.gain.setValueAtTime with 1, at
+        run out.gain.exponentialRampToValueAtTime with 0.001, at plus 0.3
+        run tone.connect with out
+        run tone.start with at
+        run tone.stop with at plus 0.3
+        give back
+    note: A snare or a hi-hat: a burst of noise, random samples from -1 to 1. The hat is shorter, quieter, and filtered higher, so only the hiss is left.
+    set seconds to 0.18
+    set pitch to 1500
+    set loudness to 0.8
+    if name is "hat"
+        set seconds to 0.05
+        set pitch to 7000
+        set loudness to 0.35
+    set noise to audio.createBufferSource()
+    set noise.buffer to audio.createBuffer(1, Math.round(audio.sampleRate times seconds), audio.sampleRate)
+    set samples to noise.buffer.getChannelData(0)
+    repeat length of samples times counting with i
+        set item i of samples to Math.random() times 2 minus 1
+    set hiss to audio.createBiquadFilter()
+    set hiss.type to "highpass"
+    set hiss.frequency.value to pitch
+    run out.gain.setValueAtTime with loudness, at
+    run out.gain.exponentialRampToValueAtTime with 0.001, at plus seconds
+    run noise.connect with hiss
+    run hiss.connect with out
+    run noise.start with at`,
 
 `component: beat-grid
 name: The grid
@@ -1292,34 +1287,28 @@ learn: Loops inside loops (rows and steps); making buttons in Mechanics; classLi
 create list drums with "kick", "snare", "hat"
 note: Every square, row by row: the square for drum row r, step s is item r × 16 + s.
 create list cells
-set gridArea to grid
 set the text of tempo to "100"
 
 define toggle using cell, drum
     run cell.classList.toggle with "on"
-    if cell.classList.contains("on")
+    if cell is in group on
         run audio.resume
         run playDrum with drum, audio.currentTime
 
 repeat length of drums times counting with row
-    set label to document.createElement("span")
-    set label.textContent to item row of drums
-    set label.className to "row-name"
-    run gridArea.append with label
+    make a new text saying item row of drums in grid in group row-name
     repeat 16 times counting with col
-        set cell to document.createElement("button")
-        set cell.className to "cell"
+        make a new button in grid in group cell and store in cell
         set cell.title to "{item row of drums}, step {col plus 1}"
         if col mod 4 is 0
-            run cell.classList.add with "beat-start"
-        set cell.onclick to () => toggle(cell, item row of drums)
-        run gridArea.append with cell
+            put cell in group beat-start
+        when cell is clicked
+            run toggle with cell, item row of drums
         add cell to cells
 
 note: A beat to start with: kick on 1 and 9, snare on 5 and 13, hi-hat on every other step.
 for each n in [0, 8, 20, 28, 32, 34, 36, 38, 40, 42, 44, 46]
-    set starter to item n of cells
-    run starter.classList.add with "on"`,
+    put item n of cells in group on`,
 
 `component: beat-clock
 name: The clock: playing in time
@@ -1340,10 +1329,10 @@ define stepSeconds
 
 define showPlayhead using at
     for each cell in cells
-        run cell.classList.remove with "playing"
+        take cell out of group playing
     repeat length of drums times counting with row
         set cell to cells[row times 16 plus at]
-        run cell.classList.add with "playing"
+        put cell in group playing
 
 when play is clicked
     run audio.resume
@@ -1351,7 +1340,7 @@ when play is clicked
         set playing to no
         set the text of play to "▶ Play"
         for each cell in cells
-            run cell.classList.remove with "playing"
+            take cell out of group playing
     otherwise
         set playing to yes
         set position to 0
@@ -1364,7 +1353,7 @@ every 0.025 seconds
         while nextTime is less than audio.currentTime plus 0.1
             repeat length of drums times counting with row
                 set cell to cells[row times 16 plus position]
-                if cell.classList.contains("on")
+                if cell is in group on
                     run playDrum with item row of drums, nextTime
             run showPlayhead with position
             increase nextTime by stepSeconds()
@@ -1403,7 +1392,7 @@ when tempo is changed
     run savePattern
 when clear-grid is clicked
     for each cell in cells
-        run cell.classList.remove with "on"
+        take cell out of group on
     run savePattern`,
 
 `component: beat-samples
@@ -1491,9 +1480,11 @@ define showSongs
         set the text of now-mood to "{length of songs} songs"
 
 define startPlaying
-    note: Playing can fail (a missing file, say). onerror explains; catch sets the failed attempt aside.
-    set attempt to player.play()
-    run attempt.catch with () => nothing
+    note: Playing can fail (a missing file, say). onerror explains on the page; "if it fails" lets the failed attempt go quietly.
+    try
+        wait for player.play()
+    if it fails
+        note: showProblem has already said what went wrong.
     set the text of play-pause to "Pause"
 
 define playAt using n
@@ -1541,21 +1532,19 @@ add a section called add-songs
     add a paragraph "They play from where they are and aren't uploaded anywhere." in group hint
     add a label "Mood for these songs" for new-mood
     add a drop-down called new-mood with "calm", "happy", "focus", "energetic"
-    note: There's no sentence for a file picker yet, so this line is HTML.
-    html: <input type="file" id="song-files" accept="audio/*" multiple>
+    add a file picker called song-files for several sounds
 == styling
 style add-songs: at most 560 wide, centred, space inside 0 16 28, in a column, gap 8
 create group hint: text colour the colour muted, space around 0
 style new-mood: font: inherit, space inside 8, rounded corners 8, border 1 the colour line, background the colour card, text colour the colour ink, align-self: flex-start
 == mechanics
-set songPicker to document.getElementById("song-files")
-
 define addPicked
-    for each file in songPicker.files
-        add { "file": window.URL.createObjectURL(file), "title": file.name.replace(/\\.[^.]+$/, ""), "mood": the text of new-mood } to songs
+    for each file in the files in song-files
+        add { "file": URL.createObjectURL(file), "title": file.name.replace(/\\.[^.]+$/, ""), "mood": the text of new-mood } to songs
     run showSongs
 
-set songPicker.onchange to () => addPicked()`,
+when song-files is changed
+    run addPicked`,
 
 `component: playlist-moods
 name: Playing a mood
@@ -1698,8 +1687,10 @@ when search is sent
     if city is empty text
         set the text of status to "Type a town or city."
     otherwise
-        set attempt to lookUp(city)
-        run attempt.catch with () => showOffline()`,
+        try
+            run lookUp with city
+        if it fails
+            run showOffline`,
 
 `component: weather-wear
 name: What to wear
@@ -1776,8 +1767,10 @@ when search is sent
 when the page has loaded
     if lastCity is not nothing
         set the text of city-box to lastCity
-        set attempt to lookUp(lastCity)
-        run attempt.catch with () => showOffline()`,
+        try
+            run lookUp with lastCity
+        if it fails
+            run showOffline`,
 
 `component: weather-more
 name: Hourly charts, maps and warnings

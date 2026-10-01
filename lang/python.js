@@ -415,7 +415,7 @@
 
     // 7. Tidy spacing. A lone = left now is a keyword argument, like end="".
     q = q.replace(/\s*(?<![=!<>])=(?!=)\s*/g, '=');
-    q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').trim();
+    q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').replace(/⟧\s+\.(?=[A-Za-z_])/g, '⟧.').trim();   // ", ".join(x) keeps its dot next to the text
 
     // 8. Put the text back. Text with {name} inside becomes an f-string; {{ and }} are braces.
     q = q.replace(/⟦(\d+)⟧/g, (m, i) => {
@@ -446,6 +446,9 @@
     }
     return 'value';
   }
+
+  /* An item picked out of a list or dictionary (room["items"], grid[r][c]): what it holds can't be known. */
+  const pickedOut = (t) => /^[A-Za-z_][\w.]*(?:\[[^\]]*\])+$/.test(t);
 
   const KIND_WORDS = { number: 'a number', text: 'text', list: 'a list', dict: 'a dictionary', yesno: 'a yes/no value', function: 'a tool', value: 'a value' };
 
@@ -498,11 +501,14 @@
   function callExpr(nameRaw, argsRaw, x) {
     const raw = nameRaw.trim();
     const dotted = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(raw);
-    const fnName = dotted ? raw : toName(nameRaw, x);
-    const s = dotted ? null : x.syms.get(fnName);
+    const picked = !dotted && /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*\[[^\]]+\](?:\.[A-Za-z_]\w*)*$/.test(raw);   // a tool kept in a list or dictionary: verbs[verb]
+    const fnName = dotted ? raw : picked ? tExpr(raw, x) : toName(nameRaw, x);
+    const s = dotted || picked ? null : x.syms.get(fnName);
     const args = argsRaw && !/^nothing$/i.test(argsRaw.trim()) ? splitItems(argsRaw).map(a => tExpr(a, x)) : [];
     const keywords = args.some(a => /^[A-Za-z_]\w*=/.test(a));
-    if (dotted) {
+    if (picked) {
+      x.note(`Runs the tool kept in ${code(fnName)}: square brackets pick it out, then the round brackets run it.`);
+    } else if (dotted) {
       x.note(`Runs ${code(fnName)}: a tool that belongs to ${code(raw.split('.').slice(0, -1).join('.'))}.`);
     } else if (x.pass === 2 && !s && (BUILTINS.has(fnName) || ALWAYS_KNOWN.has(fnName))) {
       // a Python built-in such as len or print
@@ -834,11 +840,18 @@
     const val = tExpr(m[1], x);
     const target = tExpr(m[2], x);
     const s = x.syms.get(target);
-    if (x.pass === 2 && !s) { x.err(`${code(target)} doesn't exist yet. Create it first, e.g. "set ${m[2].trim()} to 0" or "create list ${m[2].trim()}".`); }
+    if (x.pass === 2 && !s && !pickedOut(target)) { x.err(`${code(target)} doesn't exist yet. Create it first, e.g. "set ${m[2].trim()} to 0" or "create list ${m[2].trim()}".`); }
     const k = s?.kind;
     if (k === 'list') {
       x.note(`${code(target)} is a list, so "add" puts ${code(val)} on the end with ${code('.append()')}.`);
       return { py: `${target}.append(${val})` };
+    }
+    if (!s && pickedOut(target)) {
+      if (['text', 'list', 'dict', 'yesno'].includes(kindOf(val, x))) {
+        x.note(`${code(target)} is taken out of something else, so the translator can't see what it holds. Adding ${code(val)}, which isn't a number, means it's a list: ${code('.append()')} puts it on the end.`);
+        return { py: `${target}.append(${val})` };
+      }
+      x.note(`${code(target)} is taken out of something else, so the translator can't see what it holds: \`+=\` adds to it, as for a number. If it holds a list, write "run ${m[2].trim()}.append with ${m[1].trim()}".`);
     }
     if (k === 'dict') { x.err('To add to a dictionary, give the key: set item "key" of ' + target + ' to value.'); return { py: `${target}` }; }
     assigned(x, target);
@@ -861,7 +874,8 @@
       return { py: `${target}.pop(${pos})` };
     }
     const val = tExpr(m[1], x);
-    if (k === 'list') {
+    if (k === 'list' || (!k && pickedOut(target) && kindOf(val, x) !== 'number')) {
+      if (k !== 'list') x.note(`${code(target)} is taken out of something else, so the translator can't see what it holds. Taking out ${code(val)}, which isn't a number, means it's a list. (To take a number away from a number in there, write "decrease ${m[2].trim()} by …".)`);
       x.note('`.remove()` takes out the first matching item. If it isn\'t in the list, Python stops with an error, so you might check with "if … is in …" first.');
       return { py: `${target}.remove(${val})` };
     }
@@ -933,6 +947,16 @@
 
   // --- Running tools ---------------------------------------------------------
   rule(/^(?:run|call|do|use|perform)\s+(?:the\s+)?(?:tool\s+)?(.+?)(?:\s+(?:with|using|on|for)\s+(.+?))?(?:\s+and\s+(?:store|save|keep|put|remember)(?:\s+(?:it|the result|the answer|what it gives back))?\s+(?:in|as|into)\s+(.+))?$/i, (m, x) => {
+    // A tool whose name has "for", "on" or "with" in it ("run look for with …") keeps its whole name.
+    const said = m.input.replace(/^(?:run|call|do|use|perform)\s+(?:the\s+)?(?:tool\s+)?/i, '');
+    for (const t of [...x.syms.values()].filter(v => v.kind === 'function' && /\s/.test(v.display)).sort((a, b) => b.display.length - a.display.length)) {
+      const longer = t.display.split(/\s+/).length > m[1].trim().split(/\s+/).length;
+      const after = longer && said.toLowerCase().startsWith(t.display) ? said.slice(t.display.length) : null;
+      if (after != null && (!after || /^\s+(?:with|using|on|for|and)\s/i.test(after))) {
+        const r = qmatch(after, /^(?:\s+(?:with|using|on|for)\s+(.+?))?(?:\s+and\s+(?:store|save|keep|put|remember)(?:\s+(?:it|the result|the answer|what it gives back))?\s+(?:in|as|into)\s+(.+))?$/i);
+        if (r) { m = [m[0], said.slice(0, t.display.length), r[1], r[2]]; break; }
+      }
+    }
     const call = callExpr(m[1], m[2], x);
     if (m[3]) {
       const v = toName(m[3], x, { define: true });
