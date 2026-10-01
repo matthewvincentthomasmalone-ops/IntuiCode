@@ -592,10 +592,21 @@
     x.note(`A class is a blueprint for objects. Each object made from ${code(m[1])} keeps its own values (written ${code('self.something')}) and can use the tools defined inside it.` + (bases.length ? ` It builds on ${bases.map(code).join(', ')}.` : ''));
     return { py: `class ${m[1]}${bases.length ? `(${bases.join(', ')})` : ''}:`, open: 'class' };
   });
+  /* Kinds of value in sentences -> Python types (as cpp_write.js does for C++). Only in lower case, so
+     Decimal (from the decimal module) stays Decimal, and a class of the program's own keeps its name. */
+  const KIND_TYPES = { number: 'int', numbers: 'int', 'whole number': 'int', 'whole numbers': 'int', decimal: 'float', decimals: 'float', text: 'str', words: 'str', 'yes/no': 'bool', character: 'str', characters: 'str' };
+  function kindType(word, x) {
+    const w = word.trim().replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ');
+    if ((x.syms.map.get(w) || {}).kind === 'class') return null;
+    const list = w.match(/^list of (.+)$/);
+    if (list) return KIND_TYPES[list[1]] ? `list[${KIND_TYPES[list[1]]}]` : null;
+    return KIND_TYPES[w] || null;
+  }
   rule(/^field\s+([A-Za-z_]\w*)\s*:\s*(.+?)(?:\s+=\s+(.+))?$/i, (m, x) => {
     declare(x, m[1], m[1], 'value');
-    x.note(`Declares that objects of this class have ${code(m[1])}, of type ${code(m[2].trim())}.` + (m[3] ? ' If none is given, it starts as ' + code(m[3].trim()) + '.' : ''));
-    return { py: `${m[1]}: ${tExpr(m[2], x)}${m[3] ? ' = ' + tExpr(m[3], x) : ''}` };
+    const kind = kindType(m[2], x);
+    x.note(`Declares that objects of this class have ${code(m[1])}, of type ${code(kind || m[2].trim())}` + (kind ? ` (Python's word for ${m[2].trim()}).` : '.') + (m[3] ? ' If none is given, it starts as ' + code(m[3].trim()) + '.' : ''));
+    return { py: `${m[1]}: ${kind || tExpr(m[2], x)}${m[3] ? ' = ' + tExpr(m[3], x) : ''}` };
   });
   rule(/^use the shared\s+(.+)$/i, (m, x) => {
     const names = splitItems(m[1]).map(n => toName(n, x));
@@ -1271,7 +1282,7 @@
     T('Objects', 'set self.‹value› to ‹value›', 'self.value = value', 'Inside a class: a value each object keeps for itself.', ['tools', 'main']),
     T('Objects', 'make a new ‹Class› with ‹inputs› and store in ‹name›', 'name = Class(inputs)', 'Creates an object from a class.', ['tools', 'main']),
     T('Objects', 'run ‹object›.‹tool› with ‹inputs›', 'object.tool(inputs)', 'Runs a tool that belongs to an object or module, e.g. run conn.commit.', ['tools', 'main']),
-    T('Objects', 'field ‹name›: ‹type›', 'name: type', 'Inside a data class: a value every object has.', ['tools', 'main']),
+    T('Objects', 'field ‹name›: ‹type›', 'name: type', 'Inside a data class: a value every object has. The type can be whole number, decimal, text, yes/no or a Python type.', ['tools', 'main']),
     T('Errors', 'try', 'try:', 'Indent the lines that might fail under it.', ['tools', 'main']),
     T('Errors', 'if it fails with ‹ErrorType› as ‹error›', 'except ErrorType as error:', 'What to do when the lines under "try" fail.', ['tools', 'main']),
     T('Errors', 'in any case', 'finally:', 'Always runs afterwards, error or not.', ['tools', 'main']),

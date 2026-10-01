@@ -55,6 +55,10 @@ const CASES = [
   ['define all notes\n    give back ["a"]\nshow length of all notes ()\nshow first item of all notes()\nshow all notes() as text', 'def all_notes():\n    return ["a"]\nprint(len(all_notes()))\nprint(all_notes()[0])\nprint(str(all_notes()))'],
   ['define get name\n    give back " a "\nshow length of get name().strip()', 'def get_name():\n    return " a "\nprint(len(get_name().strip()))'],
   ['define notes using x\n    give back [x]\nset x to 1\nshow length of notes(sorted([x]))\nset y to max (x, 2)', 'def notes(x):\n    return [x]\nx = 1\nprint(len(notes(sorted([x]))))\ny = max(x, 2)'],
+  // a field's kind is written as Python's type; Python types and other names stay as they are
+  ['define class Point\n    field x: decimal\n    field y: decimal = 0\n    field z: float', 'class Point:\n    x: float\n    y: float = 0\n    z: float'],
+  ['define class Item\n    field name: text\n    field count: whole number = 1\n    field done: yes/no = no\n    field tags: list of text\n    field scores: list[int]', 'class Item:\n    name: str\n    count: int = 1\n    done: bool = False\n    tags: list[str]\n    scores: list[int]'],
+  ['python: from decimal import Decimal\ndefine class Price\n    field amount: Decimal', 'from decimal import Decimal\nclass Price:\n    amount: Decimal'],
 ];
 
 for (const [sentences, expected] of CASES) {
@@ -102,6 +106,15 @@ test('unknown names are warnings with a suggestion', () => {
 test('a tool run inside {…} in text runs the tool, not what "length of" gives back', () => {
   const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'define all notes\n    give back ["a", "b"]\nshow "{length of all notes()} notes"' }] }).results.main;
   assert.equal(execFileSync(PYTHON, ['-c', r.text], { encoding: 'utf8' }).trim(), '2 notes');
+});
+
+test('a class whose fields are written with kinds (decimal, whole number, text, yes/no) runs', () => {
+  const text = 'python: from dataclasses import dataclass\ndecorate with dataclass\ndefine class Account\n    field owner: text\n    field visits: whole number\n    field balance: decimal = 0\n    field open: yes/no = yes\nmake a new Account with "Sam", 2 and store in account\nshow account\nshow Account.__annotations__';
+  const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text }] }).results.main;
+  assert.deepEqual(JSON.parse(JSON.stringify(r.info.flatMap(i => i.errs.concat(i.warns)))), []);
+  // before Python 3.14, the class's annotations are worked out when it is defined: `decimal` there is a NameError
+  assert.equal(execFileSync(PYTHON, ['-c', r.text], { encoding: 'utf8' }).replace(/\r/g, '').trim(),
+    "Account(owner='Sam', visits=2, balance=0, open=True)\n{'owner': <class 'str'>, 'visits': <class 'int'>, 'balance': <class 'float'>, 'open': <class 'bool'>}");
 });
 
 test('tools that change outside values get `global`', () => {

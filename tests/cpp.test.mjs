@@ -66,6 +66,23 @@ test('C++: {{ and }} are braces in text with values; increase gives ++; words in
   assertValidCpp(r.text, 'braces');
 });
 
+test('C++ and Arduino: "is even" and "is odd" test the remainder after dividing by 2', () => {
+  const r = cpp('count i from 1 to 6\n    if i is even\n        show i\n    otherwise if i is odd\n        show "odd"\nset n to 3\nif n is not even\n    show n\nif n plus 1 is even\n    show "n plus 1 is even"\ncreate list of numbers called scores with 3, 5, 8\nif length of scores is odd and item 0 of scores is odd\n    show "odd"');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs.concat(i.warns))), []);
+  assert.match(r.text, /\n\s+if \(i % 2 == 0\) \{/);
+  assert.match(r.text, /\} else if \(i % 2 != 0\) \{/);   // != 0, not == 1: in C++ -3 % 2 is -1
+  assert.match(r.text, /if \(n % 2 != 0\) \{/);
+  assert.match(r.text, /if \(\(n \+ 1\) % 2 == 0\) \{/);
+  assert.match(r.text, /if \(scores\.size\(\) % 2 != 0 && scores\[0\] % 2 != 0\) \{/);
+  assert.doesNotMatch(r.text, /[=!]= (?:even|odd)\b/);
+  assertValidCpp(r.text, 'even and odd');
+  const s = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 's', file: 'sketch', text: 'constant LED is 13\ncreate list of numbers called pins with 2, 3, 4\nwhen the board starts\n    make pin LED an output\nover and over\n    count i from 1 to 6\n        if i is even\n            turn pin LED on\n        if i is odd\n            turn pin LED off\n        wait 500 milliseconds\n    if length of pins is odd\n        wait 1 second' }] }).results.s;
+  assert.deepEqual(plain(s.info.flatMap(i => i.errs.concat(i.warns))), []);
+  assert.match(s.text, /if \(i % 2 == 0\) \{/);
+  assert.match(s.text, /if \(i % 2 != 0\) \{/);
+  assert.match(s.text, /if \(\(sizeof\(pins\) \/ sizeof\(pins\[0\]\)\) % 2 != 0\) \{/);
+});
+
 test('C++: lists need a kind', () => {
   assert.ok(cpp('create list things').info.flatMap(i => i.errs).some(e => /needs to know what the list will hold/.test(e)));
 });
