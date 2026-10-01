@@ -1,0 +1,9 @@
+{
+  "‹the start speed, 5 milliseconds less for each square past the first three: START_SPEED - 5 * (length of snake - 3)›": "START_SPEED - 5 * (length of snake - 3)",
+  "‹speed has gone below the limit: speed is less than FASTEST›": "speed is less than FASTEST",
+  "‹one tick, plus a share of MARCH_EVERY for each one left: 1 + MARCH_EVERY * length of invaders // (INVADER_ROWS * INVADER_COLUMNS)›": "1 + MARCH_EVERY * length of invaders // (INVADER_ROWS * INVADER_COLUMNS)",
+  "‹it has burnt out: shooting[\"life\"] is at most 0›": "shooting[\"life\"] is at most 0",
+  "‹the layer it goes directly above: \"stars\"›": "\"stars\"",
+  "‹how many ticks make a second: 1000 // TICK›": "1000 // TICK",
+  "‹time is up: time left is at most 0›": "time left is at most 0"
+}
