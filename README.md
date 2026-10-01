@@ -28,8 +28,12 @@ rounded corners 8" and used with "when save is clicked". A live preview updates 
 **Pick from the page** puts an element's name into your sentence, and messages and errors from
 the page appear in the terminal, linked back to the sentence that caused them.
 
-Blueprints are plain text. You can edit any of them, save your own, or turn your
-current project into a blueprint and put blanks where your projects usually differ.
+Blueprints live in the **Library**, on shelves by what you're making (Apps for a PC, Phone apps,
+Websites, Online services, Gadgets, One idea at a time, Starting points), beside the project
+builder's kits for the same kinds of project. A kit plans a whole project step by step; a blueprint
+writes its sentences from a story with blanks. Each shelf can open the project builder right there.
+Blueprints are plain text: you can edit any of them, save your own, or turn your current project into
+a blueprint and put blanks where your projects usually differ (`shelf:` says where it sits).
 
 **C++** projects use the same sentences. Types are worked out from values
 (text → `std::string`, whole numbers → `int`) and every choice is explained; you can also name
@@ -265,7 +269,7 @@ The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
 - **A new sentence:** add a `rule(regex, fn)` in `lang/python.js` (first match wins), then a
   matching entry in `TEMPLATES` so it appears in the phrase picker and the Index.
 - **A new word inside sentences:** add to `EXPR_RULES` (for example `length of x` → `len(x)`).
-- **A new blueprint:** write it in the app (Blueprints → Write or paste one), or add it to
+- **A new blueprint:** write it in the app (Library → Write or paste one), or add it to
   `BUILT_IN` in `lang/blueprints.js`. The format is described at the top of that file.
 - **Reading more:** library descriptions live in `LIBRARIES`, safety checks in `Facts`,
   and pattern recognisers in `gists()` in `lang/python_reader.py`.

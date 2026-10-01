@@ -20,6 +20,7 @@
  *   kit: daw                               the components for one kind of project
  *   title: Audio workstation (DAW)
  *   layout: structured                     script | structured | website | arduino
+ *   shelf: pc                              where it sits in the Library (see SHELVES)
  *   about: One line shown above the list.
  *   steps: sound!, fader*, eq*, mixer, monitoring      in build order; ! always in, * ticked at first
  *
@@ -42,6 +43,19 @@
     hallway: { label: 'Hallway', means: 'The structure is laid out and the key parts are named: you fill in the ‹blanks›, with the notes to guide you.' },
     horizon: { label: 'Horizon', means: 'Explained and pointed at: what it is, what\'s usually used for it, and what to learn first. Not something to write in sentences yet.' },
   };
+
+  /* The Library's shelves: what you're making, in the same shape as the questions. A shelf's path is the
+   * answers that lead to it, so "plan one" can open the builder right there. Kits and blueprints both say
+   * which shelf they sit on. */
+  const SHELVES = [
+    { id: 'pc', title: 'Apps for a PC', about: 'Programs for Windows, macOS or Linux: tools you type into, windows with buttons, sound.', path: ['App', 'PC'] },
+    { id: 'phone', title: 'Phone apps', about: 'Apps for iPhone and Android, starting from the web.', path: ['App', 'Phone'] },
+    { id: 'web', title: 'Websites', about: 'Pages people visit in a browser.', path: ['Webpage'] },
+    { id: 'service', title: 'Online services', about: 'Something people sign up for and use online: a server, data, accounts.', path: ['Online service (SaaS)'] },
+    { id: 'gadget', title: 'Gadgets', about: 'Devices on a board like an Arduino or an ESP32: lights, buttons, sensors, sound.', path: ['Gadget'] },
+    { id: 'lessons', title: 'One idea at a time', about: 'Small programs that each show one way of thinking: lists, classes.' },
+    { id: 'start', title: 'Starting points', about: 'Empty projects, laid out and ready for your own sentences.' },
+  ];
 
   const BUILT_IN = [
 `question: start
@@ -74,6 +88,7 @@ option: Something else | Start from the usual parts and choose | kit webpage`,
 `kit: daw
 title: Audio workstation (DAW)
 layout: structured
+shelf: pc
 about: A small sound studio in Python: make or load a sound, shape it with faders and EQ, meter it, mix tracks and play the result. The parts a big DAW builds in real time are here as horizon steps.
 steps: sound!, fader*, eq*, mixer, meters*, transport!, monitoring, recording, plugins, timeline`,
 
@@ -268,6 +283,7 @@ learn: Classes for tracks and clips; drawing on a canvas; turning a mouse positi
 `kit: webpage
 title: Webpage
 layout: website
+shelf: web
 about: A one-page website, top to bottom: a header with a menu, a big welcome, a few words about you, a gallery, a contact form and a footer, arranged for phones as well as computers. Getting it online, counted and found are horizon steps.
 steps: page!, header*, hero*, about*, gallery*, contact*, footer*, mobile*, theme, publish*, analytics, seo`,
 
@@ -473,6 +489,7 @@ learn: The title and description in search results; alt text; why speed and phon
 `kit: terminal
 title: Terminal tool
 layout: structured
+shelf: pc
 about: A program you type into, and a good first project. It keeps a list of records, each a name and an amount (spending, reading, workouts…), saved in a file, with a menu of commands, careful checks on what's typed, and a report. Plain Python: nothing to install.
 steps: records!, save-file!, typing-checks!, menu!, add-record*, list-records*, remove-record, report*, package`,
 
@@ -675,6 +692,7 @@ learn: What bundling does; building on Windows, macOS and Linux separately; code
 `kit: window
 title: Desktop window app
 layout: script
+shelf: pc
 about: A small desktop app with a real window, made with tkinter, the window toolkit that comes with Python: a list you can add to, remove from and edit, saved to a file, with a menu bar. It's written top to bottom in one file, the way small tkinter apps usually are. Turning it into an app people double-click is a horizon step.
 steps: window!, item-list!, entry*, remove-item*, edit-item, open-save*, menubar*, mainloop!, package, bigger-apps`,
 
@@ -854,6 +872,7 @@ learn: grid, for layouts in rows and columns; keeping the data separate from the
 `kit: saas
 title: Online service (SaaS)
 layout: structured
+shelf: service
 about: The inside of an online service, here a small notes service: a database that remembers everything, checks on what people send, a web server that answers browsers and apps, and an admin page for you. Accounts, payments, email and hosting are horizon steps: they're where real services rely on trusted libraries and providers rather than home-made code.
 steps: database!, input-checks!, server*, admin, accounts, payments, email, hosting*`,
 
@@ -1017,6 +1036,7 @@ learn: Environment variables; development and production servers; reading logs; 
 `kit: gadget
 title: Gadget (Arduino)
 layout: arduino
+shelf: gadget
 about: A small device on an Arduino board: a heartbeat light, a button, a sensor and a buzzer, all working at once, with messages to your computer. A screen, WiFi, batteries and a case are horizon steps. The pins are for an Arduino Uno, and easy to change.
 steps: board!, heartbeat*, button*, sensor*, buzzer, screen, wifi, battery, enclosure`,
 
@@ -1137,6 +1157,7 @@ learn: Soldering; measuring parts and leaving room for cables; basic 3D design.`
 `kit: phone
 title: Phone app
 layout: website
+shelf: phone
 about: Phone apps are big projects, so this kit starts with the part you can build today: a phone-friendly web app that works in any phone's browser. The native parts (the toolkit, screens, storage, notifications, the app stores) are horizon steps, each with what people use and what to learn first.
 steps: web-app!, publish*, installable, toolkit*, screens, phone-storage, notifications, app-stores*`,
 
@@ -1282,6 +1303,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     if (kind === 'kit') {
       if (head.layout && !LAYOUT_FILES[head.layout]) problems.push(`"layout: ${head.layout}" isn't one of script, structured, website or arduino.`);
       if (!head.steps) problems.push('Add "steps:" with its components in build order, like "steps: first!, second*, third".');
+      if (head.shelf && !SHELVES.some(x => x.id === head.shelf)) problems.push(`"shelf: ${head.shelf}" isn't a shelf of the Library. Use one of: ${SHELVES.map(x => x.id).join(', ')}.`);
     }
     if (kind === 'component') {
       if (!head.name) problems.push('Add "name:" with its plain-language name.');
@@ -1307,7 +1329,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       if (head.question) lib.questions[head.question] = { id: head.question, ask: head.ask || '', options };
       else if (head.kit) {
         lib.kits[head.kit] = {
-          id: head.kit, title: head.title || head.kit, layout: head.layout || 'structured', about: head.about || '',
+          id: head.kit, title: head.title || head.kit, layout: head.layout || 'structured', about: head.about || '', shelf: head.shelf || '',
           steps: (head.steps || '').split(',').map(x => x.trim()).filter(Boolean).map(x => ({ id: x.replace(/[!*]+$/, ''), always: /!$/.test(x), ticked: /[!*]$/.test(x) })),
         };
       } else if (head.component) {
@@ -1367,6 +1389,38 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     return { project: { version: 1, lang: 'python', kind: KIND[kit.layout] || 'python', name, sections, active, plan }, plan };
   }
 
+  /* The answers that lead to a kit: [{ label, next, kit, ticked }], the shortest from "start". Where several
+   * answers lead to it, the one that keeps the kit's own usual steps is preferred ("Something else" over
+   * "Showing my work", which ticks its own). */
+  function pathToKit(lib, kitId) {
+    const queue = [{ q: 'start', path: [] }], seen = new Set();
+    let found = null;
+    while (queue.length) {
+      const { q, path } = queue.shift();
+      if (seen.has(q) || !lib.questions[q]) continue;
+      seen.add(q);
+      for (const o of lib.questions[q].options) {
+        const step = [...path, { label: o.label, next: o.next, kit: o.kit, ticked: o.ticked }];
+        if (o.kit === kitId) { if (!o.ticked) return step; found = found || step; }
+        if (o.next) queue.push({ q: o.next, path: step });
+      }
+    }
+    return found;
+  }
+  /* Answers given by their labels (a shelf's path) -> the same chain of options, as far as they go. */
+  function followLabels(lib, labels) {
+    const out = [];
+    let q = 'start';
+    for (const label of labels || []) {
+      const o = lib.questions[q] && lib.questions[q].options.find(x => x.label === label);
+      if (!o) break;
+      out.push({ label: o.label, next: o.next, kit: o.kit, ticked: o.ticked });
+      if (o.kit || !o.next) break;
+      q = o.next;
+    }
+    return out;
+  }
+
   /* Where a step's sentences start in a section's text (its "── Step n ·" note), or -1. */
   function stepLine(text, step) {
     const re = new RegExp(`^\\s*note:\\s*── Step ${step.n} · `);
@@ -1374,5 +1428,5 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
   }
 
   const library = parseLibrary(BUILT_IN);
-  window.IntuiBuilder = { BUILT_IN, DEPTHS, parseEntry, parseLibrary, describeEntry, libraryWith, build, stepLine, library };
+  window.IntuiBuilder = { BUILT_IN, DEPTHS, SHELVES, parseEntry, parseLibrary, describeEntry, libraryWith, build, stepLine, pathToKit, followLabels, library };
 })();

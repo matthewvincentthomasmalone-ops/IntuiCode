@@ -33,6 +33,8 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
 **Project builder**
+- [ ] **Library**: shelves (Apps for a PC, Phone apps, Websites, Online services, Gadgets…) each hold kits and
+      blueprints. A kit's **Choose its steps…** opens the builder at that kit; **Plan one ›** opens it at the shelf.
 - [ ] File → Project builder… → App → PC → Audio workstation (DAW). Tick Mixer, Build my project: the Project map
       lists the steps in order, and Problems lists the hallway ‹blanks›.
 - [ ] Click a step: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the blanks and
@@ -51,23 +53,23 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Read mode → import `samples/cpp/blink/blink.ino` → **Style tour**: setup and loop, pinMode, delay…
 
 **Python (Write mode)**
-- [ ] Blueprints → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
+- [ ] Library → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
 - [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in Notepad: it is ordinary Python.
 - [ ] Edit `main.py` in Notepad (change a message), save it, then **Open folder** on that folder in IntuiCode: the sentence shows your change.
 - [ ] Type `$ python --version` (Windows) or `$ python3 --version` in the terminal: it answers.
 
 **Website**
-- [ ] Blueprints → **To-do list page** → Build. The preview shows the page; add a task.
+- [ ] Library → **To-do list page** → Build. The preview shows the page; add a task.
 - [ ] **Pick from the page**, then click the page's button: its name goes into your sentence.
 
 **C++ (needs a compiler)**
-- [ ] Blueprints → **C++ bank account (a class)** → Build → Run. On Windows the terminal says
+- [ ] Library → **C++ bank account (a class)** → Build → Run. On Windows the terminal says
       "Compiling main.cpp with Visual Studio …" and then shows "Sam has 75".
 - [ ] Add a line `c++: oops;` and Run: the compiler's complaint links to that line.
 
 **Arduino (needs the Arduino IDE)**
-- [ ] Blueprints → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
+- [ ] Library → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
       (the first time it may ask you to run `$ arduino-cli core install arduino:avr`: type it, then Run again).
 - [ ] With a board plugged in by USB: Run uploads it; the light blinks and "Blinks so far" lines appear.
 - [ ] A board with a USB-serial chip (many ESP32 boards): Run says there is a board it can't name.

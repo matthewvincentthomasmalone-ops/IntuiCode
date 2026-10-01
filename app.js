@@ -325,7 +325,7 @@
     const box = $('explain');
     if (!r || !text.trim()) {
       box.innerHTML = `${planBanner(li)}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
-        <div class="ex-hint"><span>Start from an idea: open <b>Blueprints</b> and fill in the blanks.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Put your cursor on any line to see how it becomes ${sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]}.</span></div>`;
+        <div class="ex-hint"><span>Start from an idea: open the <b>Library</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Put your cursor on any line to see how it becomes ${sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]}.</span></div>`;
       return;
     }
     const inf = r.info[li] || { py: [], notes: [], warns: [], errs: [] };
@@ -1297,7 +1297,7 @@
     if (!q) {
       html += `<div class="ix"><h3>What ${G.name} is for</h3><p>${withCode(G.purpose)}</p>
         ${mode === 'write' ? `<h3>This folder</h3><p>${withCode(PK.guide.section || '')}</p>` : `<h3>Reading code</h3><p>Click a section to see what it does. Highlight any lines and press Summarise for just those. Summaries come from rules, not guesses: every sentence points at real lines.</p>`}
-        <h3>Five rules that explain most of Python</h3><ol class="ix-rules">${G.rules.map((r, i) => `<li><span class="n">${i + 1}</span><div><b>${escHtml(r[0])}</b><span>${withCode(r[1])}</span></div></li>`).join('')}</ol></div>`;
+        <h3>${G.rules.length === 5 ? 'Five' : G.rules.length} rules that explain most of ${escHtml(G.name)}</h3><ol class="ix-rules">${G.rules.map((r, i) => `<li><span class="n">${i + 1}</span><div><b>${escHtml(r[0])}</b><span>${withCode(r[1])}</span></div></li>`).join('')}</ol></div>`;
     }
     const tpls = PK.templates.filter(t => (PK.webOnly ? (PK.filter(t) || (indexAll && t.sections.some(x => SEC_LANG[x]))) : (indexAll || q || t.sections.includes(file))) && match(t.pattern, t.py, t.tip, t.group));
     const groups = [...new Set(tpls.map(t => t.group))];
@@ -1355,18 +1355,49 @@
 
   const bpSource = (sel) => sel.src === 'built' ? BP.BUILT_IN[sel.i] : myBlueprints[sel.i].source;
 
+  /* The Library: shelves by what you're making (the project builder's own questions), each holding the
+   * builder's kits (a whole kind of project, planned step by step) and blueprints (a story with blanks). */
+  const bpOn = (sel) => !!bpSel && bpSel.src === sel.src && (sel.src === 'kit' ? bpSel.id === sel.id : bpSel.i === sel.i);
   function renderBpList() {
+    const lib = bldLibrary();
     const built = BP.BUILT_IN.map((src, i) => ({ bp: BP.parse(src), sel: { src: 'built', i } }));
     const mine = myBlueprints.map((m, i) => ({ bp: BP.parse(m.source), sel: { src: 'mine', i } }));
-    const item = ({ bp, sel }) => `<button type="button" class="bp-item${bpSel && bpSel.src === sel.src && bpSel.i === sel.i ? ' on' : ''}" data-src="${sel.src}" data-i="${sel.i}"><b>${escHtml(bp.title || 'Untitled')}</b><span>${escHtml(bp.about || '')}</span></button>`;
+    const item = ({ bp, sel }) => `<button type="button" class="bp-item${bpOn(sel) ? ' on' : ''}" data-src="${sel.src}" data-i="${sel.i}"><b>${escHtml(bp.title || 'Untitled')}</b><span>${escHtml(bp.about || '')}</span></button>`;
+    const kitItem = (k) => {
+      const depths = k.steps.map(s => lib.components[s.id]).filter(Boolean).map(c => c.depth);
+      return `<button type="button" class="bp-item bp-kit${bpOn({ src: 'kit', id: k.id }) ? ' on' : ''}" data-src="kit" data-kit="${escHtml(k.id)}"><b>${escHtml(k.title)}</b><span><em class="bp-tag">Kit</em>${depths.length} steps: ${['walk', 'hallway', 'horizon'].map(d => [depths.filter(x => x === d).length, d]).filter(([n]) => n).map(([n, d]) => n + ' ' + d).join(', ')}</span></button>`;
+    };
     const group = (label, list) => list.length ? `<div class="bp-group">${label}</div>` + list.map(item).join('') : '';
-    const projects = built.filter(x => x.bp.kind === 'project').concat(mine.filter(x => x.bp.kind === 'project'));
-    const snippets = built.filter(x => x.bp.kind === 'snippet').concat(mine.filter(x => x.bp.kind === 'snippet'));
-    $('bpList').innerHTML = group('Start a project', projects.filter(x => x.sel.src === 'built'))
-      + group(`Add to ${SECTION_META[activeSec().file].title}`, snippets.filter(x => x.sel.src === 'built'))
-      + `<div class="bp-group">Your blueprints</div>`
-      + (mine.length ? mine.map(item).join('') : '<p class="bp-none">None yet. Edit a copy of any blueprint, or turn your current project into one.</p>')
+    const shelves = BUILDER.SHELVES.map(sh => {
+      const kits = Object.values(lib.kits).filter(k => k.shelf === sh.id);
+      const bps = built.filter(x => x.bp.kind === 'project' && x.bp.shelf === sh.id);
+      if (!kits.length && !bps.length) return '';
+      const plan = sh.path ? `<button type="button" class="bp-plan" data-shelf="${sh.id}" title="Answer the project builder's questions from here">Plan one ›</button>` : '';
+      return `<div class="bp-group bp-shelf"><span>${escHtml(sh.title)}</span>${plan}</div>${kits.map(kitItem).join('')}${bps.map(item).join('')}`;
+    }).join('');
+    const myKitsOff = Object.values(lib.kits).filter(k => !BUILDER.SHELVES.some(sh => sh.id === k.shelf));
+    $('bpList').innerHTML = shelves
+      + group(`Add to ${SECTION_META[activeSec().file].title}`, built.filter(x => x.bp.kind === 'snippet'))
+      + `<div class="bp-group">Yours</div>`
+      + myKitsOff.map(kitItem).join('')
+      + (mine.length ? mine.map(item).join('') : myKitsOff.length ? '' : '<p class="bp-none">None yet. Edit a copy of any blueprint, or turn your current project into one.</p>')
       + `<div class="bp-mk"><button type="button" class="btn small" id="bpFromProject">Make one from this project</button><button type="button" class="btn small" id="bpPaste">Write or paste one</button></div>`;
+  }
+
+  /* A kit in the Library: its steps in build order, each with its depth, and a way into the builder. */
+  function renderKitPage(box) {
+    const lib = bldLibrary(), kit = lib.kits[bpSel.id];
+    if (!kit) { box.innerHTML = '<p class="bp-none">This kit isn\'t in the library any more.</p>'; return; }
+    const shelf = BUILDER.SHELVES.find(sh => sh.id === kit.shelf);
+    const steps = kit.steps.map(s => ({ s, c: lib.components[s.id] })).filter(x => x.c);
+    const count = (d) => steps.filter(x => x.c.depth === d).length;
+    box.innerHTML = `<div class="bp-kind">Project builder kit${shelf ? ' · ' + escHtml(shelf.title) : ''}</div>
+      <h3 class="bp-title">${escHtml(kit.title)}</h3>
+      <p class="bp-lead">${escHtml(kit.about)}</p>
+      <p class="bld-legend">${['walk', 'hallway', 'horizon'].filter(count).map(d => `<span>${depthChip(d)} ${count(d)} ${count(d) === 1 ? 'step' : 'steps'}</span>`).join('')}</p>
+      <div class="bp-actions"><button type="button" class="btn primary" id="bpPlan">Choose its steps…</button><button type="button" class="btn" id="bpKitEdit">Change this kit</button></div>
+      <p class="bp-note">A kit is a whole kind of project, in the order you'd build it. You choose its steps, and each says how much is done for you: Walk is written in full, Hallway leaves ‹blanks› for you, Horizon points the way.</p>
+      <ol class="bp-kit-steps">${steps.map(({ s, c }, i) => `<li><span class="bld-n">${i + 1}</span><span><span class="bld-name"><b>${escHtml(c.name)}</b> ${depthChip(c.depth)}${s.always ? ' <span class="dim">always part of it</span>' : s.ticked ? ' <span class="dim">ticked at first</span>' : ''}</span><span class="bld-sum">${withCode(c.summary)}</span></span></li>`).join('')}</ol>`;
   }
 
   function madlib(bp) {
@@ -1422,10 +1453,11 @@
       });
       return;
     }
-    if (!bpSel) { box.innerHTML = '<p class="bp-none">Pick a blueprint.</p>'; return; }
+    if (!bpSel) { box.innerHTML = '<p class="bp-none">Pick something on the left.</p>'; return; }
+    if (bpSel.src === 'kit') return renderKitPage(box);
     const bp = BP.parse(bpSource(bpSel));
     const isProject = bp.kind === 'project';
-    const where = isProject ? ({ structured: 'Project · Settings, Tools and Main program', website: 'Website · Structure, Styling and Mechanics', cpp: 'C++ project · one Program file', arduino: 'Arduino project · one Sketch for a board' }[bp.layout] || 'Project · one Main program file') : `Snippet · adds lines to ${SECTION_META[activeSec().file].title}`;
+    const where = 'Blueprint · ' + (isProject ? ({ structured: 'Settings, Tools and Main program', website: 'a website: Structure, Styling and Mechanics', cpp: 'C++, one Program file', arduino: 'Arduino, one Sketch for a board' }[bp.layout] || 'one Main program file') : `adds lines to ${SECTION_META[activeSec().file].title}`);
     box.innerHTML = `<div class="bp-kind">${escHtml(where)}</div>
       <h3 class="bp-title">${escHtml(bp.title)}</h3>
       ${bp.errors.length ? `<div class="bp-errors">${bp.errors.map(e => `<div>${escHtml(e)}</div>`).join('')}</div>` : ''}
@@ -1441,7 +1473,7 @@
 
   function openBlueprints() {
     bpEditing = null;
-    if (!bpSel) bpSel = { src: 'built', i: 0 };
+    if (!bpSel) { const k = Object.values(bldLibrary().kits).find(x => x.shelf === BUILDER.SHELVES[0].id); bpSel = k ? { src: 'kit', id: k.id } : { src: 'built', i: 0 }; }
     bpValues = {};
     renderBpList(); renderBpDetail();
     $('bpModal').hidden = false;
@@ -1455,7 +1487,9 @@
   $('bpModal').addEventListener('click', (e) => { if (e.target.id === 'bpModal') closeBlueprints(); });
   $('bpList').addEventListener('click', (e) => {
     const it = e.target.closest('.bp-item');
-    if (it) { bpSel = { src: it.dataset.src, i: +it.dataset.i }; bpValues = {}; bpEditing = null; renderBpList(); renderBpDetail(); return; }
+    if (it) { bpSel = it.dataset.src === 'kit' ? { src: 'kit', id: it.dataset.kit } : { src: it.dataset.src, i: +it.dataset.i }; bpValues = {}; bpEditing = null; renderBpList(); renderBpDetail(); return; }
+    const shelf = e.target.closest('[data-shelf]');
+    if (shelf) { closeBlueprints(); openBuilderAt(BUILDER.SHELVES.find(sh => sh.id === shelf.dataset.shelf).path); return; }
     if (e.target.id === 'bpFromProject') {
       activeSec().text = ta.value;
       bpEditing = { text: BP.fromProject(project, 'My ' + project.name), mineIndex: null };
@@ -1476,6 +1510,8 @@
   });
   $('bpDetail').addEventListener('click', (e) => {
     const id = e.target.id;
+    if (id === 'bpPlan') { closeBlueprints(); openBuilderAtKit(bpSel.id); return; }
+    if (id === 'bpKitEdit') { closeBlueprints(); openKitEditorAt('kit', bpSel.id); return; }
     if (id === 'bpUse') {
       const bp = BP.parse(bpSource(bpSel));
       if (bp.errors.length) return;
@@ -2192,6 +2228,30 @@
     renderBuilder();
   }
   function closeBuilder() { $('builderModal').hidden = true; }
+  /* Open the builder part-way: with a shelf's answers already given, or at a kit with its usual steps ticked. */
+  function openBuilderAt(labels) {
+    openBuilder();
+    const lib = bldLibrary(), chain = BUILDER.followLabels(lib, labels), last = chain[chain.length - 1];
+    bld.trail = chain.map(o => ({ label: o.label, next: o.next }));
+    if (last && last.kit) { const kit = lib.kits[last.kit]; bld.kit = last.kit; bld.ticked = new Set(last.ticked || (kit ? kit.steps.filter(s => s.ticked).map(s => s.id) : [])); }
+    renderBuilder();
+  }
+  function openBuilderAtKit(id) {
+    openBuilder();
+    const lib = bldLibrary(), kit = lib.kits[id];
+    bld.trail = (BUILDER.pathToKit(lib, id) || []).map(o => ({ label: o.label, next: o.next }));
+    bld.kit = id;
+    bld.ticked = new Set(kit ? kit.steps.filter(s => s.ticked).map(s => s.id) : []);
+    renderBuilder();
+  }
+  /* Straight to one entry in the library editor (yours if you've changed it, or the built-in one). */
+  function openKitEditorAt(kind, id) {
+    openBuilder();
+    const { built, mine } = kitEntries();
+    const e = mine.find(x => x.kind === kind && x.id === id) || built.find(x => x.kind === kind && x.id === id);
+    bld.edit = { sel: e ? { src: e.src, i: e.i } : null, text: null, editing: null };
+    renderBuilder();
+  }
 
   function renderBuilder() {
     if (bld.edit) return renderKitEditor();

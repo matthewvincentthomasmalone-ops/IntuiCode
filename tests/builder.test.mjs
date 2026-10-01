@@ -9,7 +9,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { ROOT, PYTHON, loadEngine } from './helpers/engine.mjs';
 
-const { L, WEB, CPP } = loadEngine();
+const { L, WEB, CPP, BP } = loadEngine();
 const ctx = { console };
 ctx.window = ctx;
 vm.createContext(ctx);
@@ -88,6 +88,27 @@ function writePython(project, dir) {
 test('the library reads without problems', () => {
   assert.deepEqual(plain(lib.problems), []);
   assert.ok(lib.questions.start, 'the first question is "start"');
+});
+
+test('the Library: every kit and project blueprint is on a shelf, and every shelf leads into the builder', () => {
+  const shelves = new Set(B.SHELVES.map(s => s.id));
+  for (const k of Object.values(lib.kits)) assert.ok(shelves.has(k.shelf), `kit ${k.id} is on a shelf (${k.shelf})`);
+  for (const src of BP.BUILT_IN) {
+    const bp = BP.parse(src);
+    if (bp.kind === 'project') assert.ok(shelves.has(bp.shelf), `blueprint "${bp.title}" is on a shelf (${bp.shelf})`);
+  }
+  assert.equal(BP.parse('title: x\nkind: project\nlayout: arduino\nstory:\nx\n== sketch\nturn pin 13 on').shelf, 'gadget', 'no shelf: where its kind usually goes');
+  for (const sh of B.SHELVES.filter(s => s.path)) {
+    const chain = plain(B.followLabels(lib, sh.path));
+    assert.equal(chain.length, sh.path.length, `shelf ${sh.id}: its answers exist`);
+    const last = chain[chain.length - 1];
+    assert.ok(last.kit ? lib.kits[last.kit] : lib.questions[last.next], `shelf ${sh.id} leads to a question or a kit`);
+  }
+  for (const k of Object.values(lib.kits)) {
+    const path = plain(B.pathToKit(lib, k.id));
+    assert.ok(path && path[path.length - 1].kit === k.id, `kit ${k.id} can be reached`);
+  }
+  assert.deepEqual(plain(B.pathToKit(lib, 'webpage')).map(o => o.label), ['Webpage', 'Something else'], 'the answer that keeps the kit\'s own ticks');
 });
 
 test('every built-in entry passes the editor\'s own checks', () => {

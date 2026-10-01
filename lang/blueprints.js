@@ -8,7 +8,9 @@
  *
  *   title: Countdown
  *   kind: snippet                      project | snippet
- *   layout: script                     projects only: script | structured
+ *   layout: script                     projects only: script | structured | website | cpp | arduino
+ *   shelf: pc                          projects only: where it sits in the Library (pc, phone, web,
+ *                                      service, gadget, lessons or start; see lang/builder.js)
  *   about: One line shown in the list.
  *   story:
  *   Count down from [start: 10] to [stop at: 1], then show [finish: "Lift off!"].
@@ -34,6 +36,7 @@
 
   const BUILT_IN = [
 `title: Arduino: blink a light
+shelf: gadget
 kind: project
 layout: arduino
 about: The first sketch everyone makes: a light that blinks, on a real board.
@@ -70,6 +73,7 @@ over and over
 [end]
 `,
 `title: Arduino: button and light
+shelf: gadget
 kind: project
 layout: arduino
 about: Press a button to switch a light on or off.
@@ -108,6 +112,7 @@ over and over
 [end]
 `,
 `title: C++ bank account (a class)
+shelf: lessons
 kind: project
 layout: cpp
 about: A class in C++: an account that keeps its own balance, with tools to use it.
@@ -142,6 +147,7 @@ if not ok
     show "That withdrawal was refused."
 `,
 `title: C++ guessing game
+shelf: pc
 kind: project
 layout: cpp
 about: The number guessing game, in C++.
@@ -170,6 +176,7 @@ repeat forever
 [end]
 `,
 `title: Landing page
+shelf: web
 kind: project
 layout: website
 about: A one-page website with a header, a menu and a button.
@@ -210,6 +217,7 @@ when cta is clicked
 [end]
 `,
 `title: To-do list page
+shelf: web
 kind: project
 layout: website
 about: Type tasks into a box and they appear in a list.
@@ -259,6 +267,7 @@ when new-task is sent
 [end]
 `,
 `title: Number guessing game
+shelf: pc
 kind: project
 layout: structured
 about: The computer picks a number and the player guesses it.
@@ -308,6 +317,7 @@ if guesses left is 0
     show "Out of guesses. It was" and secret
 `,
 `title: Quiz
+shelf: pc
 kind: project
 layout: structured
 about: Random maths questions with a score at the end.
@@ -350,6 +360,7 @@ repeat questions times
 show "You scored {score} out of {questions}."
 `,
 `title: Terminal to-do list
+shelf: pc
 kind: project
 layout: structured
 about: A to-do list you use by typing commands.
@@ -381,6 +392,7 @@ repeat forever
 show "Bye!"
 `,
 `title: Shopping list
+shelf: lessons
 kind: project
 layout: script
 about: Build a list, sort it, and go through it.
@@ -405,6 +417,7 @@ for each thing in basket
 [end]
 `,
 `title: Empty structured program
+shelf: start
 kind: project
 layout: structured
 about: Settings, Tools and Main program, ready for your own sentences.
@@ -418,6 +431,7 @@ note: Reusable tools go here, e.g. define greet using name
 note: Your program starts here. Press Run to try it.
 `,
 `title: Empty script
+shelf: start
 kind: project
 layout: script
 about: One Main program file. Good for short experiments.
@@ -513,14 +527,14 @@ show "Picked:" and picked [thing]
   function parse(text) {
     const errors = [];
     const lines = text.replace(/\r/g, '').split('\n');
-    const meta = { title: '', kind: 'project', layout: 'script', about: '' };
+    const meta = { title: '', kind: 'project', layout: 'script', about: '', shelf: '' };
     let i = 0;
     for (; i < lines.length; i++) {
       const l = lines[i];
       if (/^story\s*:/i.test(l)) { i++; break; }
-      const m = l.match(/^(title|kind|layout|about)\s*:\s*(.*)$/i);
+      const m = l.match(/^(title|kind|layout|about|shelf)\s*:\s*(.*)$/i);
       if (m) meta[m[1].toLowerCase()] = m[2].trim();
-      else if (l.trim()) errors.push(`Line ${i + 1}: expected "title:", "kind:", "layout:", "about:" or "story:".`);
+      else if (l.trim()) errors.push(`Line ${i + 1}: expected "title:", "kind:", "layout:", "shelf:", "about:" or "story:".`);
     }
     const story = [];
     for (; i < lines.length && !/^==\s*\w/.test(lines[i]); i++) story.push(lines[i]);
@@ -537,6 +551,8 @@ show "Picked:" and picked [thing]
     }
     meta.kind = /snippet/i.test(meta.kind) ? 'snippet' : 'project';
     meta.layout = /arduino|sketch|board/i.test(meta.layout) ? 'arduino' : /c\+\+|cpp/i.test(meta.layout) ? 'cpp' : /web|site/i.test(meta.layout) ? 'website' : /struct/i.test(meta.layout) ? 'structured' : 'script';
+    // A project with no shelf goes where its kind of project usually does.
+    meta.shelf = (meta.shelf || (meta.layout === 'arduino' ? 'gadget' : meta.layout === 'website' ? 'web' : 'pc')).toLowerCase();
     if (!meta.title) errors.push('Add a "title:" line.');
     if (!Object.keys(sections).length) errors.push('Add at least one section, e.g. "== main" (or "== here" for a snippet).');
     const allowed = meta.kind === 'snippet' ? ['here'] : meta.layout === 'arduino' ? ['sketch'] : meta.layout === 'cpp' ? ['program'] : meta.layout === 'website' ? ['structure', 'styling', 'mechanics'] : meta.layout === 'structured' ? ['settings', 'tools', 'main'] : ['main'];
