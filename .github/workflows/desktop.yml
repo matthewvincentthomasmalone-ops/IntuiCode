@@ -64,7 +64,7 @@ jobs:
             Installers for IntuCode.
             - Windows: the .msi or -setup.exe file
             - macOS: the .dmg file (works on Apple Silicon and Intel)
-            - Linux: the .AppImage (run it directly) or the .deb (Ubuntu/Debian)
+            - Linux: the .deb (Ubuntu, Debian, Mint), the .rpm (Fedora), or the .AppImage (run it directly)
             These builds aren't signed yet, so Windows and macOS will warn you the first time. See the README for how to open them.
             A 15-minute checklist for trying it out is in TESTING.md.
             C++ on Windows uses Visual Studio's compiler (the free Build Tools are enough); Arduino uses the arduino-cli inside the Arduino IDE 2.

@@ -11,7 +11,8 @@ From the repository's **Releases** page, take the newest `v0.x` pre-release:
 - **Windows:** `IntuCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
   isn't signed yet: **More info → Run anyway**.
 - **macOS:** the `.dmg`. First launch: right-click the app → **Open** → **Open**.
-- **Linux:** the `.AppImage` (`chmod +x`, then run it) or the `.deb`.
+- **Linux:** the `.deb` (`sudo apt install ./IntuCode*.deb`), the `.rpm` (`sudo dnf install ./IntuCode*.rpm`),
+  or the `.AppImage` (`chmod +x`, then run it).
 
 Optional, for the C++ and Arduino checks:
 
@@ -77,9 +78,14 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Python (Write mode)**
 - [ ] Library → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
-- [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in Notepad: it is ordinary Python.
-- [ ] Edit `main.py` in Notepad (change a message), save it, then **Open folder** on that folder in IntuCode: the sentence shows your change.
+- [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
+- [ ] Edit `main.py` in that editor (change a message), save it, then **Open folder** on that folder in IntuCode: the sentence shows your change.
 - [ ] Type `$ python --version` (Windows) or `$ python3 --version` in the terminal: it answers.
+- [ ] Linux: in a saved project, type `$ python3 -m venv .venv`, then `$ pip install requests`. Add the
+      sentence `python: import requests` and Run: the terminal says it runs with "the project's own Python (.venv)".
+- [ ] Linux: type `$ sudo true`: a window asks for your password (or, without a password helper, the
+      terminal says to use your own terminal).
+- [ ] Run `$ python3 -m http.server 8765`, then close IntuCode: http://localhost:8765 no longer answers.
 
 **Website**
 - [ ] Library → **To-do list page** → Build. The preview shows the page; add a task.
@@ -103,6 +109,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Click `static/index.html` → **Open as sentences**: three ✓ lines ("checked, the sentences make exactly the same code").
 - [ ] Open a folder of your own (a small website, a `.cpp` program or an Arduino sketch): it opens as sentences,
       or in Read mode, with the ✓ check or a clear reason.
+- [ ] Drag a folder of code from your file manager onto the window: it opens in Read mode.
 
 ## 3. Things that are known not to work yet
 

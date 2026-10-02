@@ -1626,7 +1626,12 @@
   function friendly(type, msg) {
     if (type === 'NameError') { const m = msg.match(/name '(\w+)'/); return `Python doesn't know ${m ? '`' + m[1] + '`' : 'a name'} at this point. Set it before this line runs, or check the spelling.`; }
     if (type === 'UnboundLocalError') return 'A tool used a name before setting it inside the tool. Pass the value in as an input instead.';
-    if (type === 'ModuleNotFoundError') { const m = msg.match(/'([\w.]+)'/); return `This program needs the ${m ? m[1] : ''} toolkit, which isn't available in the browser. Run it on your computer after installing it (pip install ${m ? m[1].split('.')[0] : '…'}).`; }
+    if (type === 'ModuleNotFoundError') {
+      const m = msg.match(/'([\w.]+)'/), pkg = m ? m[1].split('.')[0] : '…';
+      // the desktop app running the computer's own Python
+      if (desk.on && desk.python) return `This program needs the ${m ? m[1] : ''} toolkit, which isn't installed for this Python. ${desk.linux && !desk.venv ? `On Linux, give the project a Python of its own first: type $ python3 -m venv .venv, then $ pip install ${pkg}. Run uses it after that.` : `Type $ pip install ${pkg} to install it.`}`;
+      return `This program needs the ${m ? m[1] : ''} toolkit, which isn't available in the browser. Run it on your computer after installing it (pip install ${pkg}).`;
+    }
     if (type === 'TypeError') {
       if (/concatenate str|for \+: '(int|float)' and 'str'|for \+: 'str' and '(int|float)'/.test(msg)) return 'Text and a number were joined with "plus". Show them separated by "and", or turn the number into text with "as text".';
       if (/not supported between instances of '(str|int|float)' and '(str|int|float)'/.test(msg)) return 'Text was compared with a number. Answers from ask are text: use "ask for a number" instead.';
@@ -1664,12 +1669,14 @@
       if (project.kind === 'arduino') {
         if (desk.on && desk.arduino) return runDesktopArduino();
         tLine(desk.on
-          ? 'To check a sketch and put it on a board, IntuCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuCode. Until then, copy the code on the right into the Arduino IDE.'
+          ? (desk.linux
+            ? 'To check a sketch and put it on a board, IntuCode uses arduino-cli, which wasn\'t found. Install arduino-cli itself (its install script puts it in ~/bin), or unpack the Arduino IDE 2 .zip into your home folder (the IDE\'s AppImage keeps its arduino-cli inside, out of reach), then restart IntuCode. Until then, copy the code on the right into the Arduino IDE.'
+            : 'To check a sketch and put it on a board, IntuCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuCode. Until then, copy the code on the right into the Arduino IDE.')
           : 'A sketch runs on an Arduino board, not in the browser. In the IntuCode desktop app (with the Arduino IDE or arduino-cli installed), Run checks the sketch and uploads it to a board plugged in by USB. Or copy the code on the right into the Arduino IDE.', 't-sys');
         return;
       }
       if (desk.on && desk.cpp) return runDesktopCpp();
-      tLine(desk.on ? 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuCode.' : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
+      tLine(desk.on ? (desk.linux ? 'No C++ compiler was found on this computer. Install g++: type $ sudo apt install g++ (Ubuntu, Debian, Mint), $ sudo dnf install gcc-c++ (Fedora) or $ sudo pacman -S gcc (Arch). Then restart IntuCode.' : 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuCode.') : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
       return;
     }
     typingLine = -1;
@@ -3749,7 +3756,7 @@
   /* ------------------------------------------------------------------ */
 
   const TAURI = window.__TAURI__;
-  const desk = { on: !!(TAURI && TAURI.core), folder: null, python: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false };
+  const desk = { on: !!(TAURI && TAURI.core), linux: /Linux/.test(navigator.userAgent), folder: null, python: null, venv: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false };
   const invoke = (cmd, args) => TAURI.core.invoke(cmd, args);
   const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   const join = (a, b) => a.replace(/[\\/]+$/, '') + '/' + b;
@@ -3896,6 +3903,38 @@
     } catch (e) { tLine('Could not read the folder: ' + e, 't-err'); }
   }
 
+  /* Files and folders dropped on the window. The window takes a drop before the page sees it, so it
+     arrives here as paths, which the desktop layer lets the window read (and only those). */
+  async function openDropped(paths) {
+    $('impCard').classList.remove('dropping');
+    if (paths.length === 1 && /\.zip$/i.test(paths[0])) {
+      closeImport();
+      try {
+        const R = await Runner.reader((s) => setStatus(s));
+        importProject(R.readZip(fromB64(await invoke('read_bytes', { path: paths[0] }))), '');
+      } catch (e) { tLine('That .zip could not be opened: ' + (e.message || e), 't-err'); }
+      return;
+    }
+    const files = [];
+    let folders = 0, skipped = 0;
+    for (const path of paths) {
+      try {
+        files.push(...await invoke('read_folder', { path }));
+        folders++;
+        desk.readFolder = path;
+        continue;
+      } catch (_) { /* not a folder: a file */ }
+      const name = baseName(path), kind = keepPath(name);
+      if (!kind) { skipped++; continue; }
+      if (kind === 'secret') { files.push({ name, source: '' }); continue; }   // (secrets are never read)
+      try { files.push({ name, source: (await invoke('read_text', { path })).replace(/\r\n?/g, '\n') }); } catch (_) { skipped++; }
+    }
+    closeImport();
+    if (!files.length) { tLine(`Nothing to read there: IntuCode reads code files (Python, JavaScript, HTML, CSS, C++ and Arduino sketches), folders of them, and .zip files.`, 't-err'); return; }
+    const note = skipped ? `Skipped ${skipped} file${skipped > 1 ? 's' : ''} that ${skipped > 1 ? 'aren\'t' : 'isn\'t'} code.` : '';
+    if (folders) importProject(files, note); else { addFiles(files); if (note) tLine(note, 't-sys'); }
+  }
+
   /* A website, C++ or Arduino file changed on disk: its sentences again, from the code. */
   async function rebuildSection(folder, s, read) {
     try {
@@ -3929,9 +3968,10 @@
     const dir = desk.folder || await invoke('scratch_folder');
     try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: secResult(s.id).text }); await writeImages(dir); }
     catch (e) { tLine('Could not write the program files: ' + e, 't-err'); return; }
+    try { desk.venv = await invoke('find_venv', { cwd: dir }); } catch (_) { desk.venv = null; }
     const id = desk.nextId++;
     desk.proc = { id, kind: 'python', err: '' };
-    tLine(`▶ Running main.py with Python ${desk.python[1]} (installed on this computer)${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
+    tLine(`▶ Running main.py with ${desk.venv ? `the project's own Python (${desk.venv})` : `Python ${desk.python[1]} (installed on this computer)`}${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
     setRunning(true);
     termIn.focus({ preventScroll: true });
     try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', 'main.py'], cwd: dir }); }
@@ -4039,7 +4079,12 @@
       return;
     }
     if (p.kind === 'ino-upload') {
-      if (code !== 0) { tLine('■ The upload didn\'t work. Check the USB cable, close any other program using the board (like the Arduino IDE\'s serial monitor), and try again.', 't-err'); return; }
+      if (code !== 0) {
+        tLine('■ The upload didn\'t work. Check the USB cable, close any other program using the board (like the Arduino IDE\'s serial monitor), and try again.', 't-err');
+        // a board's port belongs to the dialout group (uucp on Arch), which new accounts aren't in
+        if (desk.linux && /permission denied/i.test(all)) tLine(`On Linux, using ${p.port} needs permission, once: type $ sudo usermod -aG dialout $USER (on Arch Linux, uucp instead of dialout), then log out and back in.`, 't-sys');
+        return;
+      }
       tLine('✓ Uploaded: the sketch is running on the board.', 't-ok');
       const baud = (secResult('sketch').text.match(/Serial\.begin\((\d+)\)/) || [])[1];
       if (!baud) return;
@@ -4081,6 +4126,10 @@
     $('btnStop').addEventListener('click', () => { if (desk.proc) invoke('stop_program', { id: desk.proc.id }); });
     // the import dialog's folder button uses the native picker
     $('impFolder').closest('label').addEventListener('click', (e) => { e.preventDefault(); openFolderRead(); });
+    // drops on the window come as paths (the page's own drop events never fire)
+    await TAURI.event.listen('tauri://drag-enter', () => { if (!$('impModal').hidden) $('impCard').classList.add('dropping'); });
+    await TAURI.event.listen('tauri://drag-leave', () => $('impCard').classList.remove('dropping'));
+    await TAURI.event.listen('tauri://drag-drop', (e) => openDropped((e.payload && e.payload.paths) || []));
     await TAURI.event.listen('proc-output', (e) => {
       const d = e.payload;
       if (!desk.proc || d.id !== desk.proc.id) return;
@@ -4112,13 +4161,24 @@
         return;
       }
       tLine(d.code === 0 ? '✓ Finished.' : d.code == null ? '■ Stopped.' : `■ Ended with exit code ${d.code}.`, d.code === 0 ? 't-ok' : 't-sys');
+      if (p.kind === 'shell' && d.code) shellHints(p.err + '\n' + (p.out || ''));
     });
     try { desk.python = await invoke('find_python'); } catch (_) { desk.python = null; }
     try { desk.git = await invoke('find_git'); } catch (_) { desk.git = null; }
     try { desk.cpp = await invoke('find_cpp'); } catch (_) { desk.cpp = null; }
     try { desk.arduino = await invoke('find_arduino'); } catch (_) { desk.arduino = null; }
     if (desk.python) setStatus(`Python ${desk.python[1]} (this computer)`, 'ready');
-    tLine(desk.python ? `Desktop app: programs run with Python ${desk.python[1]} installed on this computer. Type $ before a command to run it in the project folder${desk.git ? ' (for example $ git status)' : ''}.` : 'Desktop app: Python isn\'t installed on this computer, so the built-in Python is used (it can\'t install extra packages). Get Python from python.org to run programs like web servers.', 't-sys');
+    tLine(desk.python ? `Desktop app: programs run with Python ${desk.python[1]} installed on this computer. Type $ before a command to run it in the project folder${desk.git ? ' (for example $ git status)' : ''}.` : `Desktop app: Python isn't installed on this computer, so the built-in Python is used (it can't install extra packages). ${desk.linux ? 'Install Python with your system\'s package manager (for example: sudo apt install python3)' : 'Get Python from python.org'} to run programs like web servers.`, 't-sys');
+  }
+
+  /* After a command fails: what to do about the usual reasons on Linux (pip, venv, sudo). */
+  function shellHints(all) {
+    if (!desk.linux) return;
+    const venvPackage = (all.match(/apt install (python3[\w.]*-venv)/) || [])[1];
+    if (venvPackage) tLine(`Making one needs Python's venv support, which isn't installed yet. Type $ sudo apt install ${venvPackage}, then $ python3 -m venv .venv again.`, 't-sys');
+    // (bash: "pip: command not found", zsh: "command not found: pip", fish: "Unknown command: pip")
+    else if (/externally-managed-environment|No module named pip|pip3?: (command )?not found|(not found|Unknown command):? pip/.test(all)) tLine('This computer\'s Python keeps its packages for the system, so pip can\'t add any to it. Give the project a Python of its own (a virtual environment): type $ python3 -m venv .venv. After that, $ pip install … puts packages there, and Run uses it.', 't-sys');
+    if (/sudo: a terminal is required/.test(all)) tLine('sudo asks for your password, and this terminal can\'t: this computer has no password window for it (such as ssh-askpass). Run that command in your system\'s terminal instead.', 't-sys');
   }
 
   /* ------------------------------------------------------------------ */

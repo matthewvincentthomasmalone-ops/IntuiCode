@@ -8,8 +8,8 @@
 //   3. Run:                 node tests/e2e/run.mjs        (Linux without a screen: xvfb-run node …)
 //
 // Environment: INTUICODE_APP (path to the binary), EDGE_DRIVER (Windows: msedgedriver.exe).
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { execFileSync, execSync, spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -431,6 +431,68 @@ try {
     await waitFor('the button', () => js(() => !document.getElementById('btnToSentences').disabled), 120000);
     await click('btnToSentences');
     await waitFor('three checked files', () => js(() => (document.getElementById('termLog').innerText.match(/✓ static\/[\w.]+: checked/g) || []).length === 3), 60000);
+  });
+
+  const scratch = () => wd('POST', `/session/${session}/execute/async`, { script: 'const [done] = arguments; window.__TAURI__.core.invoke("scratch_folder").then(done, (e) => done("error: " + e));', args: [] });
+
+  if (!WIN) await check('Run and $ commands use the project\'s own Python (a virtual environment), as pip needs on Linux', async () => {
+    if (!hasPython) { console.log('  (no Python on this computer)'); return; }
+    const dir = await scratch();
+    await clearTerminal();
+    await blueprint('Empty script');
+    await setSentences('show "hello from main"');
+    try {
+      // a stand-in for `python3 -m venv .venv` (which needs python3-venv): it says where it is, then runs the real Python
+      await typeInTerminal(`$ cd "${dir}" && rm -rf .venv && mkdir -p .venv/bin && touch .venv/bin/activate && printf '#!/bin/sh\\necho from-the-venv\\nexec %s "$@"\\n' "$(command -v python3)" > .venv/bin/python3 && chmod +x .venv/bin/python3 && echo venv-made`);
+      await waitFor('the stand-in', logHas('venv-made'));
+      await waitFor('the command to end', logHas('Finished'));
+      await clearTerminal();
+      await click('btnRun');
+      await waitFor('the program', logHas('hello from main'));
+      const log = await terminal();
+      if (!log.includes('from-the-venv') || !log.includes('the project\'s own Python (.venv)')) throw new Error(log);
+      await waitFor('the end of the run', logHas('Finished'));
+      await typeInTerminal('$ echo "venv: $VIRTUAL_ENV"');
+      await waitFor('the shell using it too', logHas('/.venv'));
+      await waitFor('the command to end', () => js(() => document.getElementById('btnStop').hidden));
+    } finally {
+      await typeInTerminal(`$ rm -rf "${dir}/.venv"`);
+      await sleep(800);
+    }
+  });
+
+  await check('files and folders dropped on the window open in Read mode (and a page can\'t pretend a drop to reach other folders)', async () => {
+    await clearTerminal();
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
+    writeFileSync(path.join(elsewhere, 'private.py'), 'print("not for the page")\n');
+    const dir = await wd('POST', `/session/${session}/execute/async`, {
+      script: `const [done] = arguments; const I = window.__TAURI__.core.invoke;
+        (async () => { const dir = (await I('scratch_folder')) + '/e2e-dropped'; await I('write_text', { path: dir + '/greet.py', content: 'print("hi")\\n' }); return dir; })().then(done, (e) => done('error: ' + e));`,
+      args: [],
+    });
+    // the window's own drop events can't be made from here, so these are the page's pretend ones: the
+    // scratch folder is allowed already, the other folder isn't (a real drop is what allows a folder)
+    const drop = (paths) => js((p) => { window.__TAURI__.event.emit('tauri://drag-drop', { paths: p, position: { x: 10, y: 10 } }); return true; }, paths);
+    const listed = (name) => js((n) => [...document.querySelectorAll('#rdFiles .tree-item')].some(x => x.textContent.includes(n)), name);
+    await drop([dir]);
+    await waitFor('the dropped folder in Read mode', () => listed('greet.py'));
+    await drop([elsewhere]);
+    await waitFor('the refusal', logHas('Nothing to read there'));
+    if (await listed('private.py')) throw new Error('a pretend drop read a folder the page may not');
+  });
+
+  // (last: it ends the app)
+  if (process.platform === 'linux') await check('ending the app ends the programs it started', async () => {
+    const marker = `sleep ${4000 + process.pid % 1000}.5`;   // a command line to find it by
+    const left = () => execSync(`pgrep -f "^${marker}$" || true`).toString().trim();
+    await clearTerminal();
+    await typeInTerminal(`$ ${marker}`);
+    await waitFor('the program to start', async () => !!left());
+    // as closing the window does (a test can't press the window's close button): Ctrl+C or kill
+    const app = execFileSync('pgrep', ['-f', APP]).toString().trim().split('\n')[0];
+    process.kill(+app, 'SIGTERM');
+    session = null;
+    await waitFor('the program to end with the app', async () => !left(), 15000).catch(() => { throw new Error(`still running after the app ended: ${left()}`); });
   });
 } catch (e) {
   results.push([false, 'setup']);
