@@ -5,8 +5,11 @@
 //! - find the Python, C++ compiler (g++, clang++ or Visual Studio's cl) and
 //!   arduino-cli installed on this computer, and compile C++ with it
 //! - serve the website preview from its own address
+//! - open files and folders dropped on the window
 
 use std::collections::HashMap;
+#[cfg(target_os = "linux")]
+use std::ffi::{OsStr, OsString};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -14,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, DragDropEvent, Emitter, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 
 /* ------------------------------------------------------------------ */
@@ -302,11 +305,7 @@ fn incomplete_tail(bytes: &[u8]) -> usize {
 fn start(app: AppHandle, procs: &Processes, id: u32, mut cmd: Command) -> Result<(), String> {
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.env("PYTHONUNBUFFERED", "1").env("PYTHONIOENCODING", "utf-8");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // no console window
-    }
+    quiet(&mut cmd);
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -345,6 +344,7 @@ fn run_program(app: AppHandle, procs: State<Processes>, access: State<Access>, i
     let dir = access.path(&cwd)?;
     let mut cmd = Command::new(&program);
     cmd.args(&args).current_dir(&dir);
+    use_venv(&mut cmd, &dir);
     start(app, &procs, id, cmd)
 }
 
@@ -363,9 +363,72 @@ fn run_shell(app: AppHandle, procs: State<Processes>, access: State<Access>, id:
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
         let mut c = Command::new(shell);
         c.args(["-lc", &command]).current_dir(&dir);
+        use_venv(&mut c, &dir);
+        if let Some(helper) = askpass() {
+            c.env("SUDO_ASKPASS", helper);
+        }
         c
     };
     start(app, &procs, id, cmd)
+}
+
+/// A virtual environment in the project folder (.venv or venv), if there is one. Linux (and
+/// Homebrew on a Mac) keeps the system Python's packages for the system, so this is where
+/// `pip install` can put a project's packages. (`activate` is made last: a venv that couldn't be
+/// finished, as on Ubuntu without python3-venv, has a Python but not that, and isn't one.)
+#[cfg(unix)]
+fn venv_in(dir: &Path) -> Option<PathBuf> {
+    [".venv", "venv"].iter().map(|name| dir.join(name)).find(|venv| {
+        venv.join("bin/activate").is_file() && (venv.join("bin/python3").exists() || venv.join("bin/python").exists())
+    })
+}
+
+/// Programs and commands in a project with a virtual environment use its Python and pip.
+#[allow(unused_variables)]
+fn use_venv(cmd: &mut Command, dir: &Path) {
+    #[cfg(unix)]
+    if let Some(venv) = venv_in(dir) {
+        let mut path = std::ffi::OsString::from(venv.join("bin"));
+        if let Some(old) = std::env::var_os("PATH") {
+            path.push(":");
+            path.push(old);
+        }
+        cmd.env("PATH", path).env("VIRTUAL_ENV", &venv).env_remove("PYTHONHOME");
+    }
+}
+
+/// The name of the project's virtual environment, if it has one (see venv_in).
+#[tauri::command]
+#[allow(unused_variables)]
+fn find_venv(access: State<Access>, cwd: String) -> Option<String> {
+    #[cfg(unix)]
+    return venv_in(&access.path(&cwd).ok()?).map(|venv| venv.file_name().unwrap_or_default().to_string_lossy().to_string());
+    #[cfg(not(unix))]
+    None
+}
+
+/// Programs that ask for a password in a window. sudo needs a terminal to ask for one, and a
+/// command typed after `$` has none, so without one of these `$ sudo apt install g++` can't work.
+#[cfg(unix)]
+const ASKPASS: &[&str] = &[
+    "/usr/bin/ksshaskpass",                     // KDE
+    "/usr/bin/ssh-askpass",                     // Debian and Ubuntu (whichever is installed)
+    "/usr/lib/ssh/ssh-askpass",                 // Arch
+    "/usr/libexec/openssh/gnome-ssh-askpass",   // Fedora
+    "/usr/libexec/openssh/ssh-askpass",
+    "/usr/lib/openssh/gnome-ssh-askpass",
+    "/usr/bin/lxqt-openssh-askpass",
+    "/usr/libexec/seahorse/ssh-askpass",
+    "/usr/lib/seahorse/ssh-askpass",
+];
+
+/// The password window for sudo, unless the person chose one already (SUDO_ASKPASS).
+#[cfg(unix)]
+fn askpass() -> Option<&'static str> {
+    if std::env::var_os("SUDO_ASKPASS").is_some() {
+        return None;
+    }
+    ASKPASS.iter().copied().find(|helper| Path::new(helper).exists())
 }
 
 #[tauri::command]
@@ -380,11 +443,37 @@ fn stop_program(procs: State<Processes>, id: u32) -> Result<(), String> {
     procs.stdin.lock().unwrap().remove(&id);
     let child = procs.children.lock().unwrap().remove(&id);
     if let Some(child) = child {
-        let mut child = child.lock().unwrap();
-        stop_everything_started_by(child.id());
-        let _ = child.kill();
+        end(&child);
     }
     Ok(())
+}
+
+fn end(child: &Mutex<Child>) {
+    let mut child = child.lock().unwrap();
+    stop_everything_started_by(child.id());
+    let _ = child.kill();
+}
+
+/// Ending IntuCode with a signal (Ctrl+C in the terminal it was started from, `kill`, the terminal
+/// closing) ends it the way closing its window does, so the programs it started end too: each
+/// runs in a group of its own, which those signals don't reach. A second one ends it at once.
+#[cfg(unix)]
+fn end_on_signals(app: AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ASKED: AtomicBool = AtomicBool::new(false);
+    extern "C" fn asked(signal: libc::c_int) {
+        ASKED.store(true, Ordering::SeqCst);
+        unsafe { libc::signal(signal, libc::SIG_DFL) };
+    }
+    for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        unsafe { libc::signal(signal, asked as extern "C" fn(libc::c_int) as libc::sighandler_t) };
+    }
+    std::thread::spawn(move || {
+        while !ASKED.load(Ordering::SeqCst) {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        app.exit(0);
+    });
 }
 
 /// A shell's commands, or a web server Python started, keep running when only the program
@@ -401,14 +490,7 @@ fn stop_everything_started_by(pid: u32) {
 fn find_python(access: State<Access>) -> Option<(String, String)> {
     let candidates: &[&str] = if cfg!(windows) { &["python", "py", "python3"] } else { &["python3", "python"] };
     for program in candidates {
-        let mut cmd = Command::new(program);
-        cmd.arg("--version");
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000);
-        }
-        if let Ok(out) = cmd.output() {
+        if let Ok(out) = quiet(Command::new(program).arg("--version")).output() {
             let text = String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
             if out.status.success() && text.contains("Python 3") {
                 access.allow_program(program);
@@ -429,19 +511,57 @@ enum CppTool {
     Gnu(String),
     /// Visual Studio's cl.exe. `vcvars` sets up its environment; None when cl is already on the PATH
     /// (a "Developer Command Prompt").
+    #[cfg_attr(not(windows), allow(dead_code))]
     Msvc { vcvars: Option<PathBuf> },
 }
 
 #[derive(Default)]
 struct Compiler(Mutex<Option<CppTool>>);
 
+/// Every program IntuCode starts goes through here: no console window on Windows, and on Linux
+/// none of the settings the AppImage made for IntuCode's own window.
 fn quiet(cmd: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
+    #[cfg(target_os = "linux")]
+    if let (Some(_), Some(appdir)) = (std::env::var_os("APPIMAGE"), std::env::var_os("APPDIR")) {
+        for (key, value) in outside_appimage(std::env::vars_os(), &appdir) {
+            match value {
+                Some(value) => cmd.env(key, value),
+                None => cmd.env_remove(key),
+            };
+        }
+    }
     cmd
+}
+
+/// The AppImage starts IntuCode with GTK and GLib settings that point inside itself. Other
+/// programs given them can't find their own parts (a browser or editor opened with `$`, a
+/// Tkinter window, another AppImage), so they get the settings from before the AppImage, as far
+/// as that can be told: each setting's parts inside the AppImage are taken out, and a setting with
+/// nothing else in it is removed (None).
+#[cfg(target_os = "linux")]
+fn outside_appimage(vars: impl Iterator<Item = (OsString, OsString)>, appdir: &OsStr) -> Vec<(OsString, Option<OsString>)> {
+    // set by the AppImage itself, and GTK_THEME, which its GTK settings replace whatever it was
+    const ITS_OWN: &[&str] = &["APPIMAGE", "APPDIR", "ARGV0", "OWD", "GTK_THEME"];
+    let appdir = appdir.to_string_lossy();
+    let mut out = Vec::new();
+    for (key, value) in vars {
+        if key.to_str().is_some_and(|k| ITS_OWN.contains(&k)) {
+            out.push((key, None));
+            continue;
+        }
+        let Some(text) = value.to_str() else { continue };
+        if !text.contains(&*appdir) {
+            continue;
+        }
+        let kept: Vec<&str> = text.split(':').filter(|part| !part.starts_with(&*appdir)).collect();
+        out.push((key, (!kept.is_empty()).then(|| kept.join(":").into())));
+    }
+    out
 }
 
 fn first_line(bytes: &[u8]) -> String {
@@ -571,7 +691,10 @@ fn msvc_command(_vcvars: Option<PathBuf>, _source: &str, _output: &str, cwd: &st
 /// arduino-cli, on the PATH or inside an installed Arduino IDE 2: [program, version].
 #[tauri::command]
 fn find_arduino(access: State<Access>) -> Option<(String, String)> {
+    #[allow(unused_mut)]
     let mut candidates: Vec<PathBuf> = vec![PathBuf::from("arduino-cli")];
+    #[cfg(target_os = "linux")]
+    candidates.extend(linux_arduino_cli());
     #[cfg(windows)]
     for var in ["ProgramFiles", "LOCALAPPDATA"] {
         if let Ok(root) = std::env::var(var) {
@@ -593,6 +716,56 @@ fn find_arduino(access: State<Access>) -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// Where arduino-cli is on Linux when it isn't on the PATH: installed for one person (its install
+/// script puts it in ~/bin; or ~/.local/bin), the snap, or inside an Arduino IDE 2 unpacked from
+/// its .zip (~/arduino-ide_2.3.6_Linux_64bit, /opt/arduino-ide…) or installed from Flathub.
+/// (The Arduino IDE's AppImage keeps its arduino-cli inside, out of reach.)
+#[cfg(target_os = "linux")]
+fn linux_arduino_cli() -> Vec<PathBuf> {
+    const IN_THE_IDE: &str = "resources/app/lib/backend/resources/arduino-cli";
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let mut found = Vec::new();
+    if let Some(home) = &home {
+        found.push(home.join("bin/arduino-cli"));
+        found.push(home.join(".local/bin/arduino-cli"));
+    }
+    found.push(PathBuf::from("/snap/bin/arduino-cli"));
+    let unpacked_in = home.iter().flat_map(|h| [h.clone(), h.join("Applications"), h.join("Downloads")]).chain([PathBuf::from("/opt")]);
+    for dir in unpacked_in {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().to_lowercase().starts_with("arduino-ide") {
+                found.push(entry.path().join(IN_THE_IDE));
+            }
+        }
+    }
+    let flatpaks = home.map(|h| h.join(".local/share/flatpak")).into_iter().chain([PathBuf::from("/var/lib/flatpak")]);
+    for root in flatpaks {
+        found.extend(find_file(&root.join("app/cc.arduino.IDE2/current/active/files"), "arduino-cli", 7));
+    }
+    found.retain(|p| p.is_file());
+    found
+}
+
+/// A file with this name in a folder, or in the folders inside it (going down at most `depth`).
+#[cfg(target_os = "linux")]
+fn find_file(dir: &Path, name: &str, depth: u32) -> Option<PathBuf> {
+    let mut folders = Vec::new();
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_file() && entry.file_name() == name {
+            return Some(entry.path());
+        }
+        if kind.is_dir() {
+            folders.push(entry.path());
+        }
+    }
+    if depth == 0 {
+        return None;
+    }
+    folders.iter().find_map(|f| find_file(f, name, depth - 1))
 }
 
 /// Run a program to the end and hand back what it printed: [exit code, stdout, stderr].
@@ -665,13 +838,39 @@ pub fn run() {
         .manage(Access::default())
         .manage(Preview::default())
         .register_uri_scheme_protocol("preview", |ctx, request| preview_page(ctx.app_handle(), request.uri().path()))
+        .setup(|_app| {
+            #[cfg(unix)]
+            end_on_signals(_app.handle().clone());
+            Ok(())
+        })
+        // The window takes a drop of files or folders before the page sees it (the page gets them
+        // as paths). The person chose those, as in the folder dialog, so the window may read them.
+        // (A page can send a pretend drop to itself, but it doesn't reach here.)
+        .on_window_event(|window, event| {
+            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+                let access = window.state::<Access>();
+                for path in paths {
+                    access.allow_folder(path);
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             read_folder, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
             run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
-            compile_cpp, find_arduino, run_capture
+            compile_cpp, find_arduino, run_capture, find_venv
         ])
-        .run(tauri::generate_context!())
-        .expect("IntuCode could not start");
+        .build(tauri::generate_context!())
+        .expect("IntuCode could not start")
+        .run(|app, event| {
+            // a program still running (a web server, say) ends with the app, rather than carrying
+            // on unseen and keeping its port
+            if let RunEvent::Exit = event {
+                let running: Vec<_> = app.state::<Processes>().children.lock().unwrap().drain().map(|(_, child)| child).collect();
+                for child in running {
+                    end(&child);
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -711,5 +910,48 @@ mod tests {
         assert!(access.program(&at(&project.join("program"))).is_ok());
         assert!(access.program(&at(&other.join("program"))).is_err());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn programs_get_the_settings_from_before_the_appimage() {
+        let appdir = "/tmp/.mount_IntuCoAbc123";
+        let vars = [
+            ("APPDIR", appdir.to_string()),
+            ("APPIMAGE", "/home/sam/IntuCode.AppImage".into()),
+            ("GTK_THEME", "Adwaita:dark".into()),
+            ("GTK_PATH", format!("{appdir}//usr/lib/gtk-3.0")),
+            ("XDG_DATA_DIRS", format!("{appdir}/usr/share:/usr/share:/usr/local/share")),
+            ("PATH", "/usr/bin:/bin".into()),
+            ("HOME", "/home/sam".into()),
+        ]
+        .map(|(k, v)| (OsString::from(k), OsString::from(v)));
+        let mut changes = outside_appimage(vars.into_iter(), OsStr::new(appdir));
+        changes.sort();
+        let removed = |k: &str| (OsString::from(k), None);
+        assert_eq!(changes, vec![
+            removed("APPDIR"),
+            removed("APPIMAGE"),
+            removed("GTK_PATH"),
+            removed("GTK_THEME"),
+            (OsString::from("XDG_DATA_DIRS"), Some(OsString::from("/usr/share:/usr/local/share"))),
+        ]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_projects_own_python() {
+        let dir = std::env::temp_dir().join(format!("intuicode-venv-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".venv/bin")).unwrap();
+        assert_eq!(venv_in(&dir), None); // a folder called .venv without a Python isn't one
+        std::fs::write(dir.join(".venv/bin/python3"), "").unwrap();
+        assert_eq!(venv_in(&dir), None); // nor is one python3 -m venv couldn't finish
+        std::fs::write(dir.join(".venv/bin/activate"), "").unwrap();
+        assert_eq!(venv_in(&dir), Some(dir.join(".venv")));
+        let mut cmd = Command::new("python3");
+        use_venv(&mut cmd, &dir);
+        let path = cmd.get_envs().find(|(k, _)| *k == "PATH").and_then(|(_, v)| v).unwrap().to_string_lossy().to_string();
+        assert!(path.starts_with(&dir.join(".venv/bin").to_string_lossy().to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

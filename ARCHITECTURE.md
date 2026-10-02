@@ -78,9 +78,11 @@ must not turn into a command:
   `.intuicode/project.json` (which is checked first) are escaped; reader summaries go through
   `rich()`, which escapes and then adds links.
 - **The desktop commands are limited** (`Access` in `lib.rs`): files only in folders picked in
-  the app's own dialog and IntuCode's folder for unsaved projects; programs only the Python
-  and arduino-cli found on the computer, or ones built in those folders. Shell commands typed
-  after `$` run in those folders.
+  the app's own dialog, files and folders dropped on the window, and IntuCode's folder for
+  unsaved projects; programs only the Python and arduino-cli found on the computer (or the
+  Python of a project's virtual environment), or ones built in those folders. Shell commands
+  typed after `$` run in those folders. A drop is allowed from the window's own drop event in
+  `lib.rs`; the page can send itself a pretend `tauri://drag-drop`, but that allows nothing.
 
 ## Testing
 

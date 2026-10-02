@@ -219,22 +219,33 @@ The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can'
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
   program or an Arduino sketch that wasn't made with IntuCode opens as sentences; anything
-  else opens in Read mode.
+  else opens in Read mode. Files, folders and `.zip` files dropped on the window open in Read mode.
 - **Real Python.** Programs run with the Python installed on the computer, with live
   output, typed input and a Stop button, so web servers and packages work. Without Python
-  installed, the built-in one is used.
+  installed, the built-in one is used. Stop, or closing IntuCode, ends a program and anything it
+  started. If the project folder has a virtual environment (`.venv` or `venv`), Run and `$`
+  commands use its Python and pip. On Linux that is how packages are installed, because the
+  system's Python keeps its packages for the system: type `$ python3 -m venv .venv`, then
+  `$ pip install flask` (Ubuntu and Debian need `python3-venv` first, which the `.deb` brings).
 - **C++.** Compiled with Visual Studio's `cl` on Windows (found automatically; install
   [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
   with "Desktop development with C++" if you don't have it), or g++/clang++ on macOS and Linux.
-- **Arduino.** Uses `arduino-cli`, found on the PATH or inside an installed Arduino IDE 2. The
+- **Arduino.** Uses `arduino-cli`, found on the PATH or inside an installed Arduino IDE 2. On
+  Linux it is also found in `~/bin` (where its install script puts it), `~/.local/bin`, the snap,
+  or an Arduino IDE 2 unpacked from its `.zip` (in your home folder, `~/Downloads` or `/opt`) or
+  installed from Flathub; the IDE's AppImage keeps its arduino-cli out of reach. Uploading on Linux
+  needs your account in the `dialout` group (`uucp` on Arch), once:
+  `$ sudo usermod -aG dialout $USER`, then log out and back in. The
   first time, install the board support: `$ arduino-cli core install arduino:avr`. Official
   boards are recognised on their USB port; for a board with a USB-serial chip (CH340, CP2102:
   many ESP32 and clone boards), type `board esp32` (or `uno`, `nano`, `mega`, or arduino-cli's
   full name for it) in the terminal once, and Run uploads to it.
 - **Commands.** Type `$` and a command in the terminal to run it in the project folder:
-  `$ git status`, `$ pip install flask`.
+  `$ git status`, `$ pip install flask`. On Linux, `$ sudo …` asks for your password in a window
+  when the computer has a password helper (KDE's `ksshaskpass`, or `ssh-askpass`); without one,
+  run sudo in your own terminal.
 
-The window only works in folders you pick with its own Open/Save dialogs, and code you open is
+The window only works in folders you pick with its own Open/Save dialogs (or drop on it), and code you open is
 never run in it: the website preview is sandboxed. See "nothing untrusted runs in the desktop
 window" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -254,8 +265,9 @@ These builds aren't code-signed yet, so the first time you open the app:
 - **Windows:** if SmartScreen says "Windows protected your PC", choose **More info → Run anyway**.
 - **macOS:** right-click the app and choose **Open**, then **Open** again (or System Settings →
   Privacy & Security → **Open Anyway**).
-- **Linux:** make the `.AppImage` executable (`chmod +x IntuCode*.AppImage`) and run it, or
-  install the `.deb` with `sudo apt install ./IntuCode*.deb`.
+- **Linux:** install the `.deb` with `sudo apt install ./IntuCode*.deb` (Ubuntu, Debian, Mint;
+  it also brings Python's venv support and g++), or the `.rpm` with `sudo dnf install ./IntuCode*.rpm`
+  (Fedora). Or make the `.AppImage` executable (`chmod +x IntuCode*.AppImage`) and run it.
 
 ### Building it yourself
 
@@ -267,6 +279,10 @@ npm install && npm run vendor && python3 tools/fetch_pyodide.py
 npm run desktop:dev      # run it
 npm run desktop:build    # make an installer for this computer
 ```
+
+On Linux, `desktop:build` makes a `.deb`, an `.rpm` and an `.AppImage` in
+`src-tauri/target/release/bundle/`. An AppImage runs on Linux versions as new as the one it was
+built on, or newer, which is why the released one is built on Ubuntu 22.04.
 
 ## Tests
 

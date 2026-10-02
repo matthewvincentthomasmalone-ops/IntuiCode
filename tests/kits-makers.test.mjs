@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync, mkdirSync, mkdtempSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { webcrypto } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -58,7 +59,7 @@ async function runPage(kitId, { storage = {}, fetch } = {}) {
     AudioContext: class { constructor() { this.currentTime = 0; this.state = 'running'; this.sampleRate = 8000; this.destination = {}; } resume() {} createGain() { return audioNode(); } createOscillator() { return audioNode(); }
       createBufferSource() { return audioNode(); } createBiquadFilter() { return audioNode(); } createBuffer() { return { getChannelData: () => new Float32Array(10) }; } },
     Audio: class { constructor() { this.src = ''; this.paused = true; } play() { this.paused = false; return Promise.resolve(); } pause() { this.paused = true; } },
-    Event: class { constructor(t) { this.type = t; } }, Math, Date, JSON, crypto: globalThis.crypto, matchMedia: () => ({ matches: false }), URL: { createObjectURL: (f) => 'blob:' + f.name },
+    Event: class { constructor(t) { this.type = t; } }, Math, Date, JSON, crypto: globalThis.crypto || webcrypto, matchMedia: () => ({ matches: false }), URL: { createObjectURL: (f) => 'blob:' + f.name },
   };
   ctx.window = ctx;
   vm.createContext(ctx);
