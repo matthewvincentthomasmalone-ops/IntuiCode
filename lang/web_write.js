@@ -1,4 +1,4 @@
-/* IntuiCode — web language pack: sentences -> HTML, CSS and JavaScript.
+/* IntuCode — web language pack: sentences -> HTML, CSS and JavaScript.
  *
  * A website project has three folders:
  *   Structure  (index.html)  what is on the page
@@ -352,13 +352,26 @@
     return `rgba(${parseInt(x.slice(0, 2), 16)}, ${parseInt(x.slice(2, 4), 16)}, ${parseInt(x.slice(4, 6), 16)}, ${+(1 - pct / 100).toFixed(2)})`;
   }
 
+  /* Plain CSS properties that take a single value: a second one is usually another style that lost its
+   * comma ("line-height: 1.1 #000000"), which the browser would otherwise drop without a word. */
+  const ONE_VALUE = new Set(['line-height', 'opacity', 'z-index', 'font-weight', 'font-size', 'font-style', 'letter-spacing', 'word-spacing', 'width', 'height', 'max-width', 'min-width', 'max-height', 'min-height', 'color', 'background-color', 'text-align', 'text-transform', 'position', 'cursor', 'visibility', 'top', 'left', 'right', 'bottom', 'order', 'flex-grow', 'flex-shrink', 'accent-color', 'caret-color']);
+  function checkRaw(prop, value, inf) {
+    if (!ONE_VALUE.has(prop) || /[(!/]/.test(value)) return;
+    const parts = value.trim().split(/\s+/);
+    if (parts.length < 2) return;
+    const colourish = /^#[0-9a-f]{3,8}$/i.test(parts[1]) || NAMED.has(parts[1].toLowerCase());
+    inf.warns.push(`${code(prop)} takes one value, and this has ${parts.length}: ${code(value.trim())}. ` + (colourish
+      ? `${code(parts[1])} looks like a colour: give it its own style after a comma, like "${prop}: ${parts[0]}, text colour ${parts[1]}" (or "background ${parts[1]}").`
+      : `If ${code(parts.slice(1).join(' '))} is another style, separate it with a comma.`));
+  }
+
   /* "background navy, rounded corners 8, shadow" -> [[prop, value], ...] */
   function cssProps(text, inf) {
     const out = [];
     for (let part of splitItems(outsideQuotes(text, (t) => t.replace(/\s+and\s+(?=[a-z])/gi, ', ')))) {
       part = part.trim().replace(/\.$/, '');
       let m;
-      if ((m = part.match(/^(-{0,2}[a-z][a-z0-9-]*)\s*:\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
+      if ((m = part.match(/^(-{0,2}[a-z][a-z0-9-]*)\s*:\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); checkRaw(m[1].toLowerCase(), m[2], inf); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
       if ((m = part.match(/^(?:background|background colou?r)\s+(.+?)(?:\s+(\d+)%\s+(?:see-through|transparent))?$/i))) {
         const pic = m[1].match(/^picture\s+(.+)$/i);
         if (pic) { out.push(['background-image', `url(${pic[1].trim()})`], ['background-size', 'cover']); continue; }
@@ -414,7 +427,7 @@
         inf.warns.push('An exact position can overlap other things and break on smaller screens. "in a row", "in a column" or a grid adapt better.');
         continue;
       }
-      if ((m = part.match(/^(-?[a-z-]+)\s*:?\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
+      if ((m = part.match(/^(-?[a-z-]+)\s*:?\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); checkRaw(m[1].toLowerCase(), m[2], inf); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
       inf.errs.push(`I don't know the style "${part}". Open the Index for style words, or write a CSS property like "letter-spacing 2px".`);
     }
     return out;
@@ -634,6 +647,7 @@
       if ((m = s.match(/\band store (?:it |the reply )?in\s+([A-Za-z_$][\w$]*)$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s/i))) x.vars.add(m[1]);
       if (/^keep track of (?:the )?keys$/i.test(s)) x.vars.add('keysDown');
+      if ((m = s.match(/^load (?:the |a )?(?:picture|image)\s+.+?\s+(?:as|called)\s+([A-Za-z_$][\w$]*)$/i))) { x.vars.add(m[1]); x.pictures = (x.pictures || new Set()).add(m[1]); }
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p)); }
       if ((m = s.match(/^(?:js|javascript|raw)\s*:(.*)$/i))) {
         for (const d of m[1].matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
@@ -800,6 +814,19 @@
         const el = elementRef(m[6], x, inf);
         note(inf, 'A line is a path: `moveTo` the start, `lineTo` the end, then `stroke` draws it.');
         return draw(el, [`pen.strokeStyle = ${colour(m[5])};`, 'pen.lineWidth = 2;', 'pen.beginPath();', `pen.moveTo(${E(m[1], inf)}, ${E(m[2], inf)});`, `pen.lineTo(${E(m[3], inf)}, ${E(m[4], inf)});`, 'pen.stroke();']);
+      }
+      // pictures: loaded once (an Image), then drawn as often as needed
+      if ((m = M(/^load (?:the |a )?(?:picture|image)\s+(.+?)\s+(?:as|called)\s+([A-Za-z_$][\w$]*)$/i))) {
+        note(inf, 'A picture is an `Image`: setting its `src` starts loading the file. Load each one once, near the top, then draw it as often as you like. Until it has loaded, drawing it shows nothing.');
+        if (!/^["'`]/.test(m[1].trim())) inf.warns.push(`Put the file name in quotes: load the picture "${m[1].trim()}" as ${m[2]}.`);
+        say(`${keyword(m[2], inf, 'const')}${m[2]} = new Image();`);
+        return say(`${m[2]}.src = ${E(m[1], inf)};`);
+      }
+      if ((m = M(/^draw\s+([A-Za-z_$][\w$]*)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(?:sized|size|of size)\s+(.+?)\s+by\s+(.+?))?\s+on\s+(.+)$/i)) && !/^(?:a|an|the|text|line|circle|dot|ball|rectangle|box|square|block)$/i.test(m[1])) {
+        if (!(x.pictures && x.pictures.has(m[1]))) inf.errs.push(`${code(m[1])} isn't a picture yet. Load it first, near the top: load the picture "images/${m[1]}.png" as ${m[1]}.`);
+        const el = elementRef(m[6], x, inf);
+        note(inf, '`drawImage` draws a picture with its top left corner at x, y' + (m[4] ? ', stretched to the width and height given.' : ', at its own size. Add "sized 64 by 64" to scale it.'));
+        return draw(el, [`pen.drawImage(${m[1]}, ${E(m[2], inf)}, ${E(m[3], inf)}${m[4] ? `, ${E(m[4], inf)}, ${E(m[5], inf)}` : ''});`]);
       }
       if ((m = M(/^play (?:a )?note (?:of )?(.+?)\s+for\s+(.+?)\s+seconds?$/i))) {
         note(inf, 'The Web Audio API: an oscillator makes a tone at a pitch in hertz (440 is the note A), connected to the speakers, started now and stopped after the length. One sound output is shared by every note.');
@@ -1008,6 +1035,8 @@
     T('Drawing', 'draw a circle at ‹x›, ‹y› with radius ‹10› in "‹gold›" on ‹game›', 'arc(…) + fill()', '', ['mechanics']),
     T('Drawing', 'draw text "‹Score: {score}›" at ‹10›, ‹24› in "‹white›" on ‹game›', 'fillText(…)', 'Add "size 24" before "in" for bigger text.', ['mechanics']),
     T('Drawing', 'draw a line from ‹x1›, ‹y1› to ‹x2›, ‹y2› in "‹white›" on ‹game›', 'lineTo(…) + stroke()', '', ['mechanics']),
+    T('Drawing', 'load the picture "‹images/ship.png›" as ‹ship›', 'new Image()', 'Once, near the top. Add the file first: File → Add an image.', ['mechanics']),
+    T('Drawing', 'draw ‹ship› at ‹x›, ‹y› on ‹game›', 'drawImage(…)', 'A loaded picture. Add "sized 64 by 64" before "on" to scale it.', ['mechanics']),
     T('Sound', 'play a note of ‹440› for ‹0.2› seconds', 'an oscillator (Web Audio)', '440 hertz is the note A; 880 is the A above.', ['mechanics']),
     T('Page', 'get the text of ‹name› and store in ‹value›', 'let value = name.value', 'Reads what was typed in a box.', ['mechanics']),
     T('Page', 'set the text of ‹name› to ‹value›', 'name.textContent = value', '', ['mechanics']),

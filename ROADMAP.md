@@ -1,6 +1,6 @@
-# IntuiCode roadmap
+# IntuCode roadmap
 
-IntuiCode translates between plain, structured sentences and real code, in both
+IntuCode translates between plain, structured sentences and real code, in both
 directions, using rules rather than AI. This file records where it is going and why.
 
 ## Principles
@@ -27,7 +27,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 7 | Tutor and style tour (Python): tip balloons on a language's habits, "Your turn" lines checked exactly, notes that fade as you learn, and a style tour of any file | done (Python, C++ and Arduino; HTML, CSS and JavaScript next) |
 | 8 | Project builder: questions that narrow a project down (App › PC › DAW…), components you tick, and a project map of ordered steps, each marked Walk, Hallway or Horizon | done (Python, website and Arduino kits, with hallway steps in each; the library can be edited in the app) |
 
-The direction, since step 7: IntuiCode is for people who build ambitious things with help (often
+The direction, since step 7: IntuCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
 and learn to think in each language's style as they go. The tutor teaches that style; the project
 builder is a horizon to aim for, and for the hardest parts, a hallway.
@@ -121,7 +121,7 @@ statements that differ are kept as `python:` lines automatically and the check r
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
    libraries AI tools use most, shared by Write and Read modes.
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
-   IntuiCode is the verifiable layer. Any AI features must be opt-in and labelled as guesses.
+   IntuCode is the verifiable layer. Any AI features must be opt-in and labelled as guesses.
 4. **The "new language" trap.** Sentences can become a dialect of their own. Mitigation:
    real code always visible; sentences can be faded out as people learn.
 5. **Language differences.** HTML and CSS fit sentences well; JavaScript in practice means

@@ -1,6 +1,6 @@
 name: Desktop app
 
-# Builds IntuiCode installers for Windows, macOS and Linux.
+# Builds IntuCode installers for Windows, macOS and Linux.
 # Run it from the Actions tab ("Run workflow"), or push a tag like v0.1.0.
 # The installers are attached to a GitHub Release (pre-release) for that version.
 
@@ -59,9 +59,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: "IntuiCode v__VERSION__"
+          releaseName: "IntuCode v__VERSION__"
           releaseBody: |
-            Installers for IntuiCode.
+            Installers for IntuCode.
             - Windows: the .msi or -setup.exe file
             - macOS: the .dmg file (works on Apple Silicon and Intel)
             - Linux: the .AppImage (run it directly) or the .deb (Ubuntu/Debian)

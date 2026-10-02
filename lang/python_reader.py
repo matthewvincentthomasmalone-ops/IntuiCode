@@ -1,4 +1,4 @@
-"""IntuiCode reader: turns existing Python into sections, sentences and plain-English summaries.
+"""IntuCode reader: turns existing Python into sections, sentences and plain-English summaries.
 
 Everything here is rules on top of Python's own parser (the `ast` module). No AI:
 the same code always gives the same summary, and every statement in a summary
@@ -7,7 +7,7 @@ can be traced back to the lines it came from.
 Main entry points (all return JSON-ready dicts):
     analyze(files)                  -> sections + summaries for each file
     summarise(source, start, end)   -> summary of the statements between two lines
-    to_sentences(source)            -> the whole file as IntuiCode sentences (exact where possible)
+    to_sentences(source)            -> the whole file as IntuCode sentences (exact where possible)
 
 Run this file directly:  python3 python_reader.py summary FILE | sentences FILE | project FOLDER
 """
@@ -384,7 +384,7 @@ HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
 
 class Sentences:
-    """Writes statements as IntuiCode sentences. Anything that can't be said exactly becomes a `python:` line."""
+    """Writes statements as IntuCode sentences. Anything that can't be said exactly becomes a `python:` line."""
 
     def __init__(self, strict, tools=(), lists=(), known=(), comments=None, force_raw=(), classes=()):
         self.strict = strict
@@ -2028,7 +2028,7 @@ def analyze_project(files):
     declared, has_list = declared_deps(extras)
     project_warnings = []
     if secrets:
-        project_warnings.append(f"The project includes {plain_list([code(s) for s in secrets])}, which usually holds passwords and keys. IntuiCode didn't read it. Make sure it is never shared or pushed to GitHub (add it to .gitignore).")
+        project_warnings.append(f"The project includes {plain_list([code(s) for s in secrets])}, which usually holds passwords and keys. IntuCode didn't read it. Make sure it is never shared or pushed to GitHub (add it to .gitignore).")
     if third and has_list:
         missing = [l for l in third if PIP_NAMES.get(l, l).lower().replace("_", "-") not in declared]
         if missing:

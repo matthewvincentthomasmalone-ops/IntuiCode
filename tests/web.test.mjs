@@ -227,3 +227,31 @@ test('reader: React components are recognised', () => {
   assert.ok(s, 'component section');
   assert.match(s.facts.join(' '), /remembers `\[count, setCount\]`|remembers `count`/);
 });
+
+test('pictures: loaded once, then drawn on a drawing area, at their size or scaled', () => {
+  const r = site('add a drawing area called game 320 by 180', '',
+    'load the picture "images/ship.png" as ship\nevery frame\n    clear game\n    draw ship at 10, 20 on game\n    draw ship at x, 20 sized 64 by 32 on game');
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /^const ship = new Image\(\);\nship\.src = "images\/ship\.png";/);
+  assert.match(js, /pen\.drawImage\(ship, 10, 20\);/);
+  assert.match(js, /pen\.drawImage\(ship, x, 20, 64, 32\);/);
+  // the shapes it shares words with still mean shapes
+  const shapes = site('add a drawing area called game 320 by 180', '', 'draw a rectangle at 1, 2 sized 3 by 4 in "red" on game\ndraw text "Hi" at 5, 6 in "white" on game');
+  assert.deepEqual(problems(shapes, 'mechanics'), []);
+  assert.match(shapes.results.mechanics.text, /fillRect\(1, 2, 3, 4\)[\s\S]*fillText\("Hi", 5, 6\)/);
+});
+
+test('pictures: drawing one that was never loaded says how to load it', () => {
+  const r = site('add a drawing area called game 320 by 180', '', 'draw rocket at 1, 2 on game');
+  assert.deepEqual(problems(r, 'mechanics'), ['`rocket` isn\'t a picture yet. Load it first, near the top: load the picture "images/rocket.png" as rocket.']);
+});
+
+test('styles: a plain CSS property with one value too many is pointed out', () => {
+  const warns = (styling) => plain(site('add a paragraph "Hi"', styling).results.styling.info.flatMap(i => i.warns));
+  assert.deepEqual(warns('style paragraph: text size 24, line-height: 1.1 #000000'),
+    ['`line-height` takes one value, and this has 2: `1.1 #000000`. `#000000` looks like a colour: give it its own style after a comma, like "line-height: 1.1, text colour #000000" (or "background #000000").']);
+  assert.match(warns('style paragraph: font-weight 700 bold')[0], /If `bold` is another style, separate it with a comma\./);
+  // shorthands and calculations take several values, and are left alone
+  assert.deepEqual(warns('style paragraph: line-height: 1.5, margin: 0 auto, width: calc(100% - 20px), font-family: "A B", serif, padding 4 8'), []);
+});

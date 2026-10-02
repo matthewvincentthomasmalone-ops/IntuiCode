@@ -1,4 +1,4 @@
-/* IntuiCode — Python language pack.
+/* IntuCode — Python language pack.
  *
  * Turns sentences into Python, one sentence line -> one Python line.
  * Everything here is plain rules: ordered regular expressions for sentences,

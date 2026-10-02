@@ -1,4 +1,4 @@
-//! IntuiCode desktop: the web app plus what a browser can't do.
+//! IntuCode desktop: the web app plus what a browser can't do.
 //!
 //! - read and write real project folders
 //! - run programs (Python, shell commands) with live output and typed input
@@ -12,6 +12,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -21,7 +22,7 @@ use tauri_plugin_dialog::DialogExt;
 /* ------------------------------------------------------------------ */
 
 /// Folders the window may read, write and run things in: ones the person picked in the app's
-/// own folder dialog (so a page can't make one up), and IntuiCode's folder for unsaved projects.
+/// own folder dialog (so a page can't make one up), and IntuCode's folder for unsaved projects.
 /// Programs it may start: the Python and arduino-cli found on this computer, and programs built
 /// inside those folders. (Shell commands typed after `$` run in an allowed folder.)
 #[derive(Default)]
@@ -75,7 +76,7 @@ impl Access {
         if found || (Path::new(program).is_absolute() && self.path(program).is_ok()) {
             Ok(())
         } else {
-            Err(format!("IntuiCode only starts Python, arduino-cli and programs it built, not {program}."))
+            Err(format!("IntuCode only starts Python, arduino-cli and programs it built, not {program}."))
         }
     }
 }
@@ -190,7 +191,39 @@ fn write_text(access: State<Access>, path: String, content: String) -> Result<()
     std::fs::write(&p, content).map_err(|e| format!("Could not write {path}: {e}"))
 }
 
-/// A folder IntuiCode can use when a project hasn't been saved anywhere yet.
+/// A file's bytes as base64: the pictures in a project's images/ folder.
+#[tauri::command]
+fn read_bytes(access: State<Access>, path: String) -> Result<String, String> {
+    let p = access.path(&path)?;
+    let bytes = std::fs::read(&p).map_err(|e| format!("Could not read {path}: {e}"))?;
+    Ok(STANDARD.encode(bytes))
+}
+
+#[tauri::command]
+fn write_bytes(access: State<Access>, path: String, data: String) -> Result<(), String> {
+    let p = access.path(&path)?;
+    let bytes = STANDARD.decode(data.as_bytes()).map_err(|e| format!("Could not write {path}: {e}"))?;
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Could not create {}: {e}", parent.display()))?;
+    }
+    std::fs::write(&p, bytes).map_err(|e| format!("Could not write {path}: {e}"))
+}
+
+/// The names of the files directly in a folder (none if there's no such folder).
+#[tauri::command]
+fn list_files(access: State<Access>, path: String) -> Result<Vec<String>, String> {
+    let p = access.path(&path)?;
+    let Ok(entries) = std::fs::read_dir(&p) else { return Ok(Vec::new()) };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// A folder IntuCode can use when a project hasn't been saved anywhere yet.
 #[tauri::command]
 fn scratch_folder(app: AppHandle, access: State<Access>) -> Result<String, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("unsaved-project");
@@ -633,12 +666,12 @@ pub fn run() {
         .manage(Preview::default())
         .register_uri_scheme_protocol("preview", |ctx, request| preview_page(ctx.app_handle(), request.uri().path()))
         .invoke_handler(tauri::generate_handler![
-            read_folder, read_text, write_text, scratch_folder, pick_folder, set_preview,
+            read_folder, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
             run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
             compile_cpp, find_arduino, run_capture
         ])
         .run(tauri::generate_context!())
-        .expect("IntuiCode could not start");
+        .expect("IntuCode could not start");
 }
 
 #[cfg(test)]

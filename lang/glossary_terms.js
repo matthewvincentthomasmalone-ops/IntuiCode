@@ -1,4 +1,4 @@
-/* IntuiCode: the glossary's terms, by language. Plain data; lang/glossary.js finds them in code and sentences.
+/* IntuCode: the glossary's terms, by language. Plain data; lang/glossary.js finds them in code and sentences.
  *
  * Each entry: t is the term as shown; m (optional, defaults to [t]) the exact strings that count as it
  * (whole tokens in Python, C++, Arduino and JavaScript; `<tag>` and `attr=` in HTML; `prop:`, units,
@@ -29,7 +29,7 @@
       { t: 'continue', k: 'keyword', s: 'Skips the rest of this round of the loop and starts the next one.', eg: 'if not line.strip(): continue', see: ['break', 'for'] },
       { t: 'pass', k: 'keyword', s: 'A line that does nothing. Python needs at least one indented line after a colon, so pass holds the place until the real code is written.', eg: 'else: pass', see: [':', 'indentation'] },
       { t: 'import', k: 'keyword', s: 'Loads a module, a toolbox of ready-made code: `import random`, then `random.randint(1, 6)`. By habit, imports go at the top of the file.', eg: 'import random', see: ['from', 'as', 'random'] },
-      { t: 'from', k: 'keyword', s: '`from module import name` brings one name straight in, so you write `randint(1, 6)`. `from settings import *` brings in every name: IntuiCode joins your sections this way.', eg: 'from random import randint', see: ['import', 'as'] },
+      { t: 'from', k: 'keyword', s: '`from module import name` brings one name straight in, so you write `randint(1, 6)`. `from settings import *` brings in every name: IntuCode joins your sections this way.', eg: 'from random import randint', see: ['import', 'as'] },
       { t: 'as', k: 'keyword', s: 'Gives something a second name: a nickname for a module (`import tkinter as tk`), the open file (`with open(p) as f`), or the error caught (`except ValueError as error`).', eg: 'import tkinter as tk', see: ['import', 'with', 'except'] },
       { t: 'class', k: 'keyword', s: 'Defines a new kind of object: the data each one keeps and the functions (methods) that work on it. Calling the class, as in `Dog("Rex")`, makes an object.', eg: 'class Dog(Animal):', see: ['self', '__init__', 'def'] },
       { t: 'self', k: 'keyword', s: 'Inside a class\'s methods, the object the method was called on: `self.name = name` stores a value on that object. Python passes it in, but it must still be the first parameter.', eg: 'def speak(self):', see: ['class', '__init__'] },
@@ -96,7 +96,7 @@
       { t: '__init__', k: 'method', s: 'The method Python runs as each object is made: `Dog("Rex")` calls `__init__(self, "Rex")`. It sets the object\'s starting values on self.', eg: 'def __init__(self, name):', see: ['class', 'self'] },
       { t: '__name__', k: 'constant', s: 'The current module\'s name: "__main__" when this file is the one being run, its own name when imported. So `if __name__ == "__main__":` code runs only in the first case.', eg: 'if __name__ == "__main__":', see: ['__main__', 'import'] },
       { t: '__main__', k: 'constant', s: 'The name Python gives the file you run. The guard `if __name__ == "__main__":` stops a file\'s start-up code running when another file imports it.', eg: 'if __name__ == "__main__": app.run(port=5000)', see: ['__name__', 'import'] },
-      { t: '_', k: 'concept', s: 'By habit, a name for a value you won\'t use: `for _ in range(5):`. In code IntuiCode writes, `_` also stands for a ‹blank› not filled in yet: Python stops there until it is.', eg: 'for _ in range(questions):', see: ['for', 'range()'] },
+      { t: '_', k: 'concept', s: 'By habit, a name for a value you won\'t use: `for _ in range(5):`. In code IntuCode writes, `_` also stands for a ‹blank› not filled in yet: Python stops there until it is.', eg: 'for _ in range(questions):', see: ['for', 'range()'] },
       { t: 'ValueError', k: 'type', s: 'The error for a value of the right type but wrong content, like `int("abc")`. Catch it with `except ValueError:` to ask again instead of stopping.', eg: 'except ValueError:', see: ['except', 'int()', 'raise'] },
 
       // operators and punctuation
@@ -167,8 +167,8 @@
       { t: 'std::to_string', m: ['std::to_string', 'to_string'], k: 'function', s: 'Turns a number into text: `std::to_string(42)` is "42".', eg: 'std::string t = std::to_string(n);', see: ['std::stoi', 'std::string'] },
       { t: 'std::ostringstream', m: ['ostringstream', 'sstream'], k: 'type', s: 'A stream that writes into text instead of the terminal: send it values with <<, then `.str()` gives the text. From `<sstream>`.', eg: 'std::ostringstream out; out << "Total " << n;', see: ['<<', 'std::string', 'template'] },
       { t: '<random>', m: ['random', 'mt19937', 'uniform_int_distribution', 'random_device'], k: 'module', s: 'The standard library for random numbers: a generator (std::mt19937, seeded from std::random_device) and a distribution that shapes its output, such as whole numbers from low to high.', eg: 'static std::mt19937 generator(std::random_device{}());', see: ['random_number()', 'static', '#include'] },
-      { t: 'random_number()', m: ['random_number'], k: 'function', s: 'A helper IntuiCode writes above main for "random number from … to …": a whole number between low and high, both included.', eg: 'int secret = random_number(1, 50);', see: ['<random>', 'static'] },
-      { t: '_', k: 'concept', s: 'In code IntuiCode writes, `_` stands for a ‹blank› not filled in yet. The compiler stops there until it is.', eg: 'if (buttonState == _) {', see: ['=', ';'] },
+      { t: 'random_number()', m: ['random_number'], k: 'function', s: 'A helper IntuCode writes above main for "random number from … to …": a whole number between low and high, both included.', eg: 'int secret = random_number(1, 50);', see: ['<random>', 'static'] },
+      { t: '_', k: 'concept', s: 'In code IntuCode writes, `_` stands for a ‹blank› not filled in yet. The compiler stops there until it is.', eg: 'if (buttonState == _) {', see: ['=', ';'] },
       { t: '<cmath>', m: ['cmath', 'sqrt', 'pow'], k: 'module', s: 'Standard maths functions: `std::sqrt(x)`, `std::pow(x, y)`, `std::sin`, `std::cos`. They work in decimals and give back double.', eg: 'double side = std::sqrt(area);', see: ['#include', 'double'] },
 
       // types and declarations
@@ -209,7 +209,7 @@
       { t: 'nullptr', k: 'constant', s: 'A pointer that points at nothing. Using what it points to crashes the program, so check that a pointer isn\'t nullptr before using it.', eg: 'if (p != nullptr) { … }', see: ['*', 'new'] },
       { t: 'new', k: 'keyword', s: 'Makes an object that lasts until it is deleted, and gives back a pointer to it. Modern C++ prefers std::vector, std::string and smart pointers, which free memory themselves.', eg: 'Account* a = new Account("Sam");', see: ['delete', '*', 'nullptr'] },
       { t: 'delete', k: 'keyword', s: 'Frees memory made with new. Every new needs exactly one delete: forget it and memory leaks; do it twice and the program can crash.', eg: 'delete a;', see: ['new', 'nullptr'] },
-      { t: 'template', k: 'keyword', s: 'Code written once for many types: in `template <typename T>`, T stands for whichever type is used. IntuiCode\'s `text(…)` helper is a template that joins any values into text.', eg: 'template <typename... Parts>', see: ['typename', '...', 'std::vector'] },
+      { t: 'template', k: 'keyword', s: 'Code written once for many types: in `template <typename T>`, T stands for whichever type is used. IntuCode\'s `text(…)` helper is a template that joins any values into text.', eg: 'template <typename... Parts>', see: ['typename', '...', 'std::vector'] },
       { t: 'typename', k: 'keyword', s: 'In a template\'s <angle brackets>, introduces a type parameter. `class` means the same there.', eg: 'template <typename T>', see: ['template', '...'] },
       { t: '...', k: 'operator', s: 'A pack: any number of values. `typename... Parts` accepts any types, and `(out << ... << parts)` (a fold) sends each one to out in turn.', eg: '(out << ... << parts);', see: ['template', '<<'] },
 
@@ -252,7 +252,7 @@
       { t: 'LOW', k: 'constant', s: 'Off: 0 V, connected to ground. With INPUT_PULLUP, LOW means the button is pressed.', eg: 'digitalWrite(led, LOW);', see: ['HIGH', 'INPUT_PULLUP'] },
       { t: 'LED_BUILTIN', k: 'constant', s: 'The pin of the small light on the board itself: pin 13 on an Uno. Useful for a first test with no wiring.', eg: 'pinMode(LED_BUILTIN, OUTPUT);', see: ['pinMode', 'digitalWrite'] },
       { t: 'A0', m: ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'], k: 'constant', s: 'The analog input pins, A0 to A5 on an Uno: analogRead measures a voltage on them. They also work as ordinary digital pins.', eg: 'const int SENSOR = A0;', see: ['analogRead', 'map'] },
-      { t: 'Serial', k: 'module', s: 'The board\'s serial connection over USB. What it sends appears in the serial monitor (IntuiCode\'s terminal), and it can read what the computer sends.', eg: 'Serial.println("Gadget ready.");', see: ['Serial.begin', 'Serial.println', 'Serial.available'] },
+      { t: 'Serial', k: 'module', s: 'The board\'s serial connection over USB. What it sends appears in the serial monitor (IntuCode\'s terminal), and it can read what the computer sends.', eg: 'Serial.println("Gadget ready.");', see: ['Serial.begin', 'Serial.println', 'Serial.available'] },
       { t: 'Serial.begin', k: 'method', s: 'Starts the serial connection at a speed in bits per second, usually in setup. The serial monitor must use the same speed, or it shows gibberish.', eg: 'Serial.begin(9600);', see: ['Serial', 'Serial.println'] },
       { t: 'Serial.print', k: 'method', s: 'Sends a value to the serial monitor without ending the line, so the next print carries on along it.', eg: 'Serial.print("Level: ");', see: ['Serial.println', 'String'] },
       { t: 'Serial.println', m: ['Serial.println', 'println'], k: 'method', s: 'Sends a value to the serial monitor and ends the line.', eg: 'Serial.println(String("Blinks so far: ") + blinks);', see: ['Serial.print', 'Serial.begin', 'F()'] },
@@ -488,7 +488,7 @@
       // built-in helpers
       { t: 'Math.random()', m: ['Math.random'], k: 'method', s: 'A random decimal from 0 up to, but not including, 1. Multiplying and rounding down turns it into a whole number.', eg: 'Math.floor(Math.random() * 6) + 1', see: ['Math.floor()', '%'] },
       { t: 'Math.floor()', m: ['Math.floor'], k: 'method', s: 'Rounds down to a whole number: `Math.floor(4.9)` is 4. Math.round rounds to the nearest; Math.ceil rounds up.', eg: 'Math.floor(Math.random() * 6) + 1', see: ['Math.random()', '%'] },
-      { t: 'console.log()', m: ['console.log', 'console'], k: 'method', s: 'Writes to the developer console (IntuiCode\'s terminal), not the page: for checking values while you build.', eg: 'console.log(items);', see: ['alert()', 'textContent'] },
+      { t: 'console.log()', m: ['console.log', 'console'], k: 'method', s: 'Writes to the developer console (IntuCode\'s terminal), not the page: for checking values while you build.', eg: 'console.log(items);', see: ['alert()', 'textContent'] },
       { t: 'alert()', m: ['alert'], k: 'function', s: 'A pop-up message that holds up the page until it\'s closed. Fine for testing; text on the page is kinder to visitors.', eg: 'alert("Type a task first");', see: ['prompt()', 'console.log()'] },
       { t: 'prompt()', m: ['prompt'], k: 'function', s: 'A pop-up that asks a question and gives back the typed text, or null if it was cancelled.', eg: 'let nm = prompt("Name?");', see: ['alert()', 'null'] },
       { t: 'Date', m: ['Date', 'getFullYear'], k: 'type', s: 'Dates and times: `new Date()` is now, and `.getFullYear()` its year. Months count from 0, so January is 0.', eg: 'new Date().getFullYear()', see: ['new', 'textContent'] },
@@ -505,7 +505,7 @@
       { t: 'undefined', k: 'constant', s: '"Never set": a name with no value yet, a missing property, or the result of a function with no return.', eg: 'let answer;', see: ['null', '!='] },
       { t: 'true / false', m: ['true', 'false'], k: 'constant', s: 'The two yes/no values. In an if, empty text, 0, null and undefined count as false.', eg: 'side.hidden = true;', see: ['!', '&&'] },
       { t: 'template literal', k: 'concept', s: 'Text in backticks: `${…}` inside is replaced by the current value. It can also run over several lines.', eg: '`${items.length} to do`', see: ['textContent', 'console.log()'] },
-      { t: '_', k: 'concept', s: 'In code IntuiCode writes, `_` stands for a ‹blank› not filled in yet. The page stops with an error there until it is.', eg: 'if (_) {', see: ['if', '='] },
+      { t: '_', k: 'concept', s: 'In code IntuCode writes, `_` stands for a ‹blank› not filled in yet. The page stops with an error there until it is.', eg: 'if (_) {', see: ['if', '='] },
 
       // operators and punctuation
       { t: '=', k: 'operator', s: 'Stores a value under a name. To compare, use ===.', eg: 'taps = 0;', see: ['===', 'let'] },
@@ -571,7 +571,7 @@
       { t: 'fetch', m: ['fetch from', 'fetch'], k: 'web word', s: 'Asks a server for data over the network, waiting for the reply without freezing the page. "send … to" sends data the other way.', eg: 'fetch from "/api/items" and store in items', see: ['in the browser', 'store in'], packs: ['web'] },
 
       // every pack
-      { t: 'tool', m: ['tool', 'tools'], k: 'sentence word', s: 'IntuiCode\'s word for a function: a named set of steps, defined once and run whenever it\'s needed.', eg: 'define double using n', see: ['define', 'using', 'give back', 'run'] },
+      { t: 'tool', m: ['tool', 'tools'], k: 'sentence word', s: 'IntuCode\'s word for a function: a named set of steps, defined once and run whenever it\'s needed.', eg: 'define double using n', see: ['define', 'using', 'give back', 'run'] },
       { t: 'define', k: 'sentence word', s: 'Makes a tool (a function) or, with "define class", a class. The indented lines under it are its steps; they run only when the tool is run.', eg: 'define greet using name', see: ['tool', 'using', 'class'] },
       { t: 'using', k: 'sentence word', s: 'After define: the inputs a tool needs (its parameters). At the start of a line, "using x as y" sets something up and tidies it away after the indented lines.', eg: 'define area using w, h', see: ['define', 'give back', 'tool'] },
       { t: 'give back', m: ['give back', 'giving back', 'gives back'], k: 'sentence word', s: 'Ends a tool and hands a value to whoever ran it (return). In C++, "giving back decimal" says what kind of value that will be.', eg: 'give back n times 2', see: ['tool', 'store in', 'nothing'] },
@@ -620,7 +620,7 @@
       { t: 'wait for', k: 'sentence word', s: 'Waits for a slow task, such as a network request, to finish (await). Only inside a tool defined as async.', eg: 'set reply to wait for fetch(url)', see: ['fetch', 'tool'], packs: ['python'] },
 
       // C++ and Arduino
-      { t: 'kind', m: ['kind', 'kinds'], k: 'sentence word', s: 'What sort of value a name holds (its type): whole number, decimal, text or yes/no. In C++ each name keeps one kind; IntuiCode works it out from the value, or you say it.', eg: 'set decimal total to 0', see: ['whole number', 'decimal', 'text'], packs: ['cpp', 'arduino'] },
+      { t: 'kind', m: ['kind', 'kinds'], k: 'sentence word', s: 'What sort of value a name holds (its type): whole number, decimal, text or yes/no. In C++ each name keeps one kind; IntuCode works it out from the value, or you say it.', eg: 'set decimal total to 0', see: ['whole number', 'decimal', 'text'], packs: ['cpp', 'arduino'] },
       { t: 'followed by', k: 'sentence word', s: 'Joins values with nothing between them, where "and" puts a space between.', eg: 'show total followed by "%"', see: ['text', 'kind'], packs: ['cpp', 'arduino'] },
       { t: 'include', k: 'sentence word', s: 'Brings in a library of ready-made code (#include), such as cmath for maths.', eg: 'include cmath', see: ['above main', 'raw line'], packs: ['cpp', 'arduino'] },
       { t: 'above main', k: 'sentence word', s: 'C++ written directly and placed above main, beside the tools and classes, rather than inside it.', eg: 'above main: int twice(int n) { return n * 2; }', see: ['include', 'raw line'], packs: ['cpp'] },
@@ -635,7 +635,7 @@
       { t: 'pin', m: ['pin', 'pins'], k: 'board word', s: 'One of the board\'s numbered connectors. Make it an input or an output first, then turn it on or off, or read it.', eg: 'make pin 13 an output', see: ['input / output', 'analog', 'pull-up'], packs: ['arduino'] },
       { t: 'input / output', m: ['an input', 'an output'], k: 'board word', s: 'What a pin is for: an output drives something (a light, a buzzer); an input reads something (a button, a sensor).', eg: 'make pin LED an output', see: ['pin', 'pull-up'], packs: ['arduino'] },
       { t: 'pull-up', m: ['pull-up', 'pullup', 'pull up'], k: 'board word', s: 'A built-in resistor that keeps an input pin on until a button connects it to ground, so a pressed button reads off (LOW). Wire the button between the pin and GND.', eg: 'make pin BUTTON an input with pull-up', see: ['pin', 'input / output'], packs: ['arduino'] },
-      { t: 'serial monitor', k: 'board word', s: 'The window showing what the board sends over USB; in IntuiCode, the terminal. Both ends must use the same speed, usually 9600.', eg: 'start the serial monitor at 9600', see: ['board', 'sketch'], packs: ['arduino'] },
+      { t: 'serial monitor', k: 'board word', s: 'The window showing what the board sends over USB; in IntuCode, the terminal. Both ends must use the same speed, usually 9600.', eg: 'start the serial monitor at 9600', see: ['board', 'sketch'], packs: ['arduino'] },
       { t: 'built-in light', k: 'board word', s: 'The small light on the board itself (LED_BUILTIN, pin 13 on an Uno): useful for a first test with no wiring.', eg: 'turn the built-in light on', see: ['pin', 'board'], packs: ['arduino'] },
       { t: 'analog', m: ['analog', 'analogue'], k: 'board word', s: 'An analog pin measures a voltage, read as 0 to 1023 (A0 to A5 on an Uno), rather than only on or off.', eg: 'read analog pin A0 and store in level', see: ['pin', 'brightness'], packs: ['arduino'] },
       { t: 'brightness', k: 'board word', s: 'A level from 0 to 255 for a light or a motor, made by switching the pin on and off very fast (PWM). Only pins marked ~ can do it.', eg: 'set the brightness of pin 9 to 128', see: ['analog', 'pin'], packs: ['arduino'] },

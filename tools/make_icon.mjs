@@ -1,4 +1,4 @@
-// Draws the app icon, a vintage terminal with "IntuiCode>" on its screen, as src-tauri/icons/source.svg.
+// Draws the app icon, a vintage terminal with "IntuCode>" on its screen, as src-tauri/icons/source.svg.
 // The letters are a 5×7 pixel font drawn as squares, so the icon doesn't depend on any installed font.
 // Then: npm run tauri -- icon src-tauri/icons/source.svg   (makes every size, and the .ico and .icns)
 // The Windows build only embeds a new icon.ico when src-tauri/tauri.conf.json has changed since the last
@@ -20,12 +20,12 @@ const FONT = {
   '>': ['.#...', '..#..', '...#.', '....#', '...#.', '..#..', '.#...'],
   '█': ['#####', '#####', '#####', '#####', '#####', '#####', '#####'],
 };
-const TEXT = 'IntuiCode>';
+const TEXT = 'IntuCode>';
 
 // The screen, and the text centred on it
 const SCREEN = { x: 116, y: 176, w: 792, h: 472, r: 64 };
 const cols = (TEXT.length + 1) * 6 - 1;           // (+1: the cursor after the >)
-const S = 11.2;                                   // one pixel of the font
+const S = Math.min(12.2, (SCREEN.w - 64) / cols);  // one pixel of the font: as big as fits, with a margin
 const tx = SCREEN.x + (SCREEN.w - cols * S) / 2;
 const ty = SCREEN.y + (SCREEN.h - 7 * S) / 2;
 

@@ -18,6 +18,7 @@ the desktop app.
 | `lang/tutor.js` | Style cards (a language's habits, and why) for Python and C++/Arduino, sentence cards (how to talk to the program), the C++ habit finder (on tree-sitter's parse), and how "Your turn" answers are checked |
 | `lang/glossary.js` | Finds a language's terms in code (tokens, tags, properties) or the less obvious words in sentences, for Ctrl+H and the code side of the explain strip |
 | `lang/glossary_terms.js` | The glossary itself: terms for Python, C++, Arduino, HTML, CSS, JavaScript and the sentences, as plain data |
+| `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
 | `lang/ts_patch.js` | A fix to the tree-sitter runtime for pages with SVG or custom elements |
 
@@ -37,8 +38,15 @@ Files on disk hold real code. Sentences are an editable **view** of that code:
 - the sentences a person typed, including filler words, are kept as long as the code they
   produced hasn't changed underneath them.
 
-This keeps IntuiCode compatible with Git, other editors and people who don't use it.
+This keeps IntuCode compatible with Git, other editors and people who don't use it.
 The web version stores projects in the browser; the desktop app works on real folders.
+
+Pictures live in the project's `images/` folder and are named in sentences by that path. The
+project lists them (name, size and a SHA-256 of the content); the browser keeps the pictures
+themselves in IndexedDB by that hash, so projects in `localStorage` stay small and the project
+kept for "restore" shares them. Saving writes them into `images/` (the desktop's `write_bytes`);
+opening a folder reads them back from there, so the files win, as the code does. The preview
+can't reach files, so each `images/…` name in the page becomes the picture's data.
 
 ## Decision: reading other languages
 
@@ -70,7 +78,7 @@ must not turn into a command:
   `.intuicode/project.json` (which is checked first) are escaped; reader summaries go through
   `rich()`, which escapes and then adds links.
 - **The desktop commands are limited** (`Access` in `lib.rs`): files only in folders picked in
-  the app's own dialog and IntuiCode's folder for unsaved projects; programs only the Python
+  the app's own dialog and IntuCode's folder for unsaved projects; programs only the Python
   and arduino-cli found on the computer, or ones built in those folders. Shell commands typed
   after `$` run in those folders.
 

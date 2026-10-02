@@ -6,7 +6,7 @@
 <head>
 <meta charset="utf-8">
 <base href="/">
-<title>IntuiCode (desktop test)</title>
+<title>IntuCode (desktop test)</title>
 <script>
   window.mock = {
     files: {},        // path -> text (a pretend disk)
@@ -30,6 +30,9 @@
           case 'pick_folder': return m.pick;
           case 'read_text': if (args.path in m.files) return m.files[args.path]; throw new Error('not found: ' + args.path);
           case 'write_text': m.files[args.path] = args.content; return null;
+          case 'write_bytes': m.files[args.path] = { bytes: args.data }; return null;
+          case 'read_bytes': if (m.files[args.path] && m.files[args.path].bytes) return m.files[args.path].bytes; throw new Error('not found: ' + args.path);
+          case 'list_files': { const dir = args.path.replace(/\/$/, '') + '/'; return Object.keys(m.files).filter(p => p.startsWith(dir) && !p.slice(dir.length).includes('/')).map(p => p.slice(dir.length)).sort(); }
           case 'scratch_folder': return '/home/me/.local/share/intuicode/unsaved-project';
           case 'read_folder': {
             const top = args.path.split('/').pop();

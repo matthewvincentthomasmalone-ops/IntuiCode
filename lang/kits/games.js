@@ -1,4 +1,4 @@
-/* IntuiCode kit pack: games. A rooftop platformer, a top-down garden, a one-thumb paper plane, a snake that
+/* IntuCode kit pack: games. A rooftop platformer, a top-down garden, a one-thumb paper plane, a snake that
  * plays a tune, a colour-mixing sliding puzzle, a word of the day, vocabulary pairs, a lighthouse mystery
  * in the terminal and a pixel-art editor: each with its own twist, built step by step. */
 (window.IntuiKitPacks = window.IntuiKitPacks || []).push(

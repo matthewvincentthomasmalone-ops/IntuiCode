@@ -1,9 +1,9 @@
-# IntuiCode
+# IntuCode
 
 Write Python, websites, C++ and Arduino sketches by filling in ideas and sentences, and read
 existing Python, JavaScript, HTML, CSS and C++ in plain English, or turn it into sentences.
 
-IntuiCode is a rules-based translator, not an AI. Every sentence becomes a specific
+IntuCode is a rules-based translator, not an AI. Every sentence becomes a specific
 line of Python, every summary points at real lines, and the same input always gives
 the same result. The aim is to let intuition and plain language lead, while you stay
 directly connected to every part of the code.
@@ -94,7 +94,7 @@ uploads it to a board plugged in by USB, and shows what the board sends in the t
 **Plan** (in the menu bar, or from a kit in the Library) asks what you're making, by the same kinds as the
 Library, then lists the steps that kind of project usually has, in the order you'd build them. Start from
 the smallest that works, the usual, or everything; preview any step's sentences; and watch **Your plan**
-fill in beside them before you name it and build. IntuiCode lays the steps out in your folders as
+fill in beside them before you name it and build. IntuCode lays the steps out in your folders as
 sentences, with a **Project map** beside the folders. Each step says how much is done for you:
 
 - **Walk**: written out in full, to read, run and change.
@@ -117,6 +117,29 @@ packs in `lang/kits/`.
 
 **Full screen:** the corner button on the sentences, the code and the terminal makes that window fill the
 work area; the same button, or Esc, brings the others back.
+
+**More room:** **Hide help** (top right of the help under the windows) folds it into a slim bar, and the
+chevron in the terminal's header folds the terminal down to that header. Drag the terminal's top edge to
+make it taller or shorter (double-click it for the usual size). Run, and a program asking for input, bring
+the terminal back; while it's folded, a dot on its tab says there's something new. IntuCode remembers how
+you left them.
+
+**Drop down:** the **Drop down** button on the sentences puts a small box under every value: numbers (with
+or without units), colour codes, colour names and CSS words like `center` or `bold`. **−** and **+** nudge it
+(hold for more; for a colour they make it darker or lighter), and **▾** lists the values usually chosen in
+that spot, each with what it means: line height says that 1.5 reads comfortably and headings sit tighter;
+text size names 16 as the browser's usual size; a pin lists which pins can dim a light; a colour gets a
+palette and a picker. Alt+↓ opens the list for the value at the cursor. What's usual where is plain data in
+`lang/values.js`. (A plain CSS property given a value too many, like `line-height: 1.1 #000000`, is pointed
+out with what was probably meant.)
+
+**Images:** **File → Add an image…** (or **Add an image…** under the project's folders) adds a PNG, JPEG,
+GIF, WebP or SVG to the project's `images/` folder, with a thumbnail. **Use** puts in a sentence that uses
+it, for the folder you're in: `add a picture of "images/cat.png" described as "…"` (Structure),
+`style page: background picture images/sky.jpg` (Styling), `load the picture "images/ship.png" as ship`
+and then `draw ship at x, y on game` (Mechanics, for games), or `tk.PhotoImage(file="images/ship.png")`
+(Python, in a tkinter window). The preview shows them straight away. Saving a project writes them into
+`images/` beside the code; the browser keeps them for you until then.
 
 **Two sides, and the help follows the one you're in**
 
@@ -160,7 +183,7 @@ C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the not
 
 Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
 code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML,
-CSS and C++ (including Arduino sketches) are all read. For a project, IntuiCode shows:
+CSS and C++ (including Arduino sketches) are all read. For a project, IntuCode shows:
 
 - what kind of app it looks like, and which file to start reading;
 - a reading order, and a map of which files use which;
@@ -172,7 +195,7 @@ CSS and C++ (including Arduino sketches) are all read. For a project, IntuiCode 
 Summaries link across files and languages: "uses `get_db` from db.py", "the page's
 script uses `#task-list` in index.html", "styled by `.card` in style.css", and
 "`fetch('/api/tasks')` is answered by `list_tasks` in routes/tasks.py".
-Inside each file, IntuiCode will:
+Inside each file, IntuCode will:
 
 - split it into sections (toolkits, settings, tools, web routes, classes, main steps);
 - summarise each section: what it takes, what it gives back, what it touches (files,
@@ -191,11 +214,11 @@ Inside each file, IntuiCode will:
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
 
 - **Real folders.** File → New project (Ctrl+N), Open folder (Ctrl+O) and Save (Ctrl+S). A new
-  project can go straight into a folder you choose; IntuiCode won't save over another project's
+  project can go straight into a folder you choose; IntuCode won't save over another project's
   files. Your code files are the project;
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
-  program or an Arduino sketch that wasn't made with IntuiCode opens as sentences; anything
+  program or an Arduino sketch that wasn't made with IntuCode opens as sentences; anything
   else opens in Read mode.
 - **Real Python.** Programs run with the Python installed on the computer, with live
   output, typed input and a Stop button, so web servers and packages work. Without Python
@@ -222,8 +245,8 @@ Installers are built by GitHub for Windows, macOS and Linux: go to
 the files are on the repository's **Releases** page.
 
 To try a branch or pull request before it is released, open its **Desktop app tests** run:
-under **Artifacts**, `IntuiCode-windows-exe` is the app as a single `intuicode.exe` that runs
-without installing (`gh run download <run-id> -n IntuiCode-windows-exe` fetches it). It is a debug
+under **Artifacts**, `IntuCode-windows-exe` is the app as a single `intuicode.exe` that runs
+without installing (`gh run download <run-id> -n IntuCode-windows-exe` fetches it). It is a debug
 build, so it starts a little slower than a released one.
 
 These builds aren't code-signed yet, so the first time you open the app:
@@ -231,8 +254,8 @@ These builds aren't code-signed yet, so the first time you open the app:
 - **Windows:** if SmartScreen says "Windows protected your PC", choose **More info → Run anyway**.
 - **macOS:** right-click the app and choose **Open**, then **Open** again (or System Settings →
   Privacy & Security → **Open Anyway**).
-- **Linux:** make the `.AppImage` executable (`chmod +x IntuiCode*.AppImage`) and run it, or
-  install the `.deb` with `sudo apt install ./IntuiCode*.deb`.
+- **Linux:** make the `.AppImage` executable (`chmod +x IntuCode*.AppImage`) and run it, or
+  install the `.deb` with `sudo apt install ./IntuCode*.deb`.
 
 ### Building it yourself
 
@@ -316,4 +339,4 @@ The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
 
 ## License
 
-IntuiCode is licensed under the [Apache License 2.0](LICENSE).
+IntuCode is licensed under the [Apache License 2.0](LICENSE).

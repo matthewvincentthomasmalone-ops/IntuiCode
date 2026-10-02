@@ -1,8 +1,8 @@
-"""Download the Python engine (Pyodide) into ./pyodide so IntuiCode runs without the internet.
+"""Download the Python engine (Pyodide) into ./pyodide so IntuCode runs without the internet.
 
     python3 tools/fetch_pyodide.py
 
-Without this folder, IntuiCode loads Pyodide from a CDN instead, which works when
+Without this folder, IntuCode loads Pyodide from a CDN instead, which works when
 running locally. Hosted pages (such as a claude.ai artifact) can't reach the CDN,
 so they need this folder published next to the page. Two adjustments make that
 possible, and runner.js undoes both when it loads:

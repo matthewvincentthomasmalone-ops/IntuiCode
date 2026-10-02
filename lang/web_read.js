@@ -1,4 +1,4 @@
-/* IntuiCode — web reader: JavaScript / TypeScript / React, HTML and CSS.
+/* IntuCode — web reader: JavaScript / TypeScript / React, HTML and CSS.
  *
  * Same idea as the Python reader: split files into sections, describe each
  * in plain English with rules (no AI), flag things worth checking, and link

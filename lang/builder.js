@@ -1,4 +1,4 @@
-/* IntuiCode — the project builder.
+/* IntuCode — the project builder.
  *
  * Questions narrow a project down (App › PC › Audio workstation…). At the end there is a kit: the
  * components that kind of project is usually made of, in the order you'd build them. You tick the
@@ -866,7 +866,7 @@ run window.mainloop`,
 name: Bigger apps and a modern look
 depth: horizon
 summary: tkinter comes with Python and is fine for tools, but it looks plain and big apps outgrow it. Its themed widgets (ttk, also built in) look more at home on each system; for polished, complex apps people move to Qt, which has everything from tables to charts, or build the window with web technology inside a desktop app.
-usual: tkinter.ttk or CustomTkinter for a fresher look; PySide6 (Qt for Python) for large apps; Tauri or Electron for web technology in a desktop window (IntuiCode's own desktop app is made with Tauri).
+usual: tkinter.ttk or CustomTkinter for a fresher look; PySide6 (Qt for Python) for large apps; Tauri or Electron for web technology in a desktop window (IntuCode's own desktop app is made with Tauri).
 learn: grid, for layouts in rows and columns; keeping the data separate from the window, so the same logic could have a different face; classes to organise a bigger app.`,
 
 // ---------------------------------------------------------------- Online service (SaaS)

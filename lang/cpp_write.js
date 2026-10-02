@@ -1,4 +1,4 @@
-/* IntuiCode — C++ language pack: sentences -> C++ (and Arduino sketches).
+/* IntuCode — C++ language pack: sentences -> C++ (and Arduino sketches).
  *
  * Same sentences as Python where they make sense. C++ needs a type for every
  * value, so the translator works types out from the values (text -> std::string,

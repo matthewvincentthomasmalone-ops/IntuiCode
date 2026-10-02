@@ -1,4 +1,4 @@
-/* IntuiCode — the learning modules, in Python: four classic games in a window of their own, made with tkinter
+/* IntuCode — the learning modules, in Python: four classic games in a window of their own, made with tkinter
  * (it comes with Python), built step by step and in order: Snake, Invaders, Invaders under a night sky, and
  * Jacques & Louis G., a side-scrolling platformer. Each module has two kits with the same steps: a plain one,
  * and an annotated one whose teach: lines become notes saying what each part adds, and why.
@@ -17,7 +17,7 @@
 `component: mpy-start
 name: Start: hand over to tkinter
 depth: walk
-summary: The last line of every tkinter program. mainloop opens the window and hands control to tkinter, which waits for key presses and for the moments the game asked to be woken (window.after), and runs your tools when they come, until the window is closed. Every line before it only set things up. tkinter windows open in IntuiCode's desktop app, or with Python on your computer; the Python built into the browser has no windows.
+summary: The last line of every tkinter program. mainloop opens the window and hands control to tkinter, which waits for key presses and for the moments the game asked to be woken (window.after), and runs your tools when they come, until the window is closed. Every line before it only set things up. tkinter windows open in IntuCode's desktop app, or with Python on your computer; the Python built into the browser has no windows.
 learn: Event-driven programs; why nothing may come after mainloop; why a slow tool freezes the window.
 == main
 teach: Everything above only set things up. mainloop opens the window and keeps it alive: it waits for keys and for the ticks the game asked for, and runs the tools that answer them, until the window is closed. Nothing below this line would run until then, which is why it comes last.

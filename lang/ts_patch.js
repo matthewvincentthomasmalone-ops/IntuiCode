@@ -1,4 +1,4 @@
-/* IntuiCode — a fix for the tree-sitter runtime (web-tree-sitter 0.20.8).
+/* IntuCode — a fix for the tree-sitter runtime (web-tree-sitter 0.20.8).
  *
  * Its runtime doesn't include a few C library functions that the HTML grammar's scanner
  * calls for tags it doesn't know (inline SVG, custom elements), so reading such pages

@@ -1,4 +1,4 @@
-/* IntuiCode kit pack: learning modules, website versions. A course of classic games built step by step, in
+/* IntuCode kit pack: learning modules, website versions. A course of classic games built step by step, in
  * order: Snake, then Invaders, then Invaders under a night sky, then Jacques & Louis G., a side-scrolling
  * platformer. Each module has two kits that share the same steps: a plain one, and an annotated one whose
  * teach: lines become notes in the sentences, saying what each part adds and why. Every walk step leaves the

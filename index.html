@@ -1,4 +1,4 @@
-<title>IntuiCode</title>
+<title>IntuCode</title>
 <meta name="description" content="Write Python as sentences and blueprints, or import existing code and read it in plain English.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -9,7 +9,7 @@
   <header class="bar">
     <div class="brand">
       <svg viewBox="0 0 24 24" aria-hidden="true" class="logo"><rect x="2" y="3" width="20" height="15" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="4.6" y="5.6" width="14.8" height="9.8" rx="1.6" class="logo-glass"/><path d="M7 9l2.2 1.6L7 12.2" class="logo-glow" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.6 12.2h3.2" class="logo-glow" stroke-width="1.4" stroke-linecap="round"/><path d="M9 21h6M12 18v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <span class="brand-name">IntuiCode</span>
+      <span class="brand-name">IntuCode</span>
       <span class="lang-chip" title="Language for this project">Python</span>
       <div class="modes" role="tablist" aria-label="Mode">
         <button type="button" role="tab" id="modeWrite" aria-selected="true" title="Write a program in sentences">Write</button>
@@ -25,6 +25,7 @@
           <button type="button" role="menuitem" id="btnBuilder">Plan a project…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
+          <button type="button" role="menuitem" id="btnAddImage" title="Add a picture (PNG, JPEG, GIF, WebP or SVG) to the project's images/ folder">Add an image…</button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnImport">Import code…</button>
         </div>
@@ -43,6 +44,11 @@
         <div class="side-h">Project</div>
         <div class="tree-root" id="treeRoot"></div>
         <nav id="tree" class="tree"></nav>
+        <div id="imgWrap" hidden>
+          <div class="side-h">Images <span id="imgCount" class="count"></span></div>
+          <ul id="imgList" class="img-list"></ul>
+          <div class="side-pad"><button type="button" class="btn small" id="btnAddImage2" title="Add a picture to the project's images/ folder">Add an image…</button></div>
+        </div>
         <div id="planWrap" hidden>
           <div class="side-h">Project map</div>
           <p class="plan-path" id="planPath"></p>
@@ -70,7 +76,7 @@
               <h2 id="secTitle">Main program</h2>
               <p id="secPurpose">What happens, step by step, when you press Run</p>
             </div>
-            <div class="pane-tools"><span class="file-tag">sentences</span><button type="button" class="btn small max-btn" data-max="say" aria-pressed="false" title="Full screen: the sentences (Esc to come back)" aria-label="Full screen: the sentences"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="pane-tools"><button type="button" class="btn small dd-btn" id="btnDropDown" aria-pressed="false" title="Drop down: a small box under every value (numbers, colour codes, CSS words). − and + nudge it; ▾ lists the values usually chosen there, and what each one means. Alt+↓ opens the list for the value at the cursor."><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 7l1.75 2 1.75-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Drop down</button><span class="file-tag">sentences</span><button type="button" class="btn small max-btn" data-max="say" aria-pressed="false" title="Full screen: the sentences (Esc to come back)" aria-label="Full screen: the sentences"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div>
           <div class="editor" id="editor">
             <div class="gutter" id="gutter"><div id="gutterInner"></div></div>
@@ -79,6 +85,7 @@
               <div class="band band-link" id="bandLink" hidden></div>
               <div class="band band-mask" id="bandMask" hidden><span>your turn: say it in the balloon</span></div>
               <pre class="hl" id="hl" aria-hidden="true"></pre>
+              <div class="dd-layer" id="ddLayer"></div>
               <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Sentences"></textarea>
               <div class="ac" id="ac" role="listbox" hidden></div>
             </div>
@@ -101,7 +108,10 @@
         </div>
       </section>
 
-      <section class="explain" id="explain" aria-live="polite"></section>
+      <div class="explain-wrap" id="explainWrap">
+        <button type="button" class="dock-btn" id="btnHelpDock" aria-expanded="true" aria-controls="explain" title="Hide the help under the windows, for more room"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Hide help</span></button>
+        <section class="explain" id="explain" aria-live="polite"></section>
+      </div>
 
       <section class="read" id="readView" hidden>
         <div class="read-h">
@@ -122,7 +132,8 @@
         </div>
       </section>
 
-      <section class="term" aria-label="Terminal">
+      <section class="term" id="term" aria-label="Terminal">
+        <div class="term-grip" id="termGrip" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="Drag to resize the terminal (double-click: usual size)" title="Drag to resize · double-click for the usual size"></div>
         <div class="term-h">
           <div class="term-tabs" role="tablist">
             <button type="button" role="tab" id="tabTerm" class="term-tab" aria-selected="true">Terminal</button>
@@ -131,7 +142,7 @@
           <span class="py-status" id="pyStatus">Python not loaded</span>
           <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
           <button type="button" class="btn small term-btn" id="btnStop" hidden>Stop</button>
-          <button type="button" class="btn small term-btn" id="btnClear">Clear</button><button type="button" class="btn small term-btn max-btn" data-max="term" aria-pressed="false" title="Full screen: the terminal (Esc to come back)" aria-label="Full screen: the terminal"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="btn small term-btn" id="btnClear">Clear</button><button type="button" class="btn small term-btn dock-term" id="btnTermDock" aria-expanded="true" aria-controls="termBody previewWrap" title="Hide the terminal, for more room" aria-label="Hide the terminal"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="btn small term-btn max-btn" data-max="term" aria-pressed="false" title="Full screen: the terminal (Esc to come back)" aria-label="Full screen: the terminal"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
         <div class="preview-wrap" id="previewWrap" hidden>
           <!-- no allow-same-origin: the page runs in an origin of its own, so it can't reach the editor
@@ -162,6 +173,9 @@
       <div class="index-body" id="indexBody"></div>
     </aside>
   </div>
+
+  <div class="dd-menu" id="ddMenu" role="dialog" aria-label="Usual values" tabindex="-1" hidden></div>
+  <input type="file" id="imgPick" accept=".png,.jpg,.jpeg,.gif,.webp,.svg,image/png,image/jpeg,image/gif,image/webp,image/svg+xml" multiple hidden>
 
   <div class="gloss" id="gloss" role="dialog" aria-labelledby="glossTitle" hidden>
     <div class="gloss-h" id="glossHead"><h2 id="glossTitle">Terms</h2><span class="gloss-key"><kbd>Ctrl</kbd>+<kbd>H</kbd></span><button type="button" class="tip-x" id="glossClose" aria-label="Close">×</button></div>
@@ -238,7 +252,7 @@
       <div class="modal-h">
         <div>
           <h2 id="impTitle">Import code</h2>
-          <p>Bring in a whole project (a folder or a .zip) or a single file. IntuiCode maps how the files connect, splits each one into sections and explains them in plain English. It all happens in this page; the code isn't sent anywhere.</p>
+          <p>Bring in a whole project (a folder or a .zip) or a single file. IntuCode maps how the files connect, splits each one into sections and explains them in plain English. It all happens in this page; the code isn't sent anywhere.</p>
         </div>
         <button type="button" class="btn small" id="impClose">Close</button>
       </div>
@@ -273,6 +287,7 @@
 <script src="lang/tutor.js"></script>
 <script src="lang/glossary_terms.js"></script>
 <script src="lang/glossary.js"></script>
+<script src="lang/values.js"></script>
 <!-- kit packs: lang/kits/*.js, before the builder -->
 <script src="lang/kits/everyday.js"></script>
 <script src="lang/kits/games.js"></script>

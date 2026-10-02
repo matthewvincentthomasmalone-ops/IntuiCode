@@ -1,4 +1,4 @@
-/* IntuiCode glossary: finds a language's terms in a piece of code, or the less obvious words in a
+/* IntuCode glossary: finds a language's terms in a piece of code, or the less obvious words in a
  * sentence. The terms themselves are plain data in lang/glossary_terms.js:
  *   { t: shown as, m: [strings that count as it], k: kind, s: what it is, eg: example, see: [related t] }
  * Code is read token by token (names, dotted and :: names and their parts, operators); HTML by its tags

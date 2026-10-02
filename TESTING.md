@@ -1,4 +1,4 @@
-# Trying IntuiCode on another computer
+# Trying IntuCode on another computer
 
 A 15-minute hands-on check of the desktop app. Automated tests already drive the real app on
 Linux and Windows (see **Actions → Desktop app tests**); this list is for what they can't judge:
@@ -8,7 +8,7 @@ how it feels, and your own machine.
 
 From the repository's **Releases** page, take the newest `v0.x` pre-release:
 
-- **Windows:** `IntuiCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
+- **Windows:** `IntuCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
   isn't signed yet: **More info → Run anyway**.
 - **macOS:** the `.dmg`. First launch: right-click the app → **Open** → **Open**.
 - **Linux:** the `.AppImage` (`chmod +x`, then run it) or the `.deb`.
@@ -17,7 +17,7 @@ Optional, for the C++ and Arduino checks:
 
 - **Windows C++:** [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/),
   with the **Desktop development with C++** workload. (If Visual Studio with C++ is installed, that works too.)
-- **Arduino:** the [Arduino IDE 2](https://www.arduino.cc/en/software) (IntuiCode uses the
+- **Arduino:** the [Arduino IDE 2](https://www.arduino.cc/en/software) (IntuCode uses the
   arduino-cli inside it). A board is optional.
 
 ## 2. Checklist
@@ -45,6 +45,19 @@ Tick each one. If something is off, note what you did and what the terminal said
       list on the left): the original comes back.
 - [ ] Build a game from the Library (Games): it plays in the preview with the keys or a tap.
 - [ ] The corner button on the sentences, the code and the terminal: each fills the work area; Esc comes back.
+- [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
+      it. Run brings the terminal back. Close and reopen the app: it's as you left it.
+
+**Drop down and images**
+- [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
+      it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.
+      ▾ on a colour: a palette and "Any colour". Ctrl+Z undoes each change. Alt+↓ opens the list at the cursor.
+- [ ] Write `style paragraph: line-height: 1.1 #000000`: a warning says the colour needs its own style.
+- [ ] **File → Add an image…**, pick a PNG: it's listed under Images with a thumbnail. In Structure, **Use** adds
+      `add a picture of "images/….png" …`, and the preview shows it. Save to a folder: the folder has `images/`.
+      Open that folder again: the picture is still there.
+- [ ] A game in Mechanics: `load the picture "images/….png" as ship`, then `draw ship at 20, 20 on game` inside
+      `every frame`: it's drawn in the preview.
 
 **Tutor**
 - [ ] Build **Number guessing game**, press **Tutor**, and click a sentence: the strip shows how it's said, and a balloon
@@ -65,7 +78,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Library → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
 - [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in Notepad: it is ordinary Python.
-- [ ] Edit `main.py` in Notepad (change a message), save it, then **Open folder** on that folder in IntuiCode: the sentence shows your change.
+- [ ] Edit `main.py` in Notepad (change a message), save it, then **Open folder** on that folder in IntuCode: the sentence shows your change.
 - [ ] Type `$ python --version` (Windows) or `$ python3 --version` in the terminal: it answers.
 
 **Website**

@@ -1,4 +1,4 @@
-/* IntuiCode — blueprints.
+/* IntuCode — blueprints.
  *
  * A blueprint is a short story with blanks. Filling the blanks writes sentences
  * into the project's folders; the sentences then become code. So an idea goes
@@ -200,7 +200,7 @@ add a section called menu
         add a list item "Cinnamon bun"
         add a list item "Baguette"
 add a footer
-    add a paragraph "Made with IntuiCode"
+    add a paragraph "Made with IntuCode"
 == styling
 shared colour brand is [colour]
 style the page: font Inter, space around 0, background #fffaf3, text colour #2b2118

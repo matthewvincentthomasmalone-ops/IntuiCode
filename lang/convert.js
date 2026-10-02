@@ -1,4 +1,4 @@
-/* IntuiCode — existing code -> sentences, for HTML, CSS, JavaScript, C++ and Arduino.
+/* IntuCode — existing code -> sentences, for HTML, CSS, JavaScript, C++ and Arduino.
  *
  * The Python version lives in python_reader.py; this is the same idea for the
  * other languages:

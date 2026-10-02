@@ -1,5 +1,5 @@
 // End-to-end tests of the real desktop app (not the browser page): starts the built
-// IntuiCode binary through tauri-driver and drives its window with WebDriver.
+// IntuCode binary through tauri-driver and drives its window with WebDriver.
 //
 //   1. Build a debug app:   npm run tauri -- build --debug --no-bundle
 //   2. Install the driver:  cargo install tauri-driver --locked
@@ -280,6 +280,71 @@ try {
       args: [elsewhere],
     });
     if (r.error || r.back !== '<h1 id="t">Hi</h1>' || !r.names.includes('site/index.html') || r.refused.includes(false)) throw new Error(JSON.stringify(r));
+  });
+
+  await check('pictures are written and read back as bytes, only in allowed folders', async () => {
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
+    const r = await wd('POST', `/session/${session}/execute/async`, {
+      script: `const [elsewhere, done] = arguments; const I = window.__TAURI__.core.invoke;
+        (async () => {
+          const dir = (await I('scratch_folder')) + '/e2e-pictures';
+          const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+          await I('write_bytes', { path: dir + '/images/dot.png', data: png });
+          const back = await I('read_bytes', { path: dir + '/images/dot.png' });
+          const refused = async (cmd, args) => { try { await I(cmd, args); return false; } catch (e) { return true; } };
+          return {
+            same: back === png, names: await I('list_files', { path: dir + '/images' }), none: await I('list_files', { path: dir + '/not-there' }),
+            refused: [
+              await refused('write_bytes', { path: elsewhere + '/x.png', data: png }),
+              await refused('read_bytes', { path: dir + '/../../x.png' }),
+              await refused('list_files', { path: elsewhere }),
+            ],
+          };
+        })().then(done, (e) => done({ error: String(e) }));`,
+      args: [elsewhere],
+    });
+    if (r.error || !r.same || r.names.join() !== 'dot.png' || r.none.length || r.refused.includes(false)) throw new Error(JSON.stringify(r));
+  });
+
+  await check('more room, Drop down and pictures: the help and terminal fold away, values get − ▾ +, images go in images/', async () => {
+    await blueprint('To-do list page');
+    const r = await js(() => {
+      const ta = document.getElementById('ta'), h = () => document.getElementById('editor').getBoundingClientRect().height;
+      const say = (t) => { ta.value = t; ta.dispatchEvent(new Event('input', { bubbles: true })); };
+      const press = (el) => { el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); document.dispatchEvent(new PointerEvent('pointerup')); };
+      const before = h();
+      document.getElementById('btnHelpDock').click();
+      document.getElementById('btnTermDock').click();
+      const grew = h() - before;
+      document.querySelector('#tree [data-id="styling"]').click();
+      say('style paragraph: text size 24, line-height: 1.1');
+      document.getElementById('btnDropDown').click();
+      const ctls = () => document.querySelectorAll('#ddLayer .dd-ctl');
+      const boxes = ctls().length;
+      press(ctls()[1].querySelector('.dd-more'));
+      const nudged = ta.value;
+      press(ctls()[1].querySelector('.dd-open'));
+      const menu = document.getElementById('ddMenu'), title = menu.querySelector('.dd-h b').textContent, options = menu.querySelectorAll('[data-o]').length;
+      [...menu.querySelectorAll('[data-o]')].find(o => o.textContent.trim().startsWith('1.5')).click();
+      const chosen = ta.value, closed = menu.hidden;
+      document.getElementById('btnDropDown').click(); document.getElementById('btnHelpDock').click(); document.getElementById('btnTermDock').click();
+      return { grew, boxes, nudged, title, options, chosen, closed, back: !document.getElementById('work').classList.contains('term-shut') };
+    });
+    if (r.grew < 60 || r.boxes !== 2 || !/line-height: 1\.2$/.test(r.nudged) || !/line height/i.test(r.title) || r.options < 4 || !/line-height: 1\.5$/.test(r.chosen) || !r.closed || !r.back) throw new Error(JSON.stringify(r));
+    const p = await wd('POST', `/session/${session}/execute/async`, {
+      script: `const done = arguments[0];
+        (async () => {
+          document.querySelector('#tree [data-id="structure"]').click();
+          const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
+          const dt = new DataTransfer(); dt.items.add(new File([png], 'dot.png', { type: 'image/png' }));
+          const inp = document.getElementById('imgPick'); inp.files = dt.files; inp.dispatchEvent(new Event('change'));
+          for (let i = 0; i < 40 && !document.querySelector('#imgList [data-use]'); i++) await new Promise(r => setTimeout(r, 100));
+          document.querySelector('#imgList [data-use="dot.png"]').click();
+          return { listed: document.getElementById('imgList').innerText, sentence: document.getElementById('ta').value.split('\\n').find(l => /images\\/dot\\.png/.test(l)) || '' };
+        })().then(done, (e) => done({ error: String(e) }));`,
+      args: [],
+    });
+    if (p.error || !/dot\.png/.test(p.listed) || !/^add a picture of "images\/dot\.png" described as/.test(p.sentence)) throw new Error(JSON.stringify(p));
   });
 
   await check('the website preview runs in its own sandbox', async () => {

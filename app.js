@@ -1,4 +1,4 @@
-/* IntuiCode — the app.
+/* IntuCode — the app.
  *
  * Write mode:  blueprint (story with blanks) -> sentences in folders -> Python -> terminal
  * Read mode:   imported Python -> sections -> plain-English summaries and sentences
@@ -64,9 +64,13 @@
   }
 
   /* A project read back from the browser or from a folder's .intuicode/project.json keeps only the
-   * parts IntuiCode uses, checked, so a project file from someone else can't put markup into the
-   * page or odd values into the commands IntuiCode runs. */
+   * parts IntuCode uses, checked, so a project file from someone else can't put markup into the
+   * page or odd values into the commands IntuCode runs. */
   const KIND_FILES = { python: ['settings', 'tools', 'main'], website: LAYOUTS.website, cpp: LAYOUTS.cpp, arduino: LAYOUTS.arduino };
+  // pictures in a project's images/ folder: a plain file name with a picture's ending, nothing more
+  const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+  const IMAGE_NAME = /^[A-Za-z0-9_][\w.-]{0,78}\.(?:png|jpe?g|gif|webp|svg)$/i;
+  const IMAGE_MAX = 8e6;
   const BOARD_ID = /^[\w.-]+:[\w.-]+:[\w.-]+(?::[\w.=,-]+)?$/;   // arduino-cli's name for a kind of board, e.g. esp32:esp32:esp32
   function checkedProject(p) {
     if (!p || typeof p !== 'object' || !Array.isArray(p.sections) || !p.sections.length) return null;
@@ -75,6 +79,11 @@
     if (sections.includes(null) || new Set(sections.map(s => s.id)).size !== sections.length || sections.length > KIND_FILES[kind].length) return null;
     const out = { version: 1, lang: 'python', kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: sections.some(s => s.id === p.active) ? p.active : sections[sections.length - 1].id };
     if (typeof p.board === 'string' && BOARD_ID.test(p.board)) out.board = p.board;
+    // its pictures: names and sizes here; the pictures themselves are kept by content (see Images)
+    if (Array.isArray(p.images)) {
+      out.images = p.images.slice(0, 60).filter(im => im && typeof im.name === 'string' && IMAGE_NAME.test(im.name) && typeof im.key === 'string' && /^[0-9a-f]{16,64}$/.test(im.key))
+        .map(im => ({ name: im.name, type: IMAGE_TYPES[im.name.split('.').pop().toLowerCase()], key: im.key, w: Math.max(0, +im.w || 0), h: Math.max(0, +im.h || 0), size: Math.max(0, +im.size || 0) }));
+    }
     // the project builder's map: steps in order, each a name, a depth and plain-language notes
     if (p.plan && typeof p.plan === 'object' && Array.isArray(p.plan.steps)) {
       const str = (v, n = 3000) => (typeof v === 'string' ? v.slice(0, n) : '');
@@ -134,6 +143,7 @@
     updateChip();
     if (project.kind === 'website') runWebsite(false);
     if (desk.on) showFolder();
+    loadImages();
     if (message) tLine(message + ' (Your previous project is kept: type "restore" in the terminal to swap back.)', 't-sys');
   }
 
@@ -251,6 +261,7 @@
     const mask = $('bandMask');
     if (!mask.hidden) placeBand(mask, +mask.dataset.line);
     placeTip();
+    renderValues();
   }
   function placeBand(el, line) { el.style.top = (PAD_T + line * LH - ta.scrollTop) + 'px'; }
 
@@ -375,7 +386,7 @@
     $('explain').innerHTML = `${src >= 0 ? planBanner(src) : ''}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} line ${codeIdx + 1}</span><div class="ex-py">${hlCode(lang, o.text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
         <div class="ex-arrow" aria-hidden="true">←</div>
-        <div class="ex-cell"><span class="ex-lbl">${src >= 0 ? `From your sentence · <button type="button" class="linklike" data-go-say="${src}">line ${src + 1}</button>` : 'Added for you'}</span><div class="ex-say">${src >= 0 ? escHtml(sentence) : '<span class="dim">IntuiCode adds this so the program is complete: it has no sentence of its own.</span>'}</div></div>
+        <div class="ex-cell"><span class="ex-lbl">${src >= 0 ? `From your sentence · <button type="button" class="linklike" data-go-say="${src}">line ${src + 1}</button>` : 'Added for you'}</span><div class="ex-say">${src >= 0 ? escHtml(sentence) : '<span class="dim">IntuCode adds this so the program is complete: it has no sentence of its own.</span>'}</div></div>
       </div>
       ${partsHtml(sec, o.text)}
       ${notes.length ? `<div class="ex-why-box"><span class="ex-lbl">Why it's written this way</span><ul class="ex-notes">${notes.map(n => `<li>${withCode(n)}</li>`).join('')}</ul></div>` : ''}
@@ -411,7 +422,7 @@
   }
 
   /* The shape a sentence follows: the template it fits, with your words in its ‹parts›. Lines that fit none
-   * get their words sorted into what IntuiCode knows and what you named. */
+   * get their words sorted into what IntuCode knows and what you named. */
   const shapeCache = new Map();
   function shapesFor(sec) {
     const key = secLang(sec) + ':' + sec.file;
@@ -454,7 +465,7 @@
     }
     const list = (a) => [...new Set(a)].slice(0, 8).map(w => `<code>${escHtml(w)}</code>`).join(' ');
     if (!roles.known.length && !roles.names.length) return '';
-    return `<div class="ex-shape"><span class="ex-lbl">How it's said</span><div class="ex-shape-row ex-roles">${roles.known.length ? `<span>Words IntuiCode knows: ${list(roles.known)}</span>` : ''}${roles.names.length ? `<span>Your names: ${list(roles.names)}</span>` : ''}${roles.values.length ? `<span>Values: ${list(roles.values)}</span>` : ''}</div></div>`;
+    return `<div class="ex-shape"><span class="ex-lbl">How it's said</span><div class="ex-shape-row ex-roles">${roles.known.length ? `<span>Words IntuCode knows: ${list(roles.known)}</span>` : ''}${roles.names.length ? `<span>Your names: ${list(roles.names)}</span>` : ''}${roles.values.length ? `<span>Values: ${list(roles.values)}</span>` : ''}</div></div>`;
   }
 
   function iconSvg(path) {
@@ -687,6 +698,7 @@
   function onEdit() {
     runtimeMark = null;
     if (!tip.hidden) hideTip();
+    closeDdMenu();
     autosave();
     typingLine = caretLine();
     activeSec().text = ta.value;
@@ -697,7 +709,7 @@
   }
 
   ta.addEventListener('input', () => { onEdit(); updateAc(); });
-  ta.addEventListener('scroll', () => { syncScroll(); if (!ac.hidden) updateAc(); placeTip(); });
+  ta.addEventListener('scroll', () => { closeDdMenu(); syncScroll(); if (!ac.hidden) updateAc(); placeTip(); });
   ta.addEventListener('click', () => { closeAc(); afterCaretMove(true); });
   ta.addEventListener('keyup', (e) => {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key) && ac.hidden) afterCaretMove(true);
@@ -706,6 +718,7 @@
 
   ta.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); return; }
+    if (e.altKey && e.key === 'ArrowDown' && ddOn()) { if (openDdAtCaret()) { e.preventDefault(); return; } }
     if (!ac.hidden) {
       if (e.key === 'ArrowDown') { e.preventDefault(); return moveAc(1); }
       if (e.key === 'ArrowUp') { e.preventDefault(); return moveAc(-1); }
@@ -861,6 +874,7 @@
     $('btnTutor').setAttribute('aria-pressed', String(on));
     hideTip();
     if (on) {
+      setDock('help', true);   // part of the tutor lives in the help strip
       tLine('Tutor is on. As you write, I\'ll point out how the language likes things said, and now and then ask you to write a line yourself. (It speaks Python, C++ and Arduino so far.)', 't-sys');
       loadTutorReader(tutorLang(activeSec()) || 'python');
       tutorSoon(600);
@@ -908,7 +922,7 @@
     lines[li] = lines[li].match(/^\s*/)[0] + answer.trim();
     copy.sections.find(s => s.id === sec.id).text = lines.join('\n');
     let other;
-    try { other = project.kind === 'website' ? WEB.compileWebsite(copy) : isCpp() ? CPP.compileCppProject(copy) : LANG.compileProject(copy); } catch (e) { return { same: false, error: 'IntuiCode couldn\'t read that sentence.' }; }
+    try { other = project.kind === 'website' ? WEB.compileWebsite(copy) : isCpp() ? CPP.compileCppProject(copy) : LANG.compileProject(copy); } catch (e) { return { same: false, error: 'IntuCode couldn\'t read that sentence.' }; }
     const mine = other.results[sec.id];
     if (!mine || !mine.info[li] || mine.info[li].errs.length) return { same: false, error: mine && mine.info[li] && mine.info[li].errs[0] };
     return { same: copy.sections.every(s => (other.results[s.id] || {}).text === (compiled.results[s.id] || {}).text) };
@@ -1165,6 +1179,7 @@
   let maxed = '';
   function setMax(which) {
     maxed = maxed === which ? '' : which;
+    if (maxed === 'term') setDock('term', true);
     const ws = document.querySelector('.workspace');
     ws.classList.remove('max-say', 'max-code', 'max-term');
     if (maxed) ws.classList.add('max-' + maxed);
@@ -1177,6 +1192,265 @@
     if (maxed === 'term') termIn.focus(); else if (maxed === 'say') ta.focus(); else if (maxed === 'code') pycode.focus();
   }
   document.addEventListener('click', (e) => { const b = e.target.closest('.max-btn'); if (b) setMax(b.dataset.max); });
+
+  /* ------------------------------------------------------------------ */
+  /* Room to work: the help strip and the terminal fold away, and the    */
+  /* terminal's height can be dragged. Remembered for next time.         */
+  /* ------------------------------------------------------------------ */
+
+  const LAYOUT_KEY = 'intuicode.layout.v1';
+  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, dd: false }, store.get(LAYOUT_KEY, {}));
+  function applyLayout() {
+    const work = $('work'), hb = $('btnHelpDock'), tb = $('btnTermDock');
+    $('explainWrap').classList.toggle('shut', !layout.help);
+    hb.setAttribute('aria-expanded', String(layout.help));
+    hb.querySelector('span').textContent = layout.help ? 'Hide help' : 'Show help';
+    hb.title = layout.help ? 'Hide the help under the windows, for more room' : 'Show the help: what the line you\'re on says, and what it makes';
+    work.classList.toggle('term-shut', !layout.term);
+    tb.setAttribute('aria-expanded', String(layout.term));
+    tb.title = layout.term ? 'Hide the terminal, for more room' : 'Show the terminal';
+    tb.setAttribute('aria-label', tb.title);
+    for (const [key, prop] of [['termRow', '--term-row'], ['webRow', '--web-row']]) {
+      if (layout[key]) work.style.setProperty(prop, layout[key] + 'px'); else work.style.removeProperty(prop);
+    }
+    measure(); syncScroll(); placeTip();
+  }
+  function setDock(which, open) {
+    if (which === 'term' && open) $('tabTerm').classList.remove('unread');
+    if (layout[which] === open) return;
+    layout[which] = open;
+    store.set(LAYOUT_KEY, layout);
+    applyLayout();
+  }
+  $('btnHelpDock').addEventListener('click', () => setDock('help', !layout.help));
+  $('btnTermDock').addEventListener('click', () => setDock('term', !layout.term));
+
+  const grip = $('termGrip');
+  const rowKey = () => ($('work').classList.contains('web') ? 'webRow' : 'termRow');
+  function setTermHeight(h) {
+    const r = $('work').getBoundingClientRect(), key = rowKey();
+    layout[key] = Math.round(Math.min(Math.max(h, 90), Math.max(r.height - 170, 90)));
+    $('work').style.setProperty(key === 'webRow' ? '--web-row' : '--term-row', layout[key] + 'px');
+    placeTip();
+  }
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('resizing');   // the preview frame mustn't swallow the drag
+    const move = (ev) => setTermHeight($('work').getBoundingClientRect().bottom - ev.clientY);
+    const up = () => {
+      document.body.classList.remove('resizing');
+      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up);
+      store.set(LAYOUT_KEY, layout); measure(); syncScroll();
+    };
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', () => { layout[rowKey()] = 0; store.set(LAYOUT_KEY, layout); applyLayout(); });
+  grip.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    setTermHeight($('term').getBoundingClientRect().height + (e.key === 'ArrowUp' ? 24 : -24));
+    store.set(LAYOUT_KEY, layout);
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Drop down: under every value in the sentences (a number, a colour,  */
+  /* a CSS word) a small box. − and + nudge it; ▾ lists the values       */
+  /* usually chosen in that spot, each said in plain words. The lines    */
+  /* grow taller to make room, so nothing covers the text.               */
+  /* ------------------------------------------------------------------ */
+
+  const VALUES = window.IntuiValues;
+  const ddLayer = $('ddLayer'), ddMenu = $('ddMenu');
+  let ddVals = [], ddHold = null, ddOpen = null;
+  const ddInfo = new Map();   // "lang|line|start" -> what the value is (cleared when it grows)
+  const ddOn = () => !!(layout.dd && VALUES && mode === 'write');
+  const lineStartOf = (line) => { const ls = ta.value.split('\n'); let p = 0; for (let i = 0; i < line && i < ls.length; i++) p += ls[i].length + 1; return p; };
+  function infoOf(lang, text, v) {
+    const k = `${lang}|${text}|${v.start}`;
+    if (!ddInfo.has(k)) { if (ddInfo.size > 3000) ddInfo.clear(); try { ddInfo.set(k, VALUES.explain(text, v, lang)); } catch (e) { console.error(e); ddInfo.set(k, null); } }
+    return ddInfo.get(k);
+  }
+  const stepWords = (info) => (info && info.step === 'colour' ? ['Darker', 'Lighter'] : info && info.step === 'cycle' ? ['The one before', 'The next one'] : ['Less', 'More']);
+
+  function applyDropDown() {
+    const on = !!layout.dd;
+    $('btnDropDown').setAttribute('aria-pressed', String(on));
+    $('editor').classList.toggle('dd', on);
+    closeDdMenu();
+    measure(); syncScroll();
+  }
+  function setDropDown(on) { layout.dd = on; store.set(LAYOUT_KEY, layout); applyDropDown(); ta.focus({ preventScroll: true }); }
+  $('btnDropDown').addEventListener('click', () => setDropDown(!layout.dd));
+
+  /* Text offsets in the highlighted copy of the sentences (its text is the same), for exact positions. */
+  function hlRanges() {
+    const nodes = [], walk = document.createTreeWalker(hl, NodeFilter.SHOW_TEXT);
+    let pos = 0;
+    for (let n; (n = walk.nextNode());) { nodes.push({ pos, n }); pos += n.data.length; }
+    const find = (off, atEnd) => {
+      let lo = 0, hi = nodes.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (nodes[mid].pos < off || (!atEnd && nodes[mid].pos === off)) lo = mid; else hi = mid - 1; }
+      return nodes[lo];
+    };
+    return (from, to) => {
+      if (!nodes.length) return null;
+      const a = find(from, false), b = find(to, true), r = document.createRange();
+      r.setStart(a.n, Math.min(from - a.pos, a.n.data.length)); r.setEnd(b.n, Math.min(to - b.pos, b.n.data.length));
+      return r.getBoundingClientRect();
+    };
+  }
+
+  /* The boxes, for the lines in view. */
+  function renderValues() {
+    if (!ddOn()) { if (ddLayer.firstChild) ddLayer.textContent = ''; ddVals = []; return; }
+    const sec = activeSec(), lang = glossLang(sec), lines = ta.value.split('\n'), base = codewrap.getBoundingClientRect();
+    const first = Math.max(0, Math.floor((ta.scrollTop - PAD_T) / LH) - 1), last = Math.min(lines.length - 1, Math.ceil((ta.scrollTop + ta.clientHeight) / LH) + 1);
+    const mask = $('bandMask'), masked = mask.hidden ? -1 : +mask.dataset.line;   // never give away a tutor exercise
+    const rectOf = hlRanges();
+    const html = [];
+    ddVals = [];
+    let off = lineStartOf(first);
+    for (let li = first; li <= last; li++) {
+      const text = lines[li];
+      if (li !== masked && /\d|#|[a-z]/i.test(text)) {
+        let right = -Infinity;
+        VALUES.scan(text, lang).forEach((v, idx) => {
+          const r = rectOf(off + v.start, off + v.end);
+          if (!r || !r.width) return;
+          const info = infoOf(lang, text, v), k = ddVals.push({ line: li, idx }) - 1;
+          const x = r.left - base.left, y = r.top - base.top;
+          const can = !!(info && info.step != null), colour = info && info.colour && VALUES.toHex(v.text);
+          const w = colour ? 54 : 45, left = Math.max(Math.max(x + r.width / 2 - w / 2, right + 3), 2);
+          right = left + w;
+          const [less, more] = stepWords(info), title = info ? info.title : 'A value';
+          html.push(`<div class="dd-val" style="left:${(x - 2).toFixed(1)}px;top:${(y - 1).toFixed(1)}px;width:${(r.width + 4).toFixed(1)}px;height:${(r.height + 2).toFixed(1)}px"></div>`
+            + `<div class="dd-ctl" data-k="${k}" style="left:${left.toFixed(1)}px;top:${(y + r.height + 1).toFixed(1)}px">`
+            + (colour ? `<span class="dd-chip" style="background:${colour}"></span>` : '')
+            + `<button type="button" tabindex="-1" class="dd-less" ${can ? '' : 'disabled '}title="${escHtml(less + ': ' + title)}" aria-label="${escHtml(less)}">−</button>`
+            + `<button type="button" tabindex="-1" class="dd-open" title="${escHtml(title + ': the usual values')}" aria-label="${escHtml(title + ': the usual values')}"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
+            + `<button type="button" tabindex="-1" class="dd-more" ${can ? '' : 'disabled '}title="${escHtml(more + ': ' + title)}" aria-label="${escHtml(more)}">+</button></div>`);
+        });
+      }
+      off += text.length + 1;
+    }
+    ddLayer.innerHTML = html.join('');
+    if (ddOpen) ddLayer.querySelectorAll('.dd-ctl').forEach(c => { const d = ddVals[+c.dataset.k]; c.classList.toggle('open', d.line === ddOpen.line && d.idx === ddOpen.idx); });
+  }
+
+  /* The value now at (line, idx), and the sentence it's in. */
+  function valueAt(line, idx) {
+    const text = ta.value.split('\n')[line];
+    if (text == null) return null;
+    const lang = glossLang(activeSec()), v = VALUES.scan(text, lang)[idx];
+    return v ? { text, lang, v, info: infoOf(lang, text, v), at: lineStartOf(line) + v.start } : null;
+  }
+  /* Put a new value in, as typing would (Ctrl+Z takes it back). */
+  function putValue(line, idx, next) {
+    const cur = valueAt(line, idx);
+    if (!cur || next == null || next === cur.v.text) return;
+    insertText(String(next), cur.at, cur.at + cur.v.text.length);
+    typingLine = -1;   // not mid-typing: say straight away if the new value is a problem
+    afterCaretMove(true);
+  }
+  function nudge(line, idx, dir) {
+    const cur = valueAt(line, idx);
+    if (cur && cur.info && cur.info.step != null) putValue(line, idx, VALUES.step(cur.text, cur.v, dir, cur.info));
+  }
+  function holdStop() { clearTimeout(ddHold); ddHold = null; }
+  ddLayer.addEventListener('mousedown', (e) => e.preventDefault());   // the sentences keep the keyboard
+  ddLayer.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('button'), c = b && b.closest('.dd-ctl');
+    if (!b || b.disabled || !c) return;
+    e.preventDefault();
+    const { line, idx } = ddVals[+c.dataset.k];
+    if (b.classList.contains('dd-open')) return ddOpen && ddOpen.line === line && ddOpen.idx === idx ? closeDdMenu() : openDdMenu(line, idx);
+    closeDdMenu();
+    const dir = b.classList.contains('dd-more') ? 1 : -1;
+    nudge(line, idx, dir);
+    holdStop();   // held down: again and again, until it's let go
+    ddHold = setTimeout(function again() { nudge(line, idx, dir); ddHold = setTimeout(again, 70); }, 420);
+  });
+  document.addEventListener('pointerup', holdStop);
+  document.addEventListener('pointercancel', holdStop);
+  window.addEventListener('blur', holdStop);
+
+  /* ▾: the usual values for this spot. */
+  function openDdMenu(line, idx) {
+    const cur = valueAt(line, idx);
+    if (!cur || !cur.info) return closeDdMenu();
+    const { v, info } = cur, opts = info.options || [];
+    ddOpen = { line, idx, sel: info.current >= 0 ? info.current : 0, colour: !!info.colour, opts };
+    const row = (o, i) => `<li role="option" id="ddo${i}" data-o="${i}" aria-selected="${i === ddOpen.sel}"${i === info.current ? ' class="now"' : ''}><span class="dd-v">${escHtml(o.text)}</span><span class="dd-l">${escHtml(o.label || '')}</span></li>`;
+    const sw = (o, i) => `<button type="button" role="option" id="ddo${i}" class="dd-swatch" data-o="${i}" aria-selected="${i === ddOpen.sel}" style="background:${escHtml(o.swatch || VALUES.toHex(o.text) || o.text)}" title="${escHtml(o.text + (o.label ? ' · ' + o.label : ''))}" aria-label="${escHtml(o.text + (o.label ? ', ' + o.label : ''))}"></button>`;
+    ddMenu.innerHTML = `<div class="dd-h"><b>${escHtml(info.title)}</b><code>${escHtml(v.text)}</code></div>
+      ${info.about ? `<p class="dd-about">${withCode(info.about)}</p>` : ''}
+      ${info.colour
+        ? `<div class="dd-sw" role="listbox" aria-label="Colours">${opts.map(sw).join('')}</div><p class="dd-swname" id="ddSwName"></p>
+           <label class="dd-any">Any colour: <input type="color" id="ddColour" value="${escHtml(VALUES.toHex(v.text) || '#000000')}"></label>`
+        : `<ul class="dd-list" role="listbox" aria-label="${escHtml(info.title)}">${opts.map(row).join('')}</ul>`}
+      <p class="dd-foot">${info.step != null ? '− and + nudge it. ' : ''}<kbd>↑</kbd> <kbd>↓</kbd> then <kbd>Enter</kbd> to choose, <kbd>Esc</kbd> to close.</p>`;
+    ddMenu.hidden = false;
+    markDd();
+    // under the value (or above it, if there's no room below), kept on screen
+    const r = hlRanges()(cur.at, cur.at + v.text.length), m = ddMenu.getBoundingClientRect();
+    let top = r.bottom + 18;
+    if (top + m.height > innerHeight - 8) top = Math.max(8, r.top - m.height - 6);
+    ddMenu.style.left = Math.max(8, Math.min(r.left - 12, innerWidth - m.width - 8)) + 'px';
+    ddMenu.style.top = top + 'px';
+    ddMenu.focus({ preventScroll: true });
+    renderValues();
+  }
+  function markDd() {
+    ddMenu.querySelectorAll('[data-o]').forEach(el => el.setAttribute('aria-selected', String(+el.dataset.o === ddOpen.sel)));
+    const el = $('ddo' + ddOpen.sel);
+    if (el) { el.scrollIntoView({ block: 'nearest' }); ddMenu.setAttribute('aria-activedescendant', el.id); }
+    const o = ddOpen.opts[ddOpen.sel], name = $('ddSwName');
+    if (name) name.textContent = o ? o.text + (o.label ? ' · ' + o.label : '') : '';
+  }
+  function closeDdMenu(back) {
+    if (ddMenu.hidden && !ddOpen) return;
+    ddMenu.hidden = true; ddOpen = null;
+    ddLayer.querySelectorAll('.dd-ctl.open').forEach(c => c.classList.remove('open'));
+    if (back) ta.focus({ preventScroll: true });
+  }
+  function chooseDd(i) {
+    const o = ddOpen && ddOpen.opts[i];
+    if (!o) return;
+    const { line, idx } = ddOpen;
+    closeDdMenu(true);
+    putValue(line, idx, o.text);
+  }
+  ddMenu.addEventListener('click', (e) => { const o = e.target.closest('[data-o]'); if (o) chooseDd(+o.dataset.o); });
+  ddMenu.addEventListener('mouseover', (e) => { const o = e.target.closest('[data-o]'); if (o && ddOpen && +o.dataset.o !== ddOpen.sel) { ddOpen.sel = +o.dataset.o; markDd(); } });
+  ddMenu.addEventListener('change', (e) => {
+    if (e.target.id !== 'ddColour' || !ddOpen) return;
+    const { line, idx } = ddOpen, cur = valueAt(line, idx), hex = e.target.value;
+    closeDdMenu(true);
+    putValue(line, idx, cur && /^#[0-9A-F]+$/.test(cur.v.text) ? hex.toUpperCase() : hex);
+  });
+  ddMenu.addEventListener('keydown', (e) => {
+    if (!ddOpen) return;
+    const n = ddOpen.opts.length, across = ddOpen.colour ? 8 : 1;
+    const go = { ArrowDown: across, ArrowUp: -across, ArrowRight: ddOpen.colour ? 1 : 0, ArrowLeft: ddOpen.colour ? -1 : 0 }[e.key];
+    if (go) { e.preventDefault(); ddOpen.sel = Math.min(n - 1, Math.max(0, ddOpen.sel + go)); markDd(); return; }
+    if (e.key === 'Enter' && e.target.id !== 'ddColour') { e.preventDefault(); chooseDd(ddOpen.sel); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeDdMenu(true); return; }
+    if (e.key === 'Tab') closeDdMenu(true);
+  });
+  document.addEventListener('pointerdown', (e) => { if (!ddMenu.hidden && !ddMenu.contains(e.target) && !e.target.closest('.dd-ctl')) closeDdMenu(); });
+  /* Alt+↓ in the sentences: the list for the value at the cursor (or the nearest on its line). */
+  function openDdAtCaret() {
+    const line = caretLine(), text = ta.value.split('\n')[line] || '', col = ta.selectionStart - lineStartOf(line);
+    const vals = VALUES.scan(text, glossLang(activeSec()));
+    if (!vals.length) return false;
+    let idx = vals.findIndex(v => col >= v.start && col <= v.end);
+    if (idx < 0) idx = vals.findIndex(v => v.start > col);
+    if (idx < 0) idx = vals.length - 1;
+    openDdMenu(line, idx);
+    return true;
+  }
 
   /* ------------------------------------------------------------------ */
   /* Ctrl+H: the words in a selection (or the section the cursor is in),  */
@@ -1303,6 +1577,7 @@
     span.textContent = text;
     termLog.appendChild(span);
     termBody.scrollTop = termBody.scrollHeight;
+    if (!layout.term) $('tabTerm').classList.add('unread');   // folded away: a dot says there's something new
   }
   function tLine(text, cls) {
     const last = termLog.lastChild;
@@ -1331,7 +1606,7 @@
     termPrompt.classList.toggle('asking', on);
     termIn.classList.toggle('asking', on);
     termIn.placeholder = on ? 'type your answer and press Enter' : 'type help, run, or any sentence or Python to try it';
-    if (on) termIn.focus({ preventScroll: true });
+    if (on) { setDock('term', true); termIn.focus({ preventScroll: true }); }
   }
 
   async function ensurePython() {
@@ -1380,6 +1655,7 @@
   }
 
   async function run() {
+    setDock('term', true);   // Run shows what happens, even when the terminal was folded away
     if (mode === 'read') { tLine('Run works on the program in Write mode. Use "Open as sentences" to bring imported code there.', 't-sys'); return; }
     if (project.kind === 'website') return runWebsite(true);
     if (isCpp()) {
@@ -1388,12 +1664,12 @@
       if (project.kind === 'arduino') {
         if (desk.on && desk.arduino) return runDesktopArduino();
         tLine(desk.on
-          ? 'To check a sketch and put it on a board, IntuiCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuiCode. Until then, copy the code on the right into the Arduino IDE.'
-          : 'A sketch runs on an Arduino board, not in the browser. In the IntuiCode desktop app (with the Arduino IDE or arduino-cli installed), Run checks the sketch and uploads it to a board plugged in by USB. Or copy the code on the right into the Arduino IDE.', 't-sys');
+          ? 'To check a sketch and put it on a board, IntuCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuCode. Until then, copy the code on the right into the Arduino IDE.'
+          : 'A sketch runs on an Arduino board, not in the browser. In the IntuCode desktop app (with the Arduino IDE or arduino-cli installed), Run checks the sketch and uploads it to a board plugged in by USB. Or copy the code on the right into the Arduino IDE.', 't-sys');
         return;
       }
       if (desk.on && desk.cpp) return runDesktopCpp();
-      tLine(desk.on ? 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuiCode.' : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuiCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
+      tLine(desk.on ? 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuCode.' : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
       return;
     }
     typingLine = -1;
@@ -1509,7 +1785,7 @@
   function runWebsite(announce) {
     if (!compiled) compile();
     previewInfo = WEB.previewDocument(compiled, previewHelper());
-    showPreviewPage(previewInfo.html, announce);
+    showPreviewPage(withImages(previewInfo.html), announce);
     setPicking(false);
     if (announce) {
       showBottom('preview');
@@ -1548,8 +1824,8 @@
     const w = $('preview').contentWindow;
     if (w) w.postMessage({ intuicodePick: on }, '*');
   }
-  $('tabTerm').addEventListener('click', () => showBottom('terminal'));
-  $('tabPreview').addEventListener('click', () => { showBottom('preview'); runWebsite(false); });
+  $('tabTerm').addEventListener('click', () => { setDock('term', true); showBottom('terminal'); });
+  $('tabPreview').addEventListener('click', () => { setDock('term', true); showBottom('preview'); runWebsite(false); });
   $('btnPick').addEventListener('click', () => setPicking(!picking));
   window.addEventListener('message', (e) => {
     if (e.source !== $('preview').contentWindow || !e.data || !e.data.intuicode) return;
@@ -1642,7 +1918,7 @@
     const names = Object.keys(BOARD_NAMES).join(', ');
     if (!name) return tLine(`This sketch is for ${project.board || 'a board recognised on its USB port (or an Uno)'}. To choose, type board and one of: ${names}, or arduino-cli's full name for it (list them with $ arduino-cli board listall).`, 't-help');
     const fqbn = BOARD_NAMES[name.toLowerCase()] || name;
-    if (!BOARD_ID.test(fqbn)) return tLine(`"${name}" isn't a board name IntuiCode knows. Use one of: ${names}, or arduino-cli's full name, like esp32:esp32:esp32-evb.`, 't-err');
+    if (!BOARD_ID.test(fqbn)) return tLine(`"${name}" isn't a board name IntuCode knows. Use one of: ${names}, or arduino-cli's full name, like esp32:esp32:esp32-evb.`, 't-err');
     project.board = fqbn;
     save(); autosave();
     tLine(`This sketch is now for ${fqbn}. Press Run to check it and upload it.`, 't-sys');
@@ -1983,10 +2259,11 @@
     $('modeWrite').setAttribute('aria-selected', String(next === 'write'));
     $('modeRead').setAttribute('aria-selected', String(next === 'read'));
     $('writeView').hidden = next !== 'write';
-    $('explain').hidden = next !== 'write';
+    $('explainWrap').hidden = next !== 'write';
     $('writeSide').hidden = next !== 'write';
     $('readView').hidden = next !== 'read';
     $('readSide').hidden = next !== 'read';
+    renderImages();
     $('work').classList.toggle('reading', next === 'read');
     $('work').classList.toggle('web', next === 'write' && project.kind === 'website');
     showBottom(next === 'write' && project.kind === 'website' ? 'preview' : 'terminal');
@@ -3309,6 +3586,165 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Images: pictures in the project's images/ folder, which sentences    */
+  /* name "images/ship.png". The browser keeps each one by its content in */
+  /* IndexedDB, so projects stay small; a saved project has them as real */
+  /* files too, and those win when the folder is opened again.           */
+  /* ------------------------------------------------------------------ */
+
+  const imageUrls = new Map();   // content key -> data: URL, for the thumbnails and the preview
+  const imagesWritten = new Set();   // "folder|name|key": already in that folder's images/
+  let imageDb = null;
+  const images = () => project.images || (project.images = []);
+  const usesImages = () => project.kind === 'website' || project.kind === 'python';
+  function idb(mode, act) {
+    imageDb = imageDb || new Promise((res, rej) => {
+      const rq = indexedDB.open('intuicode', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('images');
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    return imageDb.then(db => new Promise((res, rej) => {
+      const tx = db.transaction('images', mode), rq = act(tx.objectStore('images'));
+      tx.oncomplete = () => res(rq && rq.result);
+      tx.onerror = () => rej(tx.error);
+    }));
+  }
+  async function keyOf(bytes) {
+    try { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join(''); }
+    catch (_) {   // no crypto.subtle (a page that isn't served securely): a plain hash, plus the length
+      let h = 0x811c9dc5;
+      for (const b of bytes) h = Math.imul(h ^ b, 16777619) >>> 0;
+      return h.toString(16).padStart(8, '0') + bytes.length.toString(16).padStart(8, '0');
+    }
+  }
+  const toB64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+  const fromB64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const sizeOf = (url) => new Promise(res => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res({ w: 0, h: 0 }); im.src = url; });
+  const kb = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' kB');
+
+  /* Keep a picture's bytes as `name` in the project, in place of one with the same name. */
+  async function keepImage(name, bytes) {
+    const type = IMAGE_TYPES[name.split('.').pop().toLowerCase()];
+    const key = await keyOf(bytes), url = `data:${type};base64,${toB64(bytes)}`;
+    imageUrls.set(key, url);
+    await idb('readwrite', s => s.put(url, key)).catch(() => tLine('This browser won\'t keep pictures after the page is closed (its storage is off or full). They work until then.', 't-sys'));
+    const { w, h } = await sizeOf(url);
+    const list = images(), at = list.findIndex(im => im.name === name), entry = { name, type, key, w, h, size: bytes.length };
+    if (at >= 0) list[at] = entry; else list.push(entry);
+    return { entry, replaced: at >= 0 };
+  }
+
+  async function addImageFiles(files) {
+    if (mode !== 'write') setMode('write');
+    if (!usesImages()) { tLine('Pictures are for websites and Python projects: a C++ or Arduino program has no screen of its own to show them on.', 't-sys'); return; }
+    const added = [];
+    for (const f of files) {
+      const name = f.name.replace(/[^\w.-]+/g, '-').replace(/^[-.]+/, '').slice(-80);
+      if (!IMAGE_NAME.test(name)) { tLine(`${f.name} isn't a picture IntuCode can use: PNG, JPEG, GIF, WebP or SVG.`, 't-err'); continue; }
+      if (f.size > IMAGE_MAX) { tLine(`${f.name} is ${kb(f.size)}; pictures can be up to 8 MB. (A copy exported "for the web" is usually far smaller, and loads faster.)`, 't-err'); continue; }
+      const { entry, replaced } = await keepImage(name, new Uint8Array(await f.arrayBuffer()));
+      added.push(entry);
+      tLine(`${replaced ? 'Replaced' : 'Added'} images/${name}${entry.w ? ` (${entry.w} × ${entry.h} pixels)` : ''}.`, 't-sys');
+    }
+    if (!added.length) return;
+    imagesChanged();
+    const say = imageSentence(added[0].name);
+    if (say) tLine(`In ${SECTION_META[activeSec().file].title} it's used like this: ${say}  (Use, beside it on the left, puts that in for you.)`, 't-sys');
+    if (project.kind === 'python' && /\.(jpe?g|webp|svg)$/i.test(added[0].name)) tLine('tkinter shows PNG and GIF pictures. Save a copy as PNG to use this one in a window.', 't-sys');
+  }
+  function imagesChanged() { save(); autosave(); renderImages(); if (project.kind === 'website') runWebsite(false); }
+
+  /* The sentence that uses a picture, for the folder you're in. */
+  function imageSentence(name, sec = activeSec()) {
+    const path = 'images/' + name, bare = name.replace(/\.\w+$/, '');
+    const camel = bare.replace(/[^A-Za-z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : '')).replace(/^(?=\d)/, 'picture') || 'picture';
+    if (sec.file === 'structure') return `add a picture of "${path}" described as "‹what it shows›"`;
+    if (sec.file === 'styling') return `style page: background picture ${path}`;
+    if (sec.file === 'mechanics') return `load the picture "${path}" as ${camel}`;
+    if (secLang(sec) === 'python') return `set ${bare.replace(/[^A-Za-z0-9]+/g, '_').replace(/^(?=\d)/, 'picture_').toLowerCase()}_picture to tk.PhotoImage(file="${path}")`;
+    return null;
+  }
+
+  function renderImages() {
+    const on = usesImages() && mode === 'write';
+    $('imgWrap').hidden = !on;
+    $('btnAddImage').hidden = !usesImages();
+    if (!on) return;
+    const list = images();
+    $('imgCount').textContent = list.length ? String(list.length) : '';
+    $('imgList').innerHTML = list.map(im => {
+      const url = imageUrls.get(im.key);
+      return `<li class="img-item"><span class="img-thumb">${url ? `<img src="${url}" alt="">` : '<span title="Its file wasn\'t found: add it again">?</span>'}</span>`
+        + `<span class="img-name" title="images/${escHtml(im.name)}">${escHtml(im.name)}<small>${im.w ? `${im.w} × ${im.h}` : ''}${im.size ? `${im.w ? ' · ' : ''}${kb(im.size)}` : ''}</small></span>`
+        + `<button type="button" class="btn small img-use" data-use="${escHtml(im.name)}" title="Put a sentence that uses it after the line you're on">Use</button>`
+        + `<button type="button" class="tip-x img-x" data-del="${escHtml(im.name)}" aria-label="Take ${escHtml(im.name)} out of the project" title="Take it out of the project">×</button></li>`;
+    }).join('') || `<li class="none">Pictures you add go in images/, for sentences like ${project.kind === 'website' ? 'add a picture of "images/cat.png"' : 'tk.PhotoImage(file="images/cat.png")'}.</li>`;
+  }
+  $('imgList').addEventListener('click', (e) => {
+    const use = e.target.closest('[data-use]'), del = e.target.closest('[data-del]');
+    if (use) { const say = imageSentence(use.dataset.use); if (say) insertSnippet(say); else tLine('Pictures are used from Structure, Styling or Mechanics (websites), or from Python.', 't-sys'); }
+    if (del) {
+      project.images = images().filter(im => im.name !== del.dataset.del);
+      imagesChanged();
+      tLine(`Took images/${del.dataset.del} out of the project.${desk.folder ? ' Its file stays in the folder\'s images/.' : ''}`, 't-sys');
+    }
+  });
+  $('btnAddImage').addEventListener('click', () => $('imgPick').click());
+  $('btnAddImage2').addEventListener('click', () => $('imgPick').click());
+  $('imgPick').addEventListener('change', async (e) => { const files = [...e.target.files]; e.target.value = ''; await addImageFiles(files); });
+
+  /* The preview can't reach files, so each picture's name in the page becomes the picture itself. */
+  function withImages(html) {
+    for (const im of images()) {
+      const url = imageUrls.get(im.key);
+      if (!url) continue;
+      const name = im.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      html = html.replace(new RegExp(`(["'(=])(?:\\./)?images/${name}(?=["')\\s>])`, 'g'), (_, before) => before + url);
+    }
+    return html;
+  }
+
+  /* The pictures of the project now open, from the browser's store. */
+  async function loadImages() {
+    const want = images().filter(im => !imageUrls.has(im.key));
+    for (const im of want) { try { const url = await idb('readonly', s => s.get(im.key)); if (url) imageUrls.set(im.key, url); } catch (_) { /* no store: shown as missing */ } }
+    renderImages();
+    if (want.some(im => imageUrls.has(im.key)) && project.kind === 'website') runWebsite(false);
+  }
+  /* Pictures neither the project nor the previous one ("restore") uses are let go. */
+  async function pruneImages() {
+    const keep = new Set([...images(), ...((store.get(PREVIOUS_KEY, null) || {}).images || [])].map(im => im && im.key));
+    try { for (const k of await idb('readonly', s => s.getAllKeys())) if (!keep.has(k)) await idb('readwrite', s => s.delete(k)); } catch (_) { /* nothing kept */ }
+  }
+
+  /* Desktop: the pictures go in the folder's images/ (each once, unless it changes)… */
+  async function writeImages(folder) {
+    for (const im of images()) {
+      const tag = `${folder}|${im.name}|${im.key}`, url = imageUrls.get(im.key);
+      if (imagesWritten.has(tag) || !url) continue;
+      await invoke('write_bytes', { path: join(folder, 'images/' + im.name), data: url.slice(url.indexOf(',') + 1) });
+      imagesWritten.add(tag);
+    }
+  }
+  /* …and come back from there when it's opened: the files win, as the code does. */
+  async function readImages(folder) {
+    let names = [];
+    try { names = await invoke('list_files', { path: join(folder, 'images') }); } catch (_) { names = []; }
+    for (const im of [...images()]) {
+      if (!names.includes(im.name)) { tLine(`images/${im.name} isn't in the folder any more, so sentences that use it show nothing. Add it again with File → Add an image.`, 't-err'); continue; }
+      try {
+        const { entry } = await keepImage(im.name, fromB64(await invoke('read_bytes', { path: join(folder, 'images/' + im.name) })));
+        imagesWritten.add(`${folder}|${entry.name}|${entry.key}`);
+      } catch (e) { tLine(`Could not read images/${im.name}: ${e}`, 't-err'); }
+    }
+    const extra = names.filter(n => IMAGE_NAME.test(n) && !images().some(im => im.name === n));
+    if (extra.length) tLine(`images/ also has ${extra.join(', ')}, not part of the project yet. File → Add an image adds ${extra.length > 1 ? 'them' : 'it'}.`, 't-sys');
+    renderImages();
+    if (project.kind === 'website') runWebsite(false);
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Desktop app (Tauri): real folders, real Python, shell commands      */
   /* ------------------------------------------------------------------ */
 
@@ -3329,7 +3765,7 @@
     el.textContent = desk.folder ? baseName(desk.folder) + '/' : 'not saved yet';
     el.title = desk.folder || 'This project is not saved to a folder yet. Press Save.';
     el.classList.toggle('unsaved', desk.dirty);
-    document.title = desk.folder ? `IntuiCode — ${baseName(desk.folder)}` : 'IntuiCode';
+    document.title = desk.folder ? `IntuCode — ${baseName(desk.folder)}` : 'IntuCode';
   }
 
   /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
@@ -3357,8 +3793,9 @@
     const files = project.sections.map((s, i) => [names[i], secResult(s.id).text]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
     try {
       for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
+      await writeImages(folder);
       if (desk.folder === folder) { desk.dirty = false; showFolder(); }
-      if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')} (and your sentences, in .intuicode/).`, 't-sys');
+      if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')}${images().length ? `, ${images().length} picture${images().length > 1 ? 's' : ''} in images/` : ''} (and your sentences, in .intuicode/).`, 't-sys');
     } catch (e) { tLine('Could not save: ' + e, 't-err'); }
   }
   function autosave() {
@@ -3381,7 +3818,8 @@
       try { saved = checkedProject(JSON.parse(meta)); } catch (_) { saved = null; }
       if (saved) {
         replaceProject(saved, `Opened ${baseName(folder)}.`, folder);
-        // did anyone change the code outside IntuiCode?
+        if (images().length) await readImages(folder);
+        // did anyone change the code outside IntuCode?
         compile();
         const changed = [];
         for (const s of project.sections) {
@@ -3391,12 +3829,12 @@
         for (const s of changed) {
           if (secLang(s) !== 'python') {
             const res = await rebuildSection(folder, s, read);
-            if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuiCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
-            else tLine(`${fileName(s)} was changed outside IntuiCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
+            if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
+            else tLine(`${fileName(s)} was changed outside IntuCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
             continue;
           }
           const res = await sentencesFor(await read(fileName(s)));
-          if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuiCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
+          if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
         if (changed.length) { ta.value = activeSec().text; refreshAll(); }
         showFolder();
@@ -3437,7 +3875,7 @@
     }
     const files = await invoke('read_folder', { path: folder });
     if (files.some(f => /\.(py|jsx?|tsx?|html?|css|cpp|cc|h|hpp|ino)$/i.test(f.name))) {
-      tLine(`${baseName(folder)} isn't an IntuiCode project, so it opens in Read mode.`, 't-sys');
+      tLine(`${baseName(folder)} isn't an IntuCode project, so it opens in Read mode.`, 't-sys');
       desk.readFolder = folder;
       return importProject(files, '');
     }
@@ -3489,7 +3927,7 @@
   }
   async function runDesktopPython() {
     const dir = desk.folder || await invoke('scratch_folder');
-    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: secResult(s.id).text }); }
+    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: secResult(s.id).text }); await writeImages(dir); }
     catch (e) { tLine('Could not write the program files: ' + e, 't-err'); return; }
     const id = desk.nextId++;
     desk.proc = { id, kind: 'python', err: '' };
@@ -3715,7 +4153,8 @@
   });
 
   function start() {
-    measure();
+    applyLayout();
+    applyDropDown();
     ta.value = activeSec().text;
     renderSectionHeader();
     refreshAll();
@@ -3723,7 +4162,8 @@
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
     if (project.kind === 'website') runWebsite(false);
-    tLine('IntuiCode terminal. Press Run to run your program, or type help.', 't-sys');
+    loadImages().then(pruneImages);
+    tLine('IntuCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
     $('btnTutor').setAttribute('aria-pressed', String(tutor.on));
     setTimeout(async () => {

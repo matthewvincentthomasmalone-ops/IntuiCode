@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "IntuiCode",
+  "productName": "IntuCode",
   "version": "0.3.0",
   "identifier": "app.intuicode.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "IntuiCode",
+        "title": "IntuCode",
         "width": 1360,
         "height": 860,
         "minWidth": 900,
@@ -30,7 +30,7 @@
     "category": "DeveloperTool",
     "license": "Apache-2.0",
     "shortDescription": "Write and read code in plain sentences",
-    "longDescription": "IntuiCode translates between plain, structured sentences and real code (Python, HTML, CSS, JavaScript, C++ and Arduino sketches), in both directions, using rules rather than AI.",
+    "longDescription": "IntuCode translates between plain, structured sentences and real code (Python, HTML, CSS, JavaScript, C++ and Arduino sketches), in both directions, using rules rather than AI.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

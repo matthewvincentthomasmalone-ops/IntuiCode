@@ -65,7 +65,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: IntuiCode-windows-exe
+          name: IntuCode-windows-exe
           path: src-tauri/target/debug/intuicode.exe
           retention-days: 14
 
