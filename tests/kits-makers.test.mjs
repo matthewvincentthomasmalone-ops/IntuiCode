@@ -152,7 +152,10 @@ test('countdown: days to go, and a bar of how far along the wait is', async () =
   saved[0].added -= 10 * 86400000;   // as if it had been added ten days ago
   const later = await runPage('countdown', { storage: { events: JSON.stringify(saved) } });
   const bar = later.els['event-list'].children[0].children.find(c => c.className === 'track').children[0];
-  assert.ok(parseInt(bar.style.width) >= 48 && parseInt(bar.style.width) <= 52, bar.style.width);
+  // ten days gone of a wait that ends at midnight of the chosen day: just over half, by how late in the day it is
+  const when = typeof saved[0].when === 'number' ? saved[0].when : Date.parse(saved[0].when);
+  const expected = 100 * (Date.now() - saved[0].added) / (when - saved[0].added);
+  assert.ok(Math.abs(parseFloat(bar.style.width) - expected) <= 1, `${bar.style.width}, expected about ${expected.toFixed(1)}%`);
 });
 
 test('weather now: what to wear comes from the forecast, and a failed request is explained', async () => {
