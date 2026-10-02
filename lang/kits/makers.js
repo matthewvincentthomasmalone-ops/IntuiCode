@@ -101,6 +101,9 @@ name: The boxes: right answers rest longer
 depth: hallway
 summary: The heart of the Leitner system. "I knew it" moves the card up a box, "Not yet" sends it back to box 1, and the higher the box, the longer the card rests before it comes round again: box 1 every round, box 2 every second round, box 3 every fourth. Cards you know fade into the background and hard ones keep coming back. The buttons are built; you write where the card goes and how long it rests.
 learn: Conditions (if, otherwise); Math.min, to cap a number; powers of 2 (2 ** n in JavaScript).
+blank: ‹one box up, stopping at the last box› | a calculation | \`current.box\` is the box the card is in now, and \`lastBox\` is the highest. \`Math.min(a, b)\` gives the smaller of two numbers, so it can keep one box up from going past \`lastBox\`. | Math.min(current.box + 1, lastBox)
+blank: ‹the first box› | a number | The boxes are numbered from 1 to \`lastBox\`, and a new card starts in the first. | 1
+blank: ‹rounds to rest in this box› | a calculation | Box 1 rests 0 rounds, box 2 rests 1, box 3 rests 3 and box 4 rests 7: each is one less than a power of 2. In JavaScript \`2 ** n\` is 2 to the power of \`n\`, and here \`n\` is one less than \`current.box\`. | 2 ** (current.box - 1) - 1
 == structure
 add a block called grading
     add a button called knew saying "I knew it"
@@ -119,11 +122,11 @@ constant lastBox is 5
 define grade using right
     note: 1. Right: up one box, never past the last. Wrong: back to the first box.
     if right
-        set current.box to ‹one box up, but never past the last: Math.min(current.box + 1, lastBox)›
+        set current.box to ‹one box up, stopping at the last box›
     otherwise
-        set current.box to ‹back to the first box›
+        set current.box to ‹the first box›
     note: 2. How many rounds it sits out: none in box 1, 1 in box 2, 3 in box 3, 7 in box 4…
-    set current.rest to ‹2 to the power of (its box minus 1), minus 1: in JavaScript, 2 ** (current.box - 1) - 1›
+    set current.rest to ‹rounds to rest in this box›
     run nextCard
     run saveDeck
 
@@ -278,6 +281,8 @@ name: Speed, accuracy and your best
 depth: hallway
 summary: The result. Typists count a "word" as five characters, spaces included, so long and short words even out: words per minute is the characters typed, divided by 5, divided by the minutes taken. Accuracy is the letters typed right as a percentage of the passage. A new best is kept in the browser, but only if at least 90% was right, so a fast mess doesn't count. You write the two formulas.
 learn: Percentages; Math.round; two listeners on one event, which run in the order they were added.
+blank: ‹words per minute, from the letters typed› | a calculation | A word counts as 5 characters, and \`length of sofar\` is how many characters were typed. Divide the words by \`minutes\`, the time taken. | length of sofar divided by 5 divided by minutes
+blank: ‹the share typed right, as a percentage› | a calculation | \`right\` is how many letters were typed right, and \`length of passageText\` is how many letters the passage has. A share is the part divided by the whole; times 100 makes it a percentage. | right divided by length of passageText times 100
 == structure
 add a paragraph called best "No best yet."
 == styling
@@ -301,8 +306,8 @@ when typed is typed in
                 increase right
         note: 2. Speed and accuracy.
         set minutes to seconds divided by 60
-        set wpm to Math.round(‹words per minute: the letters typed (length of sofar) divided by 5, then divided by minutes›)
-        set accuracy to Math.round(‹accuracy: the right letters as a percentage of the passage's letters›)
+        set wpm to Math.round(‹words per minute, from the letters typed›)
+        set accuracy to Math.round(‹the share typed right, as a percentage›)
         set the text of result to "{wpm} words per minute, {accuracy}% right, in {Math.round(seconds)} seconds."
         note: 3. A new best counts only if it was mostly right.
         if wpm is more than bestWpm and accuracy is at least 90
@@ -450,6 +455,8 @@ name: The strength meter
 depth: hallway
 summary: How strong is it? Each word is one of 128, so every word multiplies the guesses an attacker needs by 128. Security people count this in bits: 7 bits a word here, since 2 to the power 7 is 128. The meter fills and changes colour with the bits, and shows the number of possible passphrases. You write the bits and where "strong" starts. The honest catch: with a list this short, only long passphrases get there.
 learn: Logarithms (Math.log2: how many times 2 multiplies to make a number); bits of entropy; changing an element's style from Mechanics.
+blank: ‹the bits in the whole passphrase› | a calculation | Each word adds the log2 of the list's length in bits: \`Math.log2\` of \`length of words\`, which is 7 for 128 words. Multiply that by \`wordCount\`, the number of words. | wordCount times Math.log2(length of words)
+blank: ‹the bits where strong starts› | a number | A number of bits above the 40 where fair starts. Each word here adds 7 bits, so 6 words give 42 and 8 words give 56. | 55
 == structure
 add a block called meter
     add a block called meter-fill
@@ -461,11 +468,11 @@ style strength: text colour the colour muted, space around 0, overflow-wrap: any
 == mechanics
 define rateStrength
     note: 1. Bits: each word adds log2 of the list's length (7 for 128 words). The capitals and the number aren't counted, so this errs on the safe side.
-    set bits to Math.round(‹bits: the number of words (wordCount) times log2 of the list's length (Math.log2)›)
+    set bits to Math.round(‹the bits in the whole passphrase›)
     set label to "Weak"
     set colour to "#c92a2a"
     note: 2. Where strong starts, and fair below it.
-    if bits is at least ‹where strong starts, in bits: 55 is a sensible line for this list›
+    if bits is at least ‹the bits where strong starts›
         set label to "Strong"
         set colour to "#2b8a3e"
     otherwise if bits is at least 40
@@ -660,13 +667,14 @@ name: How far along the wait
 depth: hallway
 summary: The twist: a bar under each event that fills from the day you added it to the day itself, so a long wait visibly gets shorter. The share gone so far is the time since you added it divided by the whole wait, from 0 (newly added) to 1 (the day). The bar is made in Mechanics as two blocks, a track and a fill whose width is that share. You write the share.
 learn: Fractions and percentages; Math.min and Math.max, to keep a number between 0 and 1; setting a width from Mechanics.
+blank: ‹the share of the wait gone, from 0 to 1› | a calculation | \`entry.added\` is when the event was added, \`entry.when\` is the day itself, and \`Date.now()\` is now, all in milliseconds. Divide the time since it was added by the whole wait, from adding it to the day, with each subtraction in brackets. | (Date.now() minus entry.added) divided by (entry.when minus entry.added)
 == styling
 create group track: height 10, background the colour line, rounded corners 999, overflow: hidden, space around 10 0 0
 create group fill: height 100%, background the colour accent, rounded corners 999
 == mechanics
 define drawBar using entry, row
     note: 1. The share of the wait gone: from when it was added to now, out of from when it was added to the day.
-    set share to ‹the share gone so far, from 0 to 1: (Date.now() minus entry.added) divided by (entry.when minus entry.added)›
+    set share to ‹the share of the wait gone, from 0 to 1›
     note: 2. Kept between 0 and 1, so a day already past shows a full bar.
     if entry.when is at most entry.added
         set share to 1
@@ -759,6 +767,8 @@ name: Cups to grams, by ingredient
 depth: hallway
 summary: The twist. A cup measures space, not weight, so a cup of flour (light, full of air) weighs about 125 g while a cup of sugar weighs 200 g and honey 340 g. Each ingredient's weight per cup is its density, kept here in a table; the conversion looks it up and works both ways. You write the two calculations. The cups are US cups (240 ml); a metric cup (250 ml) holds a little more.
 learn: Looking a value up by name (item … of …); multiplying and dividing to go both ways; parseFloat and isNaN, for what's typed.
+blank: ‹the weight of that many cups, in grams› | a calculation | \`amount\` is the number of cups typed in, and \`perCup\` is what one cup of this ingredient weighs, in grams. Each cup adds another \`perCup\` grams. | amount times perCup
+blank: ‹that many grams, in cups› | a calculation | \`amount\` is now the grams typed in, and \`perCup\` is the grams in one cup. The cups are how many times \`perCup\` fits into \`amount\`. | amount divided by perCup
 == structure
 add a section called weigh in group panel
     add a heading "Cups and grams"
@@ -781,10 +791,10 @@ define convertGrams
         give back
     set perCup to item name of gramsPerCup
     if the text of direction is "cups to grams"
-        set grams to ‹the weight: the cups times what one cup of it weighs (perCup)›
+        set grams to ‹the weight of that many cups, in grams›
         set the text of grams-result to "{amount} cups of {name} weigh about {Math.round(grams)} g"
     otherwise
-        set cups to ‹the cups: the grams divided by what one cup of it weighs›
+        set cups to ‹that many grams, in cups›
         set the text of grams-result to "{amount} g of {name} is about {cups.toFixed(2)} cups"
 
 when amount-box is typed in
@@ -964,6 +974,8 @@ name: Counting taps
 depth: hallway
 summary: Which links do people use? Each tap is counted in the browser, under the link's address, and each button shows its count and its share of all taps. The honest limit: these are the taps in this browser only, yours. Counting every visitor's taps needs a server or an analytics service (a horizon step). You write the counting and the share.
 learn: Keys made from text ("taps-" plus the address); percentages; onclick for elements made in Mechanics.
+blank: ‹this link's share of the taps, in percent› | a calculation | \`tapsFor(link)\` counts this link's taps, and \`totalTaps()\` counts every link's taps together. A share is the part divided by the whole; times 100 makes it a percentage. | tapsFor(link) divided by totalTaps() times 100
+blank: ‹the link's new count of taps› | a calculation | \`tapsFor(link)\` is how many taps the link had before this one, and this tap adds one more. | tapsFor(link) plus 1
 == styling
 create group taps: margin-left: auto, text size 13, text colour the colour muted, font-weight: normal, font-variant-numeric: tabular-nums
 == mechanics
@@ -984,13 +996,13 @@ define addTapCount using link, button
     set badge.className to "taps"
     set share to 0
     if totalTaps() is more than 0
-        set share to Math.round(‹this link's share of all taps, as a percentage: tapsFor(link) divided by totalTaps(), times 100›)
+        set share to Math.round(‹this link's share of the taps, in percent›)
     set badge.textContent to "{tapsFor(link)} · {share}%"
     run button.append with badge
     set button.onclick to () => recordTap(link)
 
 define recordTap using link
-    set count to ‹one more than before: tapsFor(link) plus 1›
+    set count to ‹the link's new count of taps›
     save count in the browser as "taps-{link.url}"
     run showLinks
 
@@ -1118,10 +1130,13 @@ name: The looks
 depth: hallway
 summary: Each look is a CSS filter: a recipe of adjustments the browser applies as it draws, such as sepia(0.3), grayscale(1), contrast(1.2), brightness(1.1) or saturate(0.5), separated by spaces. The photo itself never changes; only how it's shown. Choosing a look puts the photo in that group, replacing the last one. You write the three recipes: try values, and watch the preview.
 learn: CSS filters (sepia, grayscale, contrast, brightness, saturate); classes swapped from Mechanics; querySelectorAll, to find every element in a group.
+blank: ‹filters for a warm look› | a CSS value | A little \`sepia\` tints it towards brown, and \`saturate\` above 1 makes the colours stronger. Each filter takes its amount in brackets, with a space between filters. | sepia(0.35) saturate(1.4)
+blank: ‹filters for black and white› | a CSS value | \`grayscale\` takes the colour out (1 is all of it), and \`contrast\` a little above 1 keeps it from looking flat. Put a space between the two. | grayscale(1) contrast(1.15)
+blank: ‹filters for a faded look› | a CSS value | \`contrast\` and \`saturate\` below 1 soften and dull the picture, and \`brightness\` a little above 1 lightens it. Put a space between each. | contrast(0.8) saturate(0.6) brightness(1.1)
 == styling
-create group warm: filter: ‹a warm look: a little sepia and more saturation, like sepia(0.35) saturate(1.4)›
-create group mono: filter: ‹black and white, with a little more contrast›
-create group faded: filter: ‹faded: less contrast and saturation, a little brighter›
+create group warm: filter: ‹filters for a warm look›
+create group mono: filter: ‹filters for black and white›
+create group faded: filter: ‹filters for a faded look›
 == mechanics
 define applyFilter using photo, look
     set photo.className to "photo"
@@ -1326,6 +1341,8 @@ name: The clock: playing in time
 depth: hallway
 summary: The heart of a drum machine is its timing. A timer in JavaScript can run late when the page is busy, so music doesn't wait for it: 40 times a second, the page books every step due in the next tenth of a second on the audio clock, which is exact. A step is a sixteenth note, a quarter of a beat, and a beat lasts 60 ÷ BPM seconds. You write the step's length and the move to the next step.
 learn: Beats, BPM and sixteenth notes; scheduling ahead ("A Tale of Two Clocks" explains it); mod, to loop back to the first step.
+blank: ‹one step's length, in seconds› | a calculation | A minute has 60 seconds, so one beat lasts 60 divided by \`bpm\` seconds. A step is a sixteenth note, a quarter of a beat. | 60 divided by bpm divided by 4
+blank: ‹the next step, back to 0 after 15› | a calculation | The steps are numbered 0 to 15, and \`position\` is the one that was booked last. \`mod\` gives what's left after dividing, so the step after \`position\`, worked out in brackets and then taken mod 16, comes round to 0 after 15. | (position plus 1) mod 16
 == mechanics
 set playing to no
 set position to 0
@@ -1336,7 +1353,7 @@ define stepSeconds
     if isNaN(bpm) or bpm is less than 40
         set bpm to 100
     note: 1. One step: a sixteenth note, a quarter of a beat.
-    give back ‹the length of one step, in seconds: a beat (60 divided by bpm) divided by 4›
+    give back ‹one step's length, in seconds›
 
 define showPlayhead using at
     for each cell in cells
@@ -1369,7 +1386,7 @@ every 0.025 seconds
             run showPlayhead with position
             increase nextTime by stepSeconds()
             note: 2. On to the next step; after the 16th, back to the first.
-            set position to ‹the next step, back to 0 after 15: (position plus 1) mod 16›`,
+            set position to ‹the next step, back to 0 after 15›`,
 
 `component: beat-save
 name: Saving the pattern
@@ -1562,6 +1579,7 @@ name: Playing a mood
 depth: hallway
 summary: The point of the player: choose a mood and the queue becomes only the songs tagged with it, starting from the first. "every mood" plays them all. The drop-down and the loop are here; you write the test each song must pass to join the queue. A mood with no songs yet says so instead of playing silence.
 learn: Filtering a list with a condition; or, to combine two tests; replacing the queue.
+blank: ‹the song fits the chosen mood› | a test (true or false) | \`mood\` is the mood chosen in the drop-down, and \`song.mood\` is this song's. A song fits when the two are the same, or when \`mood\` is "every mood"; \`or\` joins two tests. | mood is "every mood" or song.mood is mood
 == structure
 add a block called mood-picker
     add a label "Play a mood" for mood-choice
@@ -1574,7 +1592,7 @@ when mood-choice is changed
     get the text of mood-choice and store in mood
     create list matching
     for each song in songs
-        if ‹the song fits: "every mood" is chosen, or its mood (song.mood) is the chosen one›
+        if ‹the song fits the chosen mood›
             add song to matching
     set queue to matching
     if length of queue is 0
@@ -1706,6 +1724,8 @@ name: What to wear
 depth: hallway
 summary: The twist: the forecast turned into advice. It goes by the "feels like" temperature, which counts the chill of wind and damp, then adds an umbrella if rain is likely and something windproof if it's gusty. The layers are written; you write when it counts as cold and when rain counts as likely. Change the advice to suit you: everyone feels the cold differently.
 learn: if, otherwise if and otherwise, checked top to bottom; building a sentence from a list (join).
+blank: ‹it feels cold› | a test (true or false) | \`feels\` is the "feels like" temperature, in °C. Compare it with a temperature colder than the 12 °C the next line uses for a jacket; about 5 °C is where a coat starts for most people. | feels is less than 5
+blank: ‹rain is likely today› | a test (true or false) | \`rainChance\` is the day's highest chance of rain, as a percentage from 0 to 100. Check that it's at least the chance where you'd take an umbrella, such as an even chance. | rainChance is at least 50
 == structure
 add a section called wear
     add a heading "What to wear"
@@ -1720,7 +1740,7 @@ define adviseClothes using forecast
     set wind to forecast.current.wind_speed_10m
     create list advice
     note: 1. Layers, by how warm it feels.
-    if ‹it feels cold: below 5 °C›
+    if ‹it feels cold›
         add "a warm coat, a hat and gloves" to advice
     otherwise if feels is less than 12
         add "a jacket or a jumper" to advice
@@ -1729,7 +1749,7 @@ define adviseClothes using forecast
     otherwise
         add "something light, it's warm" to advice
     note: 2. Rain and wind.
-    if ‹rain is likely today: a chance (rainChance) of 50% or more›
+    if ‹rain is likely today›
         add "an umbrella or a waterproof" to advice
     if wind is at least 40
         add "something windproof (and maybe not an umbrella)" to advice
@@ -1855,6 +1875,8 @@ name: Moving, with a log
 depth: hallway
 summary: The real thing, after you type yes. Each file moves into its subfolder (made if needed), and before it moves, the move is written to the log: where it was and where it went, one line each, in CSV that any spreadsheet opens. Two gotchas: a file with the same name may already be there (it gets a free name, like photo (2).jpg, never overwriting), and the log line must come first, so a crash can't lose a move. You write those two parts.
 learn: shutil.move; CSV files (csv.writer); checking a path exists; why the log is written before the move.
+blank: ‹the name is already taken› | a test (true or false) | \`candidate\` is a path, and a path's \`exists()\` tells you whether something is already there. | candidate.exists()
+blank: ‹where it was and where it's going, as text› | a list | \`path\` is where the file is now and \`target\` is where it's going, and \`str()\` turns a path into text. Put the two in that order, with a comma between: undo reads them back the same way. | str(path), str(target)
 == tools
 python: import csv, shutil
 
@@ -1862,7 +1884,7 @@ define free name using target
     description: The target itself if nothing has that name yet, or photo (2).jpg, photo (3).jpg… until a name is free.
     set number to 2
     set candidate to target
-    while ‹the name is taken: something already exists at candidate (candidate.exists())›
+    while ‹the name is already taken›
         set candidate to target.with_name("{target.stem} ({number}){target.suffix}")
         increase number
     give back candidate
@@ -1877,7 +1899,7 @@ define move files using moves
             run destination.mkdir with exist_ok=True
             run free name with destination / path.name and store in target
             note: The log first, then the move.
-            run writer.writerow with [‹what undoing needs: where the file was and where it's going, as text (str(path), str(target))›]
+            run writer.writerow with [‹where it was and where it's going, as text›]
             run f.flush
             run shutil.move with path, target
             show "Moved {path.name} → {kind}/{target.name}"
@@ -2085,6 +2107,8 @@ name: Fading after a day
 depth: hallway
 summary: The twist: nothing on this wall lasts. A message is shown at full strength when new and fades as its day runs out (the page sets its opacity, from 1 down to 0.2), then it's gone, from the page and from the database. It's a message filter, so the server step needs no change. You write which messages stay and how faded each one is.
 learn: Ages and time limits in seconds; scaling a number to the range 0 to 1; max, to set a floor; deleting rows with SQL.
+blank: ‹the message is younger than a day› | a test (true or false) | \`message["age"]\` is how old the message is, in seconds, and \`one day\` is a day in seconds. Compare the two. | message["age"] is less than one day
+blank: ‹the share of its day still left› | a calculation | \`message["age"]\` divided by \`one day\` is the share of its day gone: 0 when it's new, 1 when it's a day old. What's left is 1 minus that. | 1 minus message["age"] divided by one day
 == settings
 note: How long a message stays, in seconds: one day.
 set one day to 24 * 60 * 60
@@ -2095,9 +2119,9 @@ define fade old messages using messages
     create list kept
     for each message in messages
         note: 1. Only messages younger than a day stay.
-        if ‹younger than a day: its age (message["age"]) is less than one day›
+        if ‹the message is younger than a day›
             note: 2. How much of its day is left, from 1 down to 0, with a floor of 0.2 so it stays readable.
-            set item "fade" of message to max(0.2, ‹what's left of its day: 1 minus its age divided by one day›)
+            set item "fade" of message to max(0.2, ‹the share of its day still left›)
             add message to kept
     give back kept
 

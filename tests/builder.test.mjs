@@ -19,25 +19,8 @@ const SLOT = /‹[^›]*›/g;
 const SECTIONS = { script: ['main'], structured: ['settings', 'tools', 'main'], website: ['structure', 'styling', 'mechanics'], arduino: ['settings', 'start', 'loop'] };
 // Steps that only work together with another step (their summaries say so).
 const NEEDS = { 'saas/admin': ['server'] };
-// What a person might type into each blank.
-const FILLS = {
-  '‹a cutoff frequency in Hz, like 1000›': '1000',
-  '‹b1 is twice b0›': 'b0 * 2',
-  '‹a1 is -2 times the cosine of w0: in Python, -2 * math.cos(w0)›': '-2 * math.cos(w0)',
-  "‹this track's sample at position i, times its gain: tracks[t][i] * gains[t]›": 'tracks[t][i] * gains[t]',
-  '‹the first item of chosen›': 'first item of chosen',
-  '‹where it goes: the same position›': 'position',
-  [`‹a line of HTML in quotes, like "<h1>My notes</h1><p>They're at <a href='/api/notes'>/api/notes</a></p>"›`]: `"<h1>My notes</h1><p>They're at <a href='/api/notes'>/api/notes</a></p>"`,
-  "‹the notes turned into JSON, with Flask's jsonify: jsonify(notes)›": 'jsonify(notes)',
-  '‹the status code that means "you sent something wrong": 400›': '400',
-  '‹the key this page expects, as bytes: expected.encode()›': 'expected.encode()',
-  '‹the status code for "forbidden": 403›': '403',
-  '‹any of the three is missing: name is empty text or email is empty text or …›': 'name is empty text or email is empty text or message is empty text',
-  '‹the name they typed›': 'name',
-  '‹how long a reading must hold still, in milliseconds: 50 is usual›': '50',
-  '‹what a pressed button reads, with the pull-up: HIGH or LOW›': 'LOW',
-  ...kitAnswers(),   // the kit packs' blanks
-};
+// What a person might type into each blank: the answer in each step's "blank:" line (core and kit packs).
+const FILLS = kitAnswers();
 
 const kits = Object.values(lib.kits);
 const comp = (id) => lib.components[id];

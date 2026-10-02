@@ -110,6 +110,7 @@ name: Fading what's left alone
 depth: hallway
 summary: The twist. A task fades a little for every day nobody touches it (ticking or unticking counts), down to a faint ghost after FADE_DAYS, so the tasks you keep avoiding stand out at a glance. It works from the time saved with each task, so it needs the browser step to fade across days; to watch it happen today, set FADE_DAYS to 0.002 (about three minutes). You write the fading itself: how strong a task looks after so many days.
 learn: Times as numbers (milliseconds since 1970); Math.max, to keep a value from going below a floor; opacity in CSS.
+blank: ‹how strong the task looks, from 0.2 to 1› | a calculation | Full strength is 1, and after \`FADE_DAYS\` days it has all faded, so take away the share \`days\` is of \`FADE_DAYS\`. \`Math.max\` gives back the bigger of two numbers, so giving it 0.2 as well keeps the result from going below 0.2. | Math.max(0.2, 1 minus days divided by FADE_DAYS)
 == mechanics
 note: After how many days untouched a task is as faint as it gets.
 constant FADE_DAYS is 7
@@ -123,7 +124,7 @@ define fade
             skip to next
         set days to (Date.now() minus task.touched) divided by DAY
         note: 1 is full strength. Never go below 0.2, so even the oldest task can still be read.
-        set strength to ‹how strong it looks: 1 minus days divided by FADE_DAYS, but never under 0.2›
+        set strength to ‹how strong the task looks, from 0.2 to 1›
         set row.style.opacity to strength
         set row.title to "Days untouched: {Math.floor(days)}"
 
@@ -256,13 +257,15 @@ name: Tags and filtering
 depth: hallway
 summary: The twist. Every #word in a note is a tag: they're collected from all the notes into a row of buttons, sorted, with no repeats, and clicking one shows only the notes that carry it (clicking it again shows them all). Tags are compared in lowercase, so #Work and #work are one tag. You fill in the two key parts: finding the #words in a note, and deciding whether a note belongs in the view.
 learn: Regular expressions, in brief (/#[\\w-]+/g means a # followed by letters, digits, _ or -, all of them); includes; showing and hiding instead of rebuilding.
+blank: ‹every #word in the text, as a list› | a list | \`text.match\` with the pattern \`/#[\\w-]+/g\` finds them all, but gives back nothing when there are none. \`or\` gives the value after it when the one before is nothing, and \`empty list\` is a list with nothing in it. | text.match(/#[\\w-]+/g) or empty list
+blank: ‹this note belongs in the view› | a test (true or false) | Every note belongs when no tag is chosen, which is when \`chosen\` is nothing. Otherwise it belongs when its tags, from \`tagsIn(note.text)\`, contain \`chosen\`. Either is enough, so join the two tests with \`or\`. | chosen is nothing or tagsIn(note.text) contains chosen
 == mechanics
 note: The tag being shown, or nothing to show every note.
 set chosen to nothing
 
 define tagsIn using text
     note: 1. Every #word in the text. match gives back nothing when there are none, so or gives an empty list instead.
-    set found to ‹every #word in the text: text.match(/#[\\w-]+/g) or an empty list›
+    set found to ‹every #word in the text, as a list›
     give back found.map(tag => tag in lowercase)
 
 define showTags
@@ -292,7 +295,7 @@ define showMatching
         set note to item i of notes
         set row to item i of board.children
         note: 2. Does this note belong in the view?
-        set fits to ‹show it when nothing is chosen, or when its tags contain the chosen one: chosen is nothing or …›
+        set fits to ‹this note belongs in the view›
         set row.hidden to not fits
 
 add showTags to afterDraw
@@ -439,6 +442,8 @@ name: The garden that grows
 depth: hallway
 summary: The twist, and the reason to finish a session. The number of finished sessions is kept in the browser, and the plant shows the stage it has reached: seed, sprout, seedling, young plant, tree. One more session after the tree moves it into the garden row and plants a new seed. You fill in the two calculations that turn a count of sessions into a stage and a number of trees: the remainder (mod) and whole-number division.
 learn: mod, the remainder after dividing, for things that go round in a cycle; Math.floor for whole-number division; repeat, to make text like 🌳🌳🌳.
+blank: ‹which stage the plant is at, from 0› | a calculation | The stages go round in a cycle, one per finished session, and \`length of STAGES\` is how many there are. \`mod\` gives the remainder after dividing \`sessions\` by that, which counts 0, 1, 2, 3, 4 and back to 0. | sessions mod length of STAGES
+blank: ‹how many trees have grown› | a calculation | One tree grows for every full set of stages, so divide \`sessions\` by \`length of STAGES\`. \`Math.floor\` rounds down, so a set that's only partly done doesn't count. | Math.floor(sessions divided by length of STAGES)
 == structure
 add a section called garden
     add a paragraph called plant "🌰"
@@ -460,9 +465,9 @@ if savedSessions is not nothing
 
 define showGarden
     note: 1. Which stage the plant is at. After the last stage it starts again from a seed.
-    set stage to ‹the stage, from 0: sessions mod the number of stages, which is length of STAGES›
+    set stage to ‹which stage the plant is at, from 0›
     note: 2. How many trees have grown all the way: one for every full set of stages.
-    set trees to ‹how many full sets of stages so far: sessions divided by length of STAGES, rounded down with Math.floor›
+    set trees to ‹how many trees have grown›
     set the text of plant to item stage of STAGES
     set the text of plant-name to "{item stage of STAGE_NAMES} · {sessions} sessions so far"
     set the text of grown to "🌳".repeat(trees)
@@ -628,6 +633,8 @@ name: Highlighting now
 depth: hallway
 summary: The twist that makes it a planner rather than a list: the block you're in is highlighted, the ones already over are greyed, and the page scrolls to now when it opens. A minute timer moves the highlight on through the day. You write the two tests, in minutes after midnight: is this block happening now (it has started and hasn't ended), and is it over?
 learn: Comparing times as numbers; getHours and getMinutes; classList.toggle with a true-or-false, which adds or removes a group.
+blank: ‹this block is happening now› | a test (true or false) | Everything is in minutes after midnight. The block has started when \`start\` is no later than \`minutesNow\`, and it hasn't ended while \`minutesNow\` is still before its end, \`start plus SLOT_MINUTES\`. Both have to be true, so join them with \`and\`. | start is at most minutesNow and minutesNow is less than start plus SLOT_MINUTES
+blank: ‹this block is over› | a test (true or false) | The block ends at \`start plus SLOT_MINUTES\`, in minutes after midnight. It's over once that end is no later than \`minutesNow\`. | start plus SLOT_MINUTES is at most minutesNow
 == mechanics
 set scrolled to false
 
@@ -638,9 +645,9 @@ define markNow
         set start to item i of starts
         set slot to item i of day.children
         note: 1. Happening now: it has started, and it hasn't reached its end (start plus SLOT_MINUTES).
-        set isNow to ‹this block is happening now: start is at most minutesNow and …›
+        set isNow to ‹this block is happening now›
         note: 2. Over: its end has passed.
-        set isPast to ‹this block is over: start plus SLOT_MINUTES is …›
+        set isPast to ‹this block is over›
         run slot.classList.toggle with "now", isNow
         run slot.classList.toggle with "past", isPast
         if isNow and not scrolled
@@ -832,16 +839,18 @@ name: A new month
 depth: hallway
 summary: The envelope method runs by the month, so when a new month begins, the envelopes fill up again. The app keeps the month it was last used in ("2026-10"); when that isn't this month, every envelope starts again. You decide how: from nothing spent, or carrying over what was left (an envelope with £20 left starts the month with £20 extra, and one that went over starts short), which is one subtraction.
 learn: Dates as text you can compare; doing something once when a value changes; carrying a balance over.
+blank: ‹a new month has begun› | a test (true or false) | \`lastMonth\` is the month saved last time, or nothing the very first time. A new month has begun when there is a last month and it's different from \`thisMonth\`; join the two tests with \`and\`. | lastMonth is not nothing and lastMonth is not thisMonth
+blank: ‹what it starts the month having spent› | a calculation | To start fresh, it has spent 0. To carry over what was left, take \`envelope.budget\` away from \`envelope.spent\`: an envelope with money left starts below zero, and one that went over starts above. | envelope.spent minus envelope.budget
 == mechanics
 set today to new Date()
 note: This month as text, like 2026-10. getMonth counts from 0, so it needs plus 1.
 set thisMonth to "{today.getFullYear()}-{today.getMonth() plus 1}"
 load "envelopes-month" from the browser and store in lastMonth
 note: 1. Has a new month begun since the envelopes were last used? (The very first time, there's no last month.)
-if ‹a new month: there is a last month and it is not this month›
+if ‹a new month has begun›
     for each envelope in envelopes
         note: 2. What the envelope starts the month having spent. Carrying over what was left means starting below zero: spent minus budget.
-        set envelope.spent to ‹0 to start fresh, or envelope.spent minus envelope.budget to carry over›
+        set envelope.spent to ‹what it starts the month having spent›
     set the text of message to "A new month: the envelopes are full again."
 save thisMonth in the browser as "envelopes-month"
 run draw`,
@@ -1054,6 +1063,8 @@ name: Settling up in few payments
 depth: hallway
 summary: The twist: instead of everyone paying everyone back, the app suggests a short list of payments. Each round, whoever owes the most pays whoever is owed the most, as much as one of them needs, so at least one of them is square afterwards: never more payments than people minus one, usually fewer. (The very fewest in every case is a famously hard problem; this greedy way is what most apps use.) You write how much changes hands, and when to stop.
 learn: Greedy algorithms; Math.min, Math.max and indexOf; ... (spread), to give a list to Math.min; stopping a loop early.
+blank: ‹how much changes hands› | a calculation | The debtor owes \`0 minus item debtor of balances\` (their balance is below zero), and the creditor is owed \`item creditor of balances\`. Only the smaller of the two can change hands, and \`Math.min\` gives back the smallest of the numbers it's given. | Math.min(0 minus item debtor of balances, item creditor of balances)
+blank: ‹nothing is left worth paying› | a test (true or false) | Decimals are never quite exact, so a tiny \`amount\` can be left over when everyone is square. Compare it with half a penny, which is 0.005. | amount is less than 0.005
 == structure
 add a section called settle
     add a heading "To settle up"
@@ -1069,9 +1080,9 @@ define settleUp
         set debtor to balances.indexOf(Math.min(...balances))
         set creditor to balances.indexOf(Math.max(...balances))
         note: 1. The debtor owes minus their balance; the creditor is owed their balance. Only the smaller amount can change hands.
-        set amount to ‹the smaller of what the debtor owes and what the creditor is owed: Math.min(0 minus item debtor of balances, …)›
+        set amount to ‹how much changes hands›
         note: 2. Everyone is square when there's less than half a penny left to pay (decimals are never quite exact).
-        if ‹nothing left worth paying: amount is less than half a penny›
+        if ‹nothing is left worth paying›
             stop the loop
         add "{item debtor of people} pays {item creditor of people} {MONEY}{amount.toFixed(2)}" to the list payments
         increase item debtor of balances by amount
@@ -1325,6 +1336,8 @@ name: Monthly and yearly totals
 depth: hallway
 summary: What it all costs. Monthly and yearly subscriptions can only be added up once they're in the same unit, so a yearly one counts as a twelfth of its price each month; the year is then twelve months of that. It also names the one that costs the most each month, often the one worth questioning. You fill in the two conversions.
 learn: Converting to one unit before adding; increase … by; keeping track of the biggest so far.
+blank: ‹its yearly price, as a cost per month› | a calculation | A yearly price is shared over the 12 months of the year. The price is \`sub["price"]\`. | sub["price"] divided by 12
+blank: ‹what they all cost in a year› | a calculation | \`monthly\` is what they all cost in an average month, and a year is twelve of those. | monthly times 12
 == tools
 define show totals
     description: What all the subscriptions cost each month and each year, and which costs the most.
@@ -1337,7 +1350,7 @@ define show totals
     for each sub in subscriptions
         note: 1. What this one costs in an average month.
         if sub["every"] is "year"
-            set cost to ‹a yearly price shared over the 12 months: its price divided by 12›
+            set cost to ‹its yearly price, as a cost per month›
         otherwise
             set cost to sub["price"]
         increase monthly by cost
@@ -1357,6 +1370,8 @@ name: Renewing this week
 depth: hallway
 summary: The command that earns the program its place: everything that renews in the next seven days, soonest first, with the total about to be taken. Taking one date from another gives a length of time, and its .days says how many whole days that is; every date has already moved on past today, so it's never negative. You write the number of days, and the test for "within the week".
 learn: Date arithmetic (date minus date); timedelta and .days; a setting (soon days) that changes the program in one place.
+blank: ‹days from today until it renews› | a calculation | Taking one date from another gives a length of time, and its \`.days\` is how many whole days that is. The two dates are \`today\` and \`renews\`, the later one first; put the subtraction in brackets so \`.days\` belongs to all of it. | (renews minus today).days
+blank: ‹it renews soon› | a test (true or false) | \`days\` is how many days until it renews, and the setting \`soon days\` is how many days ahead count as soon, the last of them included. | days is at most soon days
 == settings
 note: How many days ahead counts as soon.
 set soon days to 7
@@ -1370,7 +1385,7 @@ define show soon
     for each sub in sorted(subscriptions, key=lambda sub: sub["renews"])
         set renews to date.fromisoformat(sub["renews"])
         note: 1. How many days until it renews: one date minus another, in days.
-        set days to ‹days from today until it renews: (renews minus today).days›
+        set days to ‹days from today until it renews›
         note: 2. Soon means within the next soon days.
         if ‹it renews soon›
             if days is 0
@@ -1541,6 +1556,8 @@ name: The current streak
 depth: hallway
 summary: The number that keeps people going: how many days in a row, up to today, are marked. It counts backwards from today until it meets a day that isn't marked. The kind rule that matters: today only counts once it's marked, and until then the streak carries on from yesterday, so it doesn't drop to 0 every morning. You write that rule, and the test that keeps the count going.
 learn: Counting backwards with a while loop; a loop that stops at the first gap; being kind in the rules of an app.
+blank: ‹today isn't marked yet› | a test (true or false) | \`markedDaysAgo(n)\` says whether the day \`n\` days ago is marked, and today is 0 days ago. \`not\` in front of a test turns true into false and false into true. | not markedDaysAgo(0)
+blank: ‹the day being counted is marked› | a test (true or false) | \`back\` is how many days ago the day being counted is, and \`markedDaysAgo\` says whether the day that many days ago is marked. | markedDaysAgo(back)
 == mechanics
 define markedDaysAgo using n
     set key to keyFor(daysAgo(n))
@@ -1549,11 +1566,11 @@ define markedDaysAgo using n
 define streakNow
     set back to 0
     note: 1. Today isn't marked yet? Then start counting from yesterday.
-    if ‹today isn't marked yet: not markedDaysAgo(0)›
+    if ‹today isn't marked yet›
         set back to 1
     set streak to 0
     note: 2. Keep counting while the day back days ago is marked.
-    while ‹the day back days ago is marked›
+    while ‹the day being counted is marked›
         increase streak
         increase back
     give back streak
@@ -1753,6 +1770,7 @@ name: Three pips before each change
 depth: hallway
 summary: Short, high pips at 3, 2 and 1 seconds before every change, the way gym timers do it, so you're ready to go. The catch is that the timer checks four times a second, so a test like "3 seconds or less left" would pip a dozen times. The fix is remembering which second was pipped last and only pipping on a new one. You write that test.
 learn: Doing something once per change rather than once per check; remembering the last value; Math.ceil.
+blank: ‹one of the last three seconds, not yet pipped› | a test (true or false) | \`secondsLeft\` has to be from 1 to 3, and different from \`lastPip\`, the second pipped last. That's three tests, each comparing \`secondsLeft\` with something, joined with \`and\`. | secondsLeft is at least 1 and secondsLeft is at most 3 and secondsLeft is not lastPip
 == mechanics
 note: The second that was last pipped, so each second gets one pip.
 set lastPip to nothing
@@ -1760,7 +1778,7 @@ set lastPip to nothing
 define pip
     set secondsLeft to Math.ceil(leftMs divided by 1000)
     note: Pip when 1, 2 or 3 seconds are left, and this second hasn't been pipped yet.
-    if ‹one of the last three seconds, not yet pipped: secondsLeft is at least 1 and secondsLeft is at most 3 and …›
+    if ‹one of the last three seconds, not yet pipped›
         set lastPip to secondsLeft
         run beep with 1320, 0.08
 
@@ -1933,6 +1951,8 @@ name: A session that ends gently
 depth: hallway
 summary: Choose 1, 2 or 5 minutes (or no limit), and the guide stops by itself with a word of how it went. The gentle part is where it stops: never halfway through a breath, only when a whole box has finished, at the start of the next breath in, so a 1-minute session runs to the end of its fourth box. You write the test for that moment, and the number of boxes breathed.
 learn: Drop-downs and parseInt; combining two conditions with and; whole-number division for counting cycles.
+blank: ‹time's up and a whole box is complete› | a test (true or false) | \`tick\` counts whole seconds, so time's up once it has reached \`minutes times 60\`. One box takes \`4 times SIDE\` seconds, and a box is complete when \`tick\` divides by that with nothing left over (\`mod\` gives what's left). Join the two tests with \`and\`. | tick is at least minutes times 60 and tick mod (4 times SIDE) is 0
+blank: ‹how many whole boxes were breathed› | a calculation | One box takes \`4 times SIDE\` seconds, and \`tick\` is the seconds so far. This runs at the moment a box ends, so the division comes out whole. | tick divided by (4 times SIDE)
 == structure
 add a section called session
     add a label "Session" for session-length
@@ -1948,9 +1968,9 @@ define checkSession
     if Number.isNaN(minutes)
         give back
     note: 1. Time's up, and a whole box (4 sides) is complete.
-    if ‹the time is up and a whole box is complete: tick is at least minutes times 60 and tick mod (4 times SIDE) is …›
+    if ‹time's up and a whole box is complete›
         note: 2. How many whole boxes that was.
-        set boxes to ‹whole boxes so far: tick divided by (4 times SIDE)›
+        set boxes to ‹how many whole boxes were breathed›
         run stop
         set the text of word to "Well done: {boxes} boxes in {minutes} min."
 

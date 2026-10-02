@@ -48,6 +48,10 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
 
+- [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
+      the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
+      of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.
+
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
       it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.

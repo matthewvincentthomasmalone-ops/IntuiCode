@@ -106,6 +106,13 @@ sentences, with a **Project map** beside the folders. Each step says how much is
 Click a step for its role in the project and a jump to its sentences; the explanation panel says
 which step your cursor is in.
 
+**Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
+before the next step›`). With the cursor on it, the help under the windows says what kind of thing to write
+(a number, a calculation, a test that's true or false…), how to work it out from the names the program
+already has, and, behind **Show an example**, an answer that works, with **Put it in**. Tab selects the next
+‹blank›; Problems lists the ones left, and clicking one selects it. Kit authors write these as `blank:` lines
+(see `lang/kits/README.md`); the tests fill every ‹blank› with its answer and check the project works.
+
 **Change this kit** (in planning, or from a kit in the Library) opens it as a form: its title, kind, where it
 runs and what it's made of; its steps, which you can reorder, remove, mark as always included or ticked at
 first, edit, add from any other kit, or write from scratch, with a Walk/Hallway/Horizon switch and its

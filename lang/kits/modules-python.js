@@ -269,6 +269,8 @@ name: Your turn: faster as it grows
 depth: hallway
 summary: Snake gets harder as the snake gets longer. Here the tick gets shorter for every square it has grown, down to a fastest speed so it stays playable. It's a job like the others, added to the tick list, so nothing else changes. You write how fast it should be, and the check that keeps it from going too fast.
 learn: Formulas from the game's state; limits (a floor on a number); length of a list.
+blank: ‹the tick's length for a snake this long› | a calculation | Start from \`START_SPEED\` milliseconds and take off 5 for each square the snake has grown past its first three. \`length of snake\` is how many squares it has now. | START_SPEED - 5 * (length of snake - 3)
+blank: ‹the tick is shorter than allowed› | a test (true or false) | \`FASTEST\` is the shortest tick allowed. Compare \`speed\` with it: the test is true once \`speed\` has gone below it. | speed is less than FASTEST
 == settings
 note: The shortest tick allowed, in milliseconds, so the game stays playable.
 set FASTEST to 60
@@ -276,9 +278,9 @@ set FASTEST to 60
 define speed up
     description: Makes the tick shorter as the snake grows: 5 milliseconds for each square past the first three.
     teach: The speed is worked out from the state every tick, rather than changed bit by bit, so it can never drift: a new game, with a short snake, is slow again by itself.
-    set speed to ‹the start speed, 5 milliseconds less for each square past the first three: START_SPEED - 5 * (length of snake - 3)›
+    set speed to ‹the tick's length for a snake this long›
     teach: A limit keeps the number in range: if it has gone below the fastest, it is set back to the fastest.
-    if ‹speed has gone below the limit: speed is less than FASTEST›
+    if ‹the tick is shorter than allowed›
         set speed to FASTEST
 
 add speed up to tick jobs`,
@@ -696,11 +698,12 @@ name: Your turn: faster as fewer remain
 depth: hallway
 summary: The arcade original sped up as you cleared the screen (at first by accident: fewer invaders to draw meant the machine drew them faster), and it's what makes the last invader frantic. Here the wait between steps is shared out by how many are left: all 40 wait 13 ticks, the last one only 1. It's a tick job like the others. You write the formula.
 learn: A formula from the game's state; whole-number division (//).
+blank: ‹ticks to wait before the next step› | a calculation | Start from 1 tick and add a share of \`MARCH_EVERY\`: all of it while every invader is left, none once they're all gone. \`length of invaders\` is how many are left, and \`INVADER_ROWS * INVADER_COLUMNS\` is how many there were. \`//\` divides and keeps a whole number. | 1 + MARCH_EVERY * length of invaders // (INVADER_ROWS * INVADER_COLUMNS)
 == tools
 define hurry
     description: The fewer invaders are left, the fewer ticks between their steps.
     teach: The wait is worked out again every tick from how many are left, so a new wave is slow again by itself.
-    set march wait to ‹one tick, plus a share of MARCH_EVERY for each one left: 1 + MARCH_EVERY * length of invaders // (INVADER_ROWS * INVADER_COLUMNS)›
+    set march wait to ‹ticks to wait before the next step›
 
 add hurry to tick jobs`,
 
@@ -868,6 +871,8 @@ name: Your turn: a shooting star now and then
 depth: hallway
 summary: Now and then a shooting star streaks across the sky and burns out. It's made during the game, long after the background, so it would land on top of the pile, in front of the invaders, unless it's put in its layer. You choose the layer it goes directly above, and write when it has burnt out.
 learn: Things made during the game, and their layer; a thing with a lifetime (a countdown); nothing (None) for "there isn't one".
+blank: ‹the shooting star has burnt out› | a test (true or false) | Its life, \`shooting["life"]\`, starts at 24 and goes down by one each tick. It has burnt out once that reaches 0. | shooting["life"] is at most 0
+blank: ‹the layer it goes directly above› | text in quotes | A layer is named by its tag, in quotes: the sky, stars, moon and hills steps each tag theirs. The shooting star belongs in front of the stars and behind the moon and the hills. | "stars"
 == settings
 note: The chance, each tick, that a shooting star starts.
 set SHOOTING_CHANCE to 0.01
@@ -886,12 +891,12 @@ define shooting star
     decrease shooting["life"]
     run canvas.delete with "shooting"
     teach: Its life counts down each tick; at the end it's gone, and there's nothing in the sky again.
-    if ‹it has burnt out: shooting["life"] is at most 0›
+    if ‹the shooting star has burnt out›
         set shooting to nothing
         give back
     run canvas.create_line with shooting["x"], shooting["y"], shooting["x"] - 36, shooting["y"] - 12, fill="#ffffff", width=2, tags=("shooting", "background")
     teach: Made now, it lands on top of the pile, in front of the game. tag_raise puts it in its place: directly above the stars.
-    run canvas.tag_raise with "shooting", ‹the layer it goes directly above: "stars"›
+    run canvas.tag_raise with "shooting", ‹the layer it goes directly above›
 
 add shooting star to tick jobs`,
 
@@ -1454,6 +1459,8 @@ name: Your turn: a race against the clock
 depth: hallway
 summary: A timer turns a walk down the street into a race: 90 seconds to restore the power, counting down at the top of the window, and the game is over when it reaches 0. Ticks are TICK milliseconds long, so a second is a number of ticks; every time that many have gone by, a second comes off. You write how many ticks make a second, and when time is up.
 learn: Counting time in ticks; whole-number division; a countdown as state.
+blank: ‹how many ticks make a second› | a calculation | A tick lasts \`TICK\` milliseconds, and a second is 1000 milliseconds. \`//\` divides and keeps a whole number of ticks. | 1000 // TICK
+blank: ‹the countdown has run out› | a test (true or false) | \`time left\` starts at \`TIME_LIMIT\` and goes down by one each second. Time is up once it reaches 0. | time left is at most 0
 == settings
 note: Seconds to reach the fuse box.
 set TIME_LIMIT to 90
@@ -1469,11 +1476,11 @@ define count down
     description: Counts ticks; every second's worth, a second comes off the clock, and at 0 the game is over.
     increase ticks
     teach: A tick is TICK milliseconds, and a second is 1000 of them, so a second is 1000 // TICK ticks.
-    if ticks is at least ‹how many ticks make a second: 1000 // TICK›
+    if ticks is at least ‹how many ticks make a second›
         set ticks to 0
         decrease time left
         run draw time
-        if ‹time is up: time left is at most 0›
+        if ‹the countdown has run out›
             run game over
 
 define reset time
