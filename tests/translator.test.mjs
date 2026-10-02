@@ -107,3 +107,10 @@ test('a tool run inside {…} in text runs the tool, not what "length of" gives 
 test('tools that change outside values get `global`', () => {
   assert.equal(py('set score to 0\ndefine bump\n    increase score by 1').code, 'score = 0\ndef bump():\n    global score\n    score += 1');
 });
+
+test('`global` goes after a tool\'s description, so the description stays its docstring', () => {
+  assert.equal(py('set score to 0\ndefine bump\n    description: Adds one.\n    increase score by 1').code, 'score = 0\ndef bump():\n    """Adds one."""\n    global score\n    score += 1');
+  assert.equal(py('set score to 0\ndefine bump\n    description: Adds one.\n    description: Never below 0.\n\n    increase score by 1').code, 'score = 0\ndef bump():\n    """Adds one.\n    Never below 0."""\n    global score\n\n    score += 1');
+  const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'set score to 0\ndefine bump\n    description: Adds one.\n    increase score by 1\nbump()\nprint(bump.__doc__, score)' }] }).results.main;
+  assert.equal(execFileSync(PYTHON, ['-c', r.text], { encoding: 'utf8' }).trim(), 'Adds one. 1');
+});
