@@ -221,7 +221,7 @@ try {
       document.getElementById('bldName').value = 'e2e studio';
       document.getElementById('bldGo').click();
       const steps = [...document.querySelectorAll('#plan .plan-step')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
-      const blanks = [...document.querySelectorAll('#problems li')].filter(li => /Fill in the/.test(li.textContent)).length;
+      const blanks = [...document.querySelectorAll('#problems li')].filter(li => /Fill in (?:the )?‹/.test(li.textContent)).length;
       document.querySelectorAll('#plan .plan-step')[3].click();
       const title = document.getElementById('stepTitle').textContent;
       document.getElementById('stepClose').click();
