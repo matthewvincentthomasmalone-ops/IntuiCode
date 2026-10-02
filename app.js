@@ -356,14 +356,14 @@
     }
     const inf = r.info[li] || { py: [], notes: [], warns: [], errs: [] };
     const py = inf.py.map(i => r.lines[i].text).filter(t => t.trim()).join('\n');
-    const items = [];
+    const items = [], fill = fillHtml(text);
     if (runtimeMark && runtimeMark.sec === sec.id && runtimeMark.line === li) items.push(`<li class="err">${withCode(runtimeMark.msg)}</li>`);
     if (li === typingLine && inf.errs.length) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
-    else inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
+    else inf.errs.forEach(e => { if (!(fill && /^Fill in the ‹[^›]*› slot\.$/.test(e))) items.push(`<li class="err">${withCode(e)}</li>`); });
     inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim());
     const why = inf.notes.length && pyLines.length ? `<button type="button" class="linklike ex-why" data-pick="${pyLines[0]}">${inf.notes.length === 1 ? 'A note' : inf.notes.length + ' notes'} on the ${escHtml(tutorSays(sec))}: click its line on the right</button>` : '';
-    box.innerHTML = `${planBanner(li)}<div class="ex-map">
+    box.innerHTML = `${planBanner(li)}${fill}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim())}</div></div>
         <div class="ex-arrow" aria-hidden="true">→</div>
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.map(i => i + 1).join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
@@ -371,6 +371,56 @@
       ${shapeHtml(sec, text)}
       ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${sayTutorHtml(sec, li)}
       <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
+  }
+
+  /* ‹Blanks›: what goes in one, from its step's "blank:" line in the library (your own kits' too): what
+   * kind of thing it is, how to work it out, and an example that works, shown only when asked for. */
+  let blankIndex = null, blankLib = null;
+  function blankInfo(slot) {
+    const lib = bldLibrary();
+    if (lib !== blankLib) {
+      blankLib = lib; blankIndex = new Map();
+      for (const c of Object.values(lib.components)) for (const b of c.blanks || []) if (b.slot) blankIndex.set(b.slot, b);
+    }
+    return blankIndex.get(slot) || null;
+  }
+  const KIND_GLOSS = {
+    'a number': 'like 3, or 0.5',
+    'a calculation': 'a value worked out from others with plus, minus, times and divided by, or + - * /',
+    'a test (true or false)': 'something that is either true or false, like `lives is 0`; join tests with and / or',
+    'text in quotes': 'words in quotes, like "Game over"',
+    'a name': 'one of the names the program already has',
+    'a list': 'several values kept together',
+    'a colour': 'a name like navy, or a code like #1a2b3c',
+    'a css value': 'what comes after a style\'s name, like 12px or bold',
+    'a line of code': 'written in the language itself, as it will be in the code',
+  };
+  const shownExamples = new Set();
+  function fillHtml(text) {
+    if (/^\s*(?:note|comment|teach)\s*:/i.test(text)) return '';
+    return [...new Set(text.match(/‹[^›]*›/g) || [])].map(slot => {
+      const b = blankInfo(slot), gloss = b && KIND_GLOSS[b.kind.toLowerCase()];
+      const ex = !b || !b.example ? '' : shownExamples.has(slot)
+        ? `<p class="ex-fill-ex"><b>One answer that works:</b> <code>${escHtml(b.example)}</code><button type="button" class="btn small" data-put-ex="${escHtml(slot)}">Put it in</button></p>`
+        : `<p class="ex-fill-ex"><button type="button" class="btn small" data-show-ex="${escHtml(slot)}">Show an example</button><span class="dim">Have a go first: it's there if you're stuck, or to check yours.</span></p>`;
+      return `<div class="ex-fill"><span class="ex-lbl">Fill in · <span class="ex-slot">${escHtml(slot)}</span></span>`
+        + (b && b.kind ? `<p><b>What goes here:</b> ${escHtml(b.kind)}${gloss ? ` <span class="dim">(${withCode(gloss)})</span>` : ''}.</p>` : '<p>Replace it with what it describes.</p>')
+        + (b && b.hint ? `<p><b>How to work it out:</b> ${withCode(b.hint)}</p>` : '')
+        + ex + '<p class="ex-fill-tip dim"><kbd>Tab</kbd> selects the next ‹blank›, and what you type replaces it, marks and all.</p></div>';
+    }).join('');
+  }
+  /* In Problems: "Fill in ‹ticks to wait›: a calculation." when its step says what goes there. */
+  function blankSaid(msg) {
+    const m = msg.match(/^Fill in the (‹[^›]*›) slot\.$/), b = m && blankInfo(m[1]);
+    return b && b.kind ? `Fill in ${m[1]}: ${b.kind}. Click for how to work it out.` : msg;
+  }
+  function putExample(slot) {
+    const b = blankInfo(slot), li = caretLine(), text = ta.value.split('\n')[li] || '', at = text.indexOf(slot);
+    if (!b || at < 0) return;
+    const start = lineStartOf(li) + at;
+    insertText(b.example, start, start + slot.length);
+    typingLine = -1;
+    afterCaretMove(true);
   }
 
   /* In the code: one line of it, what's in it, and where it came from. */
@@ -506,7 +556,7 @@
     pc.textContent = items.length ? String(items.length) : '';
     pc.className = 'count' + (errCount ? ' bad' : '');
     $('problems').innerHTML = items.length
-      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${SECTION_META[p.s.file].title} · line ${p.i + 1}</span>${withCode(p.msg)}</span></button></li>`).join('')
+      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${SECTION_META[p.s.file].title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
     return errCount;
   }
@@ -819,7 +869,11 @@
   $('tree').addEventListener('click', (e) => { const b = e.target.closest('.tree-item'); if (b) openSection(b.dataset.id); });
   $('problems').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-sec]');
-    if (b) openSection(b.dataset.sec, +b.dataset.line);
+    if (!b) return;
+    const blank = /^Fill in ‹/.test(b.textContent.replace(/^.*?line \d+/, ''));
+    if (blank) setDock('help', true);   // how to fill it in is in the help
+    openSection(b.dataset.sec, +b.dataset.line);
+    if (blank) selectNextSlot(true);   // selected: what's typed replaces it
   });
 
   async function copyText(text, btn, label) {
@@ -974,6 +1028,8 @@
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
     if ((b = t('[data-go-say]'))) return goToLine(+b.dataset.goSay);
     if ((b = t('[data-term]'))) return openGlossary(b.dataset.term);
+    if ((b = t('[data-show-ex]'))) { shownExamples.add(b.dataset.showEx); return renderExplain(); }
+    if ((b = t('[data-put-ex]'))) return putExample(b.dataset.putEx);
     if ((b = t('[data-card]'))) return showNote(pane === 'code' ? { pane: 'code', line: codeIdx } : { pane: 'say', line: caretLine() }, b.dataset.card);
     if (!(b = t('[data-tutor]'))) return;
     const r = secResult(activeSec().id);
@@ -3083,9 +3139,9 @@
 
   /* An entry's text as a form, and back. Head lines the form doesn't show are kept as they are. */
   function formFrom(text) {
-    const { head, sections } = BUILDER.parseEntry(text);
+    const { head, sections, blanks } = BUILDER.parseEntry(text);
     if (head.kit != null) return { kind: 'kit', id: head.kit, head, steps: (head.steps || '').split(',').map(x => x.trim()).filter(Boolean).map(x => ({ id: x.replace(/[!*]+$/, ''), always: /!$/.test(x), ticked: /[!*]$/.test(x) })) };
-    if (head.component != null) return { kind: 'component', id: head.component, head, sections: Object.fromEntries(Object.entries(sections).map(([f, ls]) => [f, ls.join('\n')])) };
+    if (head.component != null) return { kind: 'component', id: head.component, head, sections: Object.fromEntries(Object.entries(sections).map(([f, ls]) => [f, ls.join('\n')])), blanks: blanks.map(b => [b.slot, b.kind, b.hint, b.example].join(' | ')).join('\n') };
     return null;
   }
   const oneLine = (v) => String(v || '').replace(/\s*\n\s*/g, ' ').trim();
@@ -3094,6 +3150,7 @@
     const order = f.kind === 'kit' ? ['title', 'layout', 'shelf', 'platform', 'asks', 'about'] : ['name', 'depth', 'summary', 'usual', 'learn'];
     for (const k of order) if (oneLine(f.head[k])) lines.push(`${k}: ${oneLine(f.head[k])}`);
     for (const [k, v] of Object.entries(f.head)) if (k !== f.kind && k !== 'steps' && !order.includes(k) && oneLine(v)) lines.push(`${k}: ${oneLine(v)}`);
+    if (f.kind === 'component') for (const l of String(f.blanks || '').split('\n')) if (l.trim()) lines.push('blank: ' + l.trim().replace(/^blank:\s*/i, ''));
     if (f.kind === 'kit') lines.push('steps: ' + f.steps.map(s => s.id + (s.always ? '!' : s.ticked ? '*' : '')).join(', '));
     else if (f.head.depth !== 'horizon') for (const [folder, t] of Object.entries(f.sections || {})) if (String(t).trim()) lines.push(`== ${folder}`, String(t).replace(/\s+$/, ''));
     return lines.join('\n');
@@ -3148,6 +3205,7 @@
           <ul>
             <li><code>kit: id</code>, <code>title:</code>, <code>layout:</code> <code>script</code>, <code>structured</code>, <code>website</code> or <code>arduino</code>, <code>shelf:</code> its kind (${BUILDER.SHELVES.filter(s => s.ask).map(s => `<code>${s.id}</code>`).join(', ')}), <code>platform:</code> pc, phone, web or board, <code>about:</code>, and <code>steps:</code> in build order: <code>!</code> after a step means always included, <code>*</code> ticked at first.</li>
             <li><code>component: id</code> (a step), <code>name:</code>, <code>depth:</code> <code>walk</code>, <code>hallway</code> or <code>horizon</code>, <code>summary:</code> its role, <code>usual:</code> what it's usually made with, <code>learn:</code> what to learn first, then its sentences under a folder: <code>== settings</code>, <code>== tools</code>, <code>== main</code> (Python); <code>== structure</code>, <code>== styling</code>, <code>== mechanics</code> (website); <code>== settings</code>, <code>== start</code>, <code>== loop</code> (Arduino).</li>
+            <li>A hallway step has one <code>blank: ‹the blank› | what kind | how to work it out | an answer that works</code> per ‹blank›, before its folders. The ‹blank› says what goes there in a few words, never the answer; the help shows the rest when the cursor is on it, and the answer only when asked for.</li>
             <li><code>question: id</code>, <code>ask:</code>, then <code>option: label | what it means | where it leads</code>. The builder makes its own questions from the kinds; a question of your own is for a kit that asks something first (<code>asks: id</code> on the kit).</li>
           </ul>
         </details>
@@ -3251,7 +3309,8 @@
         <label class="kf-wide">Learn first<input data-f="learn" value="${escHtml(f.head.learn || '')}"></label>
       </div>
       ${f.head.depth === 'horizon' ? '<p class="dim">A horizon step has no sentences: its summary, what it\'s usually made with and what to learn first are the step.</p>' : `<h4 class="kf-h">Its sentences${f.head.depth === 'hallway' ? ', with ‹blanks› for the parts to fill in' : ''}</h4>
-      ${folders.map(fo => `<label class="kf-sec"><span class="ex-lbl">${escHtml(FOLDER_LABEL[fo] || fo)}</span><textarea data-sec="${fo}" rows="${Math.min(14, Math.max(3, String((f.sections || {})[fo] || '').split('\n').length + 1))}" spellcheck="false">${escHtml((f.sections || {})[fo] || '')}</textarea></label>`).join('')}`}
+      ${folders.map(fo => `<label class="kf-sec"><span class="ex-lbl">${escHtml(FOLDER_LABEL[fo] || fo)}</span><textarea data-sec="${fo}" rows="${Math.min(14, Math.max(3, String((f.sections || {})[fo] || '').split('\n').length + 1))}" spellcheck="false">${escHtml((f.sections || {})[fo] || '')}</textarea></label>`).join('')}
+      ${f.head.depth === 'hallway' ? `<label class="kf-sec"><span class="ex-lbl">What goes in each ‹blank›: one line each</span><textarea data-blanks rows="${Math.min(10, Math.max(3, String(f.blanks || '').split('\n').length + 1))}" spellcheck="false" placeholder="‹ticks to wait› | a calculation | How to work it out, in words. | an answer that works">${escHtml(f.blanks || '')}</textarea><span class="dim">‹the blank, as in the sentences› | what kind of thing (a number, a calculation, a test (true or false), text in quotes, a name…) | how to work it out | an answer that works. The help shows these when the cursor is on the ‹blank›, the answer only when asked for.</span></label>` : ''}`}
       <div class="bp-errors" id="kfErrors">${kitProblemsHtml(d.problems, [])}</div>
       <div id="kfStepCheck">${check ? checkHtml(check, `${ctx ? ctx.head.title || ctx.id : lib.kits[kitId] ? lib.kits[kitId].title : 'Its kit'}, with this step,`) : ''}</div>
       <div class="bp-actions"><button type="button" class="btn primary" id="kfSave"${d.problems.length ? ' disabled' : ''}>Save${ctx ? ' and go back to the kit' : ed.editing && ed.editing.src === 'built' ? ' as yours' : ''}</button><button type="button" class="btn" id="kfCancel">${ctx ? 'Back to the kit' : 'Cancel'}</button><button type="button" class="btn ghost" id="kfText">Edit as text</button></div>
@@ -3370,8 +3429,9 @@
     const ed = bld.edit;
     if (!ed || !ed.form) return;
     if (e.target.id === 'kfPickSearch') { ed.pickQuery = e.target.value; return renderKitDetail(); }
-    const fld = e.target.dataset.f, sec = e.target.dataset.sec;
-    if (!fld && !sec) return;
+    const fld = e.target.dataset.f, sec = e.target.dataset.sec, blanks = e.target.dataset.blanks != null;
+    if (!fld && !sec && !blanks) return;
+    if (blanks) ed.form.blanks = e.target.value;
     if (fld) ed.form.head[fld] = e.target.value;
     if (sec) ed.form.sections = { ...(ed.form.sections || {}), [sec]: e.target.value };
     clearTimeout(kfTimer);
@@ -3389,7 +3449,7 @@
       const tog = e.target.dataset.tog, row = e.target.closest('li[data-i]');
       if (tog && row) { const s = ed.form.steps[+row.dataset.i]; s[tog] = e.target.checked; if (tog === 'always' && s.always) s.ticked = true; return renderKitDetail(); }
     }
-    if (ed && ed.form && ed.form.kind === 'component' && (e.target.dataset.sec || e.target.dataset.f)) return renderKitDetail();   // the build check, once a field is left
+    if (ed && ed.form && ed.form.kind === 'component' && (e.target.dataset.sec || e.target.dataset.f || e.target.dataset.blanks != null)) return renderKitDetail();   // the build check, once a field is left
   });
 
   // planning

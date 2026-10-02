@@ -23,10 +23,12 @@ export function loadBuilder() {
   for (const f of [...KIT_PACKS, 'lang/builder.js']) vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   return ctx.IntuiBuilder;
 }
-/* Test answers for the blanks in hallway steps, from tests/kit-answers/*.json. */
+/* Answers for the blanks in hallway steps: each step's own "blank:" lines, whose answers are what the app
+ * shows when someone asks for an example (so the tests check those answers work). */
 export function kitAnswers() {
-  const dir = path.join(ROOT, 'tests/kit-answers');
-  return Object.assign({}, ...readdirSync(dir).filter(f => f.endsWith('.json')).sort().map(f => JSON.parse(readFileSync(path.join(dir, f), 'utf8'))));
+  const said = {};
+  for (const c of Object.values(loadBuilder().library.components)) for (const b of c.blanks || []) if (b.example) said[b.slot] = b.example;
+  return said;
 }
 
 export function loadEngine() {

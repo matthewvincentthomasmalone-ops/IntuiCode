@@ -174,15 +174,18 @@ name: Jump physics that feel right
 depth: hallway
 summary: The difference between a jump that feels floaty and one that feels good is a few small rules every platformer uses. Gravity a little stronger on the way down; letting go of the key early for a short hop; and coyote time: for a few frames after running off a ledge you can still jump, like a cartoon coyote who hasn't looked down yet. The structure is here; you fill in the numbers and the coyote rule, then tune them by playing.
 learn: Frames as a measure of time; tuning by feel (change one number, play, repeat); the forgiving jump tricks in games like Celeste, which their makers have written about.
+blank: ‹the rising speed a short hop keeps› | a number | Rising speeds are below 0, and a full jump starts at \`-jumpPower\`, which is -10. A short hop keeps a slower rise, somewhere between that and 0; try one and tune it by playing. | -4
+blank: ‹off a roof for only a few frames› | a test (true or false) | \`airFrames\` counts the frames since the runner left a roof. Coyote time is a handful of frames, about a tenth of a second at 60 frames a second, so compare \`airFrames\` with a small number. | airFrames is at most 6
+blank: ‹extra gravity on the way down› | a number | It's added to \`vy\` every frame while falling, on top of the usual \`gravity\` of 0.5. A fraction of that is plenty; try one and tune it by playing. | 0.3
 == mechanics
 note: How many frames the runner has been off a roof.
 set airFrames to 0
 note: When the jump key is let go early, a rise faster than this is slowed to it: a short hop.
-set shortHop to ‹the rising speed a short hop keeps, like -4›
+set shortHop to ‹the rising speed a short hop keeps›
 
 define coyoteJump
     note: Coyote time: for a moment after running off a ledge (falling, not rising from a jump), a jump still works.
-    if not onRoof and vy is at least 0 and ‹off a roof for only a few frames: airFrames is at most 6›
+    if not onRoof and vy is at least 0 and ‹off a roof for only a few frames›
         set vy to -jumpPower
 
 when the key "space" is pressed
@@ -198,7 +201,7 @@ every frame
         increase airFrames
     note: Heavier on the way down: a jump rises, hangs, then drops quickly, which feels in control.
     if vy is more than 0
-        increase vy by ‹a little extra gravity on the way down, like 0.3›
+        increase vy by ‹extra gravity on the way down›
     note: Let go early for a short hop: still rising fast, and neither jump key held.
     if vy is less than shortHop and not "space" is held and not "up" is held
         set vy to shortHop`,
@@ -419,6 +422,9 @@ name: Slugs that wander
 depth: hallway
 summary: The trouble in the garden. Twice a second each slug picks a way at random (or stays put) and moves one tile if the new tile is inside the garden. A slug that reaches the gardener ends the game; one sitting on a plant nibbles it, so it dries out faster. Wandering at random is the simplest kind of game behaviour, and surprisingly lively. The structure is here; you write the three tests: inside the garden, on your tile, on a plant's tile.
 learn: Random choices; comparing two positions (same column and same row); how game characters decide what to do (their behaviour, or AI).
+blank: ‹the new tile is inside the garden› | a test (true or false) | Columns count from 0 up to one less than \`cols\`, and rows from 0 up to one less than \`rows\`. \`newCol\` and \`newRow\` both have to be in range: four tests, joined with \`and\`. | newCol is at least 0 and newCol is less than cols and newRow is at least 0 and newRow is less than rows
+blank: ‹the slug is on the gardener's tile› | a test (true or false) | The gardener stands at column \`col\` and row \`row\`, and the slug at \`slug.col\` and \`slug.row\`. Two things share a tile when their columns match and their rows match. | slug.col is col and slug.row is row
+blank: ‹the slug and the plant are on the same tile› | a test (true or false) | A plant's tile is \`plant.col\` and \`plant.row\`. Compare its column and row with the slug's, and join the two tests with \`and\`. | slug.col is plant.col and slug.row is plant.row
 == mechanics
 note: Each slug stands on a tile, like everything else in the garden.
 create list slugs
@@ -453,17 +459,17 @@ every 0.5 seconds
             otherwise if way is 3
                 decrease newRow
             note: A slug only moves if the new tile is still in the garden.
-            if ‹the new tile is inside the garden: newCol is at least 0 and newCol is less than cols and newRow is at least 0 and newRow is less than rows›
+            if ‹the new tile is inside the garden›
                 set slug.col to newCol
                 set slug.row to newRow
 
 every frame
     for each slug in slugs
-        if playing and ‹the slug is on the gardener's tile: slug.col is col and slug.row is row›
+        if playing and ‹the slug is on the gardener's tile›
             run gameOver with "A slug got to you."
         note: A slug on a plant's tile nibbles it, so it dries out faster.
         for each plant in plants
-            if ‹the slug and the plant are on the same tile: slug.col is plant.col and slug.row is plant.row›
+            if ‹the slug and the plant are on the same tile›
                 decrease plant.water by 0.05
         set x to slug.col times tile
         set y to slug.row times tile
@@ -649,6 +655,9 @@ name: The changing wind
 depth: hallway
 summary: The twist. Every few seconds the wind picks a new strength, pushing the plane up or down a little each frame, so the same tap does more or less than it did. It doesn't jump: it moves a small part of the way towards its new strength every frame, so changes feel like weather. The streaks follow the new wind straight away, a second or two before the plane feels it: a warning you learn to read. You fill in the new wind, the catching up and the drift.
 learn: Smoothing a change by moving part of the way each frame (easing, or lerp); showing a game's hidden state so it's fair; random numbers below zero.
+blank: ‹the wind's new strength› | a calculation | Pick a whole \`random number\` from -3 to 3 (below 0 lifts, above 0 pushes down), then divide it by 40, so the push is a small fraction of a pixel each frame. | random number from -3 to 3 divided by 40
+blank: ‹a small part of the way to the target› | a calculation | The way still to go is \`target\` minus \`wind\`, in brackets. Moving 2% of it each frame (times 0.02) brings the wind round over a second or two. | (target minus wind) times 0.02
+blank: ‹a streak's drift up or down each frame› | a calculation | The streaks show where the wind is heading, so their drift follows \`target\` rather than \`wind\`. \`target\` is a tiny fraction of a pixel, so multiply it by a few dozen for a drift you can see. | target times 60
 == mechanics
 note: The wind: how hard it pushes the plane each frame (below 0 lifts, above 0 pushes down). It blows towards target, which changes every few seconds.
 set wind to 0
@@ -663,16 +672,16 @@ repeat 14 times
     add makeStreak(random number from 0 to width, random number from 0 to height) to streaks
 
 every 4 seconds
-    set target to ‹a new wind: random number from -3 to 3, divided by 40›
+    set target to ‹the wind's new strength›
 
 every frame
     note: The wind moves a small part of the way to its target every frame, so it changes gradually.
-    increase wind by ‹a small part of the way to the target: (target minus wind) times 0.02›
+    increase wind by ‹a small part of the way to the target›
     if playing
         increase vy by wind
     for each streak in streaks
         set streak.x to streak.x minus 6
-        set streak.y to streak.y plus ‹how far a streak drifts up or down each frame: target times 60›
+        set streak.y to streak.y plus ‹a streak's drift up or down each frame›
         note: A streak that leaves one side comes back on the other.
         if streak.x is less than -30
             set streak.x to width plus random number from 0 to 60
@@ -875,6 +884,8 @@ name: A melody, one fruit at a time
 depth: hallway
 summary: The twist: the tune is a list of note numbers, and each fruit plays the next one, so a good game plays the whole melody. Note numbers are how keyboards and MIDI count notes (60 is middle C, one up is the next key, black keys included); a pitch in hertz doubles every 12 notes, which is why the formula has a power of 2 in it. You fill in the formula and going back to the start after the last note.
 learn: Notes as numbers (MIDI); the 2 to the power of n over 12 rule (equal temperament); the remainder (mod) to go round a list; the Web Audio API.
+blank: ‹how many octaves away from note 69› | a calculation | An octave is 12 notes, and note 69 is the A at 440 hertz. Work out how many notes \`noteNumber\` is from 69, then how many octaves that makes; notes below 69 come out below 0. | (noteNumber minus 69) divided by 12
+blank: ‹the next place in the tune, going round› | a calculation | The next place is one on from \`place\`. To go back to 0 after the last note, take the remainder (\`mod\`) after dividing by \`length of tune\`, with brackets so the adding happens first. | (place plus 1) mod length of tune
 == mechanics
 note: The tune, as note numbers: 60 is middle C, and each one up is the next key on a piano, black keys included. This is the start of Ode to Joy, by Beethoven.
 create list tune with 64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64, 64, 62, 62
@@ -884,14 +895,14 @@ set heard to 0
 
 define frequency using noteNumber
     note: A note's pitch in hertz: 440 is the A above middle C (note 69), and the pitch doubles every 12 notes up.
-    give back 440 times Math.pow(2, ‹how many octaves away from note 69: (noteNumber minus 69) divided by 12›)
+    give back 440 times Math.pow(2, ‹how many octaves away from note 69›)
 
 every frame
     note: The score went up, so a fruit was eaten: play the next note.
     if score is more than heard
         set heard to score
         play a note of frequency(item place of tune) for 0.3 seconds
-        set place to ‹the next place, back to the start after the last note: (place plus 1) mod length of tune›
+        set place to ‹the next place in the tune, going round›
     note: A new game set the score back to 0: start the tune again.
     if score is less than heard
         set heard to score
@@ -1064,10 +1075,12 @@ name: The mixing rule
 depth: hallway
 summary: The heart of the puzzle. Going along a line, two neighbours mix if they share no light: red and green make yellow, but yellow and red both have red, so they stay apart. A mixed tile scores its number; white (every light at once) clears itself away for a bonus, which is how the board makes room. Each tile mixes at most once per slide. The structure is here; you write when two colours can mix and what they make.
 learn: Bits: a number as a set of yes-or-no lights, and & (and) to find the ones two numbers share; additive colour (how screens mix light, unlike paint).
+blank: ‹they share no light› | a test (true or false) | \`a & b\` keeps only the lights both numbers have, so it comes out 0 when they share none. Put it in brackets before comparing it. | (a & b) is 0
+blank: ‹the lights of both together› | a calculation | Each light is a number of its own: red 4, green 2, blue 1, and a colour is the sum of its lights. \`a\` and \`b\` share no light here, so their sum has every light of both. | a plus b
 == mechanics
 note: Two colours share a light when it's in both. & keeps only the lights both numbers have: 6 & 4 is 4 (both have red), 4 & 2 is 0 (nothing shared).
 define canMix using a, b
-    give back ‹they share no light: (a & b) is 0›
+    give back ‹they share no light›
 
 define mixLine using values
     note: Along the line from the front: a pair that can mix becomes one tile, and both are used up.
@@ -1078,7 +1091,7 @@ define mixLine using values
         set after to i plus 1
         set b to item after of values
         if b is not nothing and canMix(a, b)
-            set mixed to ‹the lights of both together: a plus b›
+            set mixed to ‹the lights of both together›
             increase score by mixed
             note: White, every light at once, clears itself away: the cell is left empty, and worth a bonus.
             if mixed is 7
@@ -1246,6 +1259,8 @@ name: The colours: right, near and no
 depth: hallway
 summary: The heart of the game. Each letter of a guess is green if it's in the right place, yellow if it's in the word somewhere else, grey if not. The catch is double letters: guess PAPER for APPLE and both Ps can't be yellow. So first set aside the answer's letters that weren't matched in place (spare); a yellow uses one up. This step paints over the guessed rows in colour. You write the two tests.
 learn: Going through two words letter by letter; a list as a pool you take from (splice removes one item); why the order of checks matters.
+blank: ‹the letter is in the right place› | a test (true or false) | \`letter\` is the guess's letter at place \`i\`. Compare it with the answer's letter at the same place, \`item i of answer\`. | letter is item i of answer
+blank: ‹the letter is somewhere else, not used up› | a test (true or false) | \`spare\` holds the answer's letters that weren't matched in place, and each "near" takes one out. So the letter is near while one like it is still in \`spare\`. | letter is in spare
 == mechanics
 note: How each letter of a guess did: "right" (right letter, right place), "near" (in the word, somewhere else) or "no".
 define judge using guess
@@ -1257,9 +1272,9 @@ define judge using guess
     create list marks
     repeat 5 times counting with i
         set letter to item i of guess
-        if ‹the letter is in the right place: letter is item i of answer›
+        if ‹the letter is in the right place›
             add "right" to marks
-        otherwise if ‹the letter is somewhere else, and not used up yet: letter is in spare›
+        otherwise if ‹the letter is somewhere else, not used up›
             add "near" to marks
             note: Used up: take one of that letter out of spare.
             run spare.splice with spare.indexOf(letter), 1
@@ -1498,6 +1513,8 @@ name: Words you miss come back
 depth: hallway
 summary: What turns the game into practice. When two cards don't match, both of their words go on a list of tricky words, saved in the browser; when you match a pair, it comes off. The next game deals the tricky pairs first, so the words you get wrong are the ones you see again, which is the idea behind flashcard apps. The structure is here; you write the two tests: is this pair tricky, and was this turn a match.
 learn: Remembering mistakes; changing the order of a list without losing anything (two lists joined with concat); the idea of spaced repetition.
+blank: ‹this pair is a tricky one› | a test (true or false) | \`tricky\` lists the tricky words by their English side, and a pair's English word is \`item 0 of pair\`. Check whether that word is in \`tricky\`. | item 0 of pair is in tricky
+blank: ‹you got this turn right› | a test (true or false) | The two cards match when they come from the same pair. \`first.pair\` and \`second.pair\` say which pair each card comes from. | first.pair is second.pair
 == mechanics
 note: The tricky words, by their English side, kept in the browser between games.
 load "pairs-tricky" from the browser and store in tricky
@@ -1509,7 +1526,7 @@ define trickyFirst using pairs
     create list front
     create list rest
     for each pair in pairs
-        if ‹this pair is a tricky one: item 0 of pair is in tricky›
+        if ‹this pair is a tricky one›
             add pair to front
         otherwise
             add pair to rest
@@ -1519,7 +1536,7 @@ define practise using first, second
     for each card in [first, second]
         set words to item card.pair of dealt
         set english to item 0 of words
-        if ‹you got this turn right: first.pair is second.pair›
+        if ‹you got this turn right›
             if english is in tricky
                 run tricky.splice with tricky.indexOf(english), 1
         otherwise if not (english is in tricky)
@@ -1725,6 +1742,9 @@ name: The mystery and the lamp
 depth: hallway
 summary: The story's puzzle: read the logbook for where the keeper went and where the spare key is, open the bread tin, unlock the tower, fill the lamp with oil and light it. Everything that has happened is kept in where things are (the key comes out of the tin, the oil is used), so the story needs no other memory, and saving it means writing that down. The verbs and words are here; you write the three tests that decide when each step of the puzzle works.
 learn: Conditions with and; a story as a chain of states; giving players several ways to say the same thing (use matches, light lamp).
+blank: ‹you're by the tower door, and it's locked› | a test (true or false) | The tower door is in the cottage, and \`player["room"]\` is the room you're in. \`locked\` lists the rooms still locked, so check that \`"tower"\` is in it too, joining the two tests with \`and\`. | player["room"] == "cottage" and "tower" is in locked
+blank: ‹you're beside the lamp› | a test (true or false) | \`player["room"]\` is the room you're in, and the room with the lamp is called \`"lamp"\`. | player["room"] == "lamp"
+blank: ‹the lamp has oil and you're beside it› | a test (true or false) | Once the lamp is filled, the oil can's place, \`place["oil can"]\`, is \`"used"\`. You also have to be in the \`"lamp"\` room; join the two tests with \`and\`. | place["oil can"] == "used" and player["room"] == "lamp"
 == settings
 note: The spare key starts in the bread tin, which isn't a room, so it can't be seen until the tin is opened.
 set item "key" of place to "tin"
@@ -1763,19 +1783,19 @@ define use using rest
     if rest is not in place or place[rest] != "you"
         show "You aren't carrying a {rest}."
     otherwise if rest is "key"
-        if ‹you're by the tower door and it's still locked: player["room"] == "cottage" and "tower" is in locked›
+        if ‹you're by the tower door, and it's locked›
             remove "tower" from locked
             show "The key turns with a groan, and the tower door swings open."
         otherwise
             show "There's nothing to unlock here."
     otherwise if rest is "oil can"
-        if ‹you're beside the lamp: player["room"] == "lamp"›
+        if ‹you're beside the lamp›
             set item "oil can" of place to "used"
             show "You fill the lamp and set the empty can aside. It smells of paraffin."
         otherwise
             show "There's nothing to fill here."
     otherwise if rest is "matches"
-        if ‹the lamp has its oil and you're beside it: place["oil can"] == "used" and player["room"] == "lamp"›
+        if ‹the lamp has oil and you're beside it›
             run ending
         otherwise if player["room"] == "lamp"
             show "The wick is dry. The lamp needs oil first."
@@ -1993,6 +2013,8 @@ name: Saving as a PNG
 depth: hallway
 summary: A picture people can share is a file. The squares are drawn again on a hidden drawing area, each as a block of pixels with no checkerboard, so empty squares stay see-through; toDataURL turns that drawing into a PNG file (as text), and a link marked download saves it under a name. Pixel art is usually exported bigger than it's drawn, with every square a block of 8 or 16 pixels. You fill in the size and which squares to draw.
 learn: Image files and PNG see-through; toDataURL; a download link; scaling pixel art up by whole numbers so it stays sharp.
+blank: ‹how many image pixels each square becomes› | a number | Each square becomes a block this many pixels across in the file, so the picture is \`gridSize times scaleUp\` wide. A whole number keeps the squares sharp; pixel art is often exported 8 or 16 times bigger. | 8
+blank: ‹the square has a colour› | a test (true or false) | An empty square's \`square.colour\` is empty text. Those are left out of the file, so they stay see-through. | square.colour is not empty text
 == structure
         add a link called download to "#" saying "Save as PNG"
         add a drawing area called exporter 128 by 128
@@ -2001,7 +2023,7 @@ style exporter: hidden
 style download: space inside 10 20, background #1d3557, text colour white, rounded corners 999, no underline
 == mechanics
 note: How many image pixels across each square becomes in the file.
-set scaleUp to ‹how many image pixels each square becomes, like 8›
+set scaleUp to ‹how many image pixels each square becomes›
 
 when download is clicked
     note: Setting a drawing area's size also wipes it clean.
@@ -2010,7 +2032,7 @@ when download is clicked
     set sheet.height to gridSize times scaleUp
     repeat length of squares times counting with k
         set square to item k of squares
-        if ‹the square has a colour: square.colour is not empty text›
+        if ‹the square has a colour›
             set col to k mod gridSize
             set row to Math.floor(k / gridSize)
             draw a rectangle at col times scaleUp, row times scaleUp sized scaleUp by scaleUp in square.colour on exporter

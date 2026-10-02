@@ -292,14 +292,16 @@ name: Your turn: faster as it grows
 depth: hallway
 summary: A change of your own: the snake speeds up as the score goes up, so a long snake is harder to steer. It steps every moveEvery frames; this step works that number out from the score every frame, smaller as the score grows, but never below a fastest pace, or the game would become impossible. The structure is here; you fill in the fastest pace and how quickly it gets there, then play to tune them.
 learn: Working a value out from the game's state every frame instead of storing it; Math.floor to round down; Math.max to keep a number above a floor; tuning by playing.
+blank: ‹the fewest frames between the snake's steps› | a number | Fewer frames between steps is faster, and the snake starts at \`slowestPace\`, 8. Pick a smaller number you can still steer at, then tune it by playing. | 3
+blank: ‹how many frames quicker, from the score› | a calculation | One frame quicker for every 4 points of \`score\`. \`Math.floor( )\` rounds down, so the pace changes in whole frames. | Math.floor(score divided by 4)
 == mechanics
 teach: The pace the snake starts at and the fastest it can go, both in frames between steps: fewer frames is faster.
 set slowestPace to 8
-set fastestPace to ‹the fewest frames between steps, like 3›
+set fastestPace to ‹the fewest frames between the snake's steps›
 
 every frame
     teach: One frame quicker for every few points. Math.floor rounds down, so the pace changes in whole frames; Math.max stops it going below the fastest.
-    set quicker to ‹one frame quicker for every 4 points: Math.floor(score divided by 4)›
+    set quicker to ‹how many frames quicker, from the score›
     set moveEvery to Math.max(fastestPace, slowestPace minus quicker)`,
 
 `component: mweb-snake-art
@@ -647,15 +649,17 @@ name: Your turn: faster as they fall
 depth: hallway
 summary: In the arcade original the invaders sped up as you destroyed them, and it became the most famous thing about the game: the last one races. Here the swarm steps every marchEvery frames; this step works that number out every frame from how many invaders are left, from slow with a full block to fast with the last one. The structure is here; you fill in the fastest pace and how much of the block is left.
 learn: Working a value out from the game's state every frame; proportions (a share of the whole, from 0 to 1); Math.round.
+blank: ‹the last invader's frames between steps› | a number | Fewer frames between steps is faster. A full block steps every \`slowestPace\` frames, 30, and the last invader should race, so pick a small number. | 2
+blank: ‹the share of the block still standing› | a calculation | A share from 0 to 1: how many invaders are left (\`length of invaders\`) out of a full block (\`fullBlock\`). | length of invaders divided by fullBlock
 == mechanics
 teach: A full block is 40 invaders. The pace goes from slowestPace (a full block) to fastestPace (the last one), in frames between steps.
 set fullBlock to 40
 set slowestPace to 30
-set fastestPace to ‹the fewest frames between steps for the last invader, like 2›
+set fastestPace to ‹the last invader's frames between steps›
 
 every frame
     teach: share is how much of the block is still there: 1 when it's full, nearly 0 at the end. The pace is the fastest plus that share of the difference.
-    set share to ‹how much of the block is left: length of invaders divided by fullBlock›
+    set share to ‹the share of the block still standing›
     set marchEvery to Math.round(fastestPace plus (slowestPace minus fastestPace) times share)`,
 
 `component: mweb-inv-sound
@@ -830,6 +834,9 @@ name: Your turn: a shooting star
 depth: hallway
 summary: Now and then a shooting star streaks across the sky and fades. It's one more background layer, so it passes behind the game. Each one is a box with a life that counts down; every frame there's a small chance a new one starts. The structure is here; you fill in how often they come, how fast they fall and how they fade.
 learn: Random chances each frame; things with a limited life; drawing a streak as a line pointing back along the way it moves.
+blank: ‹a shooting star starts this frame› | a test (true or false) | \`Math.random()\` gives a new number from 0 to 1 every frame, so it's below 0.01 about one frame in 100. Compare it with a number that makes a star start about once every 200 frames, every three seconds or so. | Math.random() is less than 0.005
+blank: ‹how far a meteor falls each frame› | a number | It moves 7 across each frame. The streak behind it is drawn 35 back and 15 up, which is 5 frames of its path, so the fall should match that slant. | 3
+blank: ‹its brightness, from 0 to 1› | a calculation | The colour's last number is how much of it shows, from 0 (none) to 1 (full white). \`meteor.life\` counts down from 40 to 0, so its share of 40 fades it out as it goes. | meteor.life divided by 40
 == mechanics
 teach: The shooting stars in the sky right now. They start somewhere along the top of the left half.
 create list meteors
@@ -837,7 +844,7 @@ set halfWidth to width divided by 2
 
 define drawMeteors
     teach: A small chance each frame that a new one starts. Math.random() is below 0.005 about once every 200 frames: every three seconds or so.
-    if ‹a small chance each frame: Math.random() is less than 0.005›
+    if ‹a shooting star starts this frame›
         set meteor to makeBox(random number from 0 to halfWidth, random number from 10 to 80, 2, 2)
         set meteor.life to 40
         add meteor to meteors
@@ -845,9 +852,9 @@ define drawMeteors
     for each meteor in meteors
         teach: Each frame it moves 7 across and a little down, and its life counts down. Its brightness comes from its life, so it fades as it goes.
         increase meteor.x by 7
-        increase meteor.y by ‹how far it falls each frame, like 3›
+        increase meteor.y by ‹how far a meteor falls each frame›
         decrease meteor.life
-        set fade to ‹how bright it is: brighter the more life it has left, meteor.life divided by 40›
+        set fade to ‹its brightness, from 0 to 1›
         teach: The streak is a line from the head back along its path: 7 across and 3 down each frame, so the tail is 5 frames behind.
         draw a line from meteor.x, meteor.y to meteor.x minus 35, meteor.y minus 15 in "rgba(255, 255, 255, {fade})" on game
         if meteor.life is more than 0
@@ -1391,16 +1398,19 @@ name: Your turn: a double jump
 depth: hallway
 summary: A change of your own: a second jump in mid-air. It needs care with timing: the first press both jumps and leaves the ground, so a press only counts as a double jump if he was already in the air before it, which this step remembers at the end of every frame. Landing gives the extra jump back. You fill in how many air jumps, the test, and how strong the second jump is; then try the wide pit as Jacques.
 learn: Remembering last frame's state to tell two events apart; a counter that's refilled on landing; tuning by feel.
+blank: ‹how many jumps he gets in mid-air› | a number | The jumps he can make after leaving the ground, before he lands again. A double jump is one more after the first. | 1
+blank: ‹he was already in the air, with a jump left› | a test (true or false) | Two things must both be true: \`wasInAir\`, remembered at the end of the last frame, and \`airJumps\` still above 0. \`and\` joins two tests. | wasInAir and airJumps is more than 0
+blank: ‹the second jump's upward speed› | a calculation | A full jump sets \`hero.vy\` to \`-jumpPower\` (minus, because up is negative on the canvas). Multiply that by a number a little under 1 to make it weaker. | -jumpPower times 0.85
 == mechanics
 teach: How many jumps he gets in the air, and whether he was in the air at the end of the last frame.
-set airJumpsMax to ‹how many jumps in mid-air, like 1›
+set airJumpsMax to ‹how many jumps he gets in mid-air›
 set airJumps to airJumpsMax
 set wasInAir to false
 
 define airJump
     teach: Only if he was already in the air before this press, and has an air jump left.
-    if ‹in the air since last frame, with a jump left: wasInAir and airJumps is more than 0›
-        set hero.vy to ‹a little weaker than a full jump: -jumpPower times 0.85›
+    if ‹he was already in the air, with a jump left›
+        set hero.vy to ‹the second jump's upward speed›
         decrease airJumps
 
 when the key "up" is pressed

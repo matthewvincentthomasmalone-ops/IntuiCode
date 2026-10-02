@@ -35,6 +35,10 @@
  *   summary: Its role in the whole project, in plain words.
  *   usual: What people usually use for it (mostly for horizon steps).
  *   learn: What to learn first.
+ *   blank: ‹ticks to wait› | a calculation | How to work it out, in words. | 1 + MARCH_EVERY * left // total
+ *                                          one per ‹blank› of a hallway step: what goes there (the ‹label›,
+ *                                          a few words, never the answer), what kind of thing it is, how to
+ *                                          work it out, and an answer that works (shown only when asked for)
  *   == tools                               sentences for a folder: settings, tools, main (Python),
  *   teach: what this adds, and why         (in sentences: a note, but only in annotated kits)
  *   define apply fader using samples, …    structure, styling, mechanics (website), or settings,
@@ -154,9 +158,12 @@ depth: hallway
 summary: An EQ turns some frequencies up or down: here, a low-pass filter that keeps the low end and softens the highs. It's a "biquad", the building block of nearly every EQ: each output sample mixes the current input with the last two inputs and the last two outputs. Those five mixing numbers are its transfer function, H(z) = (b0 + b1·z⁻¹ + b2·z⁻²) / (a0 + a1·z⁻¹ + a2·z⁻²). The structure is here; you fill in the cutoff and two of the numbers.
 usual: Real-time EQs run this same maths in C++, often with JUCE's dsp module; in Python, scipy.signal does it for whole arrays at once.
 learn: What frequency and cutoff mean; the Audio EQ Cookbook by Robert Bristow-Johnson (the standard formulas for these filters); how a filter remembers past samples.
+blank: ‹the cutoff frequency, in Hz› | a number | Frequencies above the cutoff get quieter. Hearing runs from about 20 to 20000 Hz: a cutoff around a thousand makes the softening clear to hear, and a lower one sounds more muffled. | 1000
+blank: ‹b1 for a low-pass filter› | a calculation | The Audio EQ Cookbook's low-pass gives b0 and b2 as (1 - cos w0) / 2, and b1 as 1 - cos w0. So b1 can be worked out from \`b0\`. | b0 * 2
+blank: ‹a1 for a low-pass filter› | a calculation | In the Cookbook, a1 is -2 times the cosine of \`w0\`. \`math.cos( )\` gives a cosine in Python, and \`math\` is already imported. | -2 * math.cos(w0)
 == settings
 note: Frequencies above the cutoff get quieter. Try 1000 (Hz), then 300.
-set cutoff to ‹a cutoff frequency in Hz, like 1000›
+set cutoff to ‹the cutoff frequency, in Hz›
 == tools
 define low pass using samples, cutoff
     description: A two-pole low-pass filter (a biquad): lets low frequencies through, turns high ones down.
@@ -166,10 +173,10 @@ define low pass using samples, cutoff
     python: alpha = math.sin(w0) / (2 * 0.707)
     note: 2. The transfer function's numbers, from the Audio EQ Cookbook. b: how much of the input goes in; a: how much of the past output feeds back.
     python: b0 = (1 - math.cos(w0)) / 2
-    set b1 to ‹b1 is twice b0›
+    set b1 to ‹b1 for a low-pass filter›
     python: b2 = b0
     python: a0 = 1 + alpha
-    set a1 to ‹a1 is -2 times the cosine of w0: in Python, -2 * math.cos(w0)›
+    set a1 to ‹a1 for a low-pass filter›
     python: a2 = 1 - alpha
     note: 3. The filter: each output mixes this input, the last two inputs and the last two outputs.
     python: x1 = x2 = y1 = y2 = 0.0
@@ -188,6 +195,7 @@ name: Mixer: several tracks into one
 depth: hallway
 summary: A mixer adds tracks together, sample by sample, each through its own fader, into one sound: the heart of any DAW's mixing desk. Here the second track is the same tone an octave up. The structure is laid out; you write the line that adds each track's sample at its level.
 learn: Loops inside loops; lists of lists; why tracks need the same length (shorter ones count as silence).
+blank: ‹this track's sample, at its level› | a calculation | \`tracks[t]\` is track t's samples, and \`[i]\` after it picks the one at position i. \`gains[t]\` is that track's level as a multiplier: multiply the two. | tracks[t][i] * gains[t]
 == tools
 define mix tracks using tracks, levels
     description: Adds tracks together, each at its own level in decibels, into one sound.
@@ -200,7 +208,7 @@ define mix tracks using tracks, levels
         count t from 0 to len(tracks) - 1
             note: A shorter track has run out of samples here: it adds nothing (silence).
             if i is less than len(tracks[t])
-                increase total by ‹this track's sample at position i, times its gain: tracks[t][i] * gains[t]›
+                increase total by ‹this track's sample, at its level›
         add total to mixed
     give back mixed
 == main
@@ -389,6 +397,8 @@ depth: hallway
 summary: A form for visitors to write to you: their name, their email and a message. Here the page checks that nothing is missing and thanks the person by name. The form is built; you write the check that nothing is missing (the part every form needs) and put their name in the thank-you. The honest limit: a web page on its own can't deliver a message anywhere; that takes a computer that is always on. To receive the messages, connect the form to a form service, or to your own server (the Online service path builds one). Until then, the email link in the footer works with no server at all.
 usual: Formspree, Netlify Forms or Basin: they give you an address to send the form to, and email you each message.
 learn: Forms, labels and boxes; the "sent" event; why delivering a message needs a server.
+blank: ‹one of the three boxes is empty› | a test (true or false) | \`name\`, \`email\` and \`message\` hold what was typed in the three boxes. Ask whether each one is \`empty text\`, and join the three tests with \`or\`. | name is empty text or email is empty text or message is empty text
+blank: ‹who to thank› | a name | Earlier in this event, the text of \`name-box\` was stored under a name of its own: that name goes in the braces. | name
 == structure
 add a section called contact
     add a heading "Contact"
@@ -414,10 +424,10 @@ when message-form is sent
     get the text of name-box and store in name
     get the text of email-box and store in email
     get the text of message-box and store in message
-    if ‹any of the three is missing: name is empty text or email is empty text or …›
+    if ‹one of the three boxes is empty›
         set the text of form-reply to "Please fill in all three boxes."
     otherwise
-        set the text of form-reply to "Thank you, {‹the name they typed›}! I'll reply to {email} soon."
+        set the text of form-reply to "Thank you, {‹who to thank›}! I'll reply to {email} soon."
         clear message-box`,
 
 `component: footer
@@ -780,6 +790,8 @@ name: Editing an item
 depth: hallway
 summary: Double-click an item to change it: a small dialog asks for the new text, starting from the old. The structure is here; you fill in the two parts that show how a list box thinks: which position was double-clicked, and where the new text goes (the same place, once the old text is deleted).
 learn: Events (a double-click is "<Double-Button-1>"); simpledialog for quick questions; delete, then insert at the same position.
+blank: ‹the position that was double-clicked› | a number | \`chosen\` is the list of selected positions that \`curselection()\` gave back, with only one in it here. Take its first item, as the Remove step does. | first item of chosen
+blank: ‹where the new text goes› | a name | Insert it where the old text was, so the item keeps its place in the list. That place is stored a few lines up, under a name of its own. | position
 == main
 define edit selected using event=None
     description: Asks for new text for the chosen item, and puts it in the item's place.
@@ -788,12 +800,12 @@ define edit selected using event=None
     if not chosen
         give back
     note: 1. curselection gives the chosen positions (only one here): take the first.
-    set position to ‹the first item of chosen›
+    set position to ‹the position that was double-clicked›
     set answer to simpledialog.askstring(TITLE, "Change the item to:", initialvalue=listbox.get(position), parent=window)
     note: 2. Cancel gives back nothing, and empty text changes nothing either.
     if answer and answer.strip()
         run listbox.delete with position
-        run listbox.insert with ‹where it goes: the same position›, answer.strip()
+        run listbox.insert with ‹where the new text goes›, answer.strip()
 
 run listbox.bind with "<Double-Button-1>", edit selected`,
 
@@ -950,6 +962,9 @@ depth: hallway
 summary: The web server is what the internet talks to. Each route is an address and a tool: when a browser or an app asks for /api/notes, the server runs the tool under it and sends back what it gives, here as JSON, the format apps and scripts read. It uses Flask, which isn't built into Python: type $ pip install flask in the terminal once. Fill in the three blanks, press Run and open http://127.0.0.1:5000 in your browser. A page for your users can be made on the Webpage path: its Mechanics can "fetch from" these routes.
 usual: Flask (small and clear, used here); FastAPI (fast, and checks data for you); Django (everything included: admin, accounts, database tools).
 learn: URLs, requests and responses; GET (read) and POST (send); JSON; status codes (200 fine, 201 made, 400 your mistake, 500 ours); installing a package with pip.
+blank: ‹the front page, as HTML in quotes› | text in quotes | Any HTML works, as one line of text in quotes: a heading, say, and a link to \`/api/notes\` so visitors can find the notes. Inside it, use single quotes for the link's address. | "<h1>My notes</h1><p>They're at <a href='/api/notes'>/api/notes</a></p>"
+blank: ‹the notes, as JSON› | a calculation | Flask's \`jsonify( )\`, imported at the top, turns a list or a dictionary into a JSON answer. \`notes\` holds every note. | jsonify(notes)
+blank: ‹the status code for a bad request› | a number | Status codes in the 400s mean the sender made a mistake, and the 500s that the server did. The first of the 400s is the general one, "bad request". | 400
 == tools
 python: from flask import Flask, jsonify, request
 note: The web server. Each "when app gets …" below is a route: an address it answers.
@@ -958,13 +973,13 @@ set app to Flask(__name__)
 when app gets GET at "/"
 define front page
     description: What a browser shows at http://127.0.0.1:5000/
-    give back ‹a line of HTML in quotes, like "<h1>My notes</h1><p>They're at <a href='/api/notes'>/api/notes</a></p>"›
+    give back ‹the front page, as HTML in quotes›
 
 when app gets GET at "/api/notes"
 define list notes
     description: Every note, as JSON.
     run all notes and store in notes
-    give back ‹the notes turned into JSON, with Flask's jsonify: jsonify(notes)›
+    give back ‹the notes, as JSON›
 
 when app gets POST at "/api/notes"
 define new note
@@ -973,7 +988,7 @@ define new note
     set text to data.get("text")
     run check note with text and store in problem
     if problem
-        give back jsonify(error=problem), ‹the status code that means "you sent something wrong": 400›
+        give back jsonify(error=problem), ‹the status code for a bad request›
     run add note with text and store in new id
     give back jsonify(id=new id, text=text), 201
 == main
@@ -987,6 +1002,8 @@ depth: hallway
 summary: A page only you can open, to see how the service is doing: how many notes there are, and the latest ones. It's locked with a secret key kept outside the code, in an environment variable, so it never ends up in a file you share or publish. It's a route on the web server, so it needs that step too. Real services put admin pages behind proper logins (the Accounts step), but the idea is the same: check who's asking before showing anything.
 usual: Flask-Admin, or Django's built-in admin, for full admin sites; logins from the Accounts step instead of a shared key.
 learn: Environment variables (set ADMIN_KEY before starting the server); why secrets never go in code; escaping, so text people send can't turn into HTML or scripts on your page.
+blank: ‹the expected key, as bytes› | a calculation | \`compare_digest\` compares bytes with bytes, and the given key is turned into bytes with \`.encode()\`. Do the same to \`expected\`. | expected.encode()
+blank: ‹the status code for a refused key› | a number | Status codes in the 400s say what's wrong with a request: 400 bad request, 403 forbidden, 404 not found. Here the request is fine, but whoever sent it isn't allowed to see the page. | 403
 == tools
 when app gets GET at "/admin"
 define admin page
@@ -997,8 +1014,8 @@ define admin page
     set expected to os.environ.get("ADMIN_KEY", "")
     set given to request.args.get("key", "")
     note: 1. Locked unless the given key matches. compare_digest takes as long however much matches, so the key can't be guessed letter by letter.
-    if not expected or not hmac.compare_digest(given.encode(), ‹the key this page expects, as bytes: expected.encode()›)
-        give back "Not allowed.", ‹the status code for "forbidden": 403›
+    if not expected or not hmac.compare_digest(given.encode(), ‹the expected key, as bytes›)
+        give back "Not allowed.", ‹the status code for a refused key›
     note: 2. The page. escape turns < and > in a note into plain text, so nobody can slip HTML or a script into your admin page.
     run all notes and store in notes
     set items to empty text
@@ -1080,6 +1097,8 @@ name: A button
 depth: hallway
 summary: A push button between pin 2 and ground (GND). The board's built-in pull-up keeps the pin HIGH until the button connects it to ground, so pressed reads LOW, the opposite of what you'd guess. The sketch counts presses and reports each one. It reacts to the moment of pressing, not to holding, and ignores the tiny flickers a real button makes as its contacts close (called bounce) by trusting a reading only once it has held still for a moment. The structure is here; you fill in how long that moment is, and what a pressed button reads.
 learn: Digital inputs and pull-up resistors; noticing a change (was up, now down); debouncing.
+blank: ‹how long a reading must hold still, in ms› | a number | A button's contacts flicker for a few milliseconds as they close. A few tens of milliseconds is long enough to wait that out, and too short for anyone to notice. | 50
+blank: ‹what the button's pin reads when pressed› | a name | The pull-up keeps the pin \`HIGH\` until something connects it to ground, and pressing the button does that. | LOW
 == settings
 constant BUTTON is 2
 set lastReading to HIGH
@@ -1093,9 +1112,9 @@ read pin BUTTON and store in buttonReading
 note: Any flicker restarts the 50 ms wait; only a reading that holds still counts.
 if buttonReading is not lastReading
     set lastChange to time since start
-if time since start minus lastChange is more than ‹how long a reading must hold still, in milliseconds: 50 is usual› and buttonReading is not buttonState
+if time since start minus lastChange is more than ‹how long a reading must hold still, in ms› and buttonReading is not buttonState
     set buttonState to buttonReading
-    if buttonState is ‹what a pressed button reads, with the pull-up: HIGH or LOW›
+    if buttonState is ‹what the button's pin reads when pressed›
         increase presses
         show "Button pressed: {presses}"
 set lastReading to buttonReading`,
@@ -1268,9 +1287,15 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
   /* Reading the plain-text format                                        */
   /* ------------------------------------------------------------------ */
 
+  /* "‹label› | kind | how to work it out | example" (the example may hold | itself: it's the rest) */
+  function parseBlank(s) {
+    const [slot, kind, hint, ...rest] = String(s).split('|');
+    return { slot: (slot || '').trim(), kind: (kind || '').trim(), hint: (hint || '').trim(), example: rest.join('|').trim() };
+  }
+
   function parseEntry(text) {
     const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-    const head = {}, sections = {}, options = [];
+    const head = {}, sections = {}, options = [], blanks = [];
     let sec = null;
     for (const line of lines) {
       const s = line.match(/^==\s*(\w+)\s*$/);
@@ -1282,12 +1307,13 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
         const [label, means, next] = m[2].split('|').map(x => (x || '').trim());
         const kit = (next || '').match(/^kit\s+([\w-]+)(?:\s*:\s*(.*))?$/);
         options.push({ label, means, next: kit ? null : next, kit: kit ? kit[1] : null, ticked: kit && kit[2] ? kit[2].split(',').map(x => x.trim()).filter(Boolean) : null });
-      } else head[m[1]] = m[2].trim();
+      } else if (m[1] === 'blank') blanks.push(parseBlank(m[2]));
+      else head[m[1]] = m[2].trim();
     }
     for (const k of Object.keys(sections)) {
       while (sections[k].length && !sections[k][sections[k].length - 1].trim()) sections[k].pop();
     }
-    return { head, sections, options };
+    return { head, sections, options, blanks };
   }
 
   /* The core library, then the kit packs (lang/kits/*.js, loaded before this file), which add entries with
@@ -1298,7 +1324,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
    * library says about it, like a kit listing a step that doesn't exist yet, comes from parseLibrary). */
   const FOLDERS = ['settings', 'tools', 'main', 'structure', 'styling', 'mechanics', 'start', 'loop'];
   function describeEntry(text) {
-    const { head, sections, options } = parseEntry(text);
+    const { head, sections, options, blanks: said } = parseEntry(text);
     const kind = ['question', 'kit', 'component'].find(k => head[k] != null) || null;
     const id = kind ? head[kind] : '';
     const problems = [];
@@ -1325,6 +1351,12 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       const blanks = Object.values(sections).some(ls => ls.some(l => /‹[^›]*›/.test(l) && !/^\s*(?:note|comment)\s*:/i.test(l)));
       if (head.depth === 'hallway' && !blanks) problems.push('A hallway step leaves ‹blanks› to fill in: put at least one in its sentences, like "set gain to ‹a number from 0 to 1›".');
       if (head.depth === 'walk' && blanks) problems.push('A walk step is written in full: fill in its ‹blanks›, or make it "depth: hallway".');
+      const text = Object.values(sections).flat().join('\n');
+      for (const b of said) {
+        if (!/^‹[^›]+›$/.test(b.slot)) problems.push(`A "blank:" line starts with the ‹blank› it's about, in its marks, like "blank: ‹ticks to wait› | a calculation | how to work it out | an answer".`);
+        else if (!text.includes(b.slot)) problems.push(`"blank: ${b.slot}" is about a ‹blank› that isn't in the sentences.`);
+        else if (!b.example) problems.push(`"blank: ${b.slot}" needs an answer that works, at the end: ‹blank› | kind | how to work it out | an answer.`);
+      }
     }
     return { kind, id, title: kind === 'question' ? head.ask || id : head.title || head.name || id, problems };
   }
@@ -1375,7 +1407,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
   function parseLibrary(entries) {
     const lib = { questions: {}, kits: {}, components: {}, problems: [] };
     for (const text of entries) {
-      const { head, sections, options } = parseEntry(text);
+      const { head, sections, options, blanks } = parseEntry(text);
       if (head.question) lib.questions[head.question] = { id: head.question, ask: head.ask || '', options };
       else if (head.kit) {
         lib.kits[head.kit] = {
@@ -1387,7 +1419,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       } else if (head.component) {
         lib.components[head.component] = {
           id: head.component, name: head.name || head.component, depth: DEPTHS[head.depth] ? head.depth : 'horizon',
-          summary: head.summary || '', usual: head.usual || '', learn: head.learn || '', sections,
+          summary: head.summary || '', usual: head.usual || '', learn: head.learn || '', sections, blanks,
         };
       } else lib.problems.push('An entry needs "question:", "kit:" or "component:" on its first line.');
     }

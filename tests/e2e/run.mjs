@@ -252,6 +252,21 @@ try {
     if (r.stages !== 3 || !(r.smallest < r.all) || r.form.steps < 5 || !/builds with no problems/.test(r.form.check) || !r.maxTerm.term || r.maxTerm.say || !r.back) throw new Error(JSON.stringify(r));
   });
 
+  await check('a ‹blank› says what goes there and how to work it out, and shows an answer only when asked', async () => {
+    await blueprint('Empty script');
+    const r = await js(() => {
+      const ta = document.getElementById('ta');
+      ta.value = 'set march wait to ‹ticks to wait before the next step›'; ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.focus(); ta.setSelectionRange(20, 20); ta.dispatchEvent(new Event('click'));
+      const before = (document.querySelector('.ex-fill') || {}).textContent || '';
+      document.querySelector('[data-show-ex]').click();
+      const shown = document.querySelector('.ex-fill').textContent;
+      document.querySelector('[data-put-ex]').click();
+      return { before, shown, after: ta.value };
+    });
+    if (!/a calculation/.test(r.before) || !/How to work it out/.test(r.before) || /One answer that works/.test(r.before) || !/One answer that works/.test(r.shown) || !/^set march wait to 1 \+ MARCH_EVERY \* length of invaders/.test(r.after)) throw new Error(JSON.stringify(r));
+  });
+
   await check('runs a shell command with $', async () => {
     await clearTerminal();
     await typeInTerminal('$ echo shell-says-hi');
