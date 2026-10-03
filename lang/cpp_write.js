@@ -25,9 +25,9 @@
      it is; any other becomes _, so the rest of the line still translates. Each such line then has one
      problem: "Fill in the ‹…› slot." Notes can mention ‹blanks› freely. (As in web_write.js.) */
   function holdBlanks(text) {
-    const blanks = new Map();
+    const blanks = new Map(), strays = new Map();
     const lines = String(text || '').split('\n').map((l, i) => {
-      if (!l.includes('‹') || /^\s*(?:note|comment|description)\s*:/i.test(l)) return l;
+      if (!/[‹›]/.test(l) || /^\s*(?:note|comment|description)\s*:/i.test(l)) return l;
       let out = '', q = null, fill = 0;
       for (let k = 0; k < l.length; k++) {
         const c = l[k];
@@ -37,6 +37,8 @@
           out += q && !fill ? slot : '_';
           k = end; continue;
         }
+        // half a ‹blank› left behind (its words deleted, a mark kept): left out, and the line says so
+        if ((c === '‹' || c === '›') && !(q && !fill)) { if (!strays.has(i)) strays.set(i, c); continue; }
         if (!q && (c === '"' || c === "'")) q = c;
         else if (q && c === q && l[k - 1] !== '\\' && !fill) q = null;
         else if (q && (c === '{' || c === '}') && l[k + 1] === c && !fill) { out += c + c; k++; continue; }   // {{ and }} are braces themselves
@@ -46,10 +48,12 @@
       }
       return out;
     });
-    return { text: lines.join('\n'), blanks };
+    return { text: lines.join('\n'), blanks, strays };
   }
-  function reportBlanks(info, blanks) {
+  const STRAY_MARK = (c) => `A ${c} is left over from a ‹blank› whose words were deleted, so it's left out of the code: delete it here too. (Clicking in a ‹blank› selects all of it, so what you type replaces it, marks and all.)`;
+  function reportBlanks(info, blanks, strays) {
     for (const [i, slots] of blanks) if (info[i]) { info[i].errs = slots.map(s => `Fill in the ${s} slot.`); info[i].warns = []; }
+    for (const [i, c] of strays || []) if (info[i] && !blanks.has(i)) info[i].warns.push(STRAY_MARK(c));
   }
   const FILLER = /^(?:(?:please|now|next|then|and then|also|just|i want to|i'd like to|let's|let us|go ahead and)\s*,?\s+)+/i;
   const RAW = /^(?:c\+\+|cpp|raw)\s*:\s?(.*)$/i;
@@ -573,7 +577,7 @@
     for (const sec of project.sections) {
       const h = holdBlanks(sec.text);
       results[sec.id] = compileCpp({ ...sec, text: h.text }, x);
-      reportBlanks(results[sec.id].info, h.blanks);
+      reportBlanks(results[sec.id].info, h.blanks, h.strays);
     }
     const syms = new Map();
     for (const [k, t] of Object.entries(x.types)) syms.set(k, { py: k, display: k, kind: /int|double|long/.test(t) ? 'number' : /string|String/.test(t) ? 'text' : /vector|\[\]/.test(t) ? 'list' : 'value' });

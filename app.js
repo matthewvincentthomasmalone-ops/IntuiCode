@@ -615,7 +615,7 @@
     ensureCaretVisible();
     syncScroll();
     const cur = caretLine();
-    if (typingLine >= 0 && cur !== typingLine) { typingLine = -1; renderOverlay(); renderTree(); renderProblems(); }
+    if (typingLine >= 0 && cur !== typingLine) { typingLine = -1; renderOverlay(); renderTree(); renderProblems(); schedulePreview(); }
     [...gutterInner.children].forEach((g, i) => g.classList.toggle('cur', i === cur));
     linkPython(scrollPy);
     renderExplain();
@@ -760,7 +760,18 @@
 
   ta.addEventListener('input', () => { onEdit(); updateAc(); });
   ta.addEventListener('scroll', () => { closeDdMenu(); syncScroll(); if (!ac.hidden) updateAc(); placeTip(); });
-  ta.addEventListener('click', () => { closeAc(); afterCaretMove(true); });
+  ta.addEventListener('click', (e) => {
+    closeAc();
+    // a click in a ‹blank› selects all of it, as Tab does, so what's typed replaces it, marks and all
+    if (e.detail === 1 && ta.selectionStart === ta.selectionEnd) {
+      const b = lineBounds(ta.selectionStart), col = ta.selectionStart - b.start;
+      if (!/^\s*(?:note|comment|description|teach)\s*:/i.test(b.text)) {
+        const open = b.text.lastIndexOf('‹', col - 1), close = b.text.indexOf('›', open);
+        if (open >= 0 && close >= col && !b.text.slice(open + 1, col).includes('›')) ta.setSelectionRange(b.start + open, b.start + close + 1);
+      }
+    }
+    afterCaretMove(true);
+  });
   ta.addEventListener('keyup', (e) => {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key) && ac.hidden) afterCaretMove(true);
   });
@@ -1875,10 +1886,20 @@
     }
     if (seq === previewSeq) frame.srcdoc = html;
   }
+  /* The live preview follows the sentences, but not a line still being typed that doesn't work yet
+   * (half a condition, a ‹blank› not filled in): it waits until the line works, or the cursor leaves it. */
   function schedulePreview() {
     if (project.kind !== 'website' || $('previewWrap').hidden) return;
     clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => runWebsite(false), 600);
+    previewTimer = setTimeout(() => {
+      const r = secResult(project.active), inf = r && typingLine >= 0 && r.info[typingLine];
+      if (inf && (inf.errs.length || (activeSec().file === 'mechanics' && !parses(r.text)))) return;
+      runWebsite(false);
+    }, 600);
+  }
+  /* Is it whole JavaScript? (Read, never run: a half-typed "set speed to -" isn't.) */
+  function parses(js) {
+    try { new Function(js); return true; } catch (e) { return !(e instanceof SyntaxError); }
   }
   function setPicking(on) {
     picking = on;
@@ -1906,8 +1927,15 @@
         const o = js.lines[d.line - previewInfo.jsLine];
         if (o && o.src >= 0) where = o.src;
       }
+      // an unfilled ‹blank› runs as _ : say that, not "_ is not defined"
+      const mech = project.sections.find(s => s.file === 'mechanics');
+      if (/\b_ is not defined/.test(d.text) && mech && /‹[^›]*›/.test(where !== '' ? mech.text.split('\n')[where] || '' : mech.text)) {
+        tLine(`■ The page stopped at a ‹blank› that isn't filled in yet${where !== '' ? '' : ': Problems on the left lists them'}. The help says what goes in it.`, 't-sys');
+        if (where !== '') pointAt(mech.id, where, 'The page stops here until this ‹blank› is filled in.');
+        return;
+      }
       tLine(`✕ The page hit an error: ${d.text}`, 't-err');
-      if (where !== '') pointAt(project.sections.find(s => s.file === 'mechanics').id, where, `The page hit an error: ${d.text}`);
+      if (where !== '') pointAt(mech.id, where, `The page hit an error: ${d.text}`);
     } else if (d.type === 'pick') {
       setPicking(false);
       const sec = activeSec();

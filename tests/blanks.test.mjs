@@ -2,9 +2,10 @@
 // with what kind of thing it is, how to work it out, and an answer that works (which the kit tests fill in).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadBuilder } from './helpers/engine.mjs';
+import { loadBuilder, loadEngine } from './helpers/engine.mjs';
 
 const B = loadBuilder();
+const { L, WEB, CPP } = loadEngine();
 const lib = B.library;
 const KINDS = ['a number', 'a calculation', 'a test (true or false)', 'text in quotes', 'a name', 'a list', 'a colour', 'a CSS value', 'a line of code'];
 const sentenceSlots = (c) => [...new Set(Object.values(c.sections).flat()
@@ -43,6 +44,21 @@ test('every ‹blank› in the library says what goes there, clearly', () => {
     }
   }
   assert.deepEqual(issues, []);
+});
+
+test('half a ‹blank› left behind (its words deleted, a mark kept) is left out of the code, and the line says to delete it', () => {
+  const said = (info) => JSON.parse(JSON.stringify(info.map(i => [i.errs.length, i.warns.filter(w => /left over from a ‹blank›/.test(w)).length])));
+  const py = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'set short hop to -4›\nset x to ‹ 2\nshow "a › in text"\nset y to ‹a number›' }] }).results.main;
+  assert.deepEqual([...py.lines.map(l => l.text)], ['short_hop = -4', 'x = 2', 'print("a › in text")', 'y = _']);
+  assert.deepEqual(said(py.info), [[0, 1], [0, 1], [0, 0], [1, 0]]);
+  const web = WEB.compileWebsite({ sections: [{ id: 'structure', file: 'structure', text: 'add a paragraph "Hi ›"' }, { id: 'styling', file: 'styling', text: '' },
+    { id: 'mechanics', file: 'mechanics', text: 'set shortHop to -4›\nset jumps to ‹how many jumps› plus 1›' }] }).results;
+  assert.match(web.mechanics.text, /^let shortHop = -4;\nlet jumps = _ \+ 1;/);
+  assert.deepEqual(said(web.mechanics.info), [[0, 1], [1, 0]]);   // a line with a ‹blank› to fill says that first
+  assert.match(web.structure.text, /<p>Hi ›<\/p>/);
+  const cpp = CPP.compileCppProject({ kind: 'cpp', sections: [{ id: 'program', file: 'program', text: 'set x to 4›' }] }).results.program;
+  assert.match(cpp.text, /x = 4;/);
+  assert.deepEqual(said(cpp.info), [[0, 1]]);
 });
 
 test('two steps never use the same ‹blank› to mean different things (the help finds a ‹blank› by its words)', () => {
