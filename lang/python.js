@@ -1067,8 +1067,27 @@
     return { settings: 'Settings', tools: 'Tools', main: 'Main program' }[file] || file;
   }
 
+  /* Half a ‹blank› left behind (its words deleted, a mark kept: "set speed to 4›"): the mark is left out
+     of the code, and the line says to delete it. Whole ‹blanks› are kept for the line to report; a mark
+     inside text in quotes is text. -> { line, stray } (stray: the mark, or null) */
+  function dropStrayMarks(l) {
+    if (!/[‹›]/.test(l) || /^\s*(?:note|comment|description)\s*:/i.test(l)) return { line: l, stray: null };
+    let out = '', q = null, stray = null;
+    for (let k = 0; k < l.length; k++) {
+      const c = l[k];
+      if (c === '‹' && l.indexOf('›', k) > k) { const end = l.indexOf('›', k); out += l.slice(k, end + 1); k = end; continue; }
+      if ((c === '‹' || c === '›') && !q) { stray = stray || c; continue; }
+      if (!q && (c === '"' || c === "'")) q = c;
+      else if (q && c === q && l[k - 1] !== '\\') q = null;
+      out += c;
+    }
+    return { line: out, stray };
+  }
+  const strayMark = (c) => `A ${c} is left over from a ‹blank› whose words were deleted, so it's left out of the code: delete it here too. (Clicking in a ‹blank› selects all of it, so what you type replaces it, marks and all.)`;
+
   function translateSection(sec, env, project) {
-    const lines = sec.text.split('\n');
+    const strays = new Map();
+    const lines = sec.text.split('\n').map((l, i) => { const d = dropStrayMarks(l); if (d.stray) strays.set(i, d.stray); return d.line; });
     const out = [];
     const info = lines.map((_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] }));
     const stack = [{ ind: 0, type: 'root' }];
@@ -1194,6 +1213,7 @@
     if (header.length) header.push({ text: '', src: -1 });
     const all = out.slice(0, docEnd).concat(header, out.slice(docEnd));
     all.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
+    for (const [i, c] of strays) if (!info[i].errs.some(e => e.startsWith('Fill in the'))) info[i].warns.push(strayMark(c));
 
     return { lines: all, info, text: all.map(o => o.text).join('\n') + '\n' };
   }

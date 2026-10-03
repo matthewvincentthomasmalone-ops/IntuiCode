@@ -67,9 +67,9 @@
      it is; any other becomes _, so the rest of the line, and the rest of the page, still works. Each
      such line then has one problem: "Fill in the ‹…› slot." Notes can mention ‹blanks› freely. */
   function holdBlanks(text) {
-    const blanks = new Map();
+    const blanks = new Map(), strays = new Map();
     const lines = String(text || '').split('\n').map((l, i) => {
-      if (!l.includes('‹') || /^\s*(?:note|comment|description)\s*:/i.test(l)) return l;
+      if (!/[‹›]/.test(l) || /^\s*(?:note|comment|description)\s*:/i.test(l)) return l;
       let out = '', q = null, fill = 0;
       for (let k = 0; k < l.length; k++) {
         const c = l[k];
@@ -79,6 +79,8 @@
           out += q && !fill ? slot : '_';
           k = end; continue;
         }
+        // half a ‹blank› left behind (its words deleted, a mark kept): left out, and the line says so
+        if ((c === '‹' || c === '›') && !(q && !fill)) { if (!strays.has(i)) strays.set(i, c); continue; }
         if (!q && (c === '"' || c === "'")) q = c;
         else if (q && c === q && l[k - 1] !== '\\' && !fill) q = null;
         else if (q && (c === '{' || c === '}') && l[k + 1] === c && !fill) { out += c + c; k++; continue; }   // {{ and }} are braces themselves
@@ -88,10 +90,12 @@
       }
       return out;
     });
-    return { text: lines.join('\n'), blanks };
+    return { text: lines.join('\n'), blanks, strays };
   }
-  function reportBlanks(info, blanks) {
+  const STRAY_MARK = (c) => `A ${c} is left over from a ‹blank› whose words were deleted, so it's left out of the code: delete it here too. (Clicking in a ‹blank› selects all of it, so what you type replaces it, marks and all.)`;
+  function reportBlanks(info, blanks, strays) {
     for (const [i, slots] of blanks) if (info[i]) { info[i].errs = slots.map(s => `Fill in the ${s} slot.`); info[i].warns = []; }
+    for (const [i, c] of strays || []) if (info[i] && !blanks.has(i)) info[i].warns.push(STRAY_MARK(c));
   }
 
   /* Shared line machinery: indentation, info per line, output lines with their source line. */
@@ -953,7 +957,7 @@
     const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {} };
     const held = {};
     const sec = (f) => {
-      if (!held[f]) { const s = project.sections.find(s => s.file === f) || { id: f, file: f, text: '' }; const h = holdBlanks(s.text); held[f] = { sec: { ...s, text: h.text }, blanks: h.blanks }; }
+      if (!held[f]) { const s = project.sections.find(s => s.file === f) || { id: f, file: f, text: '' }; const h = holdBlanks(s.text); held[f] = { sec: { ...s, text: h.text }, blanks: h.blanks, strays: h.strays }; }
       return held[f].sec;
     };
     // Structure first (names), then Styling (may add groups to Structure), then Structure again, then Mechanics
@@ -966,7 +970,7 @@
     const marked = compileHtml(sec('structure'), { ...shared, ids: {}, mark: true });
     html.previewText = marked.text;
     const results = { structure: html, styling: css, mechanics: js };
-    for (const f of Object.keys(results)) reportBlanks(results[f].info, held[f].blanks);
+    for (const f of Object.keys(results)) reportBlanks(results[f].info, held[f].blanks, held[f].strays);
     const syms = new Map();
     for (const [id, v] of Object.entries(shared.ids)) syms.set(id, { py: id, display: id, kind: 'element', tag: v.tag });
     for (const g of Object.keys({ ...shared.groups, ...shared.cssGroups })) syms.set('group ' + g, { py: g, display: 'group ' + g, kind: 'group' });
