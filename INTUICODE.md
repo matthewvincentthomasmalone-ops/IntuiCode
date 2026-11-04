@@ -1288,13 +1288,14 @@ same = a == b
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `set n to 0`, then `add 1 to n` | `n.push(1)`: a `TypeError` when run | Mechanics' `add` is always `.push` | `increase n by 1` |
-| `create list xs with 1, 2 and 3` | `[1, 2 && 3]`, which is `[1, 3]` | Mechanics splits items at commas only | `with 1, 2, 3` |
-| `run add with 1 and 2` | `add(1 && 2)` | the same | `run add with 1, 2` |
-| `set flag to not n is 5` | `!n === 5`: always false for a number | `!` binds to `n` alone in JavaScript | `n is not 5` |
-| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function: `script.js` doesn't run | only blocks are made `async` | put it under `when the page has loaded` |
-| `if n is 1 then show 1` | `if (n === 1 then show 1) {`, warnings only | Mechanics doesn't split steps | two lines |
-| a line indented with a tab | not indented: the block closes before it | only spaces count | spaces |
+Fixed on 2026-11-04: `add` on a number (`+=`), items and inputs split at "and", `not n is 5`
+(`!(n === 5)`), `1 is less than x is less than 10` (two tests), `is an empty list` (`.length === 0`),
+`answer is "yes" or "y"`, `last item of` a tool's result (runs it once), a name used after the block it was
+made in (a warning), `if … then …` on one line (an error), tabs. Still wrong:
+
+| You write | You get | Why | Write instead |
+|---|---|---|---|
+| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function: the page's `script.js` (a classic script) doesn't run | only blocks are made `async`; a module script would allow it, and code read from one keeps it | put it under `when the page has loaded` |
 
 ```intuicode js
 set n to 0
@@ -1302,17 +1303,14 @@ add 1 to n
 create list xs with 1, 2 and 3
 set flag to not n is 5
 fetch from "/api/items" and store in items
-if n is 1 then show 1
 ```
 
 ```js
 let n = 0;
-n.push(1);
-let xs = [1, 2 && 3];
-let flag = !n === 5;
+n += 1;
+let xs = [1, 2, 3];
+let flag = !(n === 5);
 const items = await (await fetch("/api/items")).json();
-if (n === 1 then show 1) {
-}
 ```
 
 ### HTML and CSS writer
