@@ -41,9 +41,17 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 
 ## Files and folders
 
-A project is a set of folders. Each folder holds sentences and becomes one code file.
+A project is a tree of files (`lang/project.js`). Each file has a path and a language from
+`lang/languages.js`, and the language says how it is written: in **sentences** (Python, HTML, CSS, JavaScript,
+C++, Arduino: each sentence file becomes one code file of that name), as **code** that IntuCode reads to you
+(Rust, Go, C#, Swift… 30+), or as **text** kept as written (Markdown, CSV, JSON, YAML, TOML). A project can mix
+them. Each writer compiles its own files: the Python files together, each seeing the ones before it and the
+start file last; a website's main page with its styling and mechanics, and its other pages, styles and
+scripts against it; the C++ files as one program; the Arduino files as one sketch.
 
-| Project | Folders | Code files | Writer | Reader |
+The usual starting layouts, and the names their files get:
+
+| Project | Files (shown as) | Code files | Writer | Reader |
 |---|---|---|---|---|
 | Python, one file | Main program | `main.py` | `lang/python.js` | `lang/python_reader.py` |
 | Python, three folders | Settings, Tools, Main program | `settings.py`, `tools.py`, `main.py` | `lang/python.js` | `lang/python_reader.py` |
@@ -55,7 +63,8 @@ A project is a set of folders. Each folder holds sentences and becomes one code 
   them and rebuilt from the code when the code changes elsewhere (see `ARCHITECTURE.md`).
 - **Python, three folders.** Settings holds shared starting values, Tools holds `define` blocks, Main
   program runs. A later file starts with `from settings import *` (and `from tools import *`) when the
-  earlier file defines something. Standard modules a sentence needs (`random`, `math`, `time`, `sys`) are
+  earlier file defines something; any other Python file (`dsp/gain.py`) is imported the same way, by its
+  module name (`from dsp.gain import *`). Standard modules a sentence needs (`random`, `math`, `time`, `sys`) are
   imported at the top, after the file's description.
 - **Website.** `index.html` gets the doctype, `<html lang="en">`, the character set and viewport,
   a title ("My page" unless one is given), `<link rel="stylesheet" href="style.css">` at the end of

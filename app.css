@@ -409,6 +409,9 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .chip.k-component, .chip.k-handler { background: var(--accent-soft); color: var(--accent); }
 .chip.k-part, .chip.k-head { background: var(--slot-bg); color: var(--slot-ink); }
 .chip.k-style, .chip.k-media { background: var(--accent-soft); color: var(--op); }
+.chip.k-type { background: var(--accent-soft); color: var(--var); }
+.chip.k-test { background: rgba(143, 228, 185, .12); color: var(--good); }
+.chip.k-data, .chip.k-heading { background: var(--slot-bg); color: var(--slot-ink); }
 .warn-dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--warn); color: var(--panel); font: 700 11px/1 var(--f-ui); }
 
 /* Read view */

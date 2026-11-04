@@ -2895,7 +2895,8 @@
   let proj = null;         // the reader's analysis of the whole project
   let readFocus = null;    // {type:'section', id} | {type:'range', summary}
   const KIND_LABEL = { about: 'About', imports: 'Toolkits', settings: 'Settings', steps: 'Steps', tool: 'Tool', route: 'Web route', class: 'Class', start: 'Start',
-    component: 'Component', handler: 'Event', head: 'Page info', part: 'Part', script: 'Script', style: 'Style', media: 'Screens' };
+    component: 'Component', handler: 'Event', head: 'Page info', part: 'Part', script: 'Script', style: 'Style', media: 'Screens',
+    type: 'Type', test: 'Test', data: 'Data', heading: 'Heading' };
   const ROLE_ORDER = ['entry', 'settings', 'models', 'helpers', 'routes', 'script', 'package', 'tests'];
   const SKIP_DIRS = new Set(['venv', '.venv', 'env', '.env', 'node_modules', '__pycache__', '.git', 'site-packages', 'build', 'dist', '.tox', '.mypy_cache', '.pytest_cache', '.idea', '.vscode']);
   const EXTRA_FILE = /(^|\/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile|package\.json)$/i;
