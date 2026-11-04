@@ -22,6 +22,7 @@ const DOCSTRINGS = [
   ['a docstring the sentences can\'t hold', 'def g():\n    r"""Raw \\d and\ttab """\n    return 1\n', /^    python: 'Raw \\\\d and\\ttab '$/m],
   // "add … to …" / "remove … from …" with those words in the value: kept as python:
   ['a value that says "to" or "from"', 'import random\nnums = []\nnums.append(random.randint(1, 6))\nnums.remove(random.choice(nums))\nnames = []\nnames.append("Walk to the shop")\n', /^python: nums\.append\(random\.randint\(1, 6\)\)\npython: nums\.remove\(random\.choice\(nums\)\)$/m],
+  ['a docstring above a global', 'score = 0\ndef bump():\n    """Adds one."""\n    global score\n    score += 1\n', /^    description: Adds one\.\n    use the shared score$/m],
 ];
 test('docstrings and tricky values come back exactly', () => {
   const sents = toSentences(DOCSTRINGS.map(d => d[1]));

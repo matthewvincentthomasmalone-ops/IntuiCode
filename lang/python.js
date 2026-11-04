@@ -1106,7 +1106,10 @@
       }
       const auto = entry.fn ? [...entry.fn.globals].filter(g => !(entry.fn.explicit && entry.fn.explicit.has(g))) : [];
       if (auto.length && env.pass === 2) {
-        out.splice(entry.fn.outIdx + 1, 0, { text: ' '.repeat((entry.fn.level + 1) * 4) + 'global ' + auto.join(', '), src: entry.fn.line, extra: true });
+        // after the tool's description, so it stays the first statement (a docstring)
+        let at = entry.fn.outIdx + 1;
+        for (let j = at; j < out.length && (out[j].doc || /^\s*(#|$)/.test(out[j].text)); j++) if (out[j].doc) at = j + 1;
+        out.splice(at, 0, { text: ' '.repeat((entry.fn.level + 1) * 4) + 'global ' + auto.join(', '), src: entry.fn.line, extra: true });
       }
     };
     const isDesc = (j, ind) => j >= 0 && j < lines.length && /^\s*description\s*:/i.test(lines[j]) && lines[j].replace(/\t/g, '    ').match(/^ */)[0].length === ind;
@@ -1176,8 +1179,8 @@
 
       if (res.desc != null) {   // description lines in a row make one text in triple quotes
         const first = !isDesc(i - 1, ind), last = !isDesc(i + 1, ind), t = res.desc;
-        if (!first && !last && !t) out.push({ text: '', src: i });
-        else out.push({ text: ' '.repeat(level * 4) + (first ? '"""' + t + (last ? '"""' : '') : t + (last ? '"""' : '')), src: i });
+        if (!first && !last && !t) out.push({ text: '', src: i, doc: true });
+        else out.push({ text: ' '.repeat(level * 4) + (first ? '"""' + t + (last ? '"""' : '') : t + (last ? '"""' : '')), src: i, doc: true });
         if (last && !seenCode) { seenCode = true; if (level === 0) docEnd = out.length; }   // the file's own description stays first
         continue;
       }
