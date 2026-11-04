@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Small command-line helper for the shop database."""
+import sys
+
+def main(argv):
+    if len(argv) < 2:
+        print("usage: manage <command>")
+        return 1
+    print("running", argv[1])
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

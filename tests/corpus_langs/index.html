@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Allotment Planner</title>
+  <link rel="stylesheet" href="theme.css">
+</head>
+<body>
+  <header>
+    <h1>Allotment Planner</h1>
+    <nav>
+      <a href="#beds">Beds</a>
+      <a href="#calendar">Calendar</a>
+    </nav>
+  </header>
+  <main>
+    <section id="beds">
+      <h2>Raised beds</h2>
+      <ul id="bed-list">
+        <li>Bed 1: potatoes</li>
+        <li>Bed 2: beans and peas</li>
+      </ul>
+      <button id="add-bed" type="button">Add a bed</button>
+    </section>
+    <section id="calendar">
+      <h2>Sowing calendar</h2>
+      <table>
+        <tr><th>Crop</th><th>Sow</th><th>Harvest</th></tr>
+        <tr><td>Carrots</td><td>April</td><td>July</td></tr>
+        <tr><td>Leeks</td><td>March</td><td>November</td></tr>
+      </table>
+    </section>
+    <form id="note-form" action="/notes" method="post">
+      <label for="note">Note</label>
+      <input id="note" name="note" placeholder="What did you plant?">
+      <button type="submit">Save</button>
+    </form>
+  </main>
+  <footer>
+    <p>Made for the Hillside allotments.</p>
+  </footer>
+  <script src="planner.js"></script>
+</body>
+</html>

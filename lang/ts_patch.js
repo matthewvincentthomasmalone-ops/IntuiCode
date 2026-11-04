@@ -5,6 +5,10 @@
  * crashed. patch(source) adds them: strncpy is missing entirely, and the wide-character
  * helpers fall back to JavaScript. Used when loading the runtime in the app and in tests,
  * and when bundling it (npm run vendor).
+ *
+ * Other grammars' scanners call a few more that are missing (Ruby: iswupper; PHP: iswxdigit;
+ * Bash and Vue: isalpha, strcmp; YAML and Elm: a C++ length check; most: assert), so those
+ * are added too.
  */
 (function (root) {
   'use strict';
@@ -16,7 +20,13 @@
     iswspace: 'function(c){return /\\s/.test(String.fromCodePoint(c))?1:0}',
     iswdigit: 'function(c){return c>=48&&c<=57?1:0}',
   };
-  const STRNCPY = ',_ic_strncpy=Module._strncpy=function(d,s,n){var i=0;for(;i<n;i++){var c=HEAPU8[s+i];HEAPU8[d+i]=c;if(!c)break}for(;i<n;i++)HEAPU8[d+i]=0;return d}';
+  const STRNCPY = ',_ic_strncpy=Module._strncpy=function(d,s,n){var i=0;for(;i<n;i++){var c=HEAPU8[s+i];HEAPU8[d+i]=c;if(!c)break}for(;i<n;i++)HEAPU8[d+i]=0;return d}'
+    + ',_ic_strcmp=Module._strcmp=function(a,b){for(;;){var x=HEAPU8[a++],y=HEAPU8[b++];if(x!==y||!x)return x-y}}'
+    + ',_ic_isalpha=Module._isalpha=function(c){return c>=65&&c<=90||c>=97&&c<=122?1:0}'
+    + ',_ic_iswupper=Module._iswupper=function(c){if(c<0||c>1114111)return 0;var s=String.fromCodePoint(c);return s!==s.toLowerCase()?1:0}'
+    + ',_ic_iswxdigit=Module._iswxdigit=function(c){return c>=48&&c<=57||c>=65&&c<=70||c>=97&&c<=102?1:0}'
+    + ',_ic_assert=Module.___assert_fail=function(){throw new Error("A grammar\'s scanner failed a check")}'
+    + ',_ic_length=Module.__ZNKSt3__220__vector_base_commonILb1EE20__throw_length_errorEv=function(){throw new Error("A grammar\'s scanner ran out of room")}';
 
   function patch(source) {
     if (source.includes('_ic_strncpy')) return source;

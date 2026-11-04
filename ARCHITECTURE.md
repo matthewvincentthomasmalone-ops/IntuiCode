@@ -11,7 +11,9 @@ the desktop app.
 | `lang/python.js` | Sentences → Python (Write mode) |
 | `lang/python_reader.py` | Python → sections, summaries, sentences; project analysis (Read mode) |
 | `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects); the preview document |
-| `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, links |
+| `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, links; loads any tree-sitter grammar named in `lang/languages.js` |
+| `lang/code_read.js` | Read mode for every other language: which language a file (or pasted code) is in, and sections, summaries, facts, warnings and steps for it |
+| `lang/languages.js` | The languages a project's files can be in: names, file endings, grammars |
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
@@ -20,7 +22,7 @@ the desktop app.
 | `lang/glossary_terms.js` | The glossary itself: terms for Python, C++, Arduino, HTML, CSS, JavaScript and the sentences, as plain data |
 | `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
-| `lang/ts_patch.js` | A fix to the tree-sitter runtime for pages with SVG or custom elements |
+| `lang/ts_patch.js` | Fixes to the tree-sitter runtime: C library functions some grammars' scanners need (HTML with SVG or custom elements, Ruby, PHP, Bash, Vue, YAML) |
 
 Engine files must not touch the page (no `document`, no DOM). The shell (`app.js`,
 `app.css`, `index.html`, `runner.js`) calls them. The desktop layer (`src-tauri/src/lib.rs`)
@@ -54,6 +56,15 @@ Python is read with Python's own parser (`ast`), which also powers the exact "sa
 check. Other languages (JavaScript, HTML, CSS, C++) are read with tree-sitter, which has
 parsers for all of them and runs in browsers, Node and desktop apps. Each language has its
 own reader and translator behind the same interface.
+
+*Added 2026-11-04:* every other language in `lang/languages.js` is read by `lang/code_read.js`,
+one engine driven by each language's settings (which parts are tools, types, imports, tests…),
+giving the same section shape as the C++ reader. Sentences stay with Python, HTML, CSS,
+JavaScript and C++. Four of the installed grammars can't be used with our runtime
+(web-tree-sitter 0.20.8): Dart (built for a newer tree-sitter), Elm and CodeQL (older), and Lua
+(its scanner can end the program on unfinished text, and its parses go wrong after other
+grammars have run). Those, and SQL, Markdown, CSV and plain text, are read without a grammar.
+Every parse gets a final newline, because several scanners misbehave without one.
 
 ## Decision: nothing untrusted runs in the desktop window
 
