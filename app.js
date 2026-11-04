@@ -2200,7 +2200,7 @@
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
     const engines = [...new Set(project.sections.map(s => ENGINE[s.lang]).filter(Boolean))].map(e => ENGINE_NAME[e]);
-    chip.textContent = mode === 'read' ? 'Reading' : engines.length ? engines.join(' + ') : 'Files';
+    chip.textContent = mode === 'read' ? 'Reading' : mode === 'unity' ? 'Unity · ' + langName(unityState().lang) : engines.length ? engines.join(' + ') : 'Files';
   }
   function showBottom(which) {
     const web = webOn();
@@ -2887,6 +2887,247 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Unity mode: one pane of code; De-Regex/Translate any part of it     */
+  /* ------------------------------------------------------------------ */
+  /* The text is code; a region is some of its lines said in sentences (lang/unity.js). De-Regex/Translate turns
+   * the selected lines into sentences right where they are; Re-Regex turns a region back into code: exactly
+   * as it was if nobody changed it, or written in the context of the code around it if they did. */
+  const UNITY = window.IntuiUnity;
+  const UNITY_KEY = 'intuicode.unity.v1';
+  const UNITY_START = {
+    python: 'import random\n\ndef roll(sides):\n    n = random.randint(1, sides)\n    if n == sides:\n        print("Top roll!")\n    return n\n\ntotal = 0\nfor i in range(3):\n    total += roll(6)\nprint("Total:", total)\n',
+    js: 'function total(prices) {\n  let sum = 0;\n  for (const p of prices) {\n    sum += p;\n  }\n  return sum;\n}\n\nconsole.log(total([3, 4, 5]));\n',
+    html: '<main>\n  <h1>Hello</h1>\n  <div id="box">\n    <p>Some words.</p>\n    <button id="go">Go</button>\n  </div>\n</main>\n',
+    css: '.card {\n  color: #333333;\n  padding: 12px;\n}\n\n.card:hover {\n  color: red;\n}\n',
+    cpp: '#include <iostream>\n\nint main() {\n    int count = 0;\n    for (int i = 1; i <= 5; i++) {\n        count += i;\n    }\n    std::cout << "Total: " << count << std::endl;\n    return 0;\n}\n',
+    arduino: 'void setup() {\n  pinMode(13, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(13, HIGH);\n  delay(500);\n  digitalWrite(13, LOW);\n  delay(500);\n}\n',
+  };
+  let unity = store.get(UNITY_KEY, null);
+  if (!unity || !UNITY || !UNITY.LANGS.includes(unity.lang) || typeof unity.text !== 'string' || !Array.isArray(unity.regions)) unity = { lang: 'python', text: UNITY_START.python, regions: [] };
+  const unityState = () => unity;
+  const uTa = $('uTa');
+  let uBefore = unity.text.split('\n'), uCaret = -1, uProblems = [], uStripTimer = 0, uSaveTimer = 0;
+  const uW = () => ({ LANG, WEB, CPP });
+  const uCodeLang = () => (unity.lang === 'arduino' ? 'cpp' : unity.lang);
+  const uLines = () => uTa.value.split('\n');
+  const uRegionAt = (n) => unity.regions.findIndex(r => n >= r.from && n <= r.to);
+  const uLineOf = (pos) => uTa.value.slice(0, pos).split('\n').length - 1;
+  const uPosOf = (line) => uLines().slice(0, line).reduce((n, l) => n + l.length + 1, 0);
+  const uSave = () => { clearTimeout(uSaveTimer); uSaveTimer = setTimeout(() => store.set(UNITY_KEY, unity), 300); };
+  function uSetText(text) { uTa.value = text; unity.text = text; uBefore = text.split('\n'); uSave(); }
+
+  /* The readers, for De-Regex: Python's (checked exact, in the page's Python), and the web and C++ one. */
+  async function uConvert(kind, source) {
+    if (kind === 'python') {
+      if (!(await ensurePython())) return { ok: false, reason: 'Python couldn\'t start in the page, so Python can\'t be read here' };
+      const R = await Runner.reader((s) => setStatus(s));
+      const out = checkedSentences(R, source);
+      if (!out.ok) return { ok: false, reason: out.error };
+      return { ok: true, text: out.text, exact: !!out.check.same, reason: out.check.same ? null : 'the check found code that comes back different, so it stays as exact code' };
+    }
+    const r = window.IntuiConvert.toSentences(kind, source, await convertEnv());
+    return r.ok ? r : { ok: false, reason: r.error || r.reason };
+  }
+
+  function renderUnity() {
+    if (!UNITY) return;
+    if (uTa.value !== unity.text) uTa.value = unity.text;
+    const lines = unity.text.split('\n'), code = uCodeLang();
+    const bad = new Map(uProblems.map(p => [p.line, p.errs.length ? 'err' : 'warn']));
+    const lineHtml = (l, words) => `<div class="ul">${(words ? hlLine(l) : hlCode(code, l)) || '​'}</div>`;
+    const sorted = unity.regions.slice().sort((a, b) => a.from - b.from);
+    let html = '', n = 0;
+    for (const r of sorted) {
+      while (n < r.from) html += lineHtml(lines[n++], false);
+      html += `<div class="u-region${UNITY.unchanged(r, lines) ? '' : ' changed'}">${lines.slice(r.from, r.to + 1).map(l => lineHtml(l, true)).join('')}</div>`;
+      n = r.to + 1;
+    }
+    while (n < lines.length) html += lineHtml(lines[n++], false);
+    $('uHl').innerHTML = html;
+    $('uGutter').innerHTML = lines.map((_, i) => `<div class="gl${uRegionAt(i) >= 0 ? ' u-in' : ''}${bad.has(i) ? ' ' + bad.get(i) : ''}">${i + 1}</div>`).join('');
+    $('uTitle').textContent = 'Unity · ' + langName(unity.lang);
+    $('uLang').value = unity.lang;
+    $('uCount').textContent = unity.regions.length || '';
+    $('uRegions').innerHTML = sorted.map((r) => {
+      const i = unity.regions.indexOf(r), same = UNITY.unchanged(r, lines);
+      return `<li><button type="button" class="u-reg" data-u-go="${i}" title="Go to it">Lines ${r.from + 1}–${r.to + 1}${same ? '' : ' <span class="dim">changed</span>'}</button><button type="button" class="btn tiny" data-u-re="${i}">Re-Regex</button></li>`;
+    }).join('') || '<li class="side-note">None yet.</li>';
+    uSync(); uTools();
+    if (mode === 'unity') updateChip();
+  }
+  function uSync() {
+    $('uHl').scrollTop = uTa.scrollTop; $('uHl').scrollLeft = uTa.scrollLeft;
+    $('uGutter').style.transform = `translateY(${-uTa.scrollTop}px)`;
+    uFloatPos();
+  }
+  function uSelLines() {
+    const a = uTa.selectionStart, b = uTa.selectionEnd;
+    let to = uLineOf(b);
+    if (b > a && uTa.value[b - 1] === '\n') to--;   // a selection that ends at the start of a line leaves that line out
+    const from = uLineOf(a);
+    return { from, to: Math.max(from, to) };
+  }
+  function uTools() {
+    const sel = uTa.selectionEnd > uTa.selectionStart, at = uRegionAt(uLineOf(uTa.selectionStart));
+    $('uDe').disabled = !sel && at >= 0;
+    $('uRe').disabled = at < 0;
+    $('uReAll').disabled = !unity.regions.length;
+    uFloatPos();
+    clearTimeout(uStripTimer); uStripTimer = setTimeout(uStrip, 120);
+  }
+  /* A De-Regex/Translate button just above a selection of code. */
+  function uFloatPos() {
+    const f = $('uFloat'), a = uTa.selectionStart, b = uTa.selectionEnd;
+    const { from, to } = uSelLines();
+    const inWords = unity.regions.some(r => r.from <= to && r.to >= from);
+    if (mode !== 'unity' || b <= a || inWords || (document.activeElement !== uTa && document.activeElement !== f)) { f.hidden = true; return; }
+    const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22;
+    f.style.top = Math.max(4, 12 + from * lh - uTa.scrollTop - lh - 2) + 'px';
+    f.hidden = false;
+  }
+  /* Under the pane: what the region at the cursor will become, and its problems. */
+  function uStrip() {
+    if (mode !== 'unity') return;
+    const box = $('uStrip'), lines = uLines(), at = uRegionAt(uLineOf(uTa.selectionStart)), code = uCodeLang();
+    if (at < 0) {
+      box.innerHTML = uTa.selectionEnd > uTa.selectionStart ? '<span class="dim">Press <b>De-Regex/Translate</b> to say the selected code in sentences, right where it is.</span>'
+        : '<span class="dim">Select some code to De-Regex/Translate it. The green parts are sentences: put the cursor in one to see the code it makes.</span>';
+      return;
+    }
+    const r = unity.regions[at];
+    if (UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Re-Regex gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
+    let out;
+    try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { box.textContent = 'The writer hit a problem: ' + e.message; return; }
+    const errs = out.problems.flatMap(p => p.errs.map(e => [p.line, e, 'err'])), warns = out.problems.flatMap(p => p.warns.map(w => [p.line, w, 'warn']));
+    box.innerHTML = `<span class="ex-lbl">${errs.length ? 'Can\'t go back to code yet' : 'Re-Regex will write'}</span>`
+      + (errs.length ? '' : `<pre class="u-code">${out.code.map(l => hlCode(code, l)).join('\n')}</pre>`)
+      + [...errs, ...warns].slice(0, 4).map(([n, msg, k]) => `<div class="u-msg ${k}">Line ${n + 1}: ${withCode(msg)}</div>`).join('')
+      + (out.needs.length ? `<div class="u-msg">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</div>` : '');
+  }
+
+  async function uDeRegex() {
+    if (!UNITY) return;
+    const lines = uLines(), sel = uSelLines();
+    const at = UNITY.expand(unity.lang, lines, sel.from, sel.to);
+    if (!at) { tLine('Select some code first: De-Regex/Translate turns it into sentences.', 't-sys'); return; }
+    if (unity.regions.some(r => r.from <= at.to && r.to >= at.from)) { tLine('Part of that is already sentences (in green). Re-Regex it first, or select only code.', 't-err'); return; }
+    $('uDe').disabled = true;
+    let w;
+    try { w = await UNITY.toWords(unity.lang, lines, at.from, at.to, uConvert); }
+    catch (e) { tLine('That part couldn\'t be read: ' + e.message, 't-err'); uTools(); return; }
+    if (!w.words || !w.words.length) { tLine(`That part couldn't be said in sentences: ${w.reason || 'the reader had nothing to say'}.`, 't-err'); uTools(); return; }
+    if (uLines().join('\n') !== lines.join('\n')) { tLine('The code changed while it was being read. Try again.', 't-sys'); uTools(); return; }
+    const delta = w.words.length - (at.to - at.from + 1);
+    unity.regions = unity.regions.map(r => (r.from > at.to ? { ...r, from: r.from + delta, to: r.to + delta } : r));
+    unity.regions.push({ from: at.from, to: at.from + w.words.length - 1, original: w.original, words: w.words, base: w.base });
+    unity.regions.sort((a, b) => a.from - b.from);
+    uSetText(lines.slice(0, at.from).concat(w.words, lines.slice(at.to + 1)).join('\n'));
+    uTa.focus();
+    const pos = uPosOf(at.from) + w.base.length;
+    uTa.setSelectionRange(pos, pos);
+    uProblems = [];
+    renderUnity();
+    const grew = at.from !== sel.from || at.to !== sel.to;
+    tLine(`De-Regexed lines ${at.from + 1}–${at.to + 1}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Re-Regex puts code back.` + (w.exact ? '' : ` Some of it stays as exact code: ${w.reason}.`), w.exact ? 't-sys' : 't-err');
+  }
+  function uReRegex(i, quiet) {
+    const r = UNITY.reRegex(unity.lang, uLines(), unity.regions, i, uW());
+    if (!r.ok) {
+      uProblems = r.problems;
+      renderUnity();
+      const p = r.problems.find(x => x.errs.length);
+      if (!quiet && p) tLine(`Line ${p.line + 1}: ${p.errs[0]} It stays as sentences until that's fixed.`, 't-err');
+      return false;
+    }
+    const caret = uTa.selectionStart;
+    unity.regions = r.regions;
+    uSetText(r.lines.join('\n'));
+    uTa.setSelectionRange(Math.min(caret, uTa.value.length), Math.min(caret, uTa.value.length));
+    uProblems = [];
+    renderUnity();
+    if (r.needs.length) tLine(`Added ${r.needs.map(x => '`' + x + '`').join(', ')} at the top: the new code needs ${r.needs.length === 1 ? 'it' : 'them'}.`, 't-sys');
+    const warn = r.problems.flatMap(p => p.warns.map(w => `line ${p.line + 1}: ${w}`))[0];
+    if (warn && !quiet) tLine('Back to code, with a warning on ' + warn, 't-sys');
+    return true;
+  }
+  function uReRegexAll() {
+    let ok = 0, left = 0;
+    for (let i = unity.regions.length - 1; i >= 0; i--) { if (uReRegex(i, true)) ok++; else left++; }
+    if (left) tLine(`${ok ? ok + ' back to code; ' : ''}${left} stay${left === 1 ? 's' : ''} as sentences until ${left === 1 ? 'its' : 'their'} problems are fixed (the red line numbers).`, 't-err');
+    else if (ok) tLine('Every green part is code again.', 't-sys');
+  }
+
+  if (UNITY) {
+    $('uLang').innerHTML = UNITY.LANGS.map(l => `<option value="${l}">${escHtml(langName(l))}</option>`).join('');
+    uTa.addEventListener('beforeinput', () => { uCaret = uRegionAt(uLineOf(uTa.selectionStart)); });
+    uTa.addEventListener('input', () => {
+      const now = uTa.value.split('\n');
+      unity.regions = UNITY.adjust(unity.regions, uBefore, now, uCaret);
+      uBefore = now; unity.text = uTa.value;
+      uProblems = [];
+      uSave(); renderUnity();
+    });
+    uTa.addEventListener('scroll', uSync);
+    for (const ev of ['select', 'click', 'keyup', 'focus']) uTa.addEventListener(ev, uTools);
+    uTa.addEventListener('blur', () => setTimeout(uFloatPos, 0));
+    uTa.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        const unit = UNITY.unitOf(uLines()), at = uPosOf(uLineOf(uTa.selectionStart));
+        if (e.shiftKey) { const cut = uTa.value.slice(at).match(/^(?:\t| {1,4})/); if (cut) { uTa.setSelectionRange(at, at + cut[0].length); document.execCommand('delete'); } }
+        else document.execCommand('insertText', false, unity.regions.some(r => r.from <= uLineOf(uTa.selectionStart) && r.to >= uLineOf(uTa.selectionStart)) ? '    ' : unit);
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (mode !== 'unity' || !e.ctrlKey || !e.shiftKey || e.altKey) return;
+      if (e.key === 'D' || e.key === 'd') { e.preventDefault(); uDeRegex(); }
+      if (e.key === 'B' || e.key === 'b') { e.preventDefault(); const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); }
+    });
+    $('uDe').addEventListener('click', uDeRegex);
+    $('uFloat').addEventListener('mousedown', (e) => e.preventDefault());   // keeps the selection
+    $('uFloat').addEventListener('click', uDeRegex);
+    $('uRe').addEventListener('click', () => { const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); uTa.focus(); });
+    $('uReAll').addEventListener('click', uReRegexAll);
+    $('uRegions').addEventListener('click', (e) => {
+      const go = e.target.closest('[data-u-go]'), re = e.target.closest('[data-u-re]');
+      if (re) { uReRegex(+re.dataset.uRe); return; }
+      if (go) { const r = unity.regions[+go.dataset.uGo]; if (!r) return; uTa.focus(); const p = uPosOf(r.from) + r.base.length; uTa.setSelectionRange(p, p); const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22; uTa.scrollTop = Math.max(0, r.from * lh - 40); uTools(); }
+    });
+    $('uLang').addEventListener('change', (e) => {
+      const next = e.target.value;
+      if (unity.regions.length) { e.target.value = unity.lang; tLine(`Re-Regex the green parts first: they're sentences for ${langName(unity.lang)}.`, 't-err'); return; }
+      const sample = !unity.text.trim() || Object.values(UNITY_START).includes(unity.text);
+      unity.lang = next;
+      if (sample) uSetText(UNITY_START[next]);
+      uSave(); renderUnity();
+    });
+    $('uOpen').addEventListener('click', () => {
+      if (unity.regions.length) { tLine('Re-Regex the green parts first, so nothing is lost.', 't-err'); return; }
+      $('uFile').click();
+    });
+    $('uFile').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      const l = LANGS.fromPath(f.name);
+      unity.lang = UNITY.LANGS.includes(l) ? l : unity.lang;
+      uSetText((await f.text()).replace(/\r\n?/g, '\n'));
+      unity.regions = [];
+      renderUnity();
+      tLine(`Opened ${f.name} in Unity (${langName(unity.lang)}). Select some of it and De-Regex/Translate.`, 't-sys');
+    });
+    $('uCopy').addEventListener('click', (e) => {
+      let lines = uLines(), regions = unity.regions.slice();
+      for (let i = regions.length - 1; i >= 0; i--) {
+        const r = UNITY.reRegex(unity.lang, lines, regions, i, uW());
+        if (!r.ok) { uProblems = r.problems; renderUnity(); tLine(`Lines ${regions[i].from + 1}–${regions[i].to + 1} can't be code yet, so nothing was copied. Fix the red lines first.`, 't-err'); return; }
+        lines = r.lines; regions = r.regions;
+      }
+      copyText(lines.join('\n'), e.target, 'Copy the code');
+    });
+  } else $('modeUnity').hidden = true;
+
+  /* ------------------------------------------------------------------ */
   /* Read mode: import a file or a whole project, sections, summaries    */
   /* ------------------------------------------------------------------ */
 
@@ -2913,6 +3154,10 @@
     hideTip();
     $('modeWrite').setAttribute('aria-selected', String(next === 'write'));
     $('modeRead').setAttribute('aria-selected', String(next === 'read'));
+    $('modeUnity').setAttribute('aria-selected', String(next === 'unity'));
+    $('unityView').hidden = next !== 'unity';
+    $('unitySide').hidden = next !== 'unity';
+    $('work').classList.toggle('unity', next === 'unity');
     $('writeView').hidden = next !== 'write';
     $('explainWrap').hidden = next !== 'write';
     $('writeSide').hidden = next !== 'write';
@@ -2925,11 +3170,13 @@
     $('tabPreview').hidden = !(next === 'write' && webOn());
     updateChip();
     if (next === 'read') renderRead();
+    else if (next === 'unity') { renderUnity(); $('uTa').focus(); }
     else { measure(); syncScroll(); }
     if (!$('index').hidden) renderIndex();
   }
   $('modeWrite').addEventListener('click', () => setMode('write'));
   $('modeRead').addEventListener('click', () => setMode('read'));
+  $('modeUnity').addEventListener('click', () => setMode('unity'));
 
   const pyFiles = () => reads.files.filter(f => CODE_FILE.test(f.name));   // every file that can be read
   const curFile = () => (reads.active >= 0 ? pyFiles()[reads.active] : null);

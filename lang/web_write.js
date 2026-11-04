@@ -943,6 +943,15 @@
       if ((m = s.match(MAKE_NEW)) && (m = m[2].match(/\band store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) x.made.set(m[1], MADE[s.match(MAKE_NEW)[1].toLowerCase().replace(/\s+/g, ' ')]);
       if ((m = s.match(/^(every|after)\s+.+?\s+seconds?\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) { x.vars.add(m[2]); x.timers.set(m[2], /^every$/i.test(m[1]) ? 'Interval' : 'Timeout'); }
       if ((m = s.match(/^(?:if|when) (?:it|that|this|anything|something) fails\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
+      // exact code (js: …) makes names too: function f(a, b), let / const / var x, for (const p of …), catch (e)
+      if ((m = s.match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) {
+        const c = m[1];
+        let d;
+        if ((d = c.match(/^(?:export\s+)?(?:async\s+)?function\*?\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/))) { x.fns.add(d[1]); d[2].split(',').forEach(p => { const n = p.trim().replace(/^\.\.\./, '').replace(/\s*=.*$/, ''); if (/^[A-Za-z_$][\w$]*$/.test(n)) x.vars.add(n); }); }
+        for (const v of c.matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(v[1]);
+        if ((d = c.match(/\bcatch\s*\(\s*([A-Za-z_$][\w$]*)/))) x.vars.add(d[1]);
+        if ((d = c.match(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/))) x.fns.add(d[1]);
+      }
       if ((m = s.match(/^(?:js|javascript|raw)\s*:(.*)$/i))) {
         for (const d of m[1].matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
         for (const d of m[1].matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);

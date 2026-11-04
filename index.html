@@ -14,6 +14,7 @@
       <div class="modes" role="tablist" aria-label="Mode">
         <button type="button" role="tab" id="modeWrite" aria-selected="true" title="Write a program in sentences">Write</button>
         <button type="button" role="tab" id="modeRead" aria-selected="false" title="Read existing code in plain English">Read</button>
+        <button type="button" role="tab" id="modeUnity" aria-selected="false" title="One pane of real code: select any part and De-Regex/Translate it into sentences, right where it is">Unity</button>
       </div>
     </div>
     <div class="bar-actions">
@@ -66,6 +67,18 @@
           <div class="side-h">Sections in this file</div>
           <nav id="rdOutline" class="outline"></nav>
         </div>
+      </div>
+      <div id="unitySide" hidden>
+        <div class="side-h">Unity</div>
+        <div class="side-pad u-side">
+          <label class="u-lang" for="uLang">Language</label>
+          <select id="uLang"></select>
+          <div class="u-acts"><button type="button" class="btn small" id="uOpen">Open a file…</button><button type="button" class="btn small" id="uCopy" title="Copy the code, with every green part turned back into code">Copy the code</button></div>
+          <input type="file" id="uFile" hidden accept=".py,.pyw,.html,.htm,.css,.js,.mjs,.cjs,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino">
+        </div>
+        <div class="side-h">In sentences <span id="uCount" class="count"></span></div>
+        <ul id="uRegions" class="u-regions"></ul>
+        <p class="side-note u-how">Select some code and press <b>De-Regex/Translate</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it turns into sentences right where it is, in green. Change the sentences, then <b>Re-Regex</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>) puts code back. A part you didn't change comes back exactly as it was.</p>
       </div>
     </aside>
 
@@ -131,6 +144,29 @@
           <div class="rcode" id="rdCode" tabindex="0" aria-label="Imported code"></div>
           <div class="rsum" id="rdSum" aria-live="polite"></div>
         </div>
+      </section>
+
+      <section class="unity pane" id="unityView" hidden>
+        <div class="pane-h">
+          <div class="pane-title">
+            <h2 id="uTitle">Unity</h2>
+            <p>One pane of code. The green parts are sentences.</p>
+          </div>
+          <div class="pane-tools">
+            <button type="button" class="btn small primary" id="uDe" title="Turn the selected code into sentences, right where it is (Ctrl+Shift+D)">De-Regex/Translate</button>
+            <button type="button" class="btn small" id="uRe" title="Turn the green part the cursor is in back into code (Ctrl+Shift+B)">Re-Regex</button>
+            <button type="button" class="btn small" id="uReAll" title="Turn every green part back into code">Re-Regex all</button>
+          </div>
+        </div>
+        <div class="editor u-editor" id="uEditor">
+          <div class="gutter"><div class="u-gutter" id="uGutter"></div></div>
+          <div class="codewrap">
+            <pre class="hl u-hl" id="uHl" aria-hidden="true"></pre>
+            <textarea id="uTa" class="u-ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Code, with some parts in sentences"></textarea>
+            <button type="button" class="u-float" id="uFloat" hidden>De-Regex/Translate</button>
+          </div>
+        </div>
+        <div class="u-strip" id="uStrip" aria-live="polite"></div>
       </section>
 
       <section class="term" id="term" aria-label="Terminal">
@@ -347,6 +383,7 @@
 <script src="lang/ts_patch.js"></script>
 <script src="lang/web_read.js"></script>
 <script src="lang/convert.js"></script>
+<script src="lang/unity.js"></script>
 <script src="lang/blueprints.js"></script>
 <script src="lang/tutor.js"></script>
 <script src="lang/glossary_terms.js"></script>
