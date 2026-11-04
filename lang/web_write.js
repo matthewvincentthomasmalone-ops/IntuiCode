@@ -207,7 +207,8 @@
       if (m[1]) return el('textarea', { id, attrs: attrs.placeholder != null ? { placeholder: attrs.placeholder } : {}, text: '' });
       const type = INPUTS[(m[2] || 'text').toLowerCase()] || 'text';
       if (type === 'time') note(inf, 'A time box (`type="time"`) lets people pick a time; its value is text like "07:30".');
-      return el('input', { id, attrs: { type, ...attrs } });
+      // a text box is the browser's own default, so it has no type: the page says exactly what the sentence says
+      return el('input', { id, attrs: type === 'text' ? { ...attrs } : { type, ...attrs } });
     }
     if ((m = s.match(/^add\s+(?:a\s+)?slider\b(.*)$/i))) {
       const { attrs, rest } = inputSettings(m[1], inf);
@@ -484,7 +485,13 @@
       if ((m = part.match(/^rounded corners?(?:\s+(.+))?$/i))) { out.push(['border-radius', m[1] ? unit(m[1], inf) : '8px']); continue; }
       if (/^(?:round|circle|circular)$/i.test(part)) { out.push(['border-radius', '50%']); continue; }
       if (/^no border$/i.test(part)) { out.push(['border', 'none']); continue; }
-      if ((m = part.match(/^border(?:\s+(\S+))?(?:\s+(.+))?$/i))) { out.push(['border', `${m[1] ? unit(m[1], inf) : '1px'} solid ${m[2] ? color(m[2], inf) : 'currentColor'}`]); continue; }
+      if ((m = part.match(/^border(?:\s+(\S+))?(?:\s+(.+))?$/i))) {
+        // "border 2 red", "border red" (a colour alone is 1px wide), "border 3"
+        const width = m[1] && !m[2] && !/^[\d.]+(?:px|em|rem|%)?$/i.test(m[1]) ? null : m[1];
+        const colour = width === m[1] ? m[2] : m[1];
+        out.push(['border', `${width ? unit(width, inf) : '1px'} solid ${colour ? color(colour, inf) : 'currentColor'}`]);
+        continue;
+      }
       if (/^no shadow$/i.test(part)) { out.push(['box-shadow', 'none']); continue; }
       if ((m = part.match(/^(soft |big |strong |)shadow(?:\s+(.+?))?(?:\s+with\s+(\d+)%\s+(?:intensity|strength))?$/i))) {
         const size = { 'soft ': '0 2px 8px', 'big ': '0 12px 32px', 'strong ': '0 6px 18px', '': '0 4px 12px' }[m[1].toLowerCase()];
@@ -526,10 +533,13 @@
     if (/^[.#:*\[]|[>~+]/.test(n) || /^[a-z]+[.#:]/.test(n)) { note(inf, `${code(n)} is a CSS selector written directly.`); return n; }
     if ((m = n.match(/^group\s+(.+)$/i))) return '.' + toId(m[1]);
     if ((m = n.match(/^(?:the element|element)\s+(.+)$/i))) return '#' + toId(m[1]);
-    if ((m = n.match(/^every\s+(.+)$/i))) n = m[1];
+    const every = !!(m = n.match(/^every\s+(.+)$/i));
+    if (every) n = m[1];
     const low = n.toLowerCase();
-    if (TAG_WORDS[low]) return TAG_WORDS[low];
     const id = toId(n);
+    // an element you named (Structure's "called header") is the one meant, as in Mechanics; "every header" is the tag
+    if (!every && shared.ids[id] && (TAG_WORDS[low] || HTML_TAGS.has(low))) { note(inf, `Structure has an element called ${code(id)}, so this styles that one (\`#${id}\`). To style every ${code(TAG_WORDS[low] || low)} element, write "style every ${n}".`); return '#' + id; }
+    if (TAG_WORDS[low]) return TAG_WORDS[low];
     if (shared.ids[id]) return '#' + id;
     if (shared.groups[id] || shared.cssGroups[id]) return '.' + id;
     if (HTML_TAGS.has(low)) return low;

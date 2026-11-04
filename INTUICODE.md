@@ -635,7 +635,7 @@ add a paragraph called greeting ""
 ```
 
 ```html
-<input id="name" type="text" placeholder="Your name">
+<input id="name" placeholder="Your name">
 <p id="greeting"></p>
 ```
 
@@ -1315,10 +1315,13 @@ const items = await (await fetch("/api/items")).json();
 
 ### HTML and CSS writer
 
+Fixed on 2026-11-04: a name you gave an element now wins over a selector word (`style header:` with an
+element called header is `#header`; `style every header:` is the tag), `border red` is a 1px red border, and
+a text box is written with no `type` (text is the browser's default), so reading a page back no longer
+counts `<input>` and `<input type="text">` as the same. Still wrong:
+
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `add a section called header`, then `style header: …` | `header { … }`: styles `<header>` tags, not `#header` | selector words (`header`, `links`, `page`, `buttons` …) are looked up before names | `style element header: …`, or another name |
-| `style buttons: border red` | `border: red solid currentColor` (not valid CSS) | the first word after `border` is taken as the width | `border 1 red` |
 | `note:` at the left edge after a container | the comment goes inside the container | notes are placed before the indentation is read | put it before the container |
 
 ```intuicode html
@@ -1340,19 +1343,24 @@ add a block called links
 style header: background navy
 style links: text colour red
 style buttons: border red
+style every header: border 2 blue
 ```
 
 ```css
-header {
+#header {
   background: navy;
 }
 
-a {
+#links {
   color: red;
 }
 
 button {
-  border: red solid currentColor;
+  border: 1px solid red;
+}
+
+header {
+  border: 2px solid blue;
 }
 ```
 

@@ -243,7 +243,7 @@ test('structure: number box settings, a time box, a slider, file pickers and nam
   assert.deepEqual([...problems(r, 'structure'), ...problems(r, 'mechanics')], []);
   assert.match(html, /<input id="amount" type="number" placeholder="4\.50" step="any" min="0" max="1000">/);
   assert.match(html, /<input id="rounds" type="number" step="1" min="1">/);
-  assert.match(html, /<input id="pin" type="text" inputmode="numeric">/);
+  assert.match(html, /<input id="pin" inputmode="numeric">/);   // (a text box has no type: text is the browser's default)
   assert.match(html, /<input id="wake" type="time">/);
   assert.match(html, /<input id="volume" type="range" min="0" max="11">/);
   assert.match(html, /<input id="photo" type="file" accept="image\/\*">/);
