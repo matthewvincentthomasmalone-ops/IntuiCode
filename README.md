@@ -387,8 +387,13 @@ The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
 
 ### Extending it
 
+The language itself (file format, grammar, precedence, context, known wrong translations, and an index of
+every sentence pattern) is described in [INTUICODE.md](INTUICODE.md). Its examples are tests.
+
 - **A new sentence:** add a `rule(regex, fn)` in `lang/python.js` (first match wins), then a
-  matching entry in `TEMPLATES` so it appears in the phrase picker and the Index.
+  matching entry in `TEMPLATES` so it appears in the phrase picker and the Index. After changing
+  `TEMPLATES` or `WORDS` in any writer, run `node tools/intuicode_index.mjs` to update the index in
+  `INTUICODE.md` and `lang/intuicode_index.json` (`npm test` fails until you do).
 - **A new word inside sentences:** add to `EXPR_RULES` (for example `length of x` → `len(x)`).
 - **A new blueprint:** write it in the app (Project Templates → Write or paste one), or add it to
   `BUILT_IN` in `lang/blueprints.js`. The format is described at the top of that file.
