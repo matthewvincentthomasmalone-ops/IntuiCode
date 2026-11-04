@@ -146,3 +146,54 @@ test('reader: Arduino sketches read naturally', () => {
   assert.match(steps, /wait 5000 milliseconds/);
   assert.match(a.sections.flatMap(s => s.warnings).join(' '), /millis\(\)/);
 });
+
+// ---- from the 2026-11 audit: C++ sentences that gave code meaning something else, with nothing shown ----
+test('C++: text joined with plus is text (never pointer arithmetic); a decimal given later makes a double', () => {
+  const r = cpp('set score to 3\nshow "Score: " plus score\nset label to "Total: " plus score plus " points"\nset total to 0\nincrease total by 0.5\nshow total');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs.concat(i.warns))), []);
+  assert.match(r.text, /std::cout << std::string\("Score: "\) \+ std::to_string\(score\) << std::endl;/);
+  assert.match(r.text, /std::string label = std::string\("Total: "\) \+ std::to_string\(score\) \+ " points";/);   // (a std::string plus quoted text is text)
+  assert.match(r.text, /double total = 0;/);
+  assertValidCpp(r.text, 'text and decimals');
+  const s = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 's', file: 'sketch', text: 'set t to 20\nwhen the board starts\n    start the serial monitor at 9600\nover and over\n    show "Temp: " plus t' }] }).results.s;
+  assert.match(s.text, /Serial\.println\(String\("Temp: "\) \+ t\);/);
+});
+
+test('C++: "not x is y", chains, "is A or B", = in a condition, a comparison shown, size minus 1 mean what they say', () => {
+  const r = cpp('set x to 5\nset y to 2\nset answer to "y"\ncreate list of numbers called xs with 1\nif not x is y\n    show "differ"\nif 1 is less than x is less than 10\n    show "between"\nif answer is "yes" or "y"\n    show "going"\nif x = 5\n    show "five"\nshow x is 5\ncount i from 0 to length of xs minus 1\n    show i');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs.concat(i.warns))), []);
+  assert.match(r.text, /if \(!\(x == y\)\) \{/);
+  assert.match(r.text, /if \(1 < x && x < 10\) \{/);
+  assert.match(r.text, /if \(answer == "yes" \|\| answer == "y"\) \{/);
+  assert.match(r.text, /if \(x == 5\) \{/);
+  assert.match(r.text, /std::cout << \(x == 5\) << std::endl;/);
+  assert.match(r.text, /i <= static_cast<int>\(xs\.size\(\)\) - 1/);
+  assertValidCpp(r.text, 'two readings');
+});
+
+test('C++: count down with no name, in steps of, and text asked for after a number', () => {
+  const r = cpp('count down from 3 to 1\n    show n\ncount i from 0 to 10 in steps of 5\n    show i\nask for a number "Age? " and store in age\nask "Name? " and store in name');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /for \(int n = 3; n >= 1; n--\) \{/);
+  assert.match(r.text, /for \(int i = 0; i <= 10; i \+= 5\) \{/);
+  assert.match(r.text, /std::getline\(std::cin >> std::ws, name\);/);
+  assertValidCpp(r.text, 'counting and asking');
+  const b = cpp('create list of text called basket with "jam"\nadd "milk" and "eggs" to basket');
+  assert.match(b.text, /basket\.push_back\("milk"\); basket\.push_back\("eggs"\);/);
+});
+
+for (const [sentences, re, warn] of [
+  ['set n to 3\ncount i from n to 1\n    show i', /can't tell which way this counts/],
+  ['set n to 5\nset r to random number from 1 to n plus 1', /Put brackets round the end you mean/],
+  ['set price to 3\nset qty to 2\nshow price times qty as text', /could go with just `qty` or with all of it/],
+  ['set colour to "red"\nif colour is not "red" or "blue"\n    show "x"', /could mean two things/],
+  ['set x to nothing', /can't be set to nothing/],
+  ['define stats using a, b\n    give back a and b', /could mean two values/],
+  ['set half to 7 divided by 2', /7 \/ 2 is 3, not 3\.5/, true],
+]) {
+  test(`C++: explains a problem: ${sentences.split('\n').pop()}`, () => {
+    const r = cpp(sentences);
+    const said = plain(r.info.flatMap(i => (warn ? i.warns : i.errs)));
+    assert.ok(said.some(e => re.test(e)), said.join('\n'));
+  });
+}

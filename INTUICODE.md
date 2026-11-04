@@ -1358,31 +1358,26 @@ button {
 
 ### C++ and Arduino writer
 
-C++ isn't compiled by the tests on every computer, so the "You get" column is read from the C++ rules.
+Fixed on 2026-11-04: text joined with `plus` (it was pointer arithmetic: `"Score: " + n` printed part of the text), `not n is 5`, a comparison shown, `count down` with no name and `in steps of`, a name given a decimal later (now a `double` from the start), `if n = 5`, text asked for after a number, two comparisons in a row, `is "yes" or "y"`, and `size()` minus 1 on an empty list. Still to watch:
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `show "Score: " plus n` (n a number) | `"Score: " + n`: moves along the text, prints `"core: "` | `+` on quoted text and a number is pointer arithmetic in C++ | `show "Score: " followed by n`, or `"Score: {n}"` |
-| `set flag to not n is 5` | `!n == 5` | `!` binds to `n` alone | `n is not 5` |
-| `show n is 3` | `std::cout << n == 3 << std::endl;`: doesn't compile | `<<` binds tighter than `==` | `set same to n is 3`, then `show same` |
-| `count down from 3 to 1` | a counter called `down` | C++ has no `count down` | `count i from 3 to 1` |
-| `set d to 1`, then `set d to 2.5` | `int d = 1;` … `d = 2.5;` (stores 2) | the type comes from the first value | `set decimal d to 1` |
-| `set half to 7 divided by 2` | `7 / 2`, which is 3 | whole numbers divide to a whole number in C++ | `7.0 divided by 2` |
-| `if n = 5` | `if (n = 5)`: stores 5, always true | a lone `=` in a condition isn't read as "is", as it is in Python and JavaScript | `if n is 5` |
-| `ask for a number …`, then `ask "Name? " …` | the name comes back empty | `std::cin >>` leaves the end of the line for `std::getline` | ask for the text first, or `c++: std::cin.ignore();` |
-| a name first set inside a block, used after it | doesn't compile | C++ scoping | set it before the block |
-| `show "Count: " plus count` on Arduino | pointer arithmetic, as in C++ | the same | `show "Count: {count}"` |
+| `set half to 7 divided by 2` | `7 / 2`, which is 3, with a warning | whole numbers divide to a whole number in C++ | `7.0 divided by 2` |
+| a name first set inside a block, used after it | doesn't build (the compiler says so) | C++ scoping | set it before the block |
 
 ```intuicode cpp
-set n to 3
-show "Score: " plus n
-set flag to not n is 5
-show n is 3
+set score to 3
+show "Score: " plus score
+set flag to not score is 5
+show score is 3
 count down from 3 to 1
-    show down
+    show n
 set d to 1
 set d to 2.5
-set half to 7 divided by 2
+if score = 5
+    show "five"
+ask for a number "Age? " and store in age
+ask "Name? " and store in name
 ```
 
 ```cpp
@@ -1390,16 +1385,22 @@ set half to 7 divided by 2
 #include <string>
 
 int main() {
-    int n = 3;
-    std::cout << "Score: " + n << std::endl;
-    bool flag = !n == 5;
-    std::cout << n == 3 << std::endl;
-    for (int down = 3; down >= 1; down--) {
-        std::cout << down << std::endl;
+    int score = 3;
+    std::cout << std::string("Score: ") + std::to_string(score) << std::endl;
+    bool flag = !(score == 5);
+    std::cout << (score == 3) << std::endl;
+    for (int n = 3; n >= 1; n--) {
+        std::cout << n << std::endl;
     }
-    int d = 1;
+    double d = 1;
     d = 2.5;
-    auto half = 7 / 2;
+    if (score == 5) {
+        std::cout << "five" << std::endl;
+    }
+    int age; std::cout << "Age? ";
+    std::cin >> age;
+    std::string name; std::cout << "Name? ";
+    std::getline(std::cin >> std::ws, name);
     return 0;
 }
 ```

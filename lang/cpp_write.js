@@ -166,7 +166,58 @@
     }
   }
 
-  function cppExpr(src, x, inf) {
+  /* After the words have become C++: shapes that would mean something other than the sentence.
+     - "not x is y": !x == y applies ! to x alone, so it's !(x == y).
+     - "1 is less than x is less than 10": 1 < x < 10 is always true or false, so it's 1 < x && x < 10.
+     - "answer is "yes" or "y"": the name is said again; another comparison with a bare value after && or ||
+       is an error.
+     - Text joined with + : "Score: " + score adds to the text's address (it prints part of the text), so the
+       text becomes a std::string (String on Arduino) and a known number becomes text first.
+     - In a condition (cond), a single = is a comparison: if (n = 5) would store 5.
+     - A list's size minus something: size() can't be negative, so on an empty list size() - 1 is a huge number.
+     - 7 / 2 with two whole numbers written out is 3 in C++: said, since in words it reads 3.5. */
+  function cppTwoReadings(q, x, strs, inf, cond) {
+    const said = (t) => t.trim().replace(/⟦(\d+)⟧/g, (_, i) => strs[+i]);
+    const T = (v) => (/^-?\d+$/.test(v) ? 'int' : /^-?\d*\.\d+$/.test(v) ? 'double' : x.types[v] || '');
+    const isText = (k) => /^⟦(\d+)⟧$/.test(k) && /^"/.test(strs[+k.slice(1, -1)]);
+    if (cond && /(^|[^=!<>])=(?!=)/.test(q)) { q = q.replace(/(^|[^=!<>])=(?!=)/g, '$1 == '); note(inf, 'In a condition, `=` was changed to `==`: in C++ `=` stores a value (and `if (n = 5)` would always be true).'); }
+    q = q.replace(new RegExp(String.raw`!\s*(${OPD})\s+(==|!=|<=|>=|<|>)\s+(${OPD})`, 'g'), (m, a, op, b) => { note(inf, '`!` would apply to the first value alone, so the whole comparison goes in brackets: `!(…)`.'); return `!(${a} ${op} ${b})`; });
+    q = q.replace(new RegExp(String.raw`(?<![\w.⟧\])])(${OPD})\s+(<=|>=|<|>)\s+(${OPD})\s+(<=|>=|<|>)\s+(${OPD})`, 'g'), (m, a, op1, b, op2, c) => {
+      if (!/^[A-Za-z_]\w*$|^-?\d+(?:\.\d+)?$/.test(b)) { inf.errs.push(`"${said(m)}" is two comparisons in a row, which C++ doesn't read the way it sounds. Say it as two tests joined by "and".`); return m; }
+      note(inf, `C++ reads \`${a} ${op1} ${b} ${op2} ${c}\` one comparison at a time, so it is written as two tests: \`${a} ${op1} ${b} && ${b} ${op2} ${c}\`.`);
+      return `${a} ${op1} ${b} && ${b} ${op2} ${c}`;
+    });
+    const EITHER = new RegExp(String.raw`(?<![\w.⟧\])])(${OPD})\s+(==|!=|<=|>=|<|>)\s+(${OPD})\s+(&&|\|\|)\s+(⟦\d+⟧|-?\d+(?:\.\d+)?|true|false)(?=\s*(?:$|[)\],;]|&&|\|\|))`);
+    for (let guard = 0, m; guard < 8 && (m = q.match(EITHER)); guard++) {
+      const [all, lhs, op, rhs, join, lit] = m;
+      if (op === '==' && join === '||' && /^[A-Za-z_][\w.]*(?:\[[^\]]*\])*$/.test(lhs)) {
+        note(inf, `\`||\` joins two whole tests, so the name is said again: \`${lhs} == … || ${lhs} == …\`. (\`${lhs} == ${said(rhs)} || ${said(lit)}\` would always be true.)`);
+        q = q.slice(0, m.index) + `${lhs} == ${rhs} || ${lhs} == ${lit}` + q.slice(m.index + all.length);
+        continue;
+      }
+      inf.errs.push(`"… ${join === '&&' ? 'and' : 'or'} ${said(lit)}" could mean two things, and as C++ it would test ${code(said(lit))} on its own. Say the whole test each time, like: x is "a" or x is "b".`);
+      break;
+    }
+    // text joined with +
+    const TEXT = x.arduino ? 'String' : 'std::string';
+    let joined = false;
+    q = q.replace(new RegExp(String.raw`(?<![\w.⟧\])])(${OPD})(\s*\+\s*)(${OPD})(?![\w.(\[])`, 'g'), (m, a, plus, b) => {
+      if (!isText(a) && !isText(b)) return m;
+      joined = true;
+      const side = (v) => (isText(v) ? `${TEXT}(${v})` : !x.arduino && /^(?:int|double|float|long|unsigned long|bool)$/.test(T(v)) ? `std::to_string(${v})` : v);
+      return `${side(a)} + ${side(b)}`;
+    });
+    if (joined) note(inf, `Text written in quotes is turned into a ${code(TEXT)} before it is joined with \`+\`` + (x.arduino ? '' : ', and a number into text with `std::to_string`') + '. (In C++, `"Score: " + score` would add to the text\'s place in memory, not join them.)');
+    // a list's size minus something
+    q = q.replace(/([A-Za-z_][\w.]*(?:\([^()]*\))?\.size\(\))(\s*-\s*)/g, (m, sz) => { note(inf, '`size()` is never negative, so on an empty list `size() - 1` would be a huge number: `static_cast<int>` makes it a plain whole number first.'); return `static_cast<int>(${sz}) - `; });
+    // whole numbers divided
+    for (const m of q.matchAll(/(?<![\w.])(\d+)\s*\/\s*(\d+)(?![\w.])/g)) {
+      if (+m[1] % +m[2]) { const w = `In C++, a whole number divided by a whole number is a whole number: ${m[1]} / ${m[2]} is ${Math.trunc(+m[1] / +m[2])}, not ${+m[1] / +m[2]}. For ${+m[1] / +m[2]}, write one as a decimal: ${m[1]}.0 divided by ${m[2]}.`; if (!inf.warns.includes(w)) inf.warns.push(w); }
+    }
+    return q;
+  }
+
+  function cppExpr(src, x, inf, cond = false) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return '0'; }
     const strs = [];
@@ -193,6 +244,19 @@
       note(inf, 'Arduino lists are plain arrays: `sizeof(list) / sizeof(list[0])` works out how many items they hold.');
       return `(sizeof(${a}) / sizeof(${a}[0]))`;
     });
+    // "random number from 1 to n plus 1": a number up to n, then plus 1, or up to n plus 1?
+    for (const m of q.matchAll(R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`))) {
+      const after = q.slice(m.index + m[0].length).match(/^\s+(plus|minus|times|divided by|mod)\b/i);
+      if (after) inf.errs.push(`"${m[0].trim()} ${after[1]} …" could mean two things. Put brackets round the end you mean, like random number from 1 to (n plus 1).`);
+    }
+    // words that follow their value ("as text"): right after a sum they could mean the last value or the whole sum
+    for (const p of [String.raw`(OPD) as (?:a )?(?:whole )?number\b`, String.raw`(OPD) as (?:a )?decimal\b`, String.raw`(OPD) as text\b`, String.raw`(OPD) squared\b`]) {
+      for (const m of q.matchAll(R(p))) {
+        if (!/(?:\b(?:plus|minus|times|divided by|mod)|[-+*/%])\s*$/i.test(q.slice(0, m.index))) continue;
+        const e = `"${m[0].slice(m[1].length).trim()}" comes right after a calculation, so it could go with just ${code(m[1])} or with all of it. Put brackets round the part you mean, like (price times qty) ${m[0].slice(m[1].length).trim()}.`;
+        if (!inf.errs.includes(e)) inf.errs.push(e);
+      }
+    }
     swap(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`, (m, a, b) => {
       if (x.arduino) { note(inf, '`random(low, high)` on Arduino never reaches `high`, so 1 is added to include the top number.'); return `random(${a}, ${/^\d+$/.test(b) ? +b + 1 : b + ' + 1'})`; }
       x.needs.add('random'); note(inf, 'C++ has no one-word random function, so a small helper, `random_number`, is added at the top. It uses `<random>` and includes both ends.'); return `random_number(${a}, ${b})`;
@@ -216,6 +280,7 @@
       [/\band\b/gi, ' && '], [/\bor\b/gi, ' || '], [/\bnot\b/gi, ' !'], [/\b(?:yes|true)\b/gi, 'true'], [/\b(?:no|false)\b/gi, 'false'],
     ];
     for (const [re, to] of W) q = q.replace(re, to);
+    q = cppTwoReadings(q, x, strs, inf, cond);
     q = q.replace(/(?<![\w.:>⟦])([A-Za-z_]\w*)\b(?!\s*::)/g, (m, id, off) => {
       if (/^(true|false|std|random_number|random|text|auto|int|double|bool|char|return|nullptr|this|sizeof|String|HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP|LED_BUILTIN|A\d+|millis|digitalRead|analogRead|Serial|new|delete|static_cast)$/.test(id) || x.types[id] || x.fns.has(id) || x.classes.has(id) || x.known.has(id)) return id;
       if (/^\d/.test(id) || /^\s*\(/.test(q.slice(off + m.length))) return id;
@@ -270,10 +335,14 @@
     let usingStd = null, hasSetup = false, hasLoop = false, serialStarted = false;
     const stack = []; // {ind, close, kind, buf, depth, src, cls}
     const E = (t, inf) => cppExpr(t, x, inf);
-    // first pass: names of tools and classes
+    const EC = (t, inf) => cppExpr(t, x, inf, true);   // a condition (= means ==)
+    // first pass: names of tools and classes, and names that are given a decimal somewhere (so they are
+    // decimals from the start: an int would quietly drop the .5 of "increase total by 0.5")
+    x.decimal = x.decimal || new Set();
     for (const l of lines) {
       const s = l.trim();
       let m;
+      if ((m = s.match(/^(?:set|let|make|increase|decrease|multiply|divide)\s+([A-Za-z_]\w*)\s+(?:to|be|by)\s+(.+)$/i)) && /\d\.\d|\bdivided by\b|\bas (?:a )?decimal\b|\bsquare root\b/i.test(m[2].replace(/"(?:[^"\\]|\\.)*"/g, '""'))) x.decimal.add(m[1]);
       if ((m = s.match(/^define\s+(?:a\s+)?class\s+([A-Za-z_]\w*)/i))) x.classes.add(m[1]);
       else if ((m = s.match(/^define\s+([A-Za-z_]\w*)/i))) x.fns.add(m[1]);
       if (/^start (?:the serial monitor|talking to the computer)|Serial\.begin/i.test(s)) serialStarted = true;
@@ -286,6 +355,7 @@
     const isDeclared = (n) => scopes.some(sc => sc.has(n));
     const declare = (name, type, inf, value) => {
       if (isDeclared(name)) return `${name} = ${value};`;
+      if (type === 'int' && x.decimal.has(name)) { type = 'double'; note(inf, `${code(name)} is given a decimal further on, so it is a decimal (\`double\`) from the start: a whole number (\`int\`) would drop what comes after the point.`); }
       scopes[scopes.length - 1].add(name);
       x.types[name] = type;
       const T = fixText(type, x);
@@ -416,15 +486,34 @@
         inf.errs.push('In a sketch, steps go inside "when the board starts" (once) or "over and over" (forever). Only settings like "set led to 13" go at the left edge.');
         return;
       }
-      if ((m = M(/^(?:give back|return)\b\s*(.*)$/i))) { if (!inside('fn')) inf.errs.push('"give back" only works inside a tool (a define block).'); return say(m[1] ? `return ${E(m[1], inf)};` : 'return;'); }
-      if ((m = M(/^(?:otherwise if|else if)\s+(.+)$/i))) { out.push({ text: '    '.repeat(depth - 1) + `} else if (${E(m[1], inf)}) {`, src: i }); return; }
+      if ((m = M(/^(?:give back|return)\b\s*(.*)$/i))) {
+        if (!inside('fn')) inf.errs.push('"give back" only works inside a tool (a define block).');
+        // "give back total and count": two values, or a yes/no test that both are true?
+        const parts = m[1] ? splitItems(m[1]) : [];
+        if (parts.length > 1 && !/,/.test(m[1].replace(/"(?:[^"\\]|\\.)*"/g, '""')) && parts.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p))) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. A C++ tool gives back one value: give back each from its own tool, or put them in a list.`);
+        return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
+      }
+      if ((m = M(/^(?:otherwise if|else if)\s+(.+)$/i))) { out.push({ text: '    '.repeat(depth - 1) + `} else if (${EC(m[1], inf)}) {`, src: i }); return; }
       if (/^(?:otherwise|else)$/i.test(s)) { out.push({ text: '    '.repeat(depth - 1) + '} else {', src: i }); return; }
-      if ((m = M(/^if\s+(.+)$/i))) return open(`if (${E(m[1], inf)})`, 'if');
+      if ((m = M(/^if\s+(.+)$/i))) return open(`if (${EC(m[1], inf)})`, 'if');
       if (/^(?:repeat forever|forever|keep repeating)$/i.test(s)) { note(inf, '`while (true)` repeats forever; "stop the loop" (break) gets out.'); return open('while (true)', 'loop'); }
       if ((m = M(/^repeat\s+(.+?)\s+times?(?:\s+counting with\s+([A-Za-z_]\w*))?$/i))) { const v = m[2] || 'i'; x.types[v] = 'int'; note(inf, `\`for (int ${v} = 0; ${v} < N; ${v}++)\` counts ${v} from 0 up to one less than N.`); open(`for (int ${v} = 0; ${v} < ${E(m[1], inf)}; ${v}++)`, 'loop'); scopes[scopes.length - 1].add(v); return; }
-      if ((m = M(/^count\s+([A-Za-z_]\w*)\s+from\s+(.+?)\s+to\s+(.+)$/i))) { x.types[m[1]] = 'int'; const down = /^\d+$/.test(m[2].trim()) && /^\d+$/.test(m[3].trim()) && +m[2] > +m[3]; note(inf, `Counts ${down ? 'down' : 'up'} and includes ${m[3].trim()} (the ${down ? '>=' : '<='}).`); open(`for (int ${m[1]} = ${E(m[2], inf)}; ${m[1]} ${down ? '>=' : '<='} ${E(m[3], inf)}; ${m[1]}${down ? '--' : '++'})`, 'loop'); scopes[scopes.length - 1].add(m[1]); return; }
+      // "count i from 1 to 10", "count down from 10 to 1" (the count is n), "… in steps of 2"
+      if ((m = M(/^count(?:\s+(up|down))?(?:\s+(?!from\b)([A-Za-z_]\w*))?\s+from\s+(.+?)\s+(down\s+)?to\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i))) {
+        const v = m[2] || 'n', a = m[3].trim(), b = m[5].trim(), num = (t) => /^-?\d+$/.test(t);
+        const down = /down/i.test(m[1] || '') || !!m[4] || (num(a) && num(b) && +a > +b);
+        // which way? only numbers written here say; otherwise ask (never count the wrong way)
+        if (!m[1] && !m[4] && !num(a) && num(b)) inf.errs.push(`IntuCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up ${v} from …" or "count down ${v} from …".`);
+        if (!m[2]) note(inf, 'No name was given for the count, so it is called `n`. Write "count i from …" to choose a name.');
+        x.types[v] = 'int';
+        const step = m[6] ? E(m[6], inf) : null;
+        note(inf, `Counts ${down ? 'down' : 'up'}${step ? ` in steps of ${step}` : ''} and includes ${b} (the ${down ? '>=' : '<='}).`);
+        open(`for (int ${v} = ${E(a, inf)}; ${v} ${down ? '>=' : '<='} ${E(b, inf)}; ${step ? `${v} ${down ? '-' : '+'}= ${step}` : `${v}${down ? '--' : '++'}`})`, 'loop');
+        scopes[scopes.length - 1].add(v);
+        return;
+      }
       if ((m = M(/^for each\s+([A-Za-z_]\w*)\s+in\s+(.+)$/i))) { const list = E(m[2], inf); x.types[m[1]] = (x.types[list] || '').replace(/^std::vector<(.+)>$/, '$1').replace(/\[\]$/, '') || 'auto'; note(inf, '`for (const auto& item : list)` takes each item in turn. `const auto&` reads it without copying.'); open(`for (const auto& ${m[1]} : ${list})`, 'loop'); scopes[scopes.length - 1].add(m[1]); return; }
-      if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${E(m[1], inf)})`, 'loop');
+      if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${EC(m[1], inf)})`, 'loop');
       if (/^stop the loop$/i.test(s)) return say('break;');
       if (/^skip to next$/i.test(s)) return say('continue;');
       // --- Arduino: pins, time, sound, serial monitor
@@ -471,7 +560,12 @@
       }
       if ((m = M(/^show\s+(.+?)(\s+on the same line)?$/i))) {
         const joined = splitPhrase(m[1], /\s+followed by\s+/i);
-        const pieces = joined.length > 1 ? joined.map(v => E(v, inf)) : splitItems(m[1]).map(v => E(v, inf));
+        // "show a is 1 and b is 2" is one test: "and" only separates plain values
+        const items = splitItems(m[1]);
+        const plainOnly = items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')));
+        // a comparison shown goes in brackets: std::cout << n == 3 doesn't build (<< comes first)
+        const shown = (p) => (/[=!<>]=|&&|\|\||(?<!<)[<>](?![<>])/.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')) && !/^\(.*\)$/.test(p) ? `(${p})` : p);
+        const pieces = (joined.length > 1 ? joined.map(v => E(v, inf)) : (plainOnly ? items : splitItems(m[1], false)).map(v => E(v, inf))).map(shown);
         const gap = joined.length > 1 ? '' : ' ';
         if (A) {
           if (!serialStarted) inf.warns.push('Start the serial monitor first ("start the serial monitor at 9600", in "when the board starts"), or nothing will show.');
@@ -489,8 +583,8 @@
         const decl = isDeclared(m[3]) ? '' : `${type} ${m[3]}; `;
         scopes[scopes.length - 1].add(m[3]); x.types[m[3]] = type;
         say(`${decl}std::cout << ${E(m[2], inf)};`);
-        note(inf, type === 'std::string' ? '`std::getline` reads a whole line of typed text.' : '`std::cin >>` reads a number typed by the person.');
-        return say(type === 'std::string' ? `std::getline(std::cin, ${m[3]});` : `std::cin >> ${m[3]};`);
+        note(inf, type === 'std::string' ? '`std::getline` reads a whole line of typed text. `std::cin >> std::ws` first skips the end of any line left by an earlier number, which would otherwise read as an empty answer.' : '`std::cin >>` reads a number typed by the person.');
+        return say(type === 'std::string' ? `std::getline(std::cin >> std::ws, ${m[3]});` : `std::cin >> ${m[3]};`);
       }
       if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list(?:\s+of\s+(numbers|whole numbers|decimals|text|words))?\s+(?:called\s+)?([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
         const items = m[3] ? splitItems(m[3]).map(v => E(v, inf)) : [];
@@ -511,7 +605,13 @@
         return say(`${type} ${m[2]} = {${items.join(', ')}};`);
       }
       if ((m = M(/^add\s+(.+?)\s+to\s+([A-Za-z_]\w*)$/i))) {
-        if (/^std::vector/.test(x.types[m[2]] || '')) { note(inf, '`push_back` adds to the end of a vector.'); return say(`${m[2]}.push_back(${E(m[1], inf)});`); }
+        if (/^std::vector/.test(x.types[m[2]] || '')) {
+          // "add "milk" and "eggs" to basket" adds both (and between plain values), one push_back each
+          const vals = splitItems(m[1]);
+          const many = vals.length > 1 && vals.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')));
+          note(inf, '`push_back` adds to the end of a vector.' + (many ? ' Each value gets its own.' : ''));
+          return say((many ? vals : [m[1]]).map(v => `${m[2]}.push_back(${E(v, inf)});`).join(' '));
+        }
         if (/\[\]$/.test(x.types[m[2]] || '')) { inf.errs.push('Arduino lists have a fixed size, so nothing can be added. Make the list with all its items instead.'); return; }
         return say(`${m[2]} += ${E(m[1], inf)};`);
       }
@@ -552,6 +652,7 @@
         return say(`${t} ${m[2]} = ${v};`);
       }
       if ((m = M(/^(?:set|let|make)\s+([A-Za-z_]\w*)\s+(?:to|be)\s+(.+)$/i))) {
+        if (/^(?:nothing|none)$/i.test(m[2].trim())) { inf.errs.push(`A plain value in C++ always holds something, so it can't be set to nothing. Use 0, empty text (""), or a yes/no value like "set ${m[1]} to no".`); return; }
         const v = E(m[2], inf);
         return say(declare(m[1], isDeclared(m[1]) ? x.types[m[1]] : exprType(v, x), inf, v));
       }
