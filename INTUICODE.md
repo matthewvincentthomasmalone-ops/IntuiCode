@@ -13,14 +13,16 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 **Is it airtight?** Not completely.
 
 - **Code to sentences is checked.** The sentences are translated back and compared with the original;
-  anything that differs stays as code, and IntuCode says when the result still isn't exact. (One gap
-  today: Python with `**`, see [Python reader](#python-reader).)
-- **Sentences to code is not.** The writers are rule-based and report what they can't parse, but the code
-  they write isn't checked against what the sentence meant. IntuCode has far fewer words than the
-  languages it writes, so it fills the gaps from context: what kind of value a name holds, which page
-  element a name means. [Context](#context-what-the-writers-remember) says how;
-  [Known wrong translations](#known-wrong-translations) lists, with tests, where that context or the
-  grammar gives the wrong code today.
+  anything that differs stays as code, and IntuCode says when the result still isn't exact.
+- **Sentences to code is not checked against what you meant**, because only you know that. IntuCode has
+  far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
+  holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
+  The risk is English with two readings, and context that can't be seen. Where the writer knows a sentence
+  has two readings, it refuses it and says how to put it ([Two readings](#two-readings-refused-never-guessed-python));
+  where the context it needs can't be seen, it warns. [Context](#context-what-the-writers-remember) says
+  what it uses; [Known wrong translations](#known-wrong-translations) lists, with tests, what still comes
+  out wrong. And in the app, if an edit somewhere changes the code of a line you didn't touch, that line
+  is flagged until you've looked at it.
 
 ## Contents
 
@@ -831,7 +833,7 @@ target language's own precedence decides the rest.
 | 25 | `is`, `equals`, `is equal to`, `is the same as` | `==` |
 | 26 | `plus`, `added to`, `joined with`, `joined to`, `followed by` / `minus`, `take away` | `+` / `-` |
 | 27 | `times`, `multiplied by` / `divided by` / `mod`, `modulo`, `remainder after dividing by` | `*` / `/` / `%` |
-| 28 | `to the power of` | `**` (never applies today: see [Known wrong translations](#python-writer)) |
+| 28 | `to the power of` | `**` |
 | 29 | `[an] empty list` / `[an] empty dictionary` / `empty text` | `[]` / `{}` / `""` |
 | 30 | `yes`, `true` / `no`, `false` / `nothing`, `none` / `otherwise` | `True` / `False` / `None` / `else` |
 | 31 | `and`, `or`, `not` | `and`, `or`, `not` |
@@ -839,8 +841,10 @@ target language's own precedence decides the rest.
 After the swaps, Python's precedence groups the operators, tightest first: `**`; `*` `/` `%`; `+` `-`;
 comparisons (`==` `!=` `<` `<=` `>` `>=` `in` `not in` `is` `is not`); `not`; `and`; `or`; `… if … else …`.
 
-So: a phrase binds to the one operand next to it (`length of xs plus 1` is `len(xs) + 1`; `n plus 1 as
-text` is `n + str(1)`); `times` binds tighter than `plus`; `not` covers the whole comparison after it; and
+So: a phrase binds to the one operand next to it (`length of xs plus 1` is `len(xs) + 1`), and one that
+follows its value (`as text`, `rounded`, `squared` …) right after a sum is an error that asks for brackets
+(`(n plus 1) as text`; see [Two readings](#two-readings-refused-never-guessed-python)); `is even`, `is odd`
+and `is divisible by` take the whole sum before them; `times` binds tighter than `plus`; `not` covers the whole comparison after it; and
 brackets group.
 
 ```intuicode python
@@ -849,7 +853,7 @@ set n to 2
 set a to n plus 1 times 2
 set b to length of xs plus 1
 set c to length of (xs plus [5])
-set d to n plus 1 as text
+set d to (n plus 1) as text
 set e to n squared plus 1
 set f to not n is 2 and n is even
 set g to n is at least 1 or n is nothing
@@ -866,7 +870,7 @@ n = 2
 a = n + 1 * 2
 b = len(xs) + 1
 c = len((xs + [5]))
-d = n + str(1)
+d = str((n + 1))
 e = n ** 2 + 1
 f = not n == 2 and n % 2 == 0
 g = n >= 1 or n is None
@@ -983,38 +987,46 @@ sentence can use a name set further down or in another folder. Warnings are give
 |---|---|
 | Python spelling | `high_score` |
 | words | `high score`: names with spaces are found in later sentences by these words |
-| kind | number, text, list, dictionary, yes/no, tool, class, module, or value (not known) |
+| kinds | number, text, list, dictionary, yes/no, tool, class, module, value (not known) or mixed, **for each place it is set**: each tool, and the top of each file |
 | folder | Settings, Tools or Main program, where it was first set |
-| scope | the file, or local to a tool (a tool's inputs) |
+| top lines | the first line it is set on at the top of each file (decides `global`, below) |
 | inputs | a tool's inputs, and how many have no default |
+| items | what the items put into a dictionary or list hold (`set item "food" of totals to 0`) |
+| gives back | for a tool: what its `give back` lines hold |
 
-**How a name gets its kind.** The first sentence that sets a name decides its kind. A later sentence can
-only fill in a kind that wasn't known (value); it never changes a known one.
+**How a name gets its kind.** Each place keeps its own: a name that is text in one tool and a list in
+Main program is each of those where it is set, so an edit in one place never changes what a line means
+in another. In one place, the first sentence that sets a name decides its kind; a later one fills in a
+kind that wasn't known, and one with a different kind makes it **mixed** (can't tell). A name used in a
+tool that doesn't set it has the kind it has at the top of the file.
 
 | Sentence | Kind |
 |---|---|
 | `set x to 5`, `… to length of …`, `… to random number …`, arithmetic of numbers; `ask for a number`; `count`, `repeat … counting with` | number |
 | `set x to "…"`, `… as text`, `… in capitals`; `ask "…"`; `for each letter in` some text | text |
-| `create list`, `set x to [ … ]`, `set x to sorted …` | list |
-| `create dictionary`, `set x to {}` | dictionary |
+| `create list`, `set x to [ … ]`, `set x to sorted …`, `… .split()`, `list(…)`, `.keys()` / `.values()` | list |
+| `create dictionary`, `set x to {}`, `dict(…)` | dictionary |
 | `set x to yes` | yes/no |
 | `define` | tool |
 | `define class`, a `python:` class | class |
 | `use`, `import`, a `python:` import | module |
-| `set x to y` (y known) | y's kind |
-| `run … and store in`, `make a new … and store in`, `open … as`, `using … as`, `if it fails … as`, `field`, `for each` over a list, a `python:` assignment | value |
+| `set x to y` (y known), a `python:` assignment (from its value's shape: `python: names = []` is a list) | y's kind |
+| `run t … and store in`, `set x to t(…)` | what tool t gives back, when its `give back` lines all hold one kind |
+| `make a new … and store in`, `open … as`, `using … as`, `if it fails … as`, `field`, `for each` over a list | value |
 
 **Sentences that depend on what T is:**
 
-| Sentence | T is a list | T is a number, text or value | T is a dictionary | T isn't set anywhere |
-|---|---|---|---|---|
-| `add V to T` | `T.append(V)` | `T += V` | error: give the key | error |
-| `remove V from T` | `T.remove(V)`; `remove item N from T` is `T.pop(N)` | `T -= V` | `del T[V]` | `T -= V`, and a warning |
-| `sort T`, `reverse T`, `shuffle T`, `clear T` | as written | a warning when T is a number, text or yes/no | allowed | a warning |
-| `for each x in T` | x is a value | x is text, letter by letter, when T is text | x is each key | a warning |
+| Sentence | T is a list | T is a number or text | T can't be seen (value, mixed) | T is a dictionary | T isn't set anywhere |
+|---|---|---|---|---|---|
+| `add V to T` | `T.append(V)` | `T += V` | `.append(V)` when V is text, a list, a dictionary or yes/no; `+= V` when V is a number; `+= V` and a warning when V can't be seen either, or T is mixed | error: give the key | error |
+| `remove V from T` | `T.remove(V)`; `remove item N from T` is `T.pop(N)` | `T -= V` | `T -= V` | `del T[V]` | `T -= V`, and a warning |
+| `sort T`, `reverse T`, `shuffle T`, `clear T` | as written | a warning | allowed | allowed | a warning |
+| `for each x in T` | x is a value | x is text, letter by letter, when T is text | x is a value | x is each key | a warning |
 
-- **An item of something** (`add V to item K of T`, `add V to grid[r]`): what it holds can't be seen, so
-  `.append(V)` when V is text, a list, a dictionary or yes/no, and `+= V` otherwise.
+- `add A and B to T` and `remove A and B from T` (plain values) add or take out each one, on two lines.
+- `put V into T` is `T = V`, unless T is a list.
+- **An item of something** (`add V to totals[kind]`, `add V to grid[r]`): its kind is that of the items put
+  in it, when they were all one kind; otherwise it can't be seen, as above.
 - **`run T with …`** is an error when T is a number, text, list, dictionary or yes/no, or isn't set
   anywhere; for a tool, when the number of inputs is wrong. A class, a module or a value (from a
   `python:` line or an import) is trusted.
@@ -1024,7 +1036,12 @@ only fill in a kind that wasn't known (value); it never changes a known one.
 - **Folders.** Settings, then Tools, then Main program. A name set in a later folder and used in an
   earlier one is a warning. A tool that changes a Settings value gets a warning: it only changes its own
   file's copy.
-- **`global`** is added at the top of a tool that changes a name set at the left edge of the same file.
+- **`global`.** A tool that sets a name which is set at the left edge of the same file *above* the tool
+  changes that one: `global` is added at the top of the tool. A name set at the left edge only *below* the
+  tool (like the starting block at the end of a file) isn't shared: setting it makes the tool's own copy,
+  Python's own rule, and a note says so. Changing a name in place (`increase`, `add … to`, `+=`) always
+  means the one outside. `use the shared NAME` says it outright. Lines are compared, so the same file
+  always gives the same code.
 - **Imports** (`random`, `math`, `time`, `sys`) are added when a phrase or a sentence needs one.
 - **`name ()`**: a tool's or class's name followed by a space and brackets is joined to them.
 
@@ -1127,6 +1144,50 @@ for (const item of [1, 2]) {
 - **Warnings** mean the code was written but something looks off. Run goes ahead.
 - **Notes** explain each choice (why `add` became `.append()`); they are never problems.
 
+### Two readings: refused, never guessed (Python)
+
+English often allows two readings where code allows one. Where the Python writer can't tell which was
+meant, the line is an error that says how to put it, instead of picking one:
+
+| You write | Why it's asked about | Say instead |
+|---|---|---|
+| `total divided by count rounded to 2 places` (also `as text`, `as number`, `as decimal`, `in capitals`, `squared`, `sorted` after a sum) | just `count`, or the whole sum? | `(total divided by count) rounded to 2 places` |
+| `random number from 1 to n plus 1` | a number up to n, plus 1; or up to n plus 1? | `random number from 1 to (n plus 1)` |
+| `colour is not "red" or "blue"` (and `is more than 1 or 2`…) | Python would test `"blue"` on its own | `colour is not "red" or colour is not "blue"` |
+| `name contains "a" and "b"` | the same | `name contains "a" and name contains "b"` |
+| `give back total and count` | two values, or "both are true"? | `give back total, count` |
+| `count i from n to 1` | up or down? only numbers written here say | `count down from n to 1` |
+| `length of rope`, when both `length of rope` and `rope` are names | the name, or the phrase? | rename one (`rope length`) |
+| `set budget to 1,000` | one number, or two (Python's 1 and 0)? | `1000` |
+| `for each x in numbers from 1 to 2` | going through a list, or counting? | one or the other |
+
+And some that read one way only are written that way: `answer is "yes" or "y"` says the name again
+(`answer == "yes" or answer == "y"`, where Python's own `answer == "yes" or "y"` would always be true);
+`n plus 1 is even` is about the sum; `add "milk" and "eggs" to basket` adds both.
+
+```intuicode python
+ask "Go on? " and store in answer
+if answer is "yes" or "y"
+    show "going"
+set n to 3
+set parity to n plus 1 is even
+create list basket
+add "milk" and "eggs" to basket
+set average to (n times 2 divided by 4) rounded
+```
+
+```python
+answer = input("Go on? ")
+if answer == "yes" or answer == "y":
+    print("going")
+n = 3
+parity = (n + 1) % 2 == 0
+basket = []
+basket.append("milk")
+basket.append("eggs")
+average = round((n * 2 / 4))
+```
+
 ## What IntuCode has no words for
 
 The writers don't guess what an unknown sentence means. For each line, one of these happens:
@@ -1165,8 +1226,7 @@ again, up to 4 rounds.
 - When the trees differ but no statement is missing (statements in another order), nothing is kept and
   the result is reported as not exact.
 - When the Python made from the sentences doesn't parse, the check stops there: nothing is kept as code,
-  and the result is reported as not exact. Today every file with `**` ends like this (see
-  [Python reader](#python-reader)).
+  and the result is reported as not exact.
 
 **Reading, other languages** (`lang/convert.js`): the code is read with tree-sitter, said in sentences,
 translated back with the writers, and the trees compared. Each statement, element or rule that differs,
@@ -1184,10 +1244,11 @@ direction, with the limits below.
 - Rules are regular expressions tried in order; the first that fits wins. There is no grammar check
   beyond that, so phrases can collide (see `ROADMAP.md`, Known risks).
 - Values are rewritten word by word, not parsed: a phrase can produce code that doesn't parse, and some of
-  those come with only a warning, or none.
-- Context is what the writer has seen: the first sentence that sets a name, Structure's names, the
-  sentence's own words. It doesn't know what a tool gives back, what a `python:` line holds, or what a
-  value is at run time.
+  those come with only a warning, or none. The Python writer refuses the shapes known to have two readings
+  ([Two readings](#two-readings-refused-never-guessed-python)); JavaScript and C++ have fewer such checks.
+- Context is what the writer has seen: in Python, what each name holds in each place, what tools give back,
+  the shape of a `python:` line's value; Structure's names; the sentence's own words. It doesn't know what a
+  value is at run time, so where that decides the code and can't be seen, Python says so with a warning.
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
   `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above`, number words or names with
   spaces. C++ has no `description:`, names with spaces, `count down`, `in steps of`, `contains`, `is in`
@@ -1201,75 +1262,26 @@ fixed, its test fails, and this section is updated. The last table is the readin
 
 ### Python writer
 
+Most of what was listed here was fixed on 2026-11-04 (see [Two readings](#two-readings-refused-never-guessed-python)
+and [Python context](#python-context)). Still wrong:
+
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `set x to 0`, later `set x to an empty list`, then `add 5 to x` | `x += 5` | the first kind (number) is kept | make x a list the first time it is set (`create list x`), or `run x.append with 5` |
-| `python: scores = []`, then `add "abc" to scores` | `scores += "abc"`: adds `"a"`, `"b"`, `"c"` | a `python:` name's kind is unknown, taken as a number | `run scores.append with "abc"` |
-| `show "Score: " followed by n` (n a number) | `print("Score: " + n)`: a `TypeError` when run | `+` doesn't join text and a number, and the kind isn't used | `show "Score: {n}"` |
-| `n plus 1 is even` | `n + 1 % 2 == 0` | `is even` takes one operand (C++ checks the sum) | `(n plus 1) is even` |
-| `n to the power of 3` | `n to power of 3`, warnings | `the` is removed before the phrase is looked for | `n ** 3` |
-| `n times 3 rounded` | `n * round(3)` | `rounded` binds to the operand before it | `(n times 3) rounded` |
-| `first item of sorted xs` | `sorted[0] xs`, no warning | `sorted` comes later in the table than `first item` | `first item of (sorted xs)` |
-| `set my score to 0`, then `show my score` | `score = 0`, `print(my score)` | `my` is dropped when setting, not when using | `set score to 0` |
-| `set times to 2`, then `show times plus 1` | `print(* + 1)`, no warning | the name is an operator word | another name |
-| `set no to 4`, then `show no` | `print(False)` | the name is a value word | another name |
-| `for each k from 1 to 3` | `for each_k in range(1, 4):` | the `count` rule (`for … from … to`) comes first | `count k from 1 to 3` |
-| `count i from n to 1` (n is 3) | `range(n, 2)`: no rounds | the direction is known only from two numbers | `count i from n down to 1` |
-| `if n is 1 then show 1 otherwise show 2` | `print(1 else show 2)`, a warning | `otherwise` inside a step is the value word | `otherwise` on its own line |
-| `random number from 1 to c plus 1` | `random.randint(1, c) + 1` | the end is one operand (JavaScript reports this as unclear) | `random number from 1 to (c plus 1)` |
-| `show a is 1 and b is 2` | `print(a == 1, b == 2)` | `and` separates the things to show | `show (a is 1 and b is 2)` |
+| `set a b to 1` | `b = 1` | a name's first word "a" is read as the article, as in `set a counter to 1` | a name that doesn't start with "a", "an" or "the" |
+| `same = a is b`, written as Python | `same = a == b` | in a line read as sentences, `is` compares values; Python's `is` checks for the very same object | `python: same = a is b` |
 
 ```intuicode python
-set n to 3
-set x to 0
-set x to an empty list
-add 5 to x
-python: scores = []
-add "abc" to scores
-show "Score: " followed by n
-set parity to n plus 1 is even
-set cube to n to the power of 3
-set rounded total to n times 3 rounded
-create list xs with 3, 1
-set lowest to first item of sorted xs
-set my score to 0
-show my score
-set times to 2
-show times plus 1
-set no to 4
-show no
-for each k from 1 to 3
-    show k
-count i from n to 1
-    show i
-if n is 1 then show 1 otherwise show 2
+set a b to 1
+python: a = [1]
+python: b = [1]
+same = a is b
 ```
 
 ```python
-n = 3
-x = 0
-x = []
-x += 5
-scores = []
-scores += "abc"
-print("Score: " + n)
-parity = n + 1 % 2 == 0
-cube = n to power of 3
-rounded_total = n * round(3)
-xs = [3, 1]
-lowest = sorted[0] xs
-score = 0
-print(my score)
-times = 2
-print(* + 1)
-no = 4
-print(False)
-for each_k in range(1, 4):
-    print(k)
-for i in range(n, 2):
-    print(i)
-if n == 1:
-    print(1 else show 2)
+b = 1
+a = [1]
+b = [1]
+same = a == b
 ```
 
 ### JavaScript writer
@@ -1396,9 +1408,7 @@ int main() {
 
 ### Python reader
 
-| Code | Sentences | Why | Today |
-|---|---|---|---|
-| Python `x = n ** 3` | `set x to n to the power of 3` | the writer can't read `to the power of` (above), so the Python made from the sentences doesn't parse, and the Python check stops instead of keeping the line as code | "Open as sentences" reports that the sentences differ (`The generated Python can't be read`); none of the file is kept as `python:` lines |
+Nothing known today. (`x = n ** 3` used to give sentences the writer couldn't read; `to the power of` works now.)
 
 ## About the examples
 
@@ -1599,7 +1609,7 @@ for each item in basket
 
 #### Python filler words
 
-- Left out at the start of a line: `please`, `kindly`, `ok`, `okay`, `so`, `and`, `now`, `next`, `then`, `and then`, `also`, `just`, `simply`, `finally`, `first`, `firstly`, `after that`, `afterwards`, `i want to`, `i'd like to`, `i would like to`, `i need to`, `we need to`, `we want to`, `let's`, `let us`, `can you`, `could you`, `you should`, `go ahead and`, `make sure to`, `make sure you`, `try to`, `remember to`, `be sure to`.
+- Left out at the start of a line: `please`, `kindly`, `ok`, `okay`, `so`, `and`, `now`, `next`, `then`, `and then`, `also`, `just`, `simply`, `finally`, `first`, `firstly`, `after that`, `afterwards`, `i want to`, `i'd like to`, `i would like to`, `i need to`, `we need to`, `we want to`, `let's`, `let us`, `can you`, `could you`, `you should`, `go ahead and`, `make sure to`, `make sure you`, `remember to`, `be sure to`.
 - Left out anywhere outside quotes: `please`, `kindly`, `just`, `simply`, `basically`, `really`, `actually`, `quickly`.
 
 Python's own words, which can't be names: `False`, `None`, `True`, `and`, `as`, `assert`, `async`, `await`, `break`, `class`, `continue`, `def`, `del`, `elif`, `else`, `except`, `finally`, `for`, `from`, `global`, `if`, `import`, `in`, `is`, `lambda`, `nonlocal`, `not`, `or`, `pass`, `raise`, `return`, `try`, `while`, `with`, `yield`.

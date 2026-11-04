@@ -1070,7 +1070,8 @@
       if (many) { x.err(`Add one number at a time to ${code(target)}, or add them up first: add ${parts.join(' plus ')} to ${m[3].trim()}.`); return { py: `${target} += ${val}` }; }
       assigned(x, target, true);
       // a number, or nothing known about either side: += (if it's really a list and the value text, Python would add each letter)
-      if (vk.every(v => v === 'number')) x.note(`The translator can't see what ${code(target)} holds, so \`+=\` adds ${code(val)} to it, as for a number. If it holds a list, write "append ${m[2].trim()} to ${m[3].trim()}".`);
+      if (k === 'mixed') x.warn(`${code(target)} holds different kinds of value in different places (a number in one, a list in another…), so it can't be told what "add" should do here: this adds as for a number (\`+=\`). If it holds a list here, write "append ${m[2].trim()} to ${m[3].trim()}".`);
+      else if (vk.every(v => v === 'number')) x.note(`The translator can't see what ${code(target)} holds, so \`+=\` adds ${code(val)} to it, as for a number. If it holds a list, write "append ${m[2].trim()} to ${m[3].trim()}".`);
       else x.warn(`The translator can't tell what ${code(target)} or ${code(val)} hold, so this adds them as numbers (\`+=\`). If ${code(target)} is a list, write "append ${m[2].trim()} to ${m[3].trim()}" instead: \`+=\` would add text to a list letter by letter.`);
       return { py: `${target} += ${val}` };
     }
