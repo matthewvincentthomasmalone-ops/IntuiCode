@@ -43,7 +43,7 @@ when copy is clicked
         set the text of copied to "Select it and copy it yourself."
 ```
 
-Everything you can start from is in the **Library**, by kind of project: Games, Productivity, Money,
+Everything you can start from is in **Project Templates**, by kind of project: Games, Productivity, Money,
 Health & habits, Learning, Creative & media, Social & sharing, Tools & utilities, Websites, Online
 services and Gadgets, then One idea at a time and Starting points. Each project says where it runs (PC,
 Phone, Web or Board), and the chips at the top show only those. A **kit** plans a whole kind of project
@@ -106,8 +106,8 @@ uploads it to a board plugged in by USB, and shows what the board sends in the t
 
 **Plan a project: a map before you start**
 
-**Plan** (in the menu bar, or from a kit in the Library) asks what you're making, by the same kinds as the
-Library, then lists the steps that kind of project usually has, in the order you'd build them. Start from
+**Plan** (in the menu bar, or from a kit in Project Templates) asks what you're making, by the same kinds as
+Project Templates, then lists the steps that kind of project usually has, in the order you'd build them. Start from
 the smallest that works, the usual, or everything; preview any step's sentences; and watch **Your plan**
 fill in beside them before you name it and build. IntuCode lays the steps out in your folders as
 sentences, with a **Project map** beside the folders. Each step says how much is done for you:
@@ -128,13 +128,13 @@ already has, and, behind **Show an example**, an answer that works, with **Put i
 ‹blank›; Problems lists the ones left, and clicking one selects it. Kit authors write these as `blank:` lines
 (see `lang/kits/README.md`); the tests fill every ‹blank› with its answer and check the project works.
 
-**Change this kit** (in planning, or from a kit in the Library) opens it as a form: its title, kind, where it
+**Change this kit** (in planning, or from a kit in Project Templates) opens it as a form: its title, kind, where it
 runs and what it's made of; its steps, which you can reorder, remove, mark as always included or ticked at
 first, edit, add from any other kit, or write from scratch, with a Walk/Hallway/Horizon switch and its
 sentences folder by folder. A check builds the kit as you go and says whether it works. A built-in kit is
 changed as your copy, which replaces it (delete yours to get the original back), and a new kit appears in
 planning under its kind as soon as it's saved. Everything underneath is plain text (**Edit as text**), kept
-on your computer. The built-in library and its format are in `lang/builder.js`, and more kits are in the
+on your computer. The built-in templates and their format are in `lang/builder.js`, and more kits are in the
 packs in `lang/kits/`.
 
 **Full screen:** the corner button on the sentences, the code and the terminal makes that window fill the
@@ -368,7 +368,7 @@ The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
 - **A new sentence:** add a `rule(regex, fn)` in `lang/python.js` (first match wins), then a
   matching entry in `TEMPLATES` so it appears in the phrase picker and the Index.
 - **A new word inside sentences:** add to `EXPR_RULES` (for example `length of x` → `len(x)`).
-- **A new blueprint:** write it in the app (Library → Write or paste one), or add it to
+- **A new blueprint:** write it in the app (Project Templates → Write or paste one), or add it to
   `BUILT_IN` in `lang/blueprints.js`. The format is described at the top of that file.
 - **Reading more:** library descriptions live in `LIBRARIES`, safety checks in `Facts`,
   and pattern recognisers in `gists()` in `lang/python_reader.py`.

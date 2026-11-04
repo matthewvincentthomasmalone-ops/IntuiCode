@@ -31,7 +31,7 @@
         </div>
       </div>
       <button type="button" id="btnPlan" class="btn ghost" title="Plan a project step by step: what you're making, its steps, then build">Plan</button>
-      <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Library</button>
+      <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates</button>
       <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
       <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
@@ -41,7 +41,7 @@
   <div class="workspace">
     <aside class="side" aria-label="Project">
       <div id="writeSide">
-        <div class="side-h">Project</div>
+        <div class="side-h">Project <span class="side-acts"><button type="button" class="btn tiny" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">+ File</button><button type="button" class="btn tiny" id="btnAddFolder" title="Add a folder">+ Folder</button></span></div>
         <div class="tree-root" id="treeRoot"></div>
         <nav id="tree" class="tree"></nav>
         <div id="imgWrap" hidden>
@@ -49,8 +49,8 @@
           <ul id="imgList" class="img-list"></ul>
           <div class="side-pad"><button type="button" class="btn small" id="btnAddImage2" title="Add a picture to the project's images/ folder">Add an image…</button></div>
         </div>
-        <div id="planWrap" hidden>
-          <div class="side-h">Project map</div>
+        <div id="planWrap">
+          <div class="side-h">Project map <span class="side-acts"><button type="button" class="btn tiny" id="btnAddStep" title="Add a step of your own to the map">+ Step</button></span></div>
           <p class="plan-path" id="planPath"></p>
           <ol id="plan" class="plan"></ol>
         </div>
@@ -187,15 +187,59 @@
     <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="bpTitle">
       <div class="modal-h">
         <div>
-          <h2 id="bpTitle">Library</h2>
+          <h2 id="bpTitle">Project Templates</h2>
           <p>On shelves by what you're making. A <b>kit</b> plans a whole kind of project, step by step; a <b>blueprint</b> is a story with blanks that writes the sentences for you. Everything stays yours to change.</p>
         </div>
         <button type="button" class="btn small" id="bpClose">Close</button>
       </div>
       <div class="bp-layout">
-        <nav class="bp-list" id="bpList" aria-label="Library"></nav>
+        <nav class="bp-list" id="bpList" aria-label="Project Templates"></nav>
         <div class="bp-detail" id="bpDetail"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fileModal" hidden>
+    <div class="modal-card narrow" role="dialog" aria-modal="true" aria-labelledby="fileTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="fileTitle">New file</h2>
+          <p id="fileLead"></p>
+        </div>
+        <button type="button" class="btn small" id="fileClose">Close</button>
+      </div>
+      <div class="imp-row file-row">
+        <label for="filePath">Name</label>
+        <input id="filePath" spellcheck="false" autocomplete="off" placeholder="notes/ideas.md">
+      </div>
+      <div class="imp-row file-row" id="fileLangRow">
+        <label for="fileLang">Language</label>
+        <select id="fileLang"></select>
+      </div>
+      <p class="file-how" id="fileHow"></p>
+      <label class="new-save" id="fileStartRow"><input type="checkbox" id="fileStart"> Run starts here</label>
+      <p class="bp-errors" id="fileProblem" role="alert"></p>
+      <div class="imp-actions">
+        <span class="file-del" id="fileDelWrap"><button type="button" class="btn ghost" id="fileDelete">Delete…</button></span>
+        <button type="button" class="btn primary" id="fileGo">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="stepAddModal" hidden>
+    <div class="modal-card narrow" role="dialog" aria-modal="true" aria-labelledby="stepAddTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="stepAddTitle">Add a step to the map</h2>
+          <p>A step of your own: what it's for, and how far along it is. Its note goes in the file you're in, at the cursor, so the map can take you there.</p>
+        </div>
+        <button type="button" class="btn small" id="stepAddClose">Close</button>
+      </div>
+      <div class="imp-row file-row"><label for="stepAddName">Name</label><input id="stepAddName" spellcheck="true" autocomplete="off" placeholder="Save and load settings"></div>
+      <div class="imp-row file-row"><label for="stepAddDepth">Depth</label><select id="stepAddDepth"><option value="walk">Walk: written in full</option><option value="hallway">Hallway: laid out, with parts to fill in</option><option value="horizon" selected>Horizon: a goal, explained</option></select></div>
+      <div class="imp-row file-row"><label for="stepAddSum">What it's for</label><input id="stepAddSum" spellcheck="true" autocomplete="off" placeholder="Remembers the volume between runs."></div>
+      <p class="bp-errors" id="stepAddProblem" role="alert"></p>
+      <div class="imp-actions"><span class="imp-note" id="stepAddWhere"></span><button type="button" class="btn primary" id="stepAddGo">Add step</button></div>
     </div>
   </div>
 

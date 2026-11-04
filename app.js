@@ -39,12 +39,60 @@
   const LANG_NAME = { python: 'Python', html: 'HTML', css: 'CSS', js: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', cpp: 'C++' };
   const KIND_OF_LAYOUT = { website: 'website', cpp: 'cpp', arduino: 'arduino' };
   const isCpp = () => project.kind === 'cpp' || project.kind === 'arduino';
+
+  /* ---------- Files: every file has a path and a language ----------
+   * A project is a tree of files. Each file's language (lang/languages.js) says how it's written:
+   * in sentences (Python, HTML, CSS, JavaScript, C++, Arduino), as code that IntuCode reads to you, or as
+   * notes and data. For the sentence languages the engines work by role: Python by module (settings,
+   * tools, main…), a website by structure / styling / mechanics, C++ by program, Arduino by sketch. A file's
+   * role (`file`) is worked out from its path and language, so the projects IntuCode always made (where
+   * the id is the role: 'main', 'structure'…) compile exactly as before. */
+  const LANGS = window.IntuiLanguages;
+  const ENGINE = { python: 'python', html: 'website', css: 'website', js: 'website', cpp: 'cpp', arduino: 'arduino' };
+  const WEB_ROLE = { html: 'structure', css: 'styling', js: 'mechanics' };
+  const ENGINE_NAME = { python: 'Python', website: 'Website', cpp: 'C++', arduino: 'Arduino' };
+  const isSentences = (sec) => !!ENGINE[sec.lang];
+  const writeOf = (sec) => (LANGS.byId(sec.lang) || { write: 'text' }).write;   // sentences, code or text
+  const langName = (id) => (LANGS.byId(id) || { name: id }).name;
+  function roleOf(sec) {
+    if (sec.lang === 'python') return sec.path.replace(/\.py$/i, '').replace(/\//g, '.');
+    if (WEB_ROLE[sec.lang]) return WEB_ROLE[sec.lang];
+    if (sec.lang === 'cpp') return 'program';
+    if (sec.lang === 'arduino') return 'sketch';
+    return writeOf(sec);
+  }
+  /* A path IntuCode will write: folders and a name, never outside the project or into its own folders. */
+  const SAFE_PATH = /^(?:[A-Za-z0-9_][\w+ .-]{0,63}\/){0,5}[A-Za-z0-9_][\w+ .-]{0,63}$/;
+  const pathProblem = (path, lang) => {
+    if (!SAFE_PATH.test(path) || /(^|\/)\.\.?(\/|$)|\s\/|\/\s|\s$/.test(path)) return 'A file name uses letters, numbers, spaces, dots, dashes and underscores, and folders are separated with /.';
+    if (/^(?:\.intuicode|images)\//i.test(path)) return `${path.split('/')[0]}/ is kept for IntuCode itself. Choose another folder.`;
+    if (lang === 'python' && !/^(?:[A-Za-z_]\w*\/)*[A-Za-z_]\w*\.py$/.test(path)) return 'A Python file\'s name and folders must be Python names (letters, numbers and _, not starting with a number), because other files import it by that name.';
+    return '';
+  };
   // An Arduino sketch must be named after its folder (blink/blink.ino).
   const sketchName = () => (desk.folder ? baseName(desk.folder) : project.name || 'sketch');
-  const fileName = (sec) => (sec.file === 'sketch' ? sketchName() + '.ino' : FILE_NAME[sec.file] || sec.file + '.py');
-  const secLang = (sec) => SEC_LANG[sec.file] || 'python';
+  const fileName = (sec) => (sec.file === 'sketch' && sec.path === 'sketch.ino' ? sketchName() + '.ino' : sec.path);
+  const secLang = (sec) => (sec.lang === 'arduino' ? 'cpp' : sec.lang);
+  const startSec = () => project.sections.find(s => s.id === project.start) || project.sections[0];
+  const webOn = () => project.sections.some(s => WEB_ROLE[s.lang]);
+  /* What a file shows as its title: the sections IntuCode always had keep their names; others show their path. */
+  function metaOf(sec) {
+    const m = SECTION_META[sec.file];
+    if (m && (FILE_NAME[sec.file] === sec.path || (sec.file === 'sketch' && sec.lang === 'arduino'))) return m;
+    const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+    const what = isSentences(sec) ? `${l.name}, written in sentences` : l.write === 'code' ? `${l.name}: you write the code, IntuCode reads it to you` : `${l.name}: notes or data, kept as written`;
+    return { title: sec.path.split('/').pop(), purpose: what, icon: l.write === 'text' ? 'M4 2.5h6l2 2v9H4zM6 7h4M6 9.5h4' : 'M5 3.5L2 8l3 4.5M11 3.5l3 4.5-3 4.5' };
+  }
   /* What the phrase picker, Index and auto-indent use for a folder. */
+  const NO_PACK = { templates: [], opens: /(?!)/, words: [], howtos: [], filter: () => false, webOnly: true };
+  // A Python file of your own takes the sentences Main program takes.
+  const tplRole = (sec) => (sec.lang === 'python' && !['settings', 'tools', 'main'].includes(sec.file) ? 'main' : sec.file);
   function packFor(sec) {
+    if (!isSentences(sec)) {
+      const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+      return { ...NO_PACK, guide: { name: l.name, purpose: l.write === 'code' ? `${l.name} files are written as code here: IntuCode has no sentences for ${l.name} yet. Read mode explains it in plain words, section by section.` : `${l.name} files hold notes or data, kept exactly as written.`, section: metaOf(sec).purpose + '.', rules: [] } };
+    }
+    if (sec.lang === 'python' && tplRole(sec) !== sec.file) return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: 'A Python file of your own. The Python files listed before it in the project can use what it defines (IntuCode adds the import); the start file can use them all.' }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes('main') };
     if (secLang(sec) === 'cpp') { const ino = sec.file === 'sketch'; return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: ino ? CPP.ARDUINO_WORDS : CPP.WORDS, guide: ino ? CPP.ARDUINO_GUIDE : CPP.GUIDE, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true }; }
     if (secLang(sec) === 'python') return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: LANG.GUIDE.sections[sec.file] }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes(sec.file) };
     const g = WEB.GUIDES[sec.file];
@@ -72,12 +120,23 @@
   const IMAGE_NAME = /^[A-Za-z0-9_][\w.-]{0,78}\.(?:png|jpe?g|gif|webp|svg)$/i;
   const IMAGE_MAX = 8e6;
   const BOARD_ID = /^[\w.-]+:[\w.-]+:[\w.-]+(?::[\w.=,-]+)?$/;   // arduino-cli's name for a kind of board, e.g. esp32:esp32:esp32
+  const MAX_FILES = 200;
   function checkedProject(p) {
-    if (!p || typeof p !== 'object' || !Array.isArray(p.sections) || !p.sections.length) return null;
-    const kind = KIND_FILES[p.kind] ? p.kind : 'python';
-    const sections = p.sections.map(s => (s && KIND_FILES[kind].includes(s.file) && /^[\w-]{1,40}$/.test(s.id) ? { id: s.id, file: s.file, text: typeof s.text === 'string' ? s.text : '' } : null));
-    if (sections.includes(null) || new Set(sections.map(s => s.id)).size !== sections.length || sections.length > KIND_FILES[kind].length) return null;
-    const out = { version: 1, lang: 'python', kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: sections.some(s => s.id === p.active) ? p.active : sections[sections.length - 1].id };
+    if (!p || typeof p !== 'object' || !Array.isArray(p.sections) || !p.sections.length || p.sections.length > MAX_FILES) return null;
+    let sections;
+    if (p.sections.every(s => s && typeof s.path === 'string')) {
+      // a file tree: each file a safe path and a known language
+      sections = p.sections.map(s => (/^[\w-]{1,40}$/.test(s.id) && LANGS.byId(s.lang) && !pathProblem(s.path, s.lang) ? { id: s.id, path: s.path, lang: s.lang, text: typeof s.text === 'string' ? s.text : '' } : null));
+    } else {
+      // the folders IntuCode always made
+      const kind = KIND_FILES[p.kind] ? p.kind : 'python';
+      sections = p.sections.map(s => (s && KIND_FILES[kind].includes(s.file) && /^[\w-]{1,40}$/.test(s.id) ? { id: s.id, file: s.file, text: typeof s.text === 'string' ? s.text : '' } : null));
+      if (sections.length > KIND_FILES[kind].length) return null;
+    }
+    if (sections.includes(null) || new Set(sections.map(s => s.id)).size !== sections.length) return null;
+    const out = normalized({ version: 2, lang: 'python', kind: p.kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: p.active, start: p.start });
+    if (!out) return null;
+    if (Array.isArray(p.folders)) out.folders = p.folders.filter(f => typeof f === 'string' && !pathProblem(f)).slice(0, 50);   // folders with nothing in them yet
     if (typeof p.board === 'string' && BOARD_ID.test(p.board)) out.board = p.board;
     // its pictures: names and sizes here; the pictures themselves are kept by content (see Images)
     if (Array.isArray(p.images)) {
@@ -99,10 +158,34 @@
     return out;
   }
 
+  /* Every project, however it was made (a blueprint, a kit, a folder, the browser), as a file tree: each
+   * file gets its path and language (from its role if it only had one), its role, and the project its
+   * start file and kind. Null if two files would be written to the same place. */
+  function normalized(p) {
+    for (const s of p.sections) {
+      if (!s.path) { s.path = FILE_NAME[s.file] || s.file + '.py'; s.lang = s.file === 'sketch' ? 'arduino' : SEC_LANG[s.file] || 'python'; }
+      s.file = roleOf(s);
+    }
+    const paths = p.sections.map(s => s.path.toLowerCase());   // (Windows and macOS don't tell a.py from A.py)
+    if (new Set(paths).size !== paths.length || paths.some(x => paths.some(y => y.startsWith(x + '/')))) return null;
+    const py = p.sections.filter(s => s.lang === 'python').map(s => s.file);
+    if (new Set(py).size !== py.length) return null;
+    if (!p.sections.some(s => s.id === p.start)) {
+      const pick = (role) => p.sections.find(s => s.file === role);
+      p.start = (pick('main') || pick('structure') || pick('program') || pick('sketch') || p.sections.find(isSentences) || p.sections[0]).id;
+    }
+    if (!p.sections.some(s => s.id === p.active)) p.active = (p.sections.find(s => s.id === (p.kind === 'website' ? 'structure' : 'main')) || p.sections[p.sections.length - 1]).id;
+    const start = p.sections.find(s => s.id === p.start);
+    const lead = isSentences(start) ? start : p.sections.find(isSentences);
+    p.kind = lead ? ENGINE[lead.lang] : 'files';
+    p.version = 2;
+    return p;
+  }
+
   const PROJECT_KEY = 'intuicode.project.v1';
   const PREVIOUS_KEY = 'intuicode.previous.v1';
   function loadProject() {
-    return checkedProject(store.get(PROJECT_KEY, null)) || projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {});
+    return checkedProject(store.get(PROJECT_KEY, null)) || normalized(projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {}));
   }
   let saveTimer = null;
   function save() {
@@ -132,16 +215,16 @@
       desk.dirty = !folder;
     }
     store.set(PREVIOUS_KEY, project);
-    project = next;
+    project = normalized(next);
     runtimeMark = null;
     ta.value = activeSec().text;
     Runner.reset();
     setMode('write');
     openSection(project.active);
-    $('work').classList.toggle('web', project.kind === 'website');
+    $('work').classList.toggle('web', webOn());
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
-    if (project.kind === 'website') runWebsite(false);
+    if (webOn()) runWebsite(false);
     if (desk.on) showFolder();
     loadImages();
     if (message) tLine(message + ' (Your previous project is kept: type "restore" in the terminal to swap back.)', 't-sys');
@@ -172,11 +255,50 @@
   /* Compile + render (Write mode)                                       */
   /* ------------------------------------------------------------------ */
 
+  /* A website's main page: its HTML, CSS and JavaScript, compiled together (index.html, style.css and
+   * script.js when there are several). */
+  function webTriple(sections) {
+    const pick = (role, canon) => sections.find(s => s.file === role && s.path === canon) || sections.find(s => s.file === role);
+    return { structure: pick('structure', 'index.html'), styling: pick('styling', 'style.css'), mechanics: pick('mechanics', 'script.js') };
+  }
+  /* Each engine compiles its own files: Python together, the main page together (other pages, styles and
+   * scripts each against it), C++ together, Arduino together. Code and notes files aren't compiled. */
+  function compileAll(p) {
+    const groups = {};
+    for (const s of p.sections) if (ENGINE[s.lang]) (groups[ENGINE[s.lang]] = groups[ENGINE[s.lang]] || []).push(s);
+    const results = {}, syms = new Map();
+    const take = (out) => { Object.assign(results, out.results); for (const [k, v] of out.syms) if (!syms.has(k)) syms.set(k, v); return out; };
+    // Python files see the ones before them (IntuCode adds the imports), so the start file goes last
+    const pyOrder = groups.python && [...groups.python.filter(s => s.id !== p.start), ...groups.python.filter(s => s.id === p.start)];
+    const pySyms = groups.python ? take(LANG.compileProject({ ...p, sections: pyOrder })).syms : new Map();
+    let page = null;
+    if (groups.website) {
+      const t = webTriple(groups.website), main = Object.values(t).filter(Boolean);
+      take(WEB.compileWebsite({ ...p, sections: main }));
+      for (const s of groups.website) {
+        if (main.includes(s)) continue;
+        results[s.id] = WEB.compileWebsite({ ...p, sections: [...main.filter(m => m.file !== s.file), s] }).results[s.id];
+      }
+      page = t;
+    }
+    if (groups.cpp) take(CPP.compileCppProject({ ...p, kind: 'cpp', sections: groups.cpp }));
+    if (groups.arduino) take(CPP.compileCppProject({ ...p, kind: 'arduino', sections: groups.arduino }));
+    return { results, syms, pySyms, page };
+  }
+  /* The page the preview shows: the HTML file being edited, or the main page, with the main page's CSS
+   * and JavaScript. */
+  function previewPage() {
+    const t = (compiled && compiled.page) || {}, act = activeSec();
+    const html = act && act.file === 'structure' ? act : t.structure;
+    return { html, styling: t.styling, mechanics: t.mechanics };
+  }
   function compile() {
-    try { compiled = project.kind === 'website' ? WEB.compileWebsite(project) : isCpp() ? CPP.compileCppProject(project) : LANG.compileProject(project); }
+    try { compiled = compileAll(project); }
     catch (e) { console.error(e); }
   }
   const secResult = (id) => compiled && compiled.results[id];
+  /* What a file holds on disk: the code its sentences make, or (code, notes, data) its text as written. */
+  const codeOf = (sec) => (isSentences(sec) ? (secResult(sec.id) || { text: '' }).text : sec.text);
   const caretLine = () => ta.value.slice(0, ta.selectionStart).split('\n').length - 1;
 
   const STARTER = /^(if (?:it|that|this|anything|something) fails(?: with)?|if nothing failed|in any case|if this file is run directly|fail with|fail again|check that|open the file|async using|using|define class|define async|make a new|field|decorate with|use the shared|delete|try|otherwise if|else if|otherwise|else|if|when|repeat until|repeat while|repeat forever|repeat|keep going|while|as long as|count down|count|for each|for every|for|define|give back|return|show|print|say|display|ask for an? (?:whole number|number|decimal)|ask for|ask|set|make|let|change|update|create (?:an? )?(?:empty )?(?:list|dictionary)|create|increase|decrease|multiply|divide|add|remove|subtract|sort|reverse|shuffle|wait|run|call|stop the loop|stop the program|skip to next|do nothing|use|remember|forever)(?=\s|$)/i;
@@ -245,9 +367,10 @@
   function renderOverlay() {
     const sec = activeSec();
     const lines = ta.value.split('\n');
-    const marks = lineMarks(sec);
-    const names = nameSets();
-    hl.innerHTML = lines.map((l, i) => hlLine(l, marks[i], names)).join('\n') + '\n ';
+    const plain = !isSentences(sec);   // code, notes and data: coloured as what they are
+    const marks = plain ? [] : lineMarks(sec);
+    const names = plain ? null : nameSets();
+    hl.innerHTML = lines.map((l, i) => (plain ? hlFileLine(sec, l) : hlLine(l, marks[i], names))).join('\n') + '\n ';
     const cur = caretLine();
     gutterInner.innerHTML = lines.map((_, i) => `<div class="gl${i === cur ? ' cur' : ''}${marks[i] ? ' ' + marks[i] : ''}">${i + 1}</div>`).join('');
     syncScroll();
@@ -303,8 +426,150 @@
     return out + escHtml(text.slice(last));
   }
 
+  /* ---------- Code, notes and data files ----------
+   * Written as they are. The editor colours them; the right-hand side shows what they are: a Markdown
+   * page, a table, the shape of JSON, or what the code does in plain words (Read mode's reader). */
+  const OTHER_KW = new Set('if else elif elsif unless for foreach while loop do return fn func function def fun sub class struct enum union trait impl interface protocol module mod namespace package import use using require include export from let var val const mut static pub public private protected internal final override virtual abstract async await yield try catch except finally throw throws raise match switch case when default break continue goto new delete this self super true false null nil none None True False and or not in is as then end begin local where type typedef extends implements defer go chan select guard extension lambda'.split(' '));
+  function hlOther(lang, line) {
+    const l = LANGS.byId(lang) || {};
+    if (lang === 'markdown') {
+      if (/^\s*#{1,6}\s/.test(line)) return `<span class="p-kw">${escHtml(line)}</span>`;
+      if (/^\s*(```|~~~)/.test(line)) return `<span class="p-com">${escHtml(line)}</span>`;
+      return escHtml(line).replace(/(`[^`]+`)/g, '<span class="p-str">$1</span>').replace(/(\*\*[^*]+\*\*)/g, '<span class="p-fn">$1</span>').replace(/^(\s*(?:[-*+]|\d+\.)\s)/, '<span class="p-num">$1</span>');
+    }
+    if (lang === 'csv' || lang === 'text') return escHtml(line);
+    const com = l.comment ? l.comment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
+    const re = new RegExp(`${com ? `(${com}.*$)|` : '()'}("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\`[^\`]*\`)|\\b(\\d+(?:\\.\\d+)?)\\b|\\b([A-Za-z_][\\w]*)\\b(?=\\s*[:=]\\s)|([A-Za-z_]\\w*)`, 'g');
+    let out = '', last = 0, m;
+    while ((m = re.exec(line))) {
+      if (!m[0].length) { re.lastIndex++; continue; }
+      out += escHtml(line.slice(last, m.index));
+      const cls = m[1] ? 'p-com' : m[2] ? 'p-str' : m[3] ? 'p-num' : m[4] && /^(json|yaml|toml)$/.test(lang) ? 'p-bi' : OTHER_KW.has(m[0]) ? 'p-kw' : '';
+      out += cls ? `<span class="${cls}">${escHtml(m[0])}</span>` : escHtml(m[0]);
+      last = m.index + m[0].length;
+    }
+    return out + escHtml(line.slice(last));
+  }
+  const hlFileLine = (sec, line) => (WEB_TOKEN[sec.lang] || sec.lang === 'python' ? hlCode(sec.lang, line) : hlOther(sec.lang, line));
+
+  /* Markdown, as a page. Everything is escaped first; only the marks below become formatting, links are
+   * shown with their address (never followed from the editor) and pictures by their description. */
+  function mdInline(s) {
+    return escHtml(s)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<span class="md-pic" title="$2">[picture: $1]</span>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<span class="md-link" title="$2">$1</span>')
+      .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (m, a, b) => `<b>${a || b}</b>`)
+      .replace(/(^|[\s(])\*([^*\s][^*]*)\*|(^|[\s(])_([^_\s][^_]*)_/g, (m, p1, a, p2, b) => `${p1 || p2 || ''}<i>${a || b}</i>`)
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>');
+  }
+  function mdToHtml(text) {
+    const lines = text.replace(/\r\n?/g, '\n').split('\n'), out = [];
+    let para = [], list = null, fence = null, code = [], table = null;
+    const flushPara = () => { if (para.length) out.push(`<p>${mdInline(para.join(' '))}</p>`); para = []; };
+    const flushList = () => { if (list) out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; };
+    const flushTable = () => {
+      if (table) out.push(`<table class="md-table"><thead><tr>${table.head.map(c => `<th>${mdInline(c)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(r => `<tr>${r.map(c => `<td>${mdInline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      table = null;
+    };
+    const cells = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    const flush = () => { flushPara(); flushList(); flushTable(); };
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (fence) { if (l.trim().startsWith(fence)) { out.push(`<pre class="md-code">${escHtml(code.join('\n'))}</pre>`); fence = null; code = []; } else code.push(l); continue; }
+      const f = l.match(/^\s*(```|~~~)/);
+      if (f) { flush(); fence = f[1]; continue; }
+      let m;
+      if (!l.trim()) { flush(); continue; }
+      if ((m = l.match(/^\s*(#{1,6})\s+(.*?)\s*#*\s*$/))) { flush(); out.push(`<h${m[1].length}>${mdInline(m[2])}</h${m[1].length}>`); continue; }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { flush(); out.push('<hr>'); continue; }
+      if (table) { table.rows.push(cells(l)); continue; }
+      if (/\|/.test(l) && lines[i + 1] && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[i + 1])) { flush(); table = { head: cells(l), rows: [] }; i++; continue; }
+      if ((m = l.match(/^\s*>\s?(.*)$/))) { flush(); out.push(`<blockquote>${mdInline(m[1])}</blockquote>`); continue; }
+      if ((m = l.match(/^\s*([-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/))) {
+        flushPara();
+        const tag = /\d/.test(m[1]) ? 'ol' : 'ul';
+        if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+        list.items.push((m[2] ? `<span class="md-tick">${m[2] === ' ' ? '☐' : '☑'}</span> ` : '') + mdInline(m[3]));
+        continue;
+      }
+      if (list && /^\s{2,}\S/.test(l)) { list.items[list.items.length - 1] += ' ' + mdInline(l.trim()); continue; }
+      flushList(); flushTable();
+      para.push(l.trim());
+    }
+    if (fence) out.push(`<pre class="md-code">${escHtml(code.join('\n'))}</pre>`);
+    flush();
+    return out.join('\n') || '<p class="dim">Nothing written yet.</p>';
+  }
+  /* CSV rows, with quoted cells ("a, b" and "say ""hi"""). */
+  function csvRows(text, max = 200) {
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length && rows.length < max; i++) {
+      const c = text[i];
+      if (q) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; continue; }
+      if (c === '"') q = true; else if (c === ',') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell.replace(/\r$/, '')); rows.push(row); row = []; cell = ''; } else cell += c;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+  /* What a value in JSON is, in a few words, for its outline. */
+  const jsonKind = (v) => (Array.isArray(v) ? `a list of ${v.length}` : v === null ? 'nothing (null)' : typeof v === 'object' ? `a group of ${Object.keys(v).length}` : typeof v === 'string' ? 'text' : typeof v === 'number' ? 'a number' : 'yes/no');
+  function jsonOutline(v, depth = 0) {
+    if (depth > 2 || v === null || typeof v !== 'object') return '';
+    const entries = Array.isArray(v) ? v.slice(0, 5).map((x, i) => [i, x]) : Object.entries(v).slice(0, 40);
+    return `<ul>${entries.map(([k, x]) => `<li><code>${escHtml(String(k))}</code> ${escHtml(jsonKind(x))}${jsonOutline(x, depth + 1)}</li>`).join('')}${Array.isArray(v) && v.length > 5 ? `<li class="dim">… and ${v.length - 5} more</li>` : ''}</ul>`;
+  }
+
+  /* Read mode's reader on a code file of the project (when it's loaded): its sections, for the side and the strip. */
+  const fileReads = new Map();   // sec.id -> { text, analysis }
+  function readOf(sec) {
+    const got = fileReads.get(sec.id);
+    if (got && got.text === sec.text) return got.analysis;
+    if (got && got.pending) return null;
+    fileReads.set(sec.id, { text: sec.text, pending: true });
+    analyseFile(sec).then(a => { fileReads.set(sec.id, { text: sec.text, analysis: a }); if (activeSec() === sec) { renderPython(); renderExplain(); } }).catch(() => fileReads.set(sec.id, { text: sec.text, analysis: null }));
+    return null;
+  }
+  async function analyseFile(sec) {
+    const CR = window.IntuiCodeReader;
+    const WR = await Runner.webReader(() => {});
+    if (CR) { await CR.prepare(WR, sec.lang); return CR.analyze(sec.lang, sec.path, sec.text); }
+    if (/^(ts|tsx)$/.test(sec.lang)) { await WR.loadLangs([sec.lang]); return WR.analyzeJs(sec.path, sec.text, sec.lang, { fileOf: () => null }); }
+    return null;
+  }
+  function renderSide(sec) {
+    const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+    $('pyFile').textContent = fileName(sec);
+    $('codeTitle').textContent = l.name;
+    let body = '';
+    if (sec.lang === 'markdown') { $('codeSub').textContent = 'How it reads, as a page.'; body = `<div class="md-page">${mdToHtml(sec.text)}</div>`; }
+    else if (sec.lang === 'csv') {
+      const rows = csvRows(sec.text);
+      $('codeSub').textContent = rows.length ? `A table: ${Math.max(0, rows.length - 1)}${rows.length >= 200 ? '+' : ''} rows under a header row.` : 'A table, one row per line, cells separated by commas.';
+      body = rows.length ? `<table class="md-table"><thead><tr>${rows[0].map(c => `<th>${escHtml(c)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r => `<tr>${r.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+    } else if (sec.lang === 'json') {
+      try { const v = JSON.parse(sec.text || 'null'); $('codeSub').textContent = `Reads as JSON: ${jsonKind(v)}.`; body = `<div class="md-page">${jsonOutline(v) || `<p>${escHtml(jsonKind(v))}</p>`}</div>`; }
+      catch (e) { $('codeSub').textContent = 'This isn\'t JSON yet.'; body = `<p class="sum-empty">${escHtml(e.message)}</p>`; }
+    } else if (l.write === 'code') {
+      $('codeSub').textContent = 'You write the code; this is what it does, in plain words.';
+      const a = readOf(sec);
+      body = a && a.sections ? `<div class="md-page">${a.overview ? `<p>${rich(a.overview)}</p>` : ''}${a.sections.map(s => `<div class="side-sec" data-line="${(s.start || 1) - 1}"><b>${escHtml(s.title)}</b> <span class="dim">lines ${s.start}–${s.end}</span><p>${rich(s.headline || '')}</p>${(s.facts || []).slice(0, 4).map(f => `<p class="dim">${rich(f)}</p>`).join('')}</div>`).join('')}</div>`
+        : `<p class="sum-empty">${window.IntuiCodeReader || /^(ts|tsx)$/.test(sec.lang) ? 'Reading it…' : `IntuCode keeps ${escHtml(l.name)} exactly as you write it. Read mode can explain it.`}</p>`;
+    } else { $('codeSub').textContent = 'Kept exactly as written.'; body = `<pre class="md-code">${escHtml(sec.text)}</pre>`; }
+    pycode.innerHTML = `<div class="side-file">${body}</div>`;
+  }
+  /* The strip under the windows, for a code or notes file: where the cursor is, and (code) what that part does. */
+  function renderExplainFile(sec) {
+    const li = caretLine(), l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+    const a = l.write === 'code' ? readOf(sec) : null;
+    const part = a && a.sections && a.sections.find(s => li + 1 >= s.start && li + 1 <= s.end);
+    $('explain').innerHTML = `<p class="ex-guide">${withCode(metaOf(sec).purpose)}.${l.write === 'code' ? ' Changing its language (⋯ beside it in Project) keeps the text as it is.' : ''}</p>`
+      + (part ? `<div class="ex-map"><div class="ex-cell"><span class="ex-lbl">Line ${li + 1} is in</span><div class="ex-say">${escHtml(part.title)}</div></div><div class="ex-cell"><span class="ex-lbl">What it does</span><div>${rich(part.headline || '')}</div></div></div>` : '');
+  }
+
   function renderPython() {
     const sec = activeSec();
+    if (!isSentences(sec)) return renderSide(sec);
     const r = secResult(sec.id);
     $('pyFile').textContent = fileName(sec);
     $('codeTitle').textContent = sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)];
@@ -343,6 +608,7 @@
    * said (its shape, its words, how to talk to the program); in the code it's about the code (what each
    * term is, your names, why it's written that way). */
   function renderExplain() {
+    if (!isSentences(activeSec())) return renderExplainFile(activeSec());
     if (pane === 'code' && mode === 'write' && codeIdx >= 0) return renderExplainCode();
     const sec = activeSec();
     const r = secResult(sec.id);
@@ -351,7 +617,7 @@
     const box = $('explain');
     if (!r || !text.trim()) {
       box.innerHTML = `${planBanner(li)}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
-        <div class="ex-hint"><span>Start from an idea: open the <b>Library</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> explains the words in a line or a selection</span><span>Click a line of ${escHtml(tutorSays(sec))} on the right to learn about the code itself.</span></div>`;
+        <div class="ex-hint"><span>Start from an idea: open <b>Project Templates</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> explains the words in a line or a selection</span><span>Click a line of ${escHtml(tutorSays(sec))} on the right to learn about the code itself.</span></div>`;
       return;
     }
     const inf = r.info[li] || { py: [], notes: [], warns: [], errs: [] };
@@ -373,7 +639,7 @@
       <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
   }
 
-  /* ‹Blanks›: what goes in one, from its step's "blank:" line in the library (your own kits' too): what
+  /* ‹Blanks›: what goes in one, from its step's "blank:" line in the templates (your own kits' too): what
    * kind of thing it is, how to work it out, and an example that works, shown only when asked for. */
   let blankIndex = null, blankLib = null;
   function blankInfo(slot) {
@@ -530,15 +796,191 @@
     return r ? r.info.reduce((n, inf, i) => n + (waitForTyping && s.id === project.active && i === typingLine ? 0 : inf[kind].length), 0) : 0;
   }
 
+  /* The project's files, folder by folder (folders first, then files in the project's order). Each has a
+   * ⋯ for its name, language and start, and folders one for their name. */
+  const FOLDER_ICON = 'M2 4.5h4.5L8 6h6v7H2z';
+  function projectFolders() {
+    const set = new Set(project.folders || []);
+    for (const s of project.sections) { const parts = s.path.split('/'); for (let i = 1; i < parts.length; i++) set.add(parts.slice(0, i).join('/')); }
+    return set;
+  }
   function renderTree() {
     $('treeRoot').innerHTML = `${FOLDER_SVG}${escHtml(project.name)}/`;
-    $('tree').innerHTML = project.sections.map(s => {
-      const meta = SECTION_META[s.file];
+    const folders = projectFolders(), many = project.sections.length > 1, out = [];
+    const fileRow = (s, depth) => {
+      const meta = metaOf(s);
       const errs = issues(s, 'errs', true), warns = issues(s, 'warns', true);
       const badge = errs ? `<span class="ti-badge" title="${errs} problem${errs > 1 ? 's' : ''}">${errs}</span>` : warns ? `<span class="ti-badge warn" title="${warns} warning${warns > 1 ? 's' : ''}">${warns}</span>` : '';
-      return `<button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${meta.title}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}</span></button>`;
-    }).join('');
+      const start = many && s.id === project.start ? ' <span class="ti-start" title="Run starts here">start</span>' : '';
+      return `<div class="tree-row" style="--depth:${depth}"><button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${escHtml(meta.title)}${start}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}${isSentences(s) ? '' : ' · ' + escHtml(langName(s.lang))}</span></button><button type="button" class="ti-more" data-file-menu="${escHtml(s.id)}" title="Name, language, start, delete" aria-label="${escHtml(fileName(s))}: name, language, start, delete">⋯</button></div>`;
+    };
+    const walk = (dir, depth) => {
+      const prefix = dir ? dir + '/' : '';
+      const subs = [...folders].filter(f => f.startsWith(prefix) && f !== dir && !f.slice(prefix.length).includes('/')).sort();
+      for (const f of subs) {
+        out.push(`<div class="tree-row folder" style="--depth:${depth}"><span class="tree-folder">${iconSvg(FOLDER_ICON)}<span>${escHtml(f.slice(prefix.length))}/</span></span><button type="button" class="ti-more" data-folder-menu="${escHtml(f)}" title="Rename or delete this folder" aria-label="${escHtml(f)}/: rename or delete">⋯</button></div>`);
+        walk(f, depth + 1);
+      }
+      for (const s of project.sections) if (s.path.startsWith(prefix) && !s.path.slice(prefix.length).includes('/')) out.push(fileRow(s, depth));
+    };
+    walk('', 0);
+    $('tree').innerHTML = out.join('');
   }
+
+  /* ---------- Adding, renaming and removing files and folders ---------- */
+  const fileDlg = { kind: 'file', id: null, folder: null, isNew: true, deleting: false, lang: 'python' };
+  function langOptions(selected) {
+    const fam = LANGS.FAMILIES, groups = {};
+    for (const l of LANGS.LANGUAGES) (groups[l.write === 'sentences' ? 'sentences' : l.family] = groups[l.write === 'sentences' ? 'sentences' : l.family] || []).push(l);
+    const label = (g) => (g === 'sentences' ? 'Written in sentences' : fam[g] + ' (written as code)');
+    return Object.keys(groups).sort((a, b) => (b === 'sentences') - (a === 'sentences') || (a === 'docs' || a === 'data') - (b === 'docs' || b === 'data')).map(g => `<optgroup label="${escHtml(g === 'docs' || g === 'data' ? fam[g] : label(g))}">${groups[g].map(l => `<option value="${l.id}"${l.id === selected ? ' selected' : ''}>${escHtml(l.name)}</option>`).join('')}</optgroup>`).join('');
+  }
+  function fileHow(lang) {
+    const l = LANGS.byId(lang) || { name: lang, write: 'text' };
+    if (l.write === 'sentences') return `You write sentences; IntuCode writes the ${l.name} and shows it on the right.` + (lang === 'arduino' ? ' A project has one sketch that Run puts on the board; more .ino files are more tabs of it.' : '');
+    if (l.write === 'code') return `You write ${l.name} itself: IntuCode has no sentences for it yet. It reads the code to you in plain words, on the right and in Read mode.`;
+    return { markdown: 'Notes: headings (#), lists (-), **bold**, `code` and tables, shown as a page on the right.', csv: 'A table: one row per line, cells separated by commas. Python files in the project can open it.', json: 'Data (JSON): checked as you type, and its shape is shown on the right. Python files can open it.' }[lang] || `${l.name}, kept exactly as written.`;
+  }
+  function openFileDialog(opts) {
+    activeSec().text = ta.value;
+    Object.assign(fileDlg, { kind: 'file', id: null, folder: null, isNew: true, deleting: false }, opts);
+    const sec = fileDlg.id && project.sections.find(s => s.id === fileDlg.id);
+    const isFolder = fileDlg.kind === 'folder';
+    // a new file goes in the folder of the file you're in
+    const here = (activeSec().path.includes('/') ? activeSec().path.replace(/\/[^/]*$/, '/') : '');
+    fileDlg.lang = sec ? sec.lang : opts.lang || 'markdown';
+    $('fileTitle').textContent = isFolder ? (fileDlg.isNew ? 'New folder' : `Folder: ${fileDlg.folder}/`) : (sec ? `File: ${fileName(sec)}` : 'New file');
+    $('fileLead').textContent = isFolder ? (fileDlg.isNew ? 'A folder to keep files together. Name it, then add files to it with + File (as "folder/name").' : 'Rename it (its files move with it), or delete it with everything in it.')
+      : sec ? 'Rename or move it (folders are separated with /), change its language, or make it the file Run starts.' : 'Name it with its folder if it goes in one (notes/ideas.md). Its language follows its ending, or choose one.';
+    $('filePath').value = isFolder ? (fileDlg.folder || '') : sec ? sec.path : here + 'notes.md';
+    $('fileLangRow').hidden = isFolder;
+    $('fileStartRow').hidden = isFolder;
+    $('fileLang').innerHTML = langOptions(fileDlg.lang);
+    $('fileStart').checked = !!sec && sec.id === project.start;
+    $('fileGo').textContent = fileDlg.isNew ? 'Create' : 'Save';
+    $('fileDelWrap').hidden = fileDlg.isNew;
+    $('fileDelWrap').innerHTML = '<button type="button" class="btn ghost" id="fileDelete">Delete…</button>';
+    $('fileProblem').textContent = '';
+    showFileHow();
+    $('fileModal').hidden = false;
+    $('filePath').focus();
+    const v = $('filePath').value, dot = v.lastIndexOf('.'), slash = v.lastIndexOf('/');
+    $('filePath').setSelectionRange(slash + 1, isFolder || dot <= slash ? v.length : dot);   // the name, without its folder or ending
+  }
+  function showFileHow() {
+    const sec = fileDlg.id && project.sections.find(s => s.id === fileDlg.id);
+    if (fileDlg.kind === 'folder') { $('fileHow').textContent = ''; return; }
+    let how = fileHow($('fileLang').value);
+    if (sec && $('fileLang').value !== sec.lang) how += ' Its text stays as it is: ' + (isSentences(sec) && ENGINE[$('fileLang').value] ? 'sentences that fit the new language carry over, and Problems shows any that don\'t.' : 'change it to suit the new language.');
+    if (sec && desk.on && desk.folder) how += ' In the project\'s folder, a renamed file is written under its new name, and the old one stays until you delete it there.';
+    $('fileHow').textContent = how;
+  }
+  $('fileLang').addEventListener('change', () => {
+    // the ending follows the language (a .md that becomes Python is .py)
+    const v = $('filePath').value, ext = LANGS.extOf($('fileLang').value), m = v.match(/^(.*?)(\.[A-Za-z0-9]+)?$/);
+    if (m && (!m[2] || LANGS.fromPath(v) !== 'text' || /\.txt$/i.test(v))) $('filePath').value = m[1] + '.' + ext;
+    showFileHow();
+  });
+  $('filePath').addEventListener('input', () => {
+    // …and the language follows the ending
+    const v = $('filePath').value;
+    if (fileDlg.kind === 'file' && /\.[A-Za-z0-9]+$/.test(v)) { const l = LANGS.fromPath(v); if ((l !== 'text' || /\.txt$/i.test(v)) && l !== $('fileLang').value) { $('fileLang').value = l; showFileHow(); } }
+    $('fileProblem').textContent = '';
+  });
+  const newId = () => 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  // What a new file starts with.
+  const START_TEXT = { markdown: (p) => `# ${p.split('/').pop().replace(/\.[^.]*$/, '').replace(/[-_]+/g, ' ')}\n\n`, html: (p) => `page title is "${p.split('/').pop().replace(/\.[^.]*$/, '').replace(/["\\{}]/g, '')}"`, arduino: () => NEW_START.sketch() };
+  /* Swap in a changed copy of the project, if it holds together (no two files in one place). '' or why not. */
+  function changeProject(next, openId, message) {
+    const n = normalized(next);
+    if (!n) return 'That would put two files in the same place, or give two Python files the same module name. Choose another name.';
+    project = n;
+    if (!project.sections.some(s => s.id === project.active)) project.active = project.start;
+    fileReads.clear();
+    if (openId) project.active = openId;
+    ta.value = activeSec().text;
+    runtimeMark = null;
+    renderSectionHeader();
+    refreshAll();
+    updateChip();
+    $('work').classList.toggle('web', mode === 'write' && webOn());
+    $('tabPreview').hidden = !(mode === 'write' && webOn());
+    if (!webOn()) showBottom('terminal');
+    save(); autosave();
+    if (message) tLine(message, 't-sys');
+    return '';
+  }
+  function applyFileDialog() {
+    const copy = JSON.parse(JSON.stringify(project));
+    const path = $('filePath').value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const say = (msg) => { $('fileProblem').textContent = msg; };
+    if (fileDlg.kind === 'folder') {
+      const why = pathProblem(path);
+      if (why) return say(why);
+      const taken = (p) => copy.sections.some(s => s.path.toLowerCase() === p.toLowerCase());
+      if (taken(path)) return say(`There's already a file called ${path}.`);
+      if (fileDlg.isNew) {
+        if (projectFolders().has(path)) return say(`There's already a folder called ${path}/.`);
+        copy.folders = [...(copy.folders || []), path];
+        const err = changeProject(copy, null, `Added the folder ${path}/. Add files to it with + File.`);
+        return err ? say(err) : closeFileDialog();
+      }
+      const old = fileDlg.folder;
+      for (const s of copy.sections) if (s.path.startsWith(old + '/')) { s.path = path + s.path.slice(old.length); const why2 = pathProblem(s.path, s.lang); if (why2) return say(`${s.path}: ${why2}`); }
+      copy.folders = (copy.folders || []).map(f => (f === old || f.startsWith(old + '/') ? path + f.slice(old.length) : f));
+      const err = changeProject(copy, null, `Renamed the folder ${old}/ to ${path}/.`);
+      return err ? say(err) : closeFileDialog();
+    }
+    const lang = $('fileLang').value;
+    const why = pathProblem(path, lang);
+    if (why) return say(why);
+    if (fileDlg.isNew) {
+      const s = { id: newId(), path, lang, text: START_TEXT[lang] ? START_TEXT[lang](path) : '' };
+      copy.sections.push(s);
+      if ($('fileStart').checked) copy.start = s.id;
+      const err = changeProject(copy, null, `Added ${path} (${langName(lang)}).`);
+      if (err) return say(err);
+      closeFileDialog();
+      openSection(s.id);
+      return;
+    }
+    const s = copy.sections.find(x => x.id === fileDlg.id);
+    const was = s.path;
+    s.path = path; s.lang = lang;
+    if ($('fileStart').checked) copy.start = s.id;
+    else if (copy.start === s.id) copy.start = null;   // another file becomes the start
+    const err = changeProject(copy, null, was !== path ? `Renamed ${was} to ${path}.` : '');
+    if (err) return say(err);
+    closeFileDialog();
+  }
+  function deleteFromDialog() {
+    const copy = JSON.parse(JSON.stringify(project));
+    const isFolder = fileDlg.kind === 'folder';
+    const gone = isFolder ? copy.sections.filter(s => s.path.startsWith(fileDlg.folder + '/')) : copy.sections.filter(s => s.id === fileDlg.id);
+    if (gone.length === copy.sections.length) { $('fileProblem').textContent = 'A project needs at least one file, so this can\'t be deleted. Add another file first.'; return; }
+    if (!fileDlg.deleting) {
+      fileDlg.deleting = true;
+      $('fileDelWrap').innerHTML = `<span class="file-del-ask">${isFolder ? `Delete ${escHtml(fileDlg.folder)}/ and the ${gone.length} file${gone.length === 1 ? '' : 's'} in it?` : `Delete ${escHtml(gone[0].path)}?`} It can't be undone.</span><button type="button" class="btn danger small" id="fileDeleteYes">Delete</button><button type="button" class="btn small" id="fileDeleteNo">Keep</button>`;
+      return;
+    }
+    copy.sections = copy.sections.filter(s => !gone.includes(s));
+    if (isFolder) copy.folders = (copy.folders || []).filter(f => f !== fileDlg.folder && !f.startsWith(fileDlg.folder + '/'));
+    const err = changeProject(copy, null, `Deleted ${isFolder ? fileDlg.folder + '/' : gone[0].path}.` + (desk.on && desk.folder ? ' (In the project\'s folder, the file stays until you delete it there.)' : ''));
+    if (err) { $('fileProblem').textContent = err; return; }
+    closeFileDialog();
+  }
+  function closeFileDialog() { $('fileModal').hidden = true; }
+  $('btnAddFile').addEventListener('click', () => openFileDialog({}));
+  $('btnAddFolder').addEventListener('click', () => openFileDialog({ kind: 'folder' }));
+  $('fileClose').addEventListener('click', closeFileDialog);
+  $('fileGo').addEventListener('click', applyFileDialog);
+  $('fileModal').addEventListener('click', (e) => {
+    if (e.target.id === 'fileModal') return closeFileDialog();
+    if (e.target.id === 'fileDelete' || e.target.id === 'fileDeleteYes') return deleteFromDialog();
+    if (e.target.id === 'fileDeleteNo') { fileDlg.deleting = false; $('fileDelWrap').innerHTML = '<button type="button" class="btn ghost" id="fileDelete">Delete…</button>'; }
+  });
+  $('filePath').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyFileDialog(); } });
+  $('fileLang').addEventListener('input', showFileHow);
 
   function renderProblems() {
     const items = [];
@@ -556,15 +998,19 @@
     pc.textContent = items.length ? String(items.length) : '';
     pc.className = 'count' + (errCount ? ' bad' : '');
     $('problems').innerHTML = items.length
-      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${SECTION_META[p.s.file].title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
+      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
     return errCount;
   }
 
   function renderSectionHeader() {
-    const meta = SECTION_META[activeSec().file];
+    const sec = activeSec(), meta = metaOf(sec);
     $('secTitle').textContent = meta.title;
     $('secPurpose').textContent = meta.purpose;
+    // what the left side holds: sentences, code, or notes and data (which have no values to drop down)
+    const tag = document.querySelector('.pane-say .file-tag');
+    if (tag) tag.textContent = isSentences(sec) ? 'sentences' : writeOf(sec) === 'code' ? 'code' : sec.lang === 'markdown' || sec.lang === 'text' ? 'notes' : 'data';
+    $('btnDropDown').hidden = !isSentences(sec);
   }
 
   let compileTimer = null;
@@ -681,7 +1127,8 @@
     if (lead) indent += lead[0];   // "please set…" still suggests "set ‹name› to ‹value›"
     const typed = before.slice(indent.length);
     if (!typed || /^(?:note|python|#)/i.test(typed)) return closeAc();
-    const file = activeSec().file;
+    if (!isSentences(activeSec())) return closeAc();   // code and notes files are written as they are
+    const file = tplRole(activeSec());
     const lower = typed.toLowerCase();
     let items = [];
 
@@ -863,6 +1310,8 @@
   pycode.addEventListener('click', (e) => {
     const pl = e.target.closest('.pl');
     if (pl) pickCode(+pl.dataset.i);
+    const part = e.target.closest('.side-sec');   // a part of a code file, in its outline
+    if (part) goToLine(+part.dataset.line);
   });
   pycode.addEventListener('dblclick', (e) => {
     const pl = e.target.closest('.pl');
@@ -877,7 +1326,12 @@
   pycode.addEventListener('scroll', placeTip);
   ta.addEventListener('focus', () => { if (pane !== 'say') { setPane('say'); renderExplain(); } });
 
-  $('tree').addEventListener('click', (e) => { const b = e.target.closest('.tree-item'); if (b) openSection(b.dataset.id); });
+  $('tree').addEventListener('click', (e) => {
+    const more = e.target.closest('.ti-more');
+    if (more) return more.dataset.folderMenu ? openFileDialog({ kind: 'folder', folder: more.dataset.folderMenu, isNew: false }) : openFileDialog({ id: more.dataset.fileMenu, isNew: false });
+    const b = e.target.closest('.tree-item');
+    if (b) openSection(b.dataset.id);
+  });
   $('problems').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-sec]');
     if (!b) return;
@@ -892,7 +1346,7 @@
     catch (_) { btn.textContent = 'Copy blocked here'; }
     setTimeout(() => { btn.textContent = label; }, 1800);
   }
-  $('btnCopy').addEventListener('click', () => { const r = secResult(activeSec().id); if (r) copyText(r.text, $('btnCopy'), 'Copy'); });
+  $('btnCopy').addEventListener('click', () => { activeSec().text = ta.value; copyText(codeOf(activeSec()), $('btnCopy'), 'Copy'); });
 
   /* ------------------------------------------------------------------ */
   /* Tutor: how the language likes things said, and lines to write      */
@@ -987,7 +1441,7 @@
     lines[li] = lines[li].match(/^\s*/)[0] + answer.trim();
     copy.sections.find(s => s.id === sec.id).text = lines.join('\n');
     let other;
-    try { other = project.kind === 'website' ? WEB.compileWebsite(copy) : isCpp() ? CPP.compileCppProject(copy) : LANG.compileProject(copy); } catch (e) { return { same: false, error: 'IntuCode couldn\'t read that sentence.' }; }
+    try { other = compileAll(copy); } catch (e) { return { same: false, error: 'IntuCode couldn\'t read that sentence.' }; }
     const mine = other.results[sec.id];
     if (!mine || !mine.info[li] || mine.info[li].errs.length) return { same: false, error: mine && mine.info[li] && mine.info[li].errs[0] };
     return { same: copy.sections.every(s => (other.results[s.id] || {}).text === (compiled.results[s.id] || {}).text) };
@@ -1193,7 +1647,7 @@
     if (tutor.on) tutorRun.timer = setTimeout(tutorCheck, delay);
   }
   function tutorCheck() {
-    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])') || !$('gloss').hidden) return;
+    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])') || !$('gloss').hidden || !isSentences(activeSec())) return;
     const sec = activeSec();
     if (pane === 'code' && codeIdx >= 0) {
       const lang = tutorLang(sec), r = secResult(sec.id);
@@ -1332,7 +1786,7 @@
   const ddLayer = $('ddLayer'), ddMenu = $('ddMenu');
   let ddVals = [], ddHold = null, ddOpen = null;
   const ddInfo = new Map();   // "lang|line|start" -> what the value is (cleared when it grows)
-  const ddOn = () => !!(layout.dd && VALUES && mode === 'write');
+  const ddOn = () => !!(layout.dd && VALUES && mode === 'write' && isSentences(activeSec()));
   const lineStartOf = (line) => { const ls = ta.value.split('\n'); let p = 0; for (let i = 0; i < line && i < ls.length; i++) p += ls[i].length + 1; return p; };
   function infoOf(lang, text, v) {
     const k = `${lang}|${text}|${v.start}`;
@@ -1663,7 +2117,7 @@
     const sec = project.sections.find(s => s.id === secId);
     if (!sec) return;
     if (!keepFirst || !runtimeMark) runtimeMark = { sec: secId, line, msg };
-    tLink(`  Go to ${SECTION_META[sec.file].title}, line ${line + 1}: ${(sec.text.split('\n')[line] || '').trim()}`, secId, line);
+    tLink(`  Go to ${metaOf(sec).title}, line ${line + 1}: ${(sec.text.split('\n')[line] || '').trim()}`, secId, line);
     if (secId === project.active) { renderOverlay(); renderExplain(); }
   }
   function setStatus(text, cls) { const el = $('pyStatus'); el.textContent = text; el.className = 'py-status' + (cls ? ' ' + cls : ''); }
@@ -1719,7 +2173,7 @@
   }
 
   function locate(file, pyLine) {
-    const sec = project.sections.find(s => s.file + '.py' === file);
+    const sec = project.sections.find(s => s.lang === 'python' && (s.path === file || s.path.split('/').pop() === file));
     if (!sec || !pyLine) return null;
     const o = secResult(sec.id) && secResult(sec.id).lines[pyLine - 1];
     if (!o) return { sec: sec.id, line: null };
@@ -1729,11 +2183,18 @@
   async function run() {
     setDock('term', true);   // Run shows what happens, even when the terminal was folded away
     if (mode === 'read') { tLine('Run works on the program in Write mode. Use "Open as sentences" to bring imported code there.', 't-sys'); return; }
-    if (project.kind === 'website') return runWebsite(true);
-    if (isCpp()) {
-      typingLine = -1; activeSec().text = ta.value; refreshAll();
-      if (renderProblems()) { tLine('Can\'t run yet: fix the problems first (see Problems on the left).', 't-err'); return; }
-      if (project.kind === 'arduino') {
+    // Run starts the project's start file, in its own way: a page in the preview, a program, a sketch on a board
+    const st = startSec();
+    // only problems in the files that run stop a run (a half-written note or page doesn't stop the Python)
+    const blocking = (langs) => { typingLine = -1; activeSec().text = ta.value; refreshAll(); closeAc(); renderProblems(); return project.sections.filter(s => langs.includes(s.lang)).reduce((n, s) => n + issues(s, 'errs'), 0); };
+    if (WEB_ROLE[st.lang]) return runWebsite(true);
+    if (!isSentences(st)) {
+      tLine(`This project starts at ${st.path} (${langName(st.lang)}), which IntuCode doesn't run. To run another file, open its ⋯ menu in the Project list and choose "Start here".` + (writeOf(st) === 'code' && desk.on ? ' Its own tools can run it from the terminal, after $.' : ''), 't-sys');
+      return;
+    }
+    if (st.lang === 'cpp' || st.lang === 'arduino') {
+      if (blocking([st.lang])) { tLine('Can\'t run yet: fix the problems first (see Problems on the left).', 't-err'); return; }
+      if (st.lang === 'arduino') {
         if (desk.on && desk.arduino) return runDesktopArduino();
         tLine(desk.on
           ? (desk.linux
@@ -1746,31 +2207,28 @@
       tLine(desk.on ? (desk.linux ? 'No C++ compiler was found on this computer. Install g++: type $ sudo apt install g++ (Ubuntu, Debian, Mint), $ sudo dnf install gcc-c++ (Fedora) or $ sudo pacman -S gcc (Arch). Then restart IntuCode.' : 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuCode.') : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
       return;
     }
-    typingLine = -1;
-    activeSec().text = ta.value;
-    refreshAll();
-    closeAc();
-    const errs = renderProblems();
+    const errs = blocking(['python']);
     if (errs) {
       tLine(`Can't run yet: ${errs} problem${errs > 1 ? 's' : ''} to fix first.`, 't-err');
-      for (const s of project.sections) {
-        secResult(s.id).info.forEach((inf, i) => inf.errs.forEach(e => tLink(`${SECTION_META[s.file].title}, line ${i + 1}: ${e.replace(/`/g, '')}`, s.id, i)));
+      for (const s of project.sections.filter(x => x.lang === 'python')) {
+        secResult(s.id).info.forEach((inf, i) => inf.errs.forEach(e => tLink(`${metaOf(s).title}, line ${i + 1}: ${e.replace(/`/g, '')}`, s.id, i)));
       }
       return;
     }
     if (desk.on && desk.python) return runDesktopPython();
     if (!(await ensurePython())) return;
-    const files = {};
-    for (const s of project.sections) files[s.file + '.py'] = secResult(s.id).text;
+    // the Python files, and the notes and data beside them (so the program can open data.csv)
+    const files = {}, py = project.sections.filter(s => s.lang === 'python');
+    for (const s of project.sections) if (s.lang === 'python' || writeOf(s) === 'text') files[s.path] = codeOf(s);
     Runner.writeFiles(files);
-    tLine(`▶ Running ${project.name} (main.py${project.sections.length > 1 ? ' + ' + project.sections.filter(s => s.file !== 'main').map(s => s.file + '.py').join(', ') : ''})`, 't-sys');
-    session = { answers: [], shown: 0, seed: Math.floor(Math.random() * 1e9), modules: project.sections.map(s => s.file) };
+    tLine(`▶ Running ${project.name} (${st.path}${py.length > 1 ? ' + ' + py.filter(s => s !== st).map(s => s.path).join(', ') : ''})`, 't-sys');
+    session = { answers: [], shown: 0, seed: Math.floor(Math.random() * 1e9), modules: py.map(s => s.file), start: st.path };
     step();
   }
 
   function step() {
     let r;
-    try { r = Runner.run(session.answers, session.seed, session.modules); }
+    try { r = Runner.run(session.answers, session.seed, session.modules, session.start); }
     catch (e) { tLine('The Python engine hit a problem: ' + e.message, 't-err'); setAsking(false); return; }
     tWrite(r.out.slice(session.shown));
     session.shown = r.out.length;
@@ -1843,10 +2301,11 @@
   let previewInfo = null, picking = false, previewTimer = null;
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
-    chip.textContent = mode === 'read' ? 'Reading' : project.kind === 'website' ? 'Website' : project.kind === 'cpp' ? 'C++' : project.kind === 'arduino' ? 'Arduino' : 'Python';
+    const engines = [...new Set(project.sections.map(s => ENGINE[s.lang]).filter(Boolean))].map(e => ENGINE_NAME[e]);
+    chip.textContent = mode === 'read' ? 'Reading' : engines.length ? engines.join(' + ') : 'Files';
   }
   function showBottom(which) {
-    const web = project.kind === 'website';
+    const web = webOn();
     $('tabPreview').hidden = !web;
     const showPreview = web && which === 'preview';
     $('previewWrap').hidden = !showPreview;
@@ -1858,7 +2317,9 @@
   }
   function runWebsite(announce) {
     if (!compiled) compile();
-    previewInfo = WEB.previewDocument(compiled, previewHelper());
+    const pg = previewPage(), res = (s) => (s ? secResult(s.id) : null);
+    previewInfo = WEB.previewDocument({ results: { structure: res(pg.html), styling: res(pg.styling), mechanics: res(pg.mechanics) } }, previewHelper());
+    previewInfo.page = pg;
     showPreviewPage(withImages(previewInfo.html), announce);
     setPicking(false);
     if (announce) {
@@ -1889,7 +2350,7 @@
   /* The live preview follows the sentences, but not a line still being typed that doesn't work yet
    * (half a condition, a ‹blank› not filled in): it waits until the line works, or the cursor leaves it. */
   function schedulePreview() {
-    if (project.kind !== 'website' || $('previewWrap').hidden) return;
+    if (!webOn() || $('previewWrap').hidden) return;
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
       const r = secResult(project.active), inf = r && typingLine >= 0 && r.info[typingLine];
@@ -1922,27 +2383,27 @@
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
       let where = '';
-      const js = secResult('mechanics');
+      const mech = previewInfo && previewInfo.page.mechanics;
+      const js = mech && secResult(mech.id);
       if (d.line && previewInfo && js) {
         const o = js.lines[d.line - previewInfo.jsLine];
         if (o && o.src >= 0) where = o.src;
       }
       // an unfilled ‹blank› runs as _ : say that, not "_ is not defined"
-      const mech = project.sections.find(s => s.file === 'mechanics');
       if (/\b_ is not defined/.test(d.text) && mech && /‹[^›]*›/.test(where !== '' ? mech.text.split('\n')[where] || '' : mech.text)) {
         tLine(`■ The page stopped at a ‹blank› that isn't filled in yet${where !== '' ? '' : ': Problems on the left lists them'}. The help says what goes in it.`, 't-sys');
         if (where !== '') pointAt(mech.id, where, 'The page stops here until this ‹blank› is filled in.');
         return;
       }
       tLine(`✕ The page hit an error: ${d.text}`, 't-err');
-      if (where !== '') pointAt(mech.id, where, `The page hit an error: ${d.text}`);
+      if (where !== '' && mech) pointAt(mech.id, where, `The page hit an error: ${d.text}`);
     } else if (d.type === 'pick') {
       setPicking(false);
       const sec = activeSec();
       if (d.alt) { insertText(`${d.x}, ${d.y}`); tLine(`Picked the position ${d.x}, ${d.y}. (Exact positions can break on other screen sizes; "in a row" or a grid adapt better.)`, 't-sys'); return; }
       if (d.id && sec.file !== 'structure') { insertText(d.id); tLine(`Picked ${d.id}.`, 't-sys'); return; }
-      if (d.line != null) {
-        openSection('structure', d.line);
+      if (d.line != null && previewInfo && previewInfo.page.html) {
+        openSection(previewInfo.page.html.id, d.line);
         tLine(d.id ? `Picked ${d.id}: here is where it is added.` : `Picked a <${d.tag}> with no name. To style it or use it in Mechanics, give it one: add "called …" to this sentence.`, 't-sys');
       }
     }
@@ -1980,15 +2441,18 @@
       return replaceProject(prev, `Restored "${prev.name}".` + (desk.on ? ' It isn\'t saved in a folder: press Save to keep it.' : ''));
     }
     if (low === 'files' || low === 'ls') {
-      return tLine(project.name + '/\n' + project.sections.map(s => `  ${fileName(s).padEnd(13)} ${SECTION_META[s.file].title}: ${SECTION_META[s.file].purpose}`).join('\n'), 't-help');
+      return tLine(project.name + '/\n' + project.sections.map(s => `  ${fileName(s).padEnd(13)} ${metaOf(s).title}: ${metaOf(s).purpose}${s.id === project.start ? ' (starts here)' : ''}`).join('\n'), 't-help');
     }
     if (low === 'reset') { Runner.reset(); return tLine('Forgot all values from earlier runs.', 't-sys'); }
     if (low === 'board' || low.startsWith('board ')) return chooseBoard(cmd.slice(5).trim());
     if (!compiled) compile();
-    if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
-    if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
-    if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in Python projects.', 't-sys');
-    const tr = LANG.translateOne(cmd, compiled.syms);
+    if (!project.sections.some(s => s.lang === 'python')) {   // the terminal's sentences are Python's
+      if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
+      if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
+      if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in projects with a Python file.', 't-sys');
+      return tLine('Sentences typed here are Python\'s. Add a Python file to this project (+ File) to try them.', 't-sys');
+    }
+    const tr = LANG.translateOne(cmd, compiled.pySyms);
     if (tr.info.errs.length) return tLine(tr.info.errs.join('\n'), 't-err');
     if (tr.open) return tLine('Blocks (if, loops, define) need more than one line. Write them in a folder and press Run.', 't-err');
     if (tr.py.trim() !== cmd) tLine('→ ' + tr.py, 't-py');
@@ -2054,12 +2518,12 @@
 
   function renderIndex() {
     const q = $('indexSearch').value.trim().toLowerCase();
-    const file = activeSec().file;
+    const file = tplRole(activeSec());
     const PK = packFor(activeSec());
     const G = PK.guide;
     const match = (...parts) => !q || parts.join(' ').toLowerCase().includes(q);
     let html = '';
-    $('indexTitle').textContent = mode === 'read' ? `${G.name} · reading code` : `${G.name} · ${SECTION_META[file].title}`;
+    $('indexTitle').textContent = mode === 'read' ? `${G.name} · reading code` : `${G.name} · ${metaOf(activeSec()).title}`;
     if (!G.rules) G.rules = [];
     if (!q) {
       html += `<div class="ix"><h3>What ${G.name} is for</h3><p>${withCode(G.purpose)}</p>
@@ -2122,10 +2586,10 @@
 
   const bpSource = (sel) => sel.src === 'built' ? BP.BUILT_IN[sel.i] : myBlueprints[sel.i].source;
 
-  /* The Library: shelves by what you're making (the project builder's own questions), each holding the
+  /* Project Templates: shelves by what you're making (the project builder's own questions), each holding the
    * builder's kits (a whole kind of project, planned step by step) and blueprints (a story with blanks). */
   const bpOn = (sel) => !!bpSel && bpSel.src === sel.src && (sel.src === 'kit' ? bpSel.id === sel.id : bpSel.i === sel.i);
-  let bpPlatform = '';   // the Library's filter: '' (everything), or pc, phone, web, board
+  let bpPlatform = '';   // the templates' filter: '' (everything), or pc, phone, web, board
   const platTag = (p) => `<em class="bp-plat plat-${escHtml(p)}">${escHtml(BUILDER.PLATFORMS[p] || p)}</em>`;
   function renderBpList() {
     const lib = bldLibrary();
@@ -2150,7 +2614,7 @@
     const chip = (p, label) => `<button type="button" class="bp-filter${bpPlatform === p ? ' on' : ''}" data-platform="${p}" aria-pressed="${bpPlatform === p}">${label}</button>`;
     $('bpList').innerHTML = `<div class="bp-filters" role="group" aria-label="Where it runs">${chip('', 'All')}${Object.entries(BUILDER.PLATFORMS).map(([p, label]) => chip(p, label)).join('')}</div>`
       + (shelves || '<p class="bp-none">Nothing here runs there yet.</p>')
-      + (bpPlatform ? '' : group(`Add to ${SECTION_META[activeSec().file].title}`, built.filter(x => x.bp.kind === 'snippet')))
+      + (bpPlatform ? '' : group(`Add to ${metaOf(activeSec()).title}`, built.filter(x => x.bp.kind === 'snippet')))
       + `<div class="bp-group">Yours</div>`
       + myKitsOff.map(kitItem).join('')
       + (mine.length ? mine.map(item).join('') : myKitsOff.length ? '' : '<p class="bp-none">None yet. Edit a copy of any blueprint, or turn your current project into one.</p>')
@@ -2158,10 +2622,10 @@
     $('bpList').scrollTop = scroll;
   }
 
-  /* A kit in the Library: its steps in build order, each with its depth, and a way into the builder. */
+  /* A kit in Project Templates: its steps in build order, each with its depth, and a way into the builder. */
   function renderKitPage(box) {
     const lib = bldLibrary(), kit = lib.kits[bpSel.id];
-    if (!kit) { box.innerHTML = '<p class="bp-none">This kit isn\'t in the library any more.</p>'; return; }
+    if (!kit) { box.innerHTML = '<p class="bp-none">This kit isn\'t in Project Templates any more.</p>'; return; }
     const shelf = BUILDER.SHELVES.find(sh => sh.id === kit.shelf);
     const steps = kit.steps.map(s => ({ s, c: lib.components[s.id] })).filter(x => x.c);
     const count = (d) => steps.filter(x => x.c.depth === d).length;
@@ -2195,7 +2659,7 @@
   function bpPreview(bp) {
     const filled = BP.fill(bp, bpValues);
     return Object.entries(filled).map(([sec, text]) => {
-      const label = sec === 'here' ? `Goes into ${SECTION_META[activeSec().file].title} at the cursor` : `${SECTION_META[sec].title} · ${FILE_NAME[sec] || sec + '.py'}`;
+      const label = sec === 'here' ? `Goes into ${metaOf(activeSec()).title} at the cursor` : `${SECTION_META[sec].title} · ${FILE_NAME[sec] || sec + '.py'}`;
       return `<div class="bp-sec"><div class="ex-lbl">${label}</div><pre>${text.replace(/\n$/, '').split('\n').map(l => hlLine(l)).join('\n')}</pre></div>`;
     }).join('');
   }
@@ -2231,7 +2695,7 @@
     if (bpSel.src === 'kit') return renderKitPage(box);
     const bp = BP.parse(bpSource(bpSel));
     const isProject = bp.kind === 'project';
-    const where = 'Blueprint · ' + (isProject ? ({ structured: 'Settings, Tools and Main program', website: 'a website: Structure, Styling and Mechanics', cpp: 'C++, one Program file', arduino: 'Arduino, one Sketch for a board' }[bp.layout] || 'one Main program file') : `adds lines to ${SECTION_META[activeSec().file].title}`);
+    const where = 'Blueprint · ' + (isProject ? ({ structured: 'Settings, Tools and Main program', website: 'a website: Structure, Styling and Mechanics', cpp: 'C++, one Program file', arduino: 'Arduino, one Sketch for a board' }[bp.layout] || 'one Main program file') : `adds lines to ${metaOf(activeSec()).title}`);
     box.innerHTML = `<div class="bp-kind">${escHtml(where)}</div>
       <h3 class="bp-title">${escHtml(bp.title)}</h3>
       ${bp.errors.length ? `<div class="bp-errors">${bp.errors.map(e => `<div>${escHtml(e)}</div>`).join('')}</div>` : ''}
@@ -2293,7 +2757,7 @@
       if (bp.errors.length) return;
       closeBlueprints();
       if (bp.kind === 'project') replaceProject(projectFromBlueprint(bp, bpValues), `Built "${bp.title}" from its blueprint. Press Run to try it.` + (desk.on ? ' Press Save to keep it as files.' : ''));
-      else { insertSnippet(BP.fill(bp, bpValues).here); tLine(`Added "${bp.title}" to ${SECTION_META[activeSec().file].title}.`, 't-sys'); }
+      else { insertSnippet(BP.fill(bp, bpValues).here); tLine(`Added "${bp.title}" to ${metaOf(activeSec()).title}.`, 't-sys'); }
     }
     if (id === 'bpCopyEdit') {
       const src = bpSource(bpSel).replace(/^title:\s*(.*)$/m, (m, t) => `title: ${t} (my version)`);
@@ -2356,9 +2820,9 @@
     $('readSide').hidden = next !== 'read';
     renderImages();
     $('work').classList.toggle('reading', next === 'read');
-    $('work').classList.toggle('web', next === 'write' && project.kind === 'website');
+    $('work').classList.toggle('web', next === 'write' && webOn());
     showBottom(next === 'write' && project.kind === 'website' ? 'preview' : 'terminal');
-    $('tabPreview').hidden = !(next === 'write' && project.kind === 'website');
+    $('tabPreview').hidden = !(next === 'write' && webOn());
     updateChip();
     if (next === 'read') renderRead();
     else { measure(); syncScroll(); }
@@ -2938,6 +3402,7 @@
     { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
     { id: 'cpp', layout: 'cpp', title: 'C++ program', about: 'main.cpp, compiled on this computer (desktop app)' },
     { id: 'arduino', layout: 'arduino', title: 'Arduino sketch', about: 'For a board plugged in by USB (desktop app)' },
+    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with + File' },
   ];
   // What a folder starts with: a website its title, a sketch its two parts. The rest start empty.
   const NEW_START = {
@@ -2960,8 +3425,10 @@
   function createNewProject() {
     const k = NEW_KINDS.find(x => x.id === newKind);
     const name = $('newName').value.trim() || 'My project';
-    const sections = LAYOUTS[k.layout].map(f => ({ id: f, file: f, text: NEW_START[f] ? NEW_START[f](name) : '' }));
-    const next = { version: 1, lang: 'python', kind: KIND_OF_LAYOUT[k.layout] || 'python', name: slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };
+    const sections = k.layout === 'files'
+      ? [{ id: 'readme', path: 'README.md', lang: 'markdown', text: `# ${name}\n\nWhat this project is for, and how its files fit together.\n` }]
+      : LAYOUTS[k.layout].map(f => ({ id: f, file: f, text: NEW_START[f] ? NEW_START[f](name) : '' }));
+    const next = { version: 2, lang: 'python', kind: KIND_OF_LAYOUT[k.layout] || 'python', name: slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };
     const askFolder = desk.on && $('newSave').checked;
     closeNewProject();
     replaceProject(next, `New ${k.title} project "${name}".` + (desk.on && !askFolder ? ' Press Save to keep it as files.' : ''));
@@ -2988,7 +3455,7 @@
   /* ------------------------------------------------------------------ */
 
   const BUILDER = window.IntuiBuilder;
-  const bld = { trail: [], kit: null, ticked: new Set(), edit: null, preview: new Set() };   // trail: the options chosen so far; edit: the library editor
+  const bld = { trail: [], kit: null, ticked: new Set(), edit: null, preview: new Set() };   // trail: the options chosen so far; edit: the templates editor
   const depthChip = (d) => `<span class="depth d-${d}">${BUILDER.DEPTHS[d].label}</span>`;
   // Your own questions, kits and steps, as plain text. They come after the built-in ones, so one with the same id replaces it.
   const MY_KITS_KEY = 'intuicode.kits.v1';
@@ -3021,7 +3488,7 @@
     bld.ticked = new Set(kit ? kit.steps.filter(s => s.ticked).map(s => s.id) : []);
     renderBuilder();
   }
-  /* Straight to one entry in the library editor, in its form (yours if you've changed it, or a copy of the built-in one). */
+  /* Straight to one entry in the templates editor, in its form (yours if you've changed it, or a copy of the built-in one). */
   function openKitEditorAt(kind, id) {
     openBuilder();
     const { built, mine } = kitEntries();
@@ -3046,11 +3513,11 @@
       + '<button type="button" class="bld-crumb bld-edit-lib" id="bldEditLib">Change the kits and steps</button>';
     if (bld.kit) return renderKit(lib.kits[bld.kit]);
     const qid = bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start', q = lib.questions[qid];
-    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the library. Go back, or add it with "Change the kits and steps".</p>`; return; }
+    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the templates. Go back, or add it with "Change the kits and steps".</p>`; return; }
     const tag = (o) => (o.kit && lib.kits[o.kit] ? platTag(lib.kits[o.kit].platform) : '');
     $('bldBody').innerHTML = `<h3 class="bld-ask">${escHtml(q.ask)}</h3>
       <div class="new-kinds bld-options">${q.options.map((o, i) => `<button type="button" class="new-kind" data-opt="${i}"><b>${escHtml(o.label)}</b><span>${tag(o)}${escHtml(o.means.replace(/^(PC|Phone|Web|Board) · /, ''))}</span></button>`).join('')}</div>
-      <p class="bld-alt">Or <button type="button" class="linklike" id="bldToLibrary">browse every kit and blueprint in the Library</button>.</p>`;
+      <p class="bld-alt">Or <button type="button" class="linklike" id="bldToLibrary">browse every kit and blueprint in Project Templates</button>.</p>`;
     const first = $('bldBody').querySelector('.new-kind');
     if (first) first.focus();
   }
@@ -3066,7 +3533,7 @@
   }
   function renderKit(kit) {
     const lib = bldLibrary();
-    if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the library isn\'t written yet. Go back and choose another path.</p>'; return; }
+    if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the templates isn\'t written yet. Go back and choose another path.</p>'; return; }
     const chosen = kit.steps.filter(s => lib.components[s.id] && (s.always || bld.ticked.has(s.id)));
     let n = 0;
     const rows = kit.steps.map(s => {
@@ -3151,7 +3618,7 @@
     const built = BUILDER.BUILT_IN.map((s, i) => ({ ...BUILDER.describeEntry(s), src: 'built', i })).map(b => ({ ...b, replaced: yours.has(b.kind + ':' + b.id) }));
     return { built, mine };
   }
-  /* What the whole library says about an entry (a kit listing a step that isn't written yet, say), with this text in its place. */
+  /* What all the templates say about an entry (a kit listing a step that isn't written yet, say), with this text in its place. */
   function kitLinkProblems(text, editing) {
     const d = BUILDER.describeEntry(text);
     if (!d.id) return [];
@@ -3291,14 +3758,14 @@
           <label class="kf-tog" title="Ticked when the planner opens"><input type="checkbox" data-tog="ticked"${s.ticked || s.always ? ' checked' : ''}${s.always ? ' disabled' : ''}> Ticked at first</label>
           <span class="kf-step-btns"><button type="button" class="btn small" data-move="-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button type="button" class="btn small" data-move="1" aria-label="Move down"${i < f.steps.length - 1 ? '' : ' disabled'}>↓</button><button type="button" class="btn small" data-edit-step="${escHtml(s.id)}">Edit</button><button type="button" class="btn small ghost" data-remove aria-label="Remove ${escHtml(c ? c.name : s.id)}">Remove</button></span>
         </li>`; }).join('') || '<li class="dim kf-empty">No steps yet: add one below.</li>'}</ol>
-      <div class="kf-add"><button type="button" class="btn small" id="kfAdd" aria-expanded="${!!ed.picking}">+ Add a step from the library</button><button type="button" class="btn small" id="kfNewStep">+ Write a new step</button></div>
+      <div class="kf-add"><button type="button" class="btn small" id="kfAdd" aria-expanded="${!!ed.picking}">+ Add a step from the templates</button><button type="button" class="btn small" id="kfNewStep">+ Write a new step</button></div>
       ${ed.picking ? pickerHtml(lib, f) : ''}
       ${checkHtml(check, 'The kit')}
       <div class="bp-actions"><button type="button" class="btn primary" id="kfSave">Save${ed.editing && ed.editing.src === 'built' ? ' as yours' : ''}</button><button type="button" class="btn" id="kfCancel">Cancel</button><button type="button" class="btn ghost" id="kfText">Edit as text</button></div>
     </div>`;
     if (ed.picking) { const s = $('kfPickSearch'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   }
-  /* Every step in the library, by kit, to add to this one (those whose sentences fit how it's made first). */
+  /* Every step in the templates, by kit, to add to this one (those whose sentences fit how it's made first). */
   function pickerHtml(lib, f) {
     const q = (bld.edit.pickQuery || '').toLowerCase();
     const folders = new Set(LAYOUT_FOLDERS[f.head.layout || 'structured']);
@@ -3523,8 +3990,11 @@
   /* The project map: the plan's steps, in order. Each opens a window about its role in the whole. */
   function renderPlan() {
     const plan = project.plan;
-    $('planWrap').hidden = !plan;
-    if (!plan) return;
+    if (!plan || !plan.steps.length) {
+      $('planPath').textContent = '';
+      $('plan').innerHTML = '<li class="plan-empty">No map yet. + Step adds a step of your own; Plan builds a project with one.</li>';
+      return;
+    }
     $('planPath').textContent = plan.path.join(' › ');
     $('plan').innerHTML = plan.steps.map(s => `<li><button type="button" class="plan-step" data-plan="${s.n}"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}</button></li>`).join('');
   }
@@ -3549,7 +4019,7 @@
       <h4>Its role in the project</h4><p>${withCode(step.summary)}</p>
       ${step.usual ? `<h4>Usually made with</h4><p>${withCode(step.usual)}</p>` : ''}
       ${step.learn ? `<h4>Learn first</h4><p>${withCode(step.learn)}</p>` : ''}
-      ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(SECTION_META[p.sec.file].title)}</button>`).join('')}</div>` : ''}
+      ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(metaOf(p.sec).title)}</button>`).join('')}</div>` : ''}
       <div class="bp-actions step-nav">
         <button type="button" class="btn small" data-step-to="${step.n - 1}"${step.n > 1 ? '' : ' disabled'}>← Step ${step.n - 1 || ''}</button>
         <button type="button" class="btn small" data-step-to="${step.n + 1}"${step.n < plan.steps.length ? '' : ' disabled'}>Step ${step.n < plan.steps.length ? step.n + 1 : ''} →</button>
@@ -3557,6 +4027,38 @@
     $('stepModal').hidden = false;
   }
   function closeStep() { $('stepModal').hidden = true; }
+
+  /* A step of your own on the map. Its "── Step n ·" note goes at the cursor (in a file of sentences), so
+   * the map can take you there, as it does for a kit's steps. */
+  function openStepAdd() {
+    activeSec().text = ta.value;
+    const sec = activeSec();
+    $('stepAddWhere').textContent = isSentences(sec) ? `Its note goes in ${fileName(sec)}, above line ${caretLine() + 1}.` : `${fileName(sec)} is ${langName(sec.lang)}, which can't hold a step's note, so this step won't link to a place.`;
+    $('stepAddName').value = ''; $('stepAddSum').value = ''; $('stepAddProblem').textContent = '';
+    $('stepAddModal').hidden = false;
+    $('stepAddName').focus();
+  }
+  function closeStepAdd() { $('stepAddModal').hidden = true; }
+  function addStep() {
+    const name = $('stepAddName').value.trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (!name) { $('stepAddProblem').textContent = 'Give the step a name.'; return; }
+    const depth = $('stepAddDepth').value;
+    const plan = project.plan || (project.plan = { title: project.name, path: [], steps: [] });
+    const n = plan.steps.reduce((m, s) => Math.max(m, s.n), 0) + 1;
+    plan.steps.push({ id: 'mine-' + n + '-' + Math.random().toString(36).slice(2, 6), n, name, depth, summary: $('stepAddSum').value.trim().slice(0, 3000), usual: '', learn: '' });
+    closeStepAdd();
+    if (isSentences(activeSec())) {
+      const b = lineBounds(ta.selectionStart), indent = b.text.match(/^\s*/)[0];
+      insertText(`${indent}note: ── Step ${n} · ${name} (${BUILDER.DEPTHS[depth].label}) ──\n`, b.start, b.start);
+    }
+    renderPlan(); save(); autosave();
+    tLine(`Added step ${n}, "${name}", to the project map.`, 't-sys');
+  }
+  $('btnAddStep').addEventListener('click', openStepAdd);
+  $('stepAddClose').addEventListener('click', closeStepAdd);
+  $('stepAddGo').addEventListener('click', addStep);
+  $('stepAddModal').addEventListener('click', (e) => { if (e.target.id === 'stepAddModal') closeStepAdd(); });
+  for (const id of ['stepAddName', 'stepAddSum']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addStep(); } });
   $('plan').addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) openStep(+b.dataset.plan); });
   $('stepClose').addEventListener('click', closeStep);
   $('stepModal').addEventListener('click', (e) => {
@@ -3691,7 +4193,7 @@
   const imagesWritten = new Set();   // "folder|name|key": already in that folder's images/
   let imageDb = null;
   const images = () => project.images || (project.images = []);
-  const usesImages = () => project.kind === 'website' || project.kind === 'python';
+  const usesImages = () => project.sections.some(s => s.lang === 'python' || WEB_ROLE[s.lang]);
   function idb(mode, act) {
     imageDb = imageDb || new Promise((res, rej) => {
       const rq = indexedDB.open('intuicode', 1);
@@ -3745,10 +4247,10 @@
     if (!added.length) return;
     imagesChanged();
     const say = imageSentence(added[0].name);
-    if (say) tLine(`In ${SECTION_META[activeSec().file].title} it's used like this: ${say}  (Use, beside it on the left, puts that in for you.)`, 't-sys');
+    if (say) tLine(`In ${metaOf(activeSec()).title} it's used like this: ${say}  (Use, beside it on the left, puts that in for you.)`, 't-sys');
     if (project.kind === 'python' && /\.(jpe?g|webp|svg)$/i.test(added[0].name)) tLine('tkinter shows PNG and GIF pictures. Save a copy as PNG to use this one in a window.', 't-sys');
   }
-  function imagesChanged() { save(); autosave(); renderImages(); if (project.kind === 'website') runWebsite(false); }
+  function imagesChanged() { save(); autosave(); renderImages(); if (webOn()) runWebsite(false); }
 
   /* The sentence that uses a picture, for the folder you're in. */
   function imageSentence(name, sec = activeSec()) {
@@ -3805,7 +4307,7 @@
     const want = images().filter(im => !imageUrls.has(im.key));
     for (const im of want) { try { const url = await idb('readonly', s => s.get(im.key)); if (url) imageUrls.set(im.key, url); } catch (_) { /* no store: shown as missing */ } }
     renderImages();
-    if (want.some(im => imageUrls.has(im.key)) && project.kind === 'website') runWebsite(false);
+    if (want.some(im => imageUrls.has(im.key)) && webOn()) runWebsite(false);
   }
   /* Pictures neither the project nor the previous one ("restore") uses are let go. */
   async function pruneImages() {
@@ -3836,7 +4338,7 @@
     const extra = names.filter(n => IMAGE_NAME.test(n) && !images().some(im => im.name === n));
     if (extra.length) tLine(`images/ also has ${extra.join(', ')}, not part of the project yet. File → Add an image adds ${extra.length > 1 ? 'them' : 'it'}.`, 't-sys');
     renderImages();
-    if (project.kind === 'website') runWebsite(false);
+    if (webOn()) runWebsite(false);
   }
 
   /* ------------------------------------------------------------------ */
@@ -3872,7 +4374,7 @@
       const f = await pickFolder('Choose a folder to save this project in');
       if (!f) return;
       // never write over another project's files
-      const names = project.sections.map(s => (s.file === 'sketch' ? baseName(f) + '.ino' : fileName(s))).concat('.intuicode/project.json');
+      const names = project.sections.map(s => (s.file === 'sketch' && s.path === 'sketch.ino' ? baseName(f) + '.ino' : fileName(s))).concat('.intuicode/project.json');
       const taken = [];
       for (const n of names) { try { await invoke('read_text', { path: join(f, n) }); taken.push(n); } catch (_) { /* not there: free */ } }
       if (taken.length) {
@@ -3885,7 +4387,7 @@
     compile();
     // everything to write is taken now: another project may be opened while the files are written
     const folder = desk.folder, names = project.sections.map(fileName);
-    const files = project.sections.map((s, i) => [names[i], secResult(s.id).text]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
+    const files = project.sections.map((s, i) => [names[i], codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
     try {
       for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
       await writeImages(folder);
@@ -3919,16 +4421,17 @@
         const changed = [];
         for (const s of project.sections) {
           const onDisk = await read(fileName(s));
-          if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== secResult(s.id).text.trim()) changed.push(s);
+          if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== codeOf(s).trim()) changed.push([s, onDisk.replace(/\r\n/g, '\n')]);
         }
-        for (const s of changed) {
+        for (const [s, onDisk] of changed) {
+          if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuCode: it's shown as it is now.`, 't-sys'); continue; }
           if (secLang(s) !== 'python') {
             const res = await rebuildSection(folder, s, read);
             if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
             else tLine(`${fileName(s)} was changed outside IntuCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
             continue;
           }
-          const res = await sentencesFor(await read(fileName(s)));
+          const res = await sentencesFor(onDisk);
           if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
         if (changed.length) { ta.value = activeSec().text; refreshAll(); }
@@ -4054,31 +4557,34 @@
   }
   async function runDesktopPython() {
     const dir = desk.folder || await invoke('scratch_folder');
-    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: secResult(s.id).text }); await writeImages(dir); }
+    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: codeOf(s) }); await writeImages(dir); }
     catch (e) { tLine('Could not write the program files: ' + e, 't-err'); return; }
     try { desk.venv = await invoke('find_venv', { cwd: dir }); } catch (_) { desk.venv = null; }
     const id = desk.nextId++;
     desk.proc = { id, kind: 'python', err: '' };
-    tLine(`▶ Running main.py with ${desk.venv ? `the project's own Python (${desk.venv})` : `Python ${desk.python[1]} (installed on this computer)`}${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
+    const start = startSec().lang === 'python' ? startSec().path : 'main.py';
+    tLine(`▶ Running ${start} with ${desk.venv ? `the project's own Python (${desk.venv})` : `Python ${desk.python[1]} (installed on this computer)`}${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
     setRunning(true);
     termIn.focus({ preventScroll: true });
-    try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', 'main.py'], cwd: dir }); }
+    try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', start], cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
   async function runDesktopCpp() {
     const dir = desk.folder || await invoke('scratch_folder');
     const win = /Win/i.test(navigator.userAgent);
-    try { await invoke('write_text', { path: join(dir, 'main.cpp'), content: secResult('program').text }); }
-    catch (e) { tLine('Could not write main.cpp: ' + e, 't-err'); return; }
+    // every C++ file (headers too), then the start file is compiled
+    const main = startSec().lang === 'cpp' ? startSec() : project.sections.find(s => s.lang === 'cpp');
+    try { for (const s of project.sections.filter(x => x.lang === 'cpp')) await invoke('write_text', { path: join(dir, s.path), content: codeOf(s) }); }
+    catch (e) { tLine('Could not write the C++ files: ' + e, 't-err'); return; }
     // the built program goes in .intuicode/build, not among your files
     const exe = '.intuicode/build/intuicode-program' + (win ? '.exe' : '');
     try { await invoke('write_text', { path: join(dir, '.intuicode/build/.gitignore'), content: '*\n' }); } catch (_) { /* compiling says why */ }
     const id = desk.nextId++;
-    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe };
+    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe, source: main.path, sec: main.id };
     const msvc = desk.cpp[0] === 'msvc';
-    tLine(`▶ Compiling main.cpp with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
+    tLine(`▶ Compiling ${main.path} with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
     setRunning(true, 'compiling…');
-    try { await invoke('compile_cpp', { id, source: 'main.cpp', output: exe, cwd: dir }); }
+    try { await invoke('compile_cpp', { id, source: main.path, output: exe, cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
   /* Compiler complaints that need a word about the board, not the code. */
@@ -4111,7 +4617,12 @@
     let dir = desk.folder;
     if (!dir) dir = join(await invoke('scratch_folder'), slug(project.name) || 'sketch');
     const name = baseName(dir);
-    try { await invoke('write_text', { path: join(dir, name + '.ino'), content: secResult('sketch').text }); }
+    // the sketch is named after its folder; other .ino files are more tabs of the same sketch
+    const sk = startSec().lang === 'arduino' ? startSec() : project.sections.find(s => s.lang === 'arduino');
+    try {
+      await invoke('write_text', { path: join(dir, name + '.ino'), content: codeOf(sk) });
+      for (const s of project.sections.filter(x => x.lang === 'arduino' && x !== sk)) await invoke('write_text', { path: join(dir, s.path), content: codeOf(s) });
+    }
     catch (e) { tLine('Could not write the sketch: ' + e, 't-err'); return; }
     setRunning(true, 'checking…');
     tLine('Looking for a connected board…', 't-sys');
@@ -4134,7 +4645,7 @@
     else if (unnamed) tLine(`There is a board on ${unnamed}, but it doesn't say which kind it is (boards with a USB-serial chip, like many ESP32 boards, don't). Type board esp32 (or uno, nano, mega, or arduino-cli's full name for it) and press Run again to upload to it. For now the sketch is only checked, for ${fqbn}.`, 't-sys');
     else tLine(`No board is plugged in, so the sketch will only be checked (for ${project.board ? fqbn : 'an Arduino Uno'}). Plug one in by USB and press Run again to upload it.`, 't-sys');
     const id = desk.nextId++;
-    desk.proc = { id, kind: 'ino-compile', err: '', out: '', dir, name, port, fqbn };
+    desk.proc = { id, kind: 'ino-compile', err: '', out: '', dir, name, port, fqbn, sec: sk.id };
     tLine(`▶ Checking the sketch (arduino-cli compile, ${fqbn})…`, 't-sys');
     try { await invoke('run_program', { id, program: desk.arduino[0], args: ['compile', '--fqbn', fqbn, dir], cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
@@ -4153,7 +4664,7 @@
           tLine(`  $ ${cli} core install ${core}${extra}`, 't-help');
           return;
         }
-        compilerErrors(all, p.name + '.ino', 'sketch');
+        compilerErrors(all, p.name + '.ino', p.sec);
         tLine('■ The sketch could not be checked.', 't-sys');
         return;
       }
@@ -4174,7 +4685,7 @@
         return;
       }
       tLine('✓ Uploaded: the sketch is running on the board.', 't-ok');
-      const baud = (secResult('sketch').text.match(/Serial\.begin\((\d+)\)/) || [])[1];
+      const baud = (codeOf(project.sections.find(s => s.id === p.sec) || startSec()).match(/Serial\.begin\((\d+)\)/) || [])[1];
       if (!baud) return;
       const id = desk.nextId++;
       desk.proc = { ...p, id, kind: 'monitor', err: '', out: '' };
@@ -4244,7 +4755,7 @@
           invoke('run_program', { id, program: join(p.dir, p.exe), args: [], cwd: p.dir }).catch((e) => { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); });
           return;
         }
-        compilerErrors(p.err + '\n' + (p.out || ''));
+        compilerErrors(p.err + '\n' + (p.out || ''), p.source, p.sec);
         tLine('■ The program could not be compiled.', 't-sys');
         return;
       }
@@ -4290,6 +4801,8 @@
       else if (maxed && tip.hidden && !document.querySelector('.modal:not([hidden])') && ac.hidden) setMax(maxed);
       else if (!tip.hidden) hideTip();
       else if (!$('stepModal').hidden) closeStep();
+      else if (!$('fileModal').hidden) closeFileDialog();
+      else if (!$('stepAddModal').hidden) closeStepAdd();
       else if (!$('builderModal').hidden) closeBuilder();
       else if (!$('newModal').hidden) closeNewProject();
       else if (!$('fileList').hidden) setFileMenu(false);
@@ -4306,10 +4819,10 @@
     ta.value = activeSec().text;
     renderSectionHeader();
     refreshAll();
-    $('work').classList.toggle('web', project.kind === 'website');
+    $('work').classList.toggle('web', webOn());
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
-    if (project.kind === 'website') runWebsite(false);
+    if (webOn()) runWebsite(false);
     loadImages().then(pruneImages);
     tLine('IntuCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();

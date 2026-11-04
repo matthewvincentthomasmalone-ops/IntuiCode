@@ -18,6 +18,7 @@
 import sys, io, json, builtins, random, traceback, os, time, ast
 _PB_DIR = "/home/pyodide/project"
 os.makedirs(_PB_DIR, exist_ok=True)
+os.chdir(_PB_DIR)   # programs open the project's files by their paths, as they do on a computer
 if _PB_DIR not in sys.path:
     sys.path.insert(0, _PB_DIR)
 _pb_ns = {"__name__": "__terminal__"}
@@ -52,13 +53,18 @@ def _pb_where(e):
     fr = [f for f in tb if f.filename.startswith(_PB_DIR) or f.filename == "<terminal>"]
     if not fr:
         return "", None
-    return os.path.basename(fr[-1].filename), fr[-1].lineno
+    return _pb_rel(fr[-1].filename), fr[-1].lineno
+
+def _pb_rel(fn):
+    return os.path.relpath(fn, _PB_DIR) if fn.startswith(_PB_DIR) else os.path.basename(fn or "")
 
 def _pb_write(name, text):
-    with open(_PB_DIR + "/" + name, "w") as fh:
+    full = _PB_DIR + "/" + name
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "w") as fh:
         fh.write(text)
 
-def _pb_run(answers_json, seed, modules_json):
+def _pb_run(answers_json, seed, modules_json, start="main.py"):
     answers = json.loads(answers_json)
     out = _PBOut()
     saved = (sys.stdout, sys.stderr, builtins.input, time.sleep)
@@ -73,7 +79,7 @@ def _pb_run(answers_json, seed, modules_json):
         sys.modules.pop(m, None)
     random.seed(seed)
     res = {"status": "done"}
-    path = _PB_DIR + "/main.py"
+    path = _PB_DIR + "/" + start
     g = {"__name__": "__main__", "__file__": path}
     sys.stdout = sys.stderr = out
     builtins.input = fake_input
@@ -91,7 +97,7 @@ def _pb_run(answers_json, seed, modules_json):
         res = {"status": "exit"}
     except SyntaxError as e:
         res = {"status": "error", "type": "SyntaxError", "msg": e.msg or str(e),
-               "file": os.path.basename(e.filename or ""), "line": e.lineno}
+               "file": _pb_rel(e.filename or ""), "line": e.lineno}
     except BaseException as e:
         f, ln = _pb_where(e)
         res = {"status": "error", "type": type(e).__name__, "msg": str(e), "file": f, "line": ln}
@@ -284,8 +290,8 @@ def _pb_reset():
     writeFiles(files) {
       for (const [name, text] of Object.entries(files)) fns.write(name, text);
     },
-    run(answers, seed, modules) {
-      return JSON.parse(fns.run(JSON.stringify(answers), seed, JSON.stringify(modules)));
+    run(answers, seed, modules, start) {
+      return JSON.parse(fns.run(JSON.stringify(answers), seed, JSON.stringify(modules), start || 'main.py'));
     },
     repl(src) { return JSON.parse(fns.repl(src)); },
     reset() { fns && fns.reset(); },

@@ -33,18 +33,18 @@ Tick each one. If something is off, note what you did and what the terminal said
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
-**Planning and the Library**
-- [ ] **Library**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
+**Planning and Project Templates**
+- [ ] **Project Templates**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
       top show only those. A kit's **Choose its steps…** opens planning at that kit; **Plan one ›** at its kind.
 - [ ] **Plan** (menu bar) → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
       works**, **The usual** and **Everything** change **Your plan**; **Preview its sentences** shows a step's sentences.
       Tick Mixer, Build my project: the Project map lists the steps in order, and Problems lists the hallway ‹blanks›.
 - [ ] Click a step in the Project map: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the
       blanks and Run: the terminal shows the peak and RMS levels, and `output.wav` plays.
-- [ ] **Change this kit…**: move a step, untick Always, add a step from the library (search "save"), write a new step;
+- [ ] **Change this kit…**: move a step, untick Always, add a step from the templates (search "save"), write a new step;
       the check under the steps says whether the kit builds. Save: planning uses your version. Delete yours (in the
       list on the left): the original comes back.
-- [ ] Build a game from the Library (Games): it plays in the preview with the keys or a tap.
+- [ ] Build a game from Project Templates (Games): it plays in the preview with the keys or a tap.
 - [ ] The corner button on the sentences, the code and the terminal: each fills the work area; Esc comes back.
 - [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
@@ -80,7 +80,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Read mode → import `samples/cpp/blink/blink.ino` → **Style tour**: setup and loop, pinMode, delay…
 
 **Python (Write mode)**
-- [ ] Library → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
+- [ ] Project Templates → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
 - [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
 - [ ] Edit `main.py` in that editor (change a message), save it, then **Open folder** on that folder in IntuCode: the sentence shows your change.
@@ -92,16 +92,16 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Run `$ python3 -m http.server 8765`, then close IntuCode: http://localhost:8765 no longer answers.
 
 **Website**
-- [ ] Library → **To-do list page** → Build. The preview shows the page; add a task.
+- [ ] Project Templates → **To-do list page** → Build. The preview shows the page; add a task.
 - [ ] **Pick from the page**, then click the page's button: its name goes into your sentence.
 
 **C++ (needs a compiler)**
-- [ ] Library → **C++ bank account (a class)** → Build → Run. On Windows the terminal says
+- [ ] Project Templates → **C++ bank account (a class)** → Build → Run. On Windows the terminal says
       "Compiling main.cpp with Visual Studio …" and then shows "Sam has 75".
 - [ ] Add a line `c++: oops;` and Run: the compiler's complaint links to that line.
 
 **Arduino (needs the Arduino IDE)**
-- [ ] Library → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
+- [ ] Project Templates → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
       (the first time it may ask you to run `$ arduino-cli core install arduino:avr`: type it, then Run again).
 - [ ] With a board plugged in by USB: Run uploads it; the light blinks and "Blinks so far" lines appear.
 - [ ] A board with a USB-serial chip (many ESP32 boards): Run says there is a board it can't name.
