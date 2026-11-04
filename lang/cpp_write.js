@@ -356,6 +356,9 @@
     /* What a line of exact C++ makes, so the sentences after it know it: "int n = 3;" (n holds whole
        numbers), "std::string name;", or "int twice(int x) {" (a tool). */
     const learnRaw = (line) => {
+      // the counter a loop makes: for (int i = 0; …) or for (const auto& x : xs)
+      const f = String(line).match(/\bfor\s*\(\s*(?:const\s+)?([A-Za-z_][\w:]*(?:\s*<[^;()]*>)?\s*[*&]*)\s*\b([A-Za-z_]\w*)\s*[=:]/);
+      if (f) { scopes[scopes.length - 1].add(f[2]); x.types[f[2]] = f[1].trim(); }
       const d = String(line).match(/^\s*((?:(?:const|static|constexpr|inline|unsigned|signed|long|short|volatile)\s+)*[A-Za-z_][\w:]*(?:\s*<[^;={}()]*>)?(?:\s+(?:long|int|double|char))*\s*[*&]*)\s*\b([A-Za-z_]\w*)\s*(=|\{|\(|;|\[)/);
       if (!d || /^(?:return|delete|throw|using|goto|case|else|new|typedef|namespace|class|struct|enum|template|public|private|protected|sizeof|if|while|for|switch|do)$/.test(d[1].trim().split(/\s+/)[0])) return;
       const name = d[2], type = d[1].replace(/^(?:static|inline|constexpr)\s+/, '').trim();

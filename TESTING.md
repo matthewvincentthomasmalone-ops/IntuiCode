@@ -68,6 +68,23 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Change a sentence so that code on an *untouched* line changes too (e.g. `set total to 0` above a tool, then
       move it below): the untouched line is flagged with **Keep the new code**.
 
+**Unity mode**
+- [ ] **Unity** (beside Write and Read): the Python sample. Select lines 4–6 (inside `roll`): a **De-Regex/Translate** button
+      appears over the selection; press it. Those lines become sentences in dark green, in the same place.
+- [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Re-Regex**: the code is exactly as before.
+- [ ] De-Regex them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the strip shows the f-string it will write.
+      **Re-Regex** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
+- [ ] Write a sentence that doesn't exist in a green part and Re-Regex: it stays green, the line number turns red, and the
+      terminal says why. **Copy the code** refuses until it's fixed.
+- [ ] Language → C++ (with an empty pane): De-Regex `count += i;`, change it to `increase count by i times 2`, Re-Regex:
+      `count += i * 2;` inside the loop.
+
+**Reading other languages**
+- [ ] Import code → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's named `pasted.rs`, the
+      terminal says why it's Rust, and the code is split into its parts with plain-English summaries.
+- [ ] **Read as** → C++: it's read as C++ (and says it can't be, for Rust). Back to Auto: Rust again.
+- [ ] Open a folder with a `README.md`, a `package.json` and a `.sql` file: each is listed and read.
+
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
       it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.

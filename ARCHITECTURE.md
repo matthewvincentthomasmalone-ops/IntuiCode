@@ -14,6 +14,8 @@ the desktop app.
 | `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, links; loads any tree-sitter grammar named in `lang/languages.js` |
 | `lang/code_read.js` | Read mode for every other language: which language a file (or pasted code) is in, and sections, summaries, facts, warnings and steps for it |
 | `lang/languages.js` | The languages a project's files can be in: names, file endings, grammars |
+| `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files (`compileAll`), Markdown, CSV and JSON shown as what they are |
+| `lang/unity.js` | Unity mode: a selection grown to whole statements, turned into sentences in place, and back into code in the context of the code around it (the rest given to the writer as exact lines) |
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
@@ -113,6 +115,17 @@ must not turn into a command:
   Python of a project's virtual environment), or ones built in those folders. Shell commands
   typed after `$` run in those folders. A drop is allowed from the window's own drop event in
   `lib.rs`; the page can send itself a pretend `tauri://drag-drop`, but that allows nothing.
+
+## Decision: Unity mode keeps the code, and changes only what was changed
+
+*Decided 2026-11-04.*
+
+In Unity mode the text is code; a region is some of its lines said in sentences. A region nobody changed
+goes back to its original code, byte for byte, without being translated (looking never changes code). A
+changed region is compiled as part of the whole file, where every other line is an exact line
+(`python:`, `js:`, `c++:`…), so the writer knows the names around it; only the region's own lines are
+taken back. Exact lines teach the writers the names they make (a `def`'s inputs, `int n = 3;`,
+`function f(a)`), which also helps any sentence file that mixes in exact code.
 
 ## Testing
 

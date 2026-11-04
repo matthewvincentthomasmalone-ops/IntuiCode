@@ -245,11 +245,35 @@ expected line, however it is spaced.
 Python's habits are found with Python's own parser (`style_points` in `lang/python_reader.py`),
 C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the notes are too).
 
+**Unity: one pane of code, any part of it in sentences**
+
+**Unity** (beside Write and Read) is one pane of real code in Python, HTML, CSS, JavaScript, C++ or
+Arduino. Select some of it and press **De-Regex/Translate** (Ctrl+Shift+D, or the button that appears
+over the selection): those lines turn into sentences right where they are, shown in translucent dark
+green. The selection grows to whole statements (an `if` takes its `else`; a `{` takes its `}`). Change
+the sentences, and **Re-Regex** (Ctrl+Shift+B) turns them back into code in the same place:
+
+- a part nobody changed comes back **exactly** as it was;
+- a changed part is written in the context of the code around it, so the names and kinds there are
+  known, and it comes back in the file's own indentation, with any `import` or `#include` it now needs
+  added at the top;
+- a part with a problem stays as sentences until it's fixed, and the strip under the pane says why
+  (and shows the code it will write while you type).
+
+**Copy the code** copies the whole file with every green part turned back into code. It's what IntuCode
+does everywhere, a piece at a time: the symbols of a language said as words, and back.
+
 **Read: existing code → sections → plain English**
 
 Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
 code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML,
-CSS and C++ (including Arduino sketches) are all read. For a project, IntuCode shows:
+CSS and C++ (including Arduino sketches) are read in depth, and can be opened as sentences. Every
+other language in the file list is read too: C, Rust, Go, Zig, C#, Java, Kotlin, Swift, Scala,
+Objective-C, PHP, Ruby, Bash, Elixir, Lua, Dart, Elm, OCaml, Solidity, SQL, Vue, and data and notes
+(JSON, YAML, TOML, CSV, Markdown), each split into its parts (tools, types, tests, starting points…)
+and said in plain English (`lang/code_read.js`). The language comes from the file's name; pasted code
+and files whose name doesn't say are **auto-detected** from their text (with the reason shown), and
+**Read as** above the code picks another language for a file. For a project, IntuCode shows:
 
 - what kind of app it looks like, and which file to start reading;
 - a reading order, and a map of which files use which;
