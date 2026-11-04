@@ -104,6 +104,27 @@ over and over
 In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
 uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
+**Files and folders: one project, several languages**
+
+A project is a tree of files. **+ File** and **+ Folder** (beside Project) add them; a file goes in a folder
+when its name says so (`docs/plan.md`, `dsp/gain.py`). Each file has a language, from its ending or chosen
+in the list, and the language decides how it's written:
+
+| Language | You write | On the right |
+|---|---|---|
+| Python, HTML, CSS, JavaScript, C++, Arduino | sentences | the code they make |
+| Rust, C#, Swift, Kotlin, Go, Lua, TypeScript… (30+) | the code itself | what it does, in plain words |
+| Markdown, CSV, JSON, YAML, TOML, text | notes and data | Markdown as a page, CSV as a table, JSON's shape |
+
+A file's **⋯** renames or moves it, changes its language (the text stays as it is), makes it the file
+**Run starts** (marked *start*), or deletes it. A folder's **⋯** renames it (its files move with it) or
+deletes it with what's in it. Run starts the start file in its own way: a page in the preview, Python
+(from the project's folder, so `open("data/scores.csv")` works), C++ or a sketch; only problems in the
+files that run stop it. Python files can use what the Python files before them define (the import is
+added for you; the start file comes last), and a website's other pages, styles and scripts work with its
+main page (`index.html`, `style.css`, `script.js`). **File → New project → Your own files** starts with
+just a README.
+
 **Plan a project: a map before you start**
 
 **Plan** (in the menu bar, or from a kit in Project Templates) asks what you're making, by the same kinds as
@@ -119,7 +140,8 @@ sentences, with a **Project map** beside the folders. Each step says how much is
   for you, but now you know where it goes.
 
 Click a step for its role in the project and a jump to its sentences; the explanation panel says
-which step your cursor is in.
+which step your cursor is in. **+ Step** (beside Project map) adds a step of your own to any project: a
+name, how far along it is, and what it's for. Its note goes at the cursor, so the map takes you there.
 
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the help under the windows says what kind of thing to write

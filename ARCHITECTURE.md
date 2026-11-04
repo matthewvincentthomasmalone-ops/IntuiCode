@@ -48,6 +48,24 @@ kept for "restore" shares them. Saving writes them into `images/` (the desktop's
 opening a folder reads them back from there, so the files win, as the code does. The preview
 can't reach files, so each `images/…` name in the page becomes the picture's data.
 
+## Decision: a project is a tree of files, each in its own language
+
+*Decided 2026-11-04.*
+
+A project's files (`project.sections`) each have a `path` and a language id from `lang/languages.js`.
+The language says how the file is written: in **sentences** (Python, HTML, CSS, JavaScript, C++,
+Arduino), as **code** that IntuCode reads to you, or as **text** (Markdown, CSV, JSON…), kept as
+written. The engines still work by role (Python by module name; a website by structure, styling and
+mechanics; C++ by program; Arduino by sketch), and the shell works a file's role out from its path and
+language (`roleOf` in `app.js`). Each engine compiles its own files (`compileAll`): Python together with
+the start file last, a website's main page together and its other pages, styles and scripts each
+against it, C++ together, Arduino together. Projects saved before this keep their ids (`main`,
+`structure`…) and compile exactly as they did; `normalized()` gives them paths and languages on load.
+
+Paths are checked wherever they come from (`pathProblem`): relative, no `..`, nothing in `.intuicode/`
+or `images/`, Python files named as Python modules, and never two files in one place (ignoring case, as
+Windows and macOS do). The desktop layer refuses paths outside the project's folder as well.
+
 ## Decision: reading other languages
 
 Python is read with Python's own parser (`ast`), which also powers the exact "same program"
