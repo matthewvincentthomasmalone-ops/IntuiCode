@@ -32,6 +32,7 @@
       </div>
       <button type="button" id="btnPlan" class="btn ghost" title="Plan a project step by step: what you're making, its steps, then build">Plan</button>
       <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates</button>
+      <button type="button" id="btnLibrary" class="btn ghost" hidden title="Parts to add to your project: by kind of project or by what they do, in the languages they're written in, and code that joins two languages">Library</button>
       <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
       <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
@@ -183,6 +184,23 @@
     <div class="gloss-body" id="glossBody"></div>
   </div>
 
+  <div class="modal" id="libModal" hidden>
+    <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="libTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="libTitle">Library</h2>
+          <p>Parts to add to your project: by the kind of project they belong to, or by what they do. Each comes in the languages it's written in, and <b>Coding integration</b> joins two languages together. Adding a part puts its code in your project, in a file of its language.</p>
+        </div>
+        <button type="button" class="btn small" id="libClose">Close</button>
+      </div>
+      <div class="lib-search"><input id="libSearch" type="search" placeholder="Search parts and kinds of project: gain, filter, serial, login…" spellcheck="false" autocomplete="off" aria-label="Search the Library"></div>
+      <div class="bp-layout">
+        <nav class="bp-list" id="libList" aria-label="Library"></nav>
+        <div class="bp-detail" id="libDetail"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="bpModal" hidden>
     <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="bpTitle">
       <div class="modal-h">
@@ -322,6 +340,7 @@
 </div>
 
 <script src="lang/languages.js"></script>
+<script src="lang/project.js"></script>
 <script src="lang/python.js"></script>
 <script src="lang/web_write.js"></script>
 <script src="lang/cpp_write.js"></script>

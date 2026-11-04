@@ -100,8 +100,12 @@ const SKIP_DIRS: &[&str] = &[
     "venv", ".venv", "env", "node_modules", "__pycache__", ".git", "site-packages", "build", "dist",
     ".tox", ".mypy_cache", ".pytest_cache", ".idea", ".vscode", "target", ".next", ".nuxt", "coverage",
 ];
+/// The endings of every language a project's files can be in (lang/languages.js), except plain text.
 const CODE_EXT: &[&str] = &[
-    "py", "js", "jsx", "mjs", "cjs", "ts", "tsx", "html", "htm", "css", "cpp", "cc", "cxx", "hpp", "hh", "h", "ino",
+    "py", "pyw", "js", "jsx", "mjs", "cjs", "ts", "mts", "cts", "tsx", "html", "htm", "css", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "ino",
+    "vue", "php", "rb", "rake", "gemspec", "erb", "ejs", "c", "rs", "go", "zig", "cs", "csx", "java", "kt", "kts", "swift", "m", "mm",
+    "dart", "scala", "sc", "lua", "sh", "bash", "zsh", "ex", "exs", "el", "ml", "mli", "elm", "res", "resi", "sol", "ql", "qll", "tla",
+    "rdl", "sql", "json", "yaml", "yml", "toml", "csv", "md", "markdown",
 ];
 const MAX_FILES: usize = 400;
 const MAX_BYTES: u64 = 600_000;

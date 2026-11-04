@@ -35,10 +35,10 @@ export function loadEngine() {
   const ctx = { console };
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const f of ['lang/languages.js', 'lang/python.js', 'lang/web_write.js', 'lang/cpp_write.js', 'lang/blueprints.js']) {
+  for (const f of ['lang/languages.js', 'lang/project.js', 'lang/python.js', 'lang/web_write.js', 'lang/cpp_write.js', 'lang/blueprints.js']) {
     vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   }
-  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints, WEB: ctx.IntuiWeb, CPP: ctx.IntuiCpp, LANGS: ctx.IntuiLanguages };
+  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints, WEB: ctx.IntuiWeb, CPP: ctx.IntuiCpp, LANGS: ctx.IntuiLanguages, PRJ: ctx.IntuiProject };
 }
 
 /* Call the Python reader in bulk (one process per batch). */
