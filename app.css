@@ -1226,6 +1226,11 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .u-reg:hover { background: rgba(16, 92, 52, .35); }
 .u-how { padding: 0 12px; }
 
+/* Read mode: the language a file is read as */
+.rd-as { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--metal-ink-2); }
+.rd-as select, #impLang { padding: 3px 6px; border-radius: 3px; border: 0; background: var(--field); color: var(--ink); font: 12.5px var(--f-ui); box-shadow: var(--sunken); max-width: 180px; }
+.role.r-code { color: var(--var); }
+
 @media (max-width: 900px) {
   html, body { height: auto; }
   .app { height: auto; min-height: 100%; }

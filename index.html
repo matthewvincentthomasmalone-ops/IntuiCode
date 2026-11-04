@@ -134,6 +134,7 @@
             <p id="rdOverview"></p>
           </div>
           <div class="read-tools">
+            <span class="rd-as" id="rdAsWrap" hidden><label for="rdLang">Read as</label><select id="rdLang" title="The language this file is read as. Auto: from its name, or from its text when the name doesn't say."></select></span>
             <button type="button" id="btnTour" class="btn small" disabled title="Walk through this file's habits (Python, C++ or Arduino), in reading order">Style tour</button>
             <button type="button" id="btnSummarise" class="btn primary small" disabled>Summarise selection</button>
             <button type="button" id="btnToSentences" class="btn small" disabled>Open as sentences</button>
@@ -363,9 +364,11 @@
       <div class="imp-or">Or paste a single file</div>
       <div class="imp-row">
         <label for="impName">File name</label>
-        <input id="impName" value="pasted.py" spellcheck="false">
+        <input id="impName" value="pasted" spellcheck="false">
+        <label for="impLang">Language</label>
+        <select id="impLang"></select>
       </div>
-      <textarea id="impText" class="imp-text" spellcheck="false" placeholder="Paste code here, and give the file name its ending: .py, .js, .html, .css, .cpp, .ino…"></textarea>
+      <textarea id="impText" class="imp-text" spellcheck="false" placeholder="Paste code in any language. Auto-detect works it out from the text (or from the name's ending, if you give one); or choose the language."></textarea>
       <div class="imp-actions">
         <label class="btn small file-btn">Choose files<input type="file" id="impFiles" accept=".py,.pyw,.js,.jsx,.mjs,.cjs,.ts,.tsx,.html,.htm,.css,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino,text/plain" multiple></label>
         <span class="imp-note" id="impNote"></span>
@@ -382,6 +385,7 @@
 <script src="lang/cpp_write.js"></script>
 <script src="lang/ts_patch.js"></script>
 <script src="lang/web_read.js"></script>
+<script src="lang/code_read.js"></script>
 <script src="lang/convert.js"></script>
 <script src="lang/unity.js"></script>
 <script src="lang/blueprints.js"></script>

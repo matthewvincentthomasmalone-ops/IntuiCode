@@ -425,10 +425,10 @@
   }
   async function analyseFile(sec) {
     const CR = window.IntuiCodeReader;
-    const WR = await Runner.webReader(() => {});
-    if (CR) { await CR.prepare(WR, sec.lang); return CR.analyze(sec.lang, sec.path, sec.text); }
-    if (/^(ts|tsx)$/.test(sec.lang)) { await WR.loadLangs([sec.lang]); return WR.analyzeJs(sec.path, sec.text, sec.lang, { fileOf: () => null }); }
-    return null;
+    if (!CR) return null;
+    await Runner.webReader(() => {});   // (the grammars come through the web reader's tree-sitter)
+    await CR.load(sec.lang);
+    return CR.analyze(sec.lang, sec.path, sec.text);
   }
   function renderSide(sec) {
     const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
@@ -3141,8 +3141,19 @@
   const ROLE_ORDER = ['entry', 'settings', 'models', 'helpers', 'routes', 'script', 'package', 'tests'];
   const SKIP_DIRS = new Set(['venv', '.venv', 'env', '.env', 'node_modules', '__pycache__', '.git', 'site-packages', 'build', 'dist', '.tox', '.mypy_cache', '.pytest_cache', '.idea', '.vscode']);
   const EXTRA_FILE = /(^|\/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile|package\.json)$/i;
-  const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$/i;
-  const langOfPath = (p) => /\.py$/i.test(p) ? 'python' : (window.IntuiWebReader.kindOfPath(p) || 'python');
+  const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$/i;   // what the Python and web readers read
+  /* A file's language in Read mode: the one chosen for it ("Read as"), else the one its name says. The Python
+     and web readers read their own languages (and can turn them into sentences); the code reader
+     (lang/code_read.js) reads everything else, and any file read as another language than its name says. */
+  const OWN_READ = new Set(['python', 'html', 'css', 'js', 'ts', 'tsx', 'cpp', 'arduino']);
+  const extLang = (name) => LANGS.fromPath(name);
+  const readLang = (f) => f.lang || f.auto || extLang(f.name);   // (auto: what the text of a file named .txt or nothing turned out to be)
+  const ownReader = (f) => (!f.lang || f.lang === extLang(f.name)) && CODE_FILE.test(f.name) && OWN_READ.has(extLang(f.name));
+  const codeReader = (f) => !ownReader(f) && readLang(f) !== 'text' && !!window.IntuiCodeReader;
+  const readableFile = (f) => ownReader(f) || codeReader(f);
+  const readFileOf = (p) => reads.files.find(x => x.name === p);
+  /* The highlighter's and the tour's name for a file's language (an Arduino sketch is C++ to them). */
+  const langOfPath = (p) => { const f = readFileOf(p), l = f ? readLang(f) : extLang(p); return l === 'arduino' ? 'cpp' : l; };
 
   function saveReads() {
     try { localStorage.setItem(READ_KEY, JSON.stringify(reads)); }
@@ -3178,7 +3189,7 @@
   $('modeRead').addEventListener('click', () => setMode('read'));
   $('modeUnity').addEventListener('click', () => setMode('unity'));
 
-  const pyFiles = () => reads.files.filter(f => CODE_FILE.test(f.name));   // every file that can be read
+  const pyFiles = () => reads.files.filter(readableFile);   // every file that can be read
   const curFile = () => (reads.active >= 0 ? pyFiles()[reads.active] : null);
   const fileInfo = (path) => proj && proj.files.find(x => x.path === path);
   const curAnalysis = () => { const f = curFile(); const i = f && fileInfo(f.name); return i ? i.analysis : null; };
@@ -3199,22 +3210,32 @@
   async function analyse() {
     if (!reads.files.length) { proj = null; return; }
     $('rdSum').innerHTML = '<p class="sum-empty">Reading the code… (the first time, this loads Python into the page)</p>';
-    const pySide = reads.files.filter(f => !CODE_FILE.test(f.name) || /\.py$/i.test(f.name));
-    const webSide = reads.files.filter(f => CODE_FILE.test(f.name) && !/\.py$/i.test(f.name));
-    let py = null, web = null;
+    // Python's reader also takes the project's notes (README, requirements…); the others read their own files
+    const pyOwn = (f) => ownReader(f) && extLang(f.name) === 'python';
+    const pySide = reads.files.filter(f => pyOwn(f) || EXTRA_FILE.test(f.name));
+    const webSide = reads.files.filter(f => ownReader(f) && !pyOwn(f));
+    const codeSide = reads.files.filter(codeReader);
+    let py = null, web = null, code = null;
     try {
-      if (pySide.some(f => /\.py$/i.test(f.name))) {
+      if (pySide.some(pyOwn)) {
         if (!(await ensurePython())) { $('rdSum').innerHTML = '<p class="sum-empty">Python couldn\'t start, so the Python files can\'t be read here.</p>'; return; }
         const R = await Runner.reader((s) => setStatus(s));
         py = R.analyzeProject(pySide);
       }
-      if (webSide.length) {
+      if (webSide.length || codeSide.length) {
         const WR = await Runner.webReader((s) => setStatus(s));
-        await WR.loadLangs([...new Set(webSide.map(f => WR.kindOfPath(f.name)).filter(Boolean))]);
-        web = WR.analyzeProject(webSide, py);
-        setStatus(Runner.ready ? $('pyStatus').textContent.replace(/^Loading.*/, 'Readers ready') : 'Web reader ready', 'ready');
+        if (webSide.length) {
+          await WR.loadLangs([...new Set(webSide.map(f => WR.kindOfPath(f.name)).filter(Boolean))]);
+          web = WR.analyzeProject(webSide, py);
+        }
+        if (codeSide.length) {
+          const CR = window.IntuiCodeReader;
+          for (const l of new Set(codeSide.map(readLang))) { try { await CR.load(l); } catch (_) { /* read without its grammar: an outline */ } }
+          code = codeSide.map(f => codeFileEntry(f, CR.analyze(readLang(f), f.name, f.source)));
+        }
+        setStatus(Runner.ready ? $('pyStatus').textContent.replace(/^Loading.*/, 'Readers ready') : 'Readers ready', 'ready');
       }
-      proj = mergeProjects(py, web);
+      proj = withCodeFiles(mergeProjects(py, web), code);
     } catch (e) {
       proj = null;
       $('rdSum').innerHTML = `<p class="sum-empty">The reader hit a problem: ${escHtml(e.message)}</p>`;
@@ -3263,6 +3284,41 @@
     return { ok: true, name, overview, readme, entries, order, files, edges, libs, warnings, secrets: py ? py.secrets : [] };
   }
 
+  /* A file the code reader read, in the shape the project view uses. */
+  function codeFileEntry(f, a) {
+    const lang = readLang(f);
+    a = a || { ok: false, error: 'It couldn\'t be read.', sections: [] };
+    return {
+      path: f.name, module: f.name, lang, role: 'code', role_label: langName(lang), summary: a.overview || '', imports: [], imported_by: [],
+      analysis: { ok: a.ok !== false, error: a.error, overview: a.overview || '', sections: a.sections || [], lines: a.lines }, libs: a.libs || [], lines: a.lines,
+    };
+  }
+  /* The project with the code reader's files in it (or, with only those, a project of them). */
+  function withCodeFiles(p, code) {
+    if (!code || !code.length) return p;
+    const langs = [...new Set(code.map(f => f.role_label))];
+    const said = langs.length > 1 ? langs.slice(0, -1).join(', ') + ' and ' + langs[langs.length - 1] : langs[0];
+    const libs = p ? p.libs.slice() : [];
+    for (const f of code) for (const l of f.libs) { const name = typeof l === 'string' ? l : l.name; if (!name) continue; let e = libs.find(x => x.name === name); if (!e) libs.push(e = { name, what: '', files: [], stdlib: false }); if (!e.files.includes(f.path)) e.files.push(f.path); }
+    if (p) {
+      p.files.push(...code);
+      p.order.push(...code.map(f => f.path));
+      p.libs = libs;
+      p.overview += ` It also has ${code.length} file${code.length === 1 ? '' : 's'} in ${said}.`;
+      return p;
+    }
+    const files = code, firsts = new Set(files.map(f => f.path.split('/')[0]));
+    const name = firsts.size === 1 && files.every(f => f.path.includes('/')) ? [...firsts][0] : 'this project';
+    const readmeFile = reads.files.find(f => /(^|\/)readme(\.\w+)?$/i.test(f.name));
+    const readme = readmeFile ? (readmeFile.source.split(/\n\s*\n/).map(x => x.trim()).find(x => x && !/^(#|!\[|<|```)/.test(x)) || '').replace(/[`*_]/g, '').slice(0, 300) : '';
+    const start = files.find(f => (f.analysis.sections || []).some(s => s.kind === 'start')) || files.find(f => !/^(markdown|json|yaml|toml|csv|text)$/.test(f.lang)) || files[0];
+    return {
+      ok: true, name, readme, files, libs, edges: [], warnings: [], secrets: [],
+      overview: `${name === 'this project' ? 'This project' : name} has ${files.length} file${files.length === 1 ? '' : 's'}, in ${said}.` + (start ? ` Start reading at [[${start.path}]].` : ''),
+      entries: start ? [start.path] : [], order: [start, ...files.filter(f => f !== start)].filter(Boolean).map(f => f.path),
+    };
+  }
+
   function readTreeHtml() {
     const files = pyFiles();
     if (!files.length) return '<p class="side-note">Nothing imported yet.</p>';
@@ -3278,7 +3334,7 @@
       const role = info ? info.role : '';
       html += `<button type="button" class="tree-item file${i === reads.active ? ' active' : ''}${role === 'package' ? ' faint' : ''}${dir ? ' nested' : ''}" data-i="${i}"><span class="ti-title">${escHtml(p.split('/').pop())}</span>${info ? `<span class="role r-${role}">${escHtml(info.role_label)}</span>` : ''}</button>`;
     }
-    const extras = reads.files.filter(f => !CODE_FILE.test(f.name));
+    const extras = reads.files.filter(f => !readableFile(f));
     if (extras.length) html += `<div class="tree-dir">Also found</div>` + extras.map(f => `<div class="tree-extra">${escHtml(shortPath(f.name))}</div>`).join('');
     return html;
   }
@@ -3296,7 +3352,12 @@
     $('rdOutlineWrap').hidden = !file;
     $('btnSummarise').disabled = !a || !a.ok;
     $('btnToSentences').disabled = !a || !a.ok;
-    $('btnTour').disabled = !a || !file || !TOUR_LANGS.has(langOfPath(file.name)) || (langOfPath(file.name) === 'python' && !a.ok);
+    $('btnTour').disabled = !a || !file || !ownReader(file) || !TOUR_LANGS.has(langOfPath(file.name)) || (langOfPath(file.name) === 'python' && !a.ok);
+    $('rdAsWrap').hidden = !file || (files.length > 1 && reads.active === -1);
+    if (file) {
+      const auto = file.auto || extLang(file.name);
+      $('rdLang').innerHTML = `<option value="">Auto (${escHtml(langName(auto))})</option>` + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}"${file.lang === l.id ? ' selected' : ''}>${escHtml(l.name)}</option>`).join('');
+    }
     if (!files.length) {
       $('rdName').textContent = 'No code imported yet';
       $('rdOverview').textContent = 'Import Python, such as a project an AI wrote for you, to see it split into sections and explained in plain English.';
@@ -3310,12 +3371,12 @@
     $('rdName').textContent = shortPath(file.name);
     const fileLinks = (paths) => paths.map(p => `[[${escHtml(p)}]]`).join(', ');
     const links = info && (info.imported_by.length || info.imports.length) ? linkify(`<span class="rd-links">${info.imports.length ? ' Uses ' + fileLinks(info.imports) + '.' : ''}${info.imported_by.length ? ' Used by ' + fileLinks(info.imported_by) + '.' : ''}</span>`) : '';
-    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + links : `<span class="bad-text">This file can't be read as Python. ${escHtml(a.error)}</span>`) : 'Reading…';
+    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + links : `<span class="bad-text">This file can't be read as ${escHtml(langName(readLang(file)))}. ${escHtml(a.error || '')} Try another language in <b>Read as</b>.</span>`) : 'Reading…';
     const secs = a && (a.ok || (a.sections && a.sections.length)) ? a.sections : [];
     const fileLang = langOfPath(file.name);
-    const canSay = /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
+    const canSay = ownReader(file) && /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
     $('btnToSentences').disabled = !a || !a.ok || !canSay;
-    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : 'TypeScript and React files can\'t be opened as sentences yet.';
+    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : !ownReader(file) ? `IntuCode has sentences for Python, HTML, CSS, JavaScript, C++ and Arduino; ${langName(readLang(file))} is read to you instead.` : 'TypeScript and React files can\'t be opened as sentences yet.';
     const startOf = new Map(secs.map(s => [s.start, s]));
     const secOfLine = (ln) => secs.find(s => ln >= s.start && ln <= s.end);
     $('rdCode').innerHTML = file.source.split('\n').map((l, i) => {
@@ -3323,7 +3384,7 @@
       const s = secOfLine(ln);
       const head = startOf.get(ln);
       const label = head ? `<div class="rl-sec" data-sec="${head.id}"><span class="chip k-${head.kind}">${KIND_LABEL[head.kind]}</span>${escHtml(head.title)}${head.warnings.length ? `<span class="warn-dot" title="${head.warnings.length} thing${head.warnings.length > 1 ? 's' : ''} worth checking">!</span>` : ''}</div>` : '';
-      return `${label}<div class="rl${s ? ' in-sec' : ''}${s && s.id % 2 ? ' alt' : ''}" data-line="${ln}" data-sec="${s ? s.id : ''}"><span class="ln">${ln}</span><span class="pc">${hlCode(fileLang, l) || ' '}</span></div>`;
+      return `${label}<div class="rl${s ? ' in-sec' : ''}${s && s.id % 2 ? ' alt' : ''}" data-line="${ln}" data-sec="${s ? s.id : ''}"><span class="ln">${ln}</span><span class="pc">${(ownReader(file) ? hlCode(fileLang, l) : hlFileLine({ lang: readLang(file) }, l)) || ' '}</span></div>`;
     }).join('');
     $('rdOutline').innerHTML = secs.map(s => `<button type="button" class="ol-item" data-sec="${s.id}"><span class="chip k-${s.kind}">${KIND_LABEL[s.kind]}</span><span class="ol-t">${escHtml(s.title)}</span>${s.warnings.length ? '<span class="warn-dot">!</span>' : ''}<span class="ol-l">${s.start}–${s.end}</span></button>`).join('');
     renderFocus();
@@ -3332,7 +3393,7 @@
   /* Project overview: what it is, where to start, how files connect, what to check. */
   function renderProject() {
     $('rdName').textContent = proj ? proj.name : 'Project';
-    const langs = proj ? [...new Set(proj.files.map(f => LANG_NAME[langOfPath(f.path)]))] : [];
+    const langs = proj ? [...new Set(proj.files.map(f => langName(readLang(readFileOf(f.path) || { name: f.path }))))] : [];
     $('rdOverview').textContent = proj ? `${proj.files.length} files · ${langs.join(', ')}` : 'Reading…';
     if (!proj) { $('rdProject').innerHTML = '<p class="sum-empty">Reading the project…</p>'; return; }
     const allWarn = proj.warnings.map(w => ({ w })).concat(proj.files.flatMap(f => (f.analysis.sections || []).flatMap(s => s.warnings.map(w => ({ w, f, s })))));
@@ -3515,15 +3576,16 @@
       return;
     }
     const f = curFile();
-    if (langOfPath(f.name) === 'python') {
+    if (ownReader(f) && langOfPath(f.name) === 'python') {
       const R = await Runner.reader();
       readFocus = { type: 'range', summary: R.summarise(f.source, r.start, r.end, f.name) };
     } else {
-      // web files: read the highlighted lines on their own
+      // web and other files: read the highlighted lines on their own
       const WR = await Runner.webReader();
       const text = f.source.split('\n').slice(r.start - 1, r.end).join('\n');
       const k = WR.kindOfPath(f.name);
-      const a = k === 'html' ? WR.analyzeHtml(f.name, text, { fileOf: () => null, scriptsFor: () => [], stylesFor: () => [] })
+      const a = codeReader(f) ? window.IntuiCodeReader.analyze(readLang(f), f.name, text)
+        : k === 'html' ? WR.analyzeHtml(f.name, text, { fileOf: () => null, scriptsFor: () => [], stylesFor: () => [] })
         : k === 'css' ? WR.analyzeCss(f.name, text, { htmlMatches: () => [], hasHtml: false, scriptMentions: () => false })
         : WR.analyzeJs(f.name, text, k, { path: f.name, xnames: {}, uses: [], fetches: [], htmlTargets: () => null, routeFor: () => null, hasServer: false, fileOf: () => null });
       const secs = a.sections || [];
@@ -3700,6 +3762,7 @@
     if (name.endsWith('.py')) return 'py';
     if (CODE_FILE.test(name)) return 'web';
     if (EXTRA_FILE.test(path)) return 'extra';
+    if (LANGS.fromPath(name) !== 'text') return 'code';   // any other language Read mode knows
     return null;
   }
 
@@ -3718,6 +3781,20 @@
   }
 
   function openImport() { $('impModal').hidden = false; $('impNote').textContent = ''; $('impText').focus(); }
+  // the languages Read mode knows, for pasted code and for choosing files
+  $('impLang').innerHTML = '<option value="">Auto-detect</option>' + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
+  $('impFiles').accept = [...new Set(LANGS.LANGUAGES.flatMap(l => l.exts))].map(e => '.' + e).concat('.pyw', 'text/plain').join(',');
+  $('rdLang').addEventListener('change', async (e) => {
+    const f = curFile();
+    if (!f) return;
+    if (e.target.value) f.lang = e.target.value; else delete f.lang;
+    readFocus = null;
+    saveReads();
+    await analyse();
+    reads.active = Math.max(0, pyFiles().indexOf(f));
+    renderRead();
+    tLine(`Reading ${shortPath(f.name)} as ${langName(readLang(f))}${e.target.value ? '' : ' (from its name and text)'}.`, 't-sys');
+  });
   function closeImport() { $('impModal').hidden = true; $('impCard').classList.remove('dropping'); }
   $('btnImport').addEventListener('click', openImport);
   $('btnImport2').addEventListener('click', openImport);
@@ -4443,7 +4520,7 @@
     e.target.value = '';
     if (!list.length) return;
     const { files, skipped } = await filesToProject(list);
-    importProject(files, skipped ? `Skipped ${skipped} files that aren't Python or project notes (images, caches, virtual environments…).` : '');
+    importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes (images, caches, virtual environments…).` : '');
   });
   $('impZip').addEventListener('change', async (e) => {
     const f = e.target.files[0];
@@ -4486,34 +4563,52 @@
       return importProject(R.readZip(new Uint8Array(await list[0].file.arrayBuffer())), '');
     }
     const { files, skipped } = await filesToProject(list);
-    if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't Python or project notes.` : '');
+    if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes.` : '');
     else { closeImport(); addFiles(files); }
   });
 
   $('impGo').addEventListener('click', () => {
     const text = $('impText').value;
     if (!text.trim()) { $('impNote').textContent = 'Paste some code first, or choose files or a folder.'; return; }
-    let name = $('impName').value.trim() || 'pasted.py';
-    if (!CODE_FILE.test(name) && !/\.pyw$/i.test(name)) name += '.py';   // (a name like blink.ino or app.js keeps its language)
+    const source = text.replace(/\r\n?/g, '\n'), CR = window.IntuiCodeReader;
+    let name = $('impName').value.trim() || 'pasted';
+    // the language: the one chosen, else the name's ending, else what the text itself is
+    const picked = $('impLang').value;
+    const d = !picked && CR ? CR.detect(LANGS.fromPath(name) !== 'text' ? name : '', source) : null;
+    const lang = picked || (d && d.lang !== 'text' ? d.lang : LANGS.fromPath(name) !== 'text' ? LANGS.fromPath(name) : 'python');
+    if (LANGS.fromPath(name) !== lang && LANGS.byId(lang)) name = name.replace(/\.[A-Za-z0-9]+$/, '') + '.' + LANGS.extOf(lang);   // pasted → pasted.rs
     closeImport();
     $('impText').value = '';
-    addFiles([{ name, source: text.replace(/\r\n?/g, '\n') }]);
+    addFiles([{ name, source, ...(picked ? { lang: picked } : {}) }]);
+    if (!picked && d) tLine(`Reading it as ${langName(lang)}: ${d.why} If that's wrong, choose another language in Read as.`, 't-sys');
   });
 
   /* A folder, zip or example replaces what was imported before; single files are added to it. */
   async function importProject(files, note) {
     closeImport();
-    if (!files.some(f => CODE_FILE.test(f.name))) { tLine('No Python, JavaScript, HTML or CSS files were found there.', 't-err'); return; }
+    autoLangs(files);
+    if (!files.some(readableFile)) { tLine('No code files were found there.', 't-err'); return; }
     reads = { files, active: -1 };
     await afterImport(note);
   }
   async function addFiles(files) {
+    autoLangs(files);
     for (const f of files) {
       const at = reads.files.findIndex(x => x.name === f.name);
       if (at >= 0) reads.files[at] = f; else reads.files.push(f);
     }
     reads.active = pyFiles().findIndex(x => x.name === files[0].name);
     await afterImport('');
+  }
+  /* Files whose name says nothing (no ending, .txt): the language their text is in, if it's clear. */
+  function autoLangs(files) {
+    const CR = window.IntuiCodeReader;
+    if (!CR) return;
+    for (const f of files) {
+      if (f.lang || extLang(f.name) !== 'text') continue;
+      const d = CR.detect(f.name, f.source);
+      if (d && d.lang && d.lang !== 'text' && d.confidence !== 'guess') f.auto = d.lang;
+    }
   }
   async function afterImport(note) {
     readFocus = null;
@@ -4523,7 +4618,7 @@
     if (pyFiles().length === 1) reads.active = 0;
     renderRead();
     const counts = {};
-    for (const f of pyFiles()) { const l = LANG_NAME[langOfPath(f.name)] || 'code'; counts[l] = (counts[l] || 0) + 1; }
+    for (const f of pyFiles()) { const l = langName(readLang(f)); counts[l] = (counts[l] || 0) + 1; }
     const parts = Object.entries(counts).map(([l, c]) => `${c} ${l}`);
     const n = pyFiles().length;
     tLine(`Imported ${n} file${n === 1 ? '' : 's'}${parts.length ? ` (${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]})` : ''}.` + (note ? ' ' + note : ''), 't-sys');
