@@ -197,3 +197,13 @@ for (const [sentences, re, warn] of [
     assert.ok(said.some(e => re.test(e)), said.join('\n'));
   });
 }
+
+test('C++: a note above a tool stays above main; description, using nothing, multiply and divide', () => {
+  const r = cpp('note: greets people\ndefine greet using nothing\n    description: says hi\n    show "hi"\nnote: start here\nrun greet\nset x to 2\nmultiply x by 3\ndivide x by 2\nshow x');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /\/\/ greets people\n\/\*\*\n \* says hi\n \*\/\nauto greet\(\) \{/);
+  assert.match(r.text, /int main\(\) \{\n    \/\/ start here\n    greet\(\);/);
+  assert.match(r.text, /x \*= 3;\n    x \/= 2;/);
+  assert.ok(r.info.some(i => i.warns.some(w => /keeps only the whole part/.test(w))), 'dividing a whole number warns');
+  assertValidCpp(r.text, 'notes, description, multiply');
+});

@@ -530,6 +530,12 @@
 
   function selectorFor(name, shared, inf) {
     let n = name.trim(), m;
+    // "toast.shown" or "toast:hover": a name from Structure with a group or state on it, not a <toast> tag
+    if ((m = n.match(/^([a-z][\w-]*)([.:][\w\s.:()-]*)$/i)) && !HTML_TAGS.has(m[1].toLowerCase())) {
+      if (shared.ids[toId(m[1])]) { note(inf, `${code(m[1])} is the element called ${m[1]}, so this is ${code('#' + toId(m[1]) + m[2])}.`); return '#' + toId(m[1]) + m[2]; }
+      inf.warns.push(`There's no <${m[1]}> element, and nothing on the page is called ${code(m[1])} yet. For an element you named, write #${m[1]}${m[2]}.`);
+      return n;
+    }
     if (/^[.#:*\[]|[>~+]/.test(n) || /^[a-z]+[.#:]/.test(n)) { note(inf, `${code(n)} is a CSS selector written directly.`); return n; }
     if ((m = n.match(/^group\s+(.+)$/i))) return '.' + toId(m[1]);
     if ((m = n.match(/^(?:the element|element)\s+(.+)$/i))) return '#' + toId(m[1]);
@@ -805,7 +811,11 @@
       // (of a tool's result: .at(-1), so the tool runs once, not twice)
       swap(String.raw`\blast item (?:of|in) ${NOT_ITEM}(OPD)`, (m, a) => (/\(/.test(a) ? `${a}.at(-1)` : `${a}[${a}.length - 1]`));
       swap(String.raw`\bitem (OPD) (?:of|in) ${NOT_ITEM}(OPD)`, '$2[$1]');
+      // a worked-out position in brackets: "item ((k plus 1) mod n) of stars" is stars[(k + 1) % n]
+      swap(String.raw`\bitem (${PAREN}) (?:of|in) ${NOT_ITEM}(OPD)`, (m, at, list) => `${list}[${at.slice(1, -1).trim()}]`);
     }
+    // anything else between "item" and "of" isn't one position: say how to write it, never leave it half-done
+    if (!x.vars.has('item') && /\bitem\s+\S.*?\s+of\s/i.test(q.replace(/⟦\d+⟧/g, ''))) inf.errs.push('The position in "item … of …" has to be one value: a number, a name, or a sum in brackets, like item (k plus 1) of stars.');
     swap(String.raw`\b(?:length|size) of (OPD)`, '$1.length');
     swap(String.raw`\bhow many (?:items )?in (OPD)`, '$1.length');
     q = randomRange(q, OPD, strs, inf, s);
@@ -929,7 +939,7 @@
       if ((m = s.match(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s/i))) x.vars.add(m[1]);
       if (/^keep track of (?:the )?keys$/i.test(s)) x.vars.add('keysDown');
       if ((m = s.match(/^load (?:the |a )?(?:picture|image)\s+.+?\s+(?:as|called)\s+([A-Za-z_$][\w$]*)$/i))) { x.vars.add(m[1]); x.pictures = (x.pictures || new Set()).add(m[1]); }
-      if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p)); }
+      if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }   // (greeting = "hi": the name is greeting)
       if ((m = s.match(MAKE_NEW)) && (m = m[2].match(/\band store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) x.made.set(m[1], MADE[s.match(MAKE_NEW)[1].toLowerCase().replace(/\s+/g, ' ')]);
       if ((m = s.match(/^(every|after)\s+.+?\s+seconds?\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) { x.vars.add(m[2]); x.timers.set(m[2], /^every$/i.test(m[1]) ? 'Interval' : 'Timeout'); }
       if ((m = s.match(/^(?:if|when) (?:it|that|this|anything|something) fails\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
@@ -956,7 +966,7 @@
       const t = line.trim().replace(FILLER, '').replace(/[.:]$/, ''), e = n.replace(/\$/g, '\\$');
       const r = t.match(/^(?:js|javascript|raw)\s*:(.*)$/i);
       if (r) return new RegExp(`(?<![\\w$.])${e}\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)|(?<![\\w$.])${e}\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*${e}(?![\\w$])`).test(r[1].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""'));
-      return new RegExp(`^(?:(?:set|let|make)\\s+${e}\\s+(?:to|be)\\s|(?:increase|decrease)\\s+${e}(?:\\s|$)|(?:create|make)\\s+(?:an?\\s+)?(?:empty\\s+)?list\\s+(?:called\\s+)?${e}(?:\\s|$))|\\band store (?:it |the reply |the result )?in\\s+${e}$`, 'i').test(t);
+      return new RegExp(`^(?:(?:set|let|make)\\s+${e}\\s+(?:to|be)\\s|(?:increase|decrease|multiply|divide)\\s+${e}(?:\\s|$)|(?:create|make)\\s+(?:an?\\s+)?(?:empty\\s+)?list\\s+(?:called\\s+)?${e}(?:\\s|$))|\\band store (?:it |the reply |the result )?in\\s+${e}$`, 'i').test(t);
     };
     const changedLater = (i, n, body) => {
       const base = lines[i].match(/^ */)[0].length;
@@ -1343,6 +1353,12 @@
         if (m[3]) return say(`${t} ${up ? '+' : '-'}= ${E(m[3], inf)};`);
         note(inf, `No amount given, so it goes ${up ? 'up' : 'down'} by 1: \`${up ? '++' : '--'}\` ${up ? 'adds' : 'takes away'} 1.`);
         return say(`${t}${up ? '++' : '--'};`);
+      }
+      if ((m = M(/^(multiply|divide)\s+(.+?)\s+by\s+(.+)$/i))) {
+        const t = E(m[2], inf), by = E(m[3], inf), times = /^multiply$/i.test(m[1]);
+        if (/^[A-Za-z_$][\w$]*$/.test(t) && isConst(t)) inf.errs.push(`${code(t)} is a constant (made with const), so it can't be changed.`);
+        note(inf, `\`${times ? '*=' : '/='}\` is short for ${code(`${t} = ${t} ${times ? '*' : '/'} ${by}`)}.`);
+        return say(`${t} ${times ? '*=' : '/='} ${by};`);
       }
       if ((m = M(/^ask\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) { note(inf, '`prompt` shows a pop-up question. It gives back text.'); return say(`${keyword(m[2], inf)}${m[2]} = prompt(${E(m[1], inf)});`); }
       if ((m = M(/^constant\s+([A-Za-z_$][\w$]*)\s+(?:is|=)\s+(.+)$/i))) {

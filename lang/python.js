@@ -23,7 +23,13 @@
   // How phrases like "length of x" start: a multi-word name starting like this could be read either way.
   const PHRASE_LEAD = /^(?:(?:length|size|sum|total|count|number) of |(?:first|last) (?:item|one|thing) (?:of|in) |square root of |absolute (?:value )?of |(?:biggest|largest|highest|maximum|smallest|lowest|minimum) (?:of|in) |random (?:item|choice|one) (?:from|of|in) |pairs (?:of|in) )/i;
   const FILE_ORDER = { settings: 0, tools: 1, main: 2 };
-  const ALWAYS_KNOWN = new Set(['self', 'cls', '__name__', '__file__', 'Exception', 'ValueError', 'TypeError', 'KeyError', 'IndexError', 'open', 'dict', 'object', 'super', 'getattr', 'setattr', 'hasattr', 'isinstance', 'iter', 'next', 'repr', 'format', 'vars', 'id', 'hash', 'callable', 'exit']);
+  const ALWAYS_KNOWN = new Set(['self', 'cls', '__name__', '__file__', 'Exception', 'ValueError', 'TypeError', 'KeyError', 'IndexError', 'open', 'dict', 'object', 'super', 'getattr', 'setattr', 'hasattr', 'isinstance', 'iter', 'next', 'repr', 'format', 'vars', 'id', 'hash', 'callable', 'exit',
+    // Python's own, always there: more kinds of value and the errors programs most often catch
+    'bytes', 'bytearray', 'frozenset', 'complex', 'slice', 'property', 'staticmethod', 'classmethod', 'NotImplemented', 'Ellipsis',
+    'ArithmeticError', 'AssertionError', 'AttributeError', 'ConnectionError', 'EOFError', 'FileExistsError', 'FileNotFoundError',
+    'ImportError', 'KeyboardInterrupt', 'LookupError', 'ModuleNotFoundError', 'NameError', 'NotImplementedError', 'OSError',
+    'OverflowError', 'PermissionError', 'RuntimeError', 'StopIteration', 'TimeoutError', 'UnicodeDecodeError', 'ZeroDivisionError',
+    'BrokenPipeError', 'ConnectionRefusedError', 'ConnectionResetError', 'IsADirectoryError', 'RecursionError']);
 
   /* Names match exactly first. If there is no exact match, a different-case spelling is used
      when it is the only one ("Score" finds score), because Python itself is case-sensitive:
@@ -357,7 +363,7 @@
      file. 'value' when that can't be known. */
   function kindHere(x, py) {
     const s = x.syms.get(py);
-    if (!s) return undefined;
+    if (!s) return /^self\.[A-Za-z_]\w*$/.test(py) ? x.env.attrs?.get(`${x.file}:${py}`) : undefined;
     const k = s.kinds || {};
     return k[scopeKey(x)] || k[`mod:${x.file}`] || Object.entries(k).find(([w]) => w.startsWith('mod:'))?.[1] || s.kind;
   }
@@ -656,6 +662,12 @@
       return { py: `${tgt.py} = ${value}` };
     }
     if (/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(nameRaw.trim())) {
+      // what an object's own value holds (self.items = [] in a class), so "add item to self.items" appends
+      if (/^self\.[A-Za-z_]\w*$/.test(nameRaw.trim())) {
+        const attrs = x.env.attrs = x.env.attrs || new Map(), key = `${x.file}:${nameRaw.trim()}`, had = attrs.get(key), kind = kindOf(value, x);
+        if (!had || had === 'value') attrs.set(key, kind);
+        else if (kind !== 'value' && kind !== had) attrs.set(key, 'mixed');
+      }
       x.note(`Stores the value in ${code(nameRaw.trim())}, a value that belongs to an object.`);
       return { py: `${nameRaw.trim()} = ${value}` };
     }
@@ -1046,11 +1058,11 @@
   });
   rule(/^(add|append|put)\s+(.+?)\s+(?:to|onto|into)\s+(?:the\s+end\s+of\s+)?(.+)$/i, (m, x) => {
     const target = tExpr(m[3], x);
-    const s = x.syms.get(target);
-    const k = s ? kindHere(x, target) : pickedOut(target) ? itemKind(target, x) : undefined;
+    const s = x.syms.get(target), own = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(target);   // (an object's value: set in another tool, or by the class it builds on)
+    const k = s ? kindHere(x, target) : pickedOut(target) ? itemKind(target, x) : own ? kindHere(x, target) : undefined;
     // "put 0 into count" stores a value; "put "milk" into basket" adds to a list
     if (m[1].toLowerCase() === 'put' && k !== 'list' && !pickedOut(target)) return doSet(m[3], m[2], x);
-    if (x.pass === 2 && !s && !pickedOut(target)) { x.err(`${code(target)} doesn't exist yet. Create it first, e.g. "set ${m[3].trim()} to 0" or "create list ${m[3].trim()}".`); }
+    if (x.pass === 2 && !s && !pickedOut(target) && !own) { x.err(`${code(target)} doesn't exist yet. Create it first, e.g. "set ${m[3].trim()} to 0" or "create list ${m[3].trim()}".`); }
     if (k === 'dict') { x.err('To add to a dictionary, give the key: set item "key" of ' + target + ' to value.'); return { py: `${target}` }; }
     // several things at once: "add "milk" and "eggs" to basket" adds both
     const parts = splitItems(m[2]);

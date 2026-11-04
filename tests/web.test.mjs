@@ -532,3 +532,16 @@ test('mechanics: a tab at the start of a line indents it, as 4 spaces do', () =>
   const r = site('', '', 'set n to 1\nif n is 1\n\tshow "one"\nshow "after"');
   assert.match(r.results.mechanics.text, /if \(n === 1\) \{\n  console\.log\("one"\);\n\}\nconsole\.log\("after"\);/);
 });
+
+test('mechanics and styling: default inputs, multiply/divide, a worked-out position, a name with a group on it', () => {
+  const r = site('add a block called toast', 'style toast: opacity: 0\nstyle toast.shown: opacity: 1',
+    'define greet using name, greeting = "hi"\n    show greeting\nset x to 2\nmultiply x by 3\ndivide x by 2\ncreate list stars with 1, 2, 3\nset k to 0\nshow item ((k plus 1) mod 3) of stars');
+  const js = r.results.mechanics;
+  assert.deepEqual(plain(js.info.flatMap(i => [...i.errs, ...i.warns])), []);
+  assert.match(js.text, /function greet\(name, greeting = "hi"\) \{/);
+  assert.match(js.text, /x \*= 3;\nx \/= 2;/);
+  assert.match(js.text, /console\.log\(stars\[\(k \+ 1\) % 3\]\);/);
+  assert.match(r.results.styling.text, /#toast\.shown \{/);
+  const bad = site('', '', 'create list stars with 1, 2, 3\nset k to 0\nshow item k plus 1 of stars');
+  assert.ok(problems(bad, 'mechanics').some(e => /has to be one value/.test(e)));
+});

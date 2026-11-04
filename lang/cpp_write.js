@@ -383,7 +383,7 @@
       const depth = stack.length + (out === mainOut ? 1 : 0);
       const depthNow = () => stack.length + (out === mainOut ? 1 : 0);
       const say = (t) => out.push({ text: '    '.repeat(depthNow()) + t, src: i });
-      const open = (head, kind, extra = {}) => { const d = depthNow(); say(head + ' {'); stack.push({ ind, close: '}', kind, src: i, buf: out, depth: d, ...extra }); scopes.push(new Set()); };
+      const open = (head, kind, extra = {}) => { const d = depthNow(); say(head + ' {'); stack.push({ ind, close: '}', kind, src: i, buf: out, depth: d, head: out[out.length - 1], ...extra }); scopes.push(new Set()); };
       const trimmed = raw.trim();
       let m;
       // raw code is copied exactly, before any tidying of the sentence
@@ -397,7 +397,27 @@
       let s = trimmed.replace(/[.:]$/, '');
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
-      if ((m = s.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return say('// ' + m[1]);
+      if ((m = trimmed.match(/^(?:note|comment)\s*:\s?(.*)$/i))) {
+        // at the left edge, a note stays with what follows it: above main for a tool, class or include
+        if (!stack.length && !A) {
+          const next = lines.slice(i + 1).find(l => l.trim() && !/^\s*(?:note|comment)\s*:/i.test(l));
+          if (next && /^(?:define|above main\s*:|include|use the library)\b/i.test(next)) { topOut.push({ text: '// ' + m[1], src: i }); return; }
+        }
+        return say('// ' + m[1]);
+      }
+      // a description: what a tool is for, as a /** … */ comment just above its function (as Doxygen reads it)
+      if ((m = trimmed.match(/^description\s*:\s?(.*)$/i))) {
+        const b = cur();
+        if (b && b.kind === 'fn' && b.head && b.buf[b.buf.length - 1] === b.head) {
+          const p = b.head.text.match(/^ */)[0];
+          if (!b.doc) { b.buf.splice(b.buf.indexOf(b.head), 0, { text: p + '/**', src: i }, { text: p + ' */', src: i }); b.doc = true; }
+          b.buf.splice(b.buf.indexOf(b.head) - 1, 0, { text: (p + ' * ' + m[1]).replace(/\s+$/, ''), src: i });
+          note(inf, 'A description: a comment starting with `/**` just above the function. It says what the tool is for, and editors show it wherever the tool is used.');
+          return;
+        }
+        note(inf, 'A description: a comment starting with `/**`. Right under "define …", it describes that tool.');
+        return say(`/** ${m[1]} */`);
+      }
       const M = (re) => qmatch(s, re);   // like s.match, but sentence words inside quotes never count
       // --- program setup
       if ((m = M(/^(?:include|use the library)\s+(<[^>]+>|"[^"]+"|[\w./]+)$/i))) {
@@ -448,7 +468,7 @@
         const inClass = cur() && cur().kind === 'class';
         if (stack.length && !inClass) inf.errs.push('Tools must be defined at the left edge (or inside a class), not inside another block.');
         if (!inClass) out = topOut;
-        const ps = m[2] ? splitItems(m[2]).map(p => param(p, x)) : [];
+        const ps = m[2] && !/^nothing$/i.test(m[2].trim()) ? splitItems(m[2]).map(p => param(p, x)) : [];   // ("using nothing": no inputs)
         let ret = m[3] ? typeOf(m[3], x) : null;
         if (m[3] && !ret) inf.errs.push(`I don't know the type "${m[3]}". Use whole number, decimal, text, yes/no, nothing, or a C++ type.`);
         if (A) {
@@ -620,6 +640,12 @@
         if (m[3]) return say(`${E(m[2], inf)} ${up ? '+' : '-'}= ${E(m[3], inf)};`);
         note(inf, `No amount given, so it goes ${up ? 'up' : 'down'} by 1: \`${up ? '++' : '--'}\` ${up ? 'adds' : 'takes away'} 1.`);
         return say(`${E(m[2], inf)}${up ? '++' : '--'};`);
+      }
+      if ((m = M(/^(multiply|divide)\s+(.+?)\s+by\s+(.+)$/i))) {
+        const t = E(m[2], inf), by = E(m[3], inf), times = /^multiply$/i.test(m[1]);
+        if (!times && /^(?:int|long|unsigned|short)/.test(x.types[t] || '') && !/\./.test(by)) inf.warns.push(`${code(t)} holds whole numbers, so dividing keeps only the whole part (7 / 2 is 3). Make it a decimal to keep the rest.`);
+        note(inf, `\`${times ? '*=' : '/='}\` is short for ${code(`${t} = ${t} ${times ? '*' : '/'} ${by}`)}.`);
+        return say(`${t} ${times ? '*=' : '/='} ${by};`);
       }
       if ((m = M(/^make\s+(?:a\s+)?new\s+([A-Za-z_]\w*)(?:\s+with\s+(.+?))?\s+and store (?:it )?in\s+([A-Za-z_]\w*)$/i))) {
         if (!x.classes.has(m[1])) inf.warns.push(`There's no class called ${code(m[1])} here. Make one with "define class ${m[1]}".`);

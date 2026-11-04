@@ -218,3 +218,14 @@ test('`global` goes after a tool\'s description, so the description stays its do
   const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'set score to 0\ndefine bump\n    description: Adds one.\n    increase score by 1\nbump()\nprint(bump.__doc__, score)' }] }).results.main;
   assert.equal(execFileSync(PYTHON, ['-c', r.text], { encoding: 'utf8' }).trim(), 'Adds one. 1');
 });
+
+test('an object\'s own list (self.items = [] in a class) gets .append, and Python\'s own errors and kinds are known', () => {
+  const r = py('define class Queue\n    define __init__ using self\n        set self.items to []\n    define push using self, item\n        add item to self.items\n        add 1 to self.count');
+  assert.deepEqual(r.errors, []);
+  assert.match(r.code, /self\.items\.append\(item\)\n        self\.count \+= 1/);
+  const e = py('try\n    python: data = open("a.txt").read()\nif it fails with FileNotFoundError\n    set data to bytes(0)');
+  assert.deepEqual([...e.errors, ...e.warnings], []);
+  const b = py('set body to b""\nadd b"x" to body');
+  assert.deepEqual([...b.errors, ...b.warnings], []);
+  assert.match(b.code, /body \+= b"x"/);
+});
