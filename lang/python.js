@@ -185,8 +185,8 @@
     { re: R(String.raw`\brandom (?:decimal|fraction)\b`), to: 'random.random()', use: 'random', note: '`random.random()` gives a decimal from 0 up to (not including) 1.' },
     { re: R(String.raw`\brandom (?:item|choice|one|pick|thing) (?:from|of|in) (OPD)`), to: 'random.choice($1)', use: 'random', note: '`random.choice()` picks one item from a list. The `random` module is imported for you.' },
     // Powers
-    { re: R(String.raw`\b(OPD) squared\b`), to: '$1 ** 2', note: '`**` means "to the power of".', postfix: true },
-    { re: R(String.raw`\b(OPD) cubed\b`), to: '$1 ** 3', note: '`**` means "to the power of".', postfix: true },
+    { re: R(String.raw`\b(OPD) squared\b`), to: '$1 ** 2', note: '`**` means "to the power of".' },   // (a power binds tightest, as in maths: x minus x squared is x - x²)
+    { re: R(String.raw`\b(OPD) cubed\b`), to: '$1 ** 3', note: '`**` means "to the power of".' },
     // Comparisons that need both sides. "n plus 1 is even" is about n plus 1, so a sum on the left goes in brackets.
     { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is (?:exactly )?divisible by (OPD)`), to: (m, a, b) => `${sumBrackets(a)} % ${b} == 0`, note: '`%` gives the remainder after dividing. A remainder of 0 means it divides exactly.' },
     { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is not even\b`), to: (m, a) => `${sumBrackets(a)} % 2 != 0`, note: '`% 2` is the remainder after dividing by 2: anything but 0 means it isn\'t even.' },
@@ -314,7 +314,7 @@
     if (opts.define && BUILTINS.has(py)) {
       x.warn(`${code(py)} is already a built-in Python tool. Naming something ${code(py)} hides the built-in one.`);
     }
-    if (opts.define && MODULES.has(py)) {
+    if (opts.define && !opts.param && MODULES.has(py)) {   // (a tool's own input called time only stands in its way inside the tool)
       x.warn(`${code(py)} is also Python's ${code(py)} module, which some sentences use (${py === 'time' ? '"wait …"' : py === 'random' ? '"random number from …"' : 'it'}). A value called ${code(py)} would stand in its way. Choose another name, like "${py} left".`);
     }
     if (opts.define && /\s/.test(t) && PHRASE_LEAD.test(t)) {
@@ -518,9 +518,10 @@
       break;
     }
     // 5d. Text joined to a number ("Score: " plus score): Python needs the number turned into text first.
-    q = q.replace(/(⟦\d+⟧) \+ ([A-Za-z_]\w*)(?![\w.(\[])|(?<![\w.⟦])([A-Za-z_]\w*) \+ (⟦\d+⟧)/g, (all, s1, n1, n2, s2) => {
-      const name = n1 || n2;
-      if (kindHere(x, name) !== 'number') return all;
+    //     (only a name joined on its own: in "#" * filled + "-", filled belongs to the * first)
+    q = q.replace(/(⟦\d+⟧) \+ ([A-Za-z_]\w*)(?![\w.(\[])(?!\s*(?:\*\*?|\/\/?|%))|(?<![*/%] )(?<![\w.⟦])([A-Za-z_]\w*) \+ (⟦\d+⟧)/g, (all, s1, n1, n2, s2) => {
+      const name = n1 || n2, str = strs[+(s1 || s2).slice(1, -1)];
+      if (kindHere(x, name) !== 'number' || /^[bB]/.test(str)) return all;   // (b"…" is bytes, not text)
       x.note(`${code(name)} is a number, and Python only joins text to text, so it is turned into text first: ${code('str(' + name + ')')}.`);
       return s1 ? `${s1} + str(${name})` : `str(${name}) + ${s2}`;
     });
@@ -584,6 +585,7 @@
   function kindOf(py, x) {
     const t = py.trim();
     if (/^f?["'].*["']\.(?:split|splitlines)\(.*\)$/.test(t)) return 'list';   // "a b c".split() is a list, not text
+    if (/^[bB]["']/.test(t)) return 'bytes';   // b"…": raw bytes (a message, a file's contents), joined like text
     if (/^f?["']/.test(t) && !/["']\s*[-*/]/.test(t)) return 'text';
     if (isNum(t)) return 'number';
     if (/^\[/.test(t) || /^sorted\(/.test(t)) return 'list';
@@ -615,7 +617,7 @@
     return s && s.items && s.items.size === 1 && !s.items.has('value') ? [...s.items][0] : 'value';
   }
 
-  const KIND_WORDS = { number: 'a number', text: 'text', list: 'a list', dict: 'a dictionary', yesno: 'a yes/no value', function: 'a tool', value: 'a value' };
+  const KIND_WORDS = { number: 'a number', text: 'text', bytes: 'bytes', list: 'a list', dict: 'a dictionary', yesno: 'a yes/no value', function: 'a tool', value: 'a value' };
 
   /* ------------------------------------------------------------------ */
   /* Sentences                                                           */
@@ -854,7 +856,7 @@
     const params = [], shown = [];
     for (const p of parts) {
       const d = p.match(/^([A-Za-z_]\w*)\s*(?::\s*(.+?))?\s*(?:=\s*(.+))?$/) || [null, p];
-      const pn = toName(d[1], x, { define: true });
+      const pn = toName(d[1], x, { define: true, param: true });
       params.push(pn);
       shown.push(pn + (d[2] ? `: ${tExpr(d[2], x)}` : '') + (d[3] ? (d[2] ? ' = ' : '=') + tExpr(d[3], x) : ''));
     }
@@ -1061,7 +1063,7 @@
       return appends();
     }
     // what it holds can't be seen (taken out of something else, made by a tool, a python: line…)
-    if (!['text', 'number', 'yesno'].includes(k)) {
+    if (!['text', 'bytes', 'number', 'yesno'].includes(k)) {
       const vk = vals.map(v => kindOf(v, x));
       if (vk.some(v => ['text', 'list', 'dict', 'yesno'].includes(v))) {
         x.note(`The translator can't see what ${code(target)} holds. Adding ${many ? 'these' : code(val)}, which ${many ? "aren't numbers" : "isn't a number"}, means it's a list, so ${code('.append()')} puts ${many ? 'each one' : 'it'} on the end. (If ${code(target)} is text, Python stops with an error here: write "set ${m[3].trim()} to ${m[3].trim()} plus …" to join text.)`);
@@ -1077,7 +1079,7 @@
     }
     if (many) { x.err(`${code(target)} is ${KIND_WORDS[k]}, so add one thing at a time, or join them first: add ${parts.join(' plus ')} to ${m[3].trim()}.`); return { py: `${target} += ${val}` }; }
     assigned(x, target, true);
-    if (k === 'text') x.note(`${code(target)} is text, so "add" joins ${code(val)} onto the end. \`+=\` is short for ${code(target + ' = ' + target + ' + ' + val)}.`);
+    if (k === 'text' || k === 'bytes') x.note(`${code(target)} is ${k}, so "add" joins ${code(val)} onto the end. \`+=\` is short for ${code(target + ' = ' + target + ' + ' + val)}.`);
     else x.note(`${code(target)} is ${KIND_WORDS[k] || 'a value'}, so "add" increases it with \`+=\` (short for ${code(target + ' = ' + target + ' + ' + val)}). If it were a list, this would use \`.append()\` instead.`);
     return { py: `${target} += ${val}` };
   });

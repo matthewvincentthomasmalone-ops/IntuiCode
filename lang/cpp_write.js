@@ -250,7 +250,7 @@
       if (after) inf.errs.push(`"${m[0].trim()} ${after[1]} …" could mean two things. Put brackets round the end you mean, like random number from 1 to (n plus 1).`);
     }
     // words that follow their value ("as text"): right after a sum they could mean the last value or the whole sum
-    for (const p of [String.raw`(OPD) as (?:a )?(?:whole )?number\b`, String.raw`(OPD) as (?:a )?decimal\b`, String.raw`(OPD) as text\b`, String.raw`(OPD) squared\b`]) {
+    for (const p of [String.raw`(OPD) as (?:a )?(?:whole )?number\b`, String.raw`(OPD) as (?:a )?decimal\b`, String.raw`(OPD) as text\b`]) {   // (squared binds tightest, as in maths)
       for (const m of q.matchAll(R(p))) {
         if (!/(?:\b(?:plus|minus|times|divided by|mod)|[-+*/%])\s*$/i.test(q.slice(0, m.index))) continue;
         const e = `"${m[0].slice(m[1].length).trim()}" comes right after a calculation, so it could go with just ${code(m[1])} or with all of it. Put brackets round the part you mean, like (price times qty) ${m[0].slice(m[1].length).trim()}.`;

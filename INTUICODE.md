@@ -842,7 +842,7 @@ After the swaps, Python's precedence groups the operators, tightest first: `**`;
 comparisons (`==` `!=` `<` `<=` `>` `>=` `in` `not in` `is` `is not`); `not`; `and`; `or`; `… if … else …`.
 
 So: a phrase binds to the one operand next to it (`length of xs plus 1` is `len(xs) + 1`), and one that
-follows its value (`as text`, `rounded`, `squared` …) right after a sum is an error that asks for brackets
+follows its value (`as text`, `rounded` …) right after a sum is an error that asks for brackets
 (`(n plus 1) as text`; see [Two readings](#two-readings-refused-never-guessed-python)); `is even`, `is odd`
 and `is divisible by` take the whole sum before them; `times` binds tighter than `plus`; `not` covers the whole comparison after it; and
 brackets group.
@@ -1151,7 +1151,7 @@ meant, the line is an error that says how to put it, instead of picking one:
 
 | You write | Why it's asked about | Say instead |
 |---|---|---|
-| `total divided by count rounded to 2 places` (also `as text`, `as number`, `as decimal`, `in capitals`, `squared`, `sorted` after a sum) | just `count`, or the whole sum? | `(total divided by count) rounded to 2 places` |
+| `total divided by count rounded to 2 places` (also `as text`, `as number`, `as decimal`, `in capitals`, `sorted` after a sum; `squared` and `cubed` bind tightest, as in maths) | just `count`, or the whole sum? | `(total divided by count) rounded to 2 places` |
 | `random number from 1 to n plus 1` | a number up to n, plus 1; or up to n plus 1? | `random number from 1 to (n plus 1)` |
 | `colour is not "red" or "blue"` (and `is more than 1 or 2`…) | Python would test `"blue"` on its own | `colour is not "red" or colour is not "blue"` |
 | `name contains "a" and "b"` | the same | `name contains "a" and name contains "b"` |

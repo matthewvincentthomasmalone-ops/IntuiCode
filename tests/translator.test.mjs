@@ -16,6 +16,9 @@ const CASES = [
   ['set high score to 10', 'high_score = 10'],
   ['set API_KEY to "x"', 'API_KEY = "x"'],
   ['set total to 3 plus 4 times 2', 'total = 3 + 4 * 2'],
+  // a power binds tightest, as in maths (not a two-readings error): x minus x squared is x - x²
+  ['set e to 1 minus t squared', 'e = 1 - t ** 2'],
+  ['set e to (1 minus t) squared', 'e = (1 - t) ** 2'],
   ['set x to 1\nif x is at least 1 and x is not 5\n    show "ok"', 'x = 1\nif x >= 1 and x != 5:\n    print("ok")'],
   ['ask for a number "Age? " and store in age', 'age = int(input("Age? "))'],
   ['create list names with "Ana", "Bo"\nadd "Cy" to names', 'names = ["Ana", "Bo"]\nnames.append("Cy")'],
@@ -133,7 +136,6 @@ const ERRORS = [
   // ---- two readings are an error, never a guess (2026-11 audit) ----
   ['set total to 10\nset count to 3\nshow total divided by count rounded to 2 places', /Put brackets round the part you mean: \(total divided by count\) rounded to 2 places/],
   ['set price to 3\nset qty to 2\nshow price times qty as text', /could go with just `qty` or with all of it/],
-  ['set a to 1\nset b to 2\nshow a plus b squared', /Put brackets round the part you mean/],
   ['set n to 5\nshow random number from 1 to n plus 1', /Put brackets round the end you mean/],
   ['set colour to "red"\nif colour is not "red" or "blue"\n    show "other"', /Say it in full: colour is not "red" or colour is not "blue"/],
   ['set name to "Bob"\nif name contains "a" and "b"\n    show "both"', /Say the whole test each time/],
