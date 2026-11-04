@@ -160,6 +160,7 @@
     }
     store.set(PREVIOUS_KEY, project);
     project = normalized(next);
+    codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
     ta.value = activeSec().text;
     Runner.reset();
@@ -210,7 +211,44 @@
   }
   function compile() {
     try { compiled = compileAll(project); }
-    catch (e) { console.error(e); }
+    catch (e) { console.error(e); return; }
+    checkDrift();
+  }
+
+  /* ---------- Never silently change code ----------
+   * Each sentence line's code is remembered from when the line was written. If it comes out different
+   * while the line itself hasn't changed (an edit elsewhere changed what a name holds, or made a tool
+   * share a value), the line gets a warning saying what it was, until it's edited or the new code is kept. */
+  const codeBase = new Map();   // section id -> Map(line text + its count -> code)
+  let lastEdit = null;          // { title, line }: the edit that might have caused it
+  const DRIFT = /^Its code changed after an edit elsewhere/;
+  function lineKeys(sec) {
+    const seen = new Map();
+    return sec.text.split('\n').map(l => { const t = l.trim(), n = (seen.get(t) || 0) + 1; seen.set(t, n); return t + '\u0001' + n; });
+  }
+  const lineCode = (r, i) => (r.info[i] ? r.info[i].py.map(k => r.lines[k].text.trim()).filter(Boolean).join('\n') : '');
+  function checkDrift() {
+    for (const s of project.sections) {
+      const r = compiled.results[s.id];
+      if (!r || !isSentences(s)) continue;
+      const base = codeBase.get(s.id) || codeBase.set(s.id, new Map()).get(s.id);
+      const keys = lineKeys(s), live = new Set(keys);
+      keys.forEach((key, i) => {
+        if (!key.split('\u0001')[0] || !r.info[i]) return;
+        const now = lineCode(r, i);
+        if (!base.has(key)) { base.set(key, now); return; }
+        const was = base.get(key);
+        if (was === now || (s.id === project.active && i === typingLine)) return;
+        r.info[i].drift = { key, was, now };
+        r.info[i].warns.push(`Its code changed after an edit elsewhere${lastEdit ? ` (${lastEdit.title}, line ${lastEdit.line + 1})` : ''}, though this line didn't: it was \`${was.replace(/\n/g, ' ⏎ ') || '(nothing)'}\`. Check it still does what you mean, then keep the new code (in the help below), or change the line.`);
+      });
+      for (const k of [...base.keys()]) if (!live.has(k)) base.delete(k);   // lines that are gone, or were edited
+    }
+  }
+  function keepNewCode(secId, line) {
+    const r = secResult(secId), d = r && r.info[line] && r.info[line].drift;
+    if (d) codeBase.get(secId).set(d.key, d.now);
+    refreshAll();
   }
   const secResult = (id) => compiled && compiled.results[id];
   /* What a file holds on disk: the code its sentences make, or (code, notes, data) its text as written. */
@@ -481,7 +519,7 @@
     if (runtimeMark && runtimeMark.sec === sec.id && runtimeMark.line === li) items.push(`<li class="err">${withCode(runtimeMark.msg)}</li>`);
     if (li === typingLine && inf.errs.length) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
     else inf.errs.forEach(e => { if (!(fill && /^Fill in the ‹[^›]*› slot\.$/.test(e))) items.push(`<li class="err">${withCode(e)}</li>`); });
-    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${li}">Keep the new code</button>` : ''}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim());
     const why = inf.notes.length && pyLines.length ? `<button type="button" class="linklike ex-why" data-pick="${pyLines[0]}">${inf.notes.length === 1 ? 'A note' : inf.notes.length + ' notes'} on the ${escHtml(tutorSays(sec))}: click its line on the right</button>` : '';
     box.innerHTML = `${planBanner(li)}${fill}<div class="ex-map">
@@ -552,7 +590,7 @@
     const inf = src >= 0 && r.info[src] ? r.info[src] : { notes: [], warns: [], errs: [] };
     const items = [];
     inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
-    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${src}">Keep the new code</button>` : ''}</li>`));
     const notes = (o.note ? [o.note] : []).concat(inf.notes);
     $('explain').innerHTML = `${src >= 0 ? planBanner(src) : ''}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} line ${codeIdx + 1}</span><div class="ex-py">${hlCode(lang, o.text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
@@ -747,8 +785,11 @@
   const START_TEXT = { markdown: (p) => `# ${p.split('/').pop().replace(/\.[^.]*$/, '').replace(/[-_]+/g, ' ')}\n\n`, html: (p) => `page title is "${p.split('/').pop().replace(/\.[^.]*$/, '').replace(/["\\{}]/g, '')}"`, arduino: () => NEW_START.sketch() };
   /* Swap in a changed copy of the project, if it holds together (no two files in one place). '' or why not. */
   function changeProject(next, openId, message) {
+    const before = new Map(project.sections.map(s => [s.id, s.path + '|' + s.lang]));
     const n = normalized(next);
     if (!n) return 'That would put two files in the same place, or give two Python files the same module name. Choose another name.';
+    // a file renamed, moved or given another language makes other code on purpose: learn it afresh
+    for (const s of n.sections) { const was = before.get(s.id); if (!was || was !== s.path + '|' + s.lang) codeBase.delete(s.id); }
     project = n;
     if (!project.sections.some(s => s.id === project.active)) project.active = project.start;
     fileReads.clear();
@@ -1054,6 +1095,7 @@
     autosave();
     typingLine = caretLine();
     activeSec().text = ta.value;
+    lastEdit = { title: metaOf(activeSec()).title, line: typingLine };
     ensureCaretVisible();
     renderOverlay();
     scheduleCompile();
@@ -1345,6 +1387,7 @@
     const t = (sel) => e.target.closest(sel);
     let b;
     if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
+    if ((b = t('[data-keep-code]'))) return keepNewCode(project.active, +b.dataset.keepCode);
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
     if ((b = t('[data-go-say]'))) return goToLine(+b.dataset.goSay);
     if ((b = t('[data-term]'))) return openGlossary(b.dataset.term);
