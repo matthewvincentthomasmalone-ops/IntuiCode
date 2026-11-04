@@ -176,6 +176,14 @@
     q = q.replace(R(String.raw`(OPD) as (?:a )?(?:whole )?number\b`), (m, a) => { if (x.arduino) return `${a}.toInt()`; note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`; });
     q = q.replace(R(String.raw`(OPD) as (?:a )?decimal\b`), x.arduino ? '$1.toFloat()' : 'std::stod($1)').replace(R(String.raw`(OPD) as text\b`), x.arduino ? 'String($1)' : 'std::to_string($1)');
     q = q.replace(R(String.raw`(OPD) squared\b`), '($1 * $1)');
+    // "is even" / "is odd": the remainder after dividing by 2. A sum before it is checked as a whole: "n plus 1 is even" is (n + 1) % 2 == 0.
+    const GROUP = String.raw`\((?:[^()]|\([^()]*\))*\)`, PART = `(?:${GROUP}|OPD)`, MATHS = String.raw`\s+(?:plus|minus|times|divided by|mod)\s+`;
+    q = q.replace(R(String.raw`(?<![\w.:>])(not\s+)?(${PART}(?:${MATHS}${PART})*)\s+(is not|isn't|is)\s+(even|odd)\b`), (m, notFirst, a, is, which) => {
+      const even = /even/i.test(which) !== Boolean(notFirst) !== /n[o']t/i.test(is);   // each "not" turns it round
+      const sum = new RegExp(MATHS, 'i').test(a.replace(new RegExp(GROUP, 'g'), '()'));
+      note(inf, '`% 2` is the remainder after dividing by 2: 0 for even numbers. For odd numbers it is 1, or -1 when the number is negative, so odd is tested with `!= 0`.');
+      return `${sum ? `(${a})` : a} % 2 ${even ? '==' : '!='} 0`;
+    });
     const W = [
       [/\bis not (?:equal to|the same as)\b|\bisn't\b|\bis not\b/gi, ' != '], [/\bis at least\b|\bis (?:greater|more) than or equal to\b/gi, ' >= '], [/\bis at most\b|\bis (?:less|smaller) than or equal to\b/gi, ' <= '],
       [/\bis (?:greater|more|bigger|higher) than\b/gi, ' > '], [/\bis (?:less|smaller|lower|fewer) than\b/gi, ' < '], [/\bis (?:equal to|the same as)\b|\bequals\b|\bis\b/gi, ' == '],
@@ -635,7 +643,7 @@
     purpose: 'Arduino is C++ for small boards that switch lights, read buttons and sensors, drive motors and make sounds. A sketch has two parts: setup(), which runs once when the board powers on, and loop(), which runs again and again until the power goes off.',
     rules: [['Two parts', 'setup() runs once; loop() repeats forever. There is no main.'], ['Pins', 'Each pin is set up as an input or an output first, then turned on (HIGH) or off (LOW), or read.'], ['Waiting', 'delay() pauses everything. For doing two things at once, compare millis() instead.'], ['Tiny memory', 'An Uno has 2 KB of memory. Lists have a fixed size, and text is kept short.'], ['Upload, then watch', 'The sketch is compiled and copied onto the board. show sends lines back to the serial monitor.']],
   };
-  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b']];
+  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b']];
   const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name']];
   const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board)|over and over|again and again|at the start)/i;
 
