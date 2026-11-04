@@ -20,6 +20,7 @@ the desktop app.
 | `lang/glossary_terms.js` | The glossary itself: terms for Python, C++, Arduino, HTML, CSS, JavaScript and the sentences, as plain data |
 | `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
+| `lang/library.js` | The Library: kinds of project (the languages they use, open-source projects to learn from) and the parts they're made of, each in one or more languages, from the plain-text packs in `lang/library/`; Coding integration parts give both sides of a link between two languages |
 | `lang/ts_patch.js` | A fix to the tree-sitter runtime for pages with SVG or custom elements |
 
 Engine files must not touch the page (no `document`, no DOM). The shell (`app.js`,
