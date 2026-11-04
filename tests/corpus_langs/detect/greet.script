@@ -1,0 +1,6 @@
+local function greet(name)
+  print("Hello, " .. name)
+end
+
+greet("Robin")
+-- vim: set ft=lua:

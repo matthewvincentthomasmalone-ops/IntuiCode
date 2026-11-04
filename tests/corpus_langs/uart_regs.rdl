@@ -1,0 +1,39 @@
+// Registers for a simple UART (serial port) block.
+property is_interrupt { type = boolean; component = field; };
+
+reg status_reg {
+    name = "Status";
+    desc = "What the UART is doing right now.";
+    field { sw = r; hw = w; desc = "A byte is waiting to be read."; } rx_ready[0:0] = 0;
+    field { sw = r; hw = w; desc = "The transmitter can take another byte."; } tx_empty[1:1] = 1;
+    field { sw = rw; hw = r; onwrite = woclr; is_interrupt = true; } overrun[2:2] = 0;
+};
+
+reg control_reg {
+    name = "Control";
+    field { sw = rw; hw = r; desc = "Turn the UART on."; } enable[0:0] = 0;
+    field { sw = rw; hw = r; desc = "Raise an interrupt when a byte arrives."; } rx_irq[1:1] = 0;
+    field { sw = rw; hw = r; desc = "Number of stop bits minus one."; } stop_bits[3:2] = 0;
+};
+
+reg baud_reg {
+    name = "Baud divider";
+    desc = "The clock is divided by this number to get the bit rate.";
+    field { sw = rw; hw = r; } divider[15:0] = 16'd868;
+};
+
+reg data_reg {
+    name = "Data";
+    field { sw = rw; hw = rw; desc = "Write to send a byte, read to receive one."; } byte[7:0] = 0;
+};
+
+addrmap uart {
+    name = "UART";
+    desc = "One serial port.";
+    default regwidth = 32;
+
+    status_reg status @ 0x00;
+    control_reg control @ 0x04;
+    baud_reg baud @ 0x08;
+    data_reg data @ 0x0C;
+};

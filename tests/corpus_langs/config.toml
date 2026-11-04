@@ -1,0 +1,35 @@
+# Settings for the weather station logger.
+title = "Hilltop weather station"
+version = 3
+debug = false
+
+[station]
+name = "Hilltop"
+latitude = 54.598
+longitude = -2.135
+altitude_m = 412
+
+[sensors]
+interval_seconds = 60
+units = "metric"
+enabled = ["temperature", "humidity", "pressure", "wind"]
+
+[sensors.wind]
+pin = 17
+calibration = 2.4
+
+[upload]
+url = "https://weather.example.org/api/readings"
+retry = 3
+timeout = 10.5
+started = 2026-03-01T09:00:00Z
+
+[[alerts]]
+name = "frost"
+when = "temperature < 0"
+notify = ["sam@example.org"]
+
+[[alerts]]
+name = "gale"
+when = "wind > 62"
+notify = ["sam@example.org", "jo@example.org"]
