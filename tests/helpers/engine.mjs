@@ -119,3 +119,36 @@ export function pyProject(files) {
   });
   return JSON.parse(out.toString());
 }
+
+/* The Library (lang/library.js) with its packs (lang/library/*.js), the shared language list and the
+ * builder (for the Project Templates a type names), in one context like the page's. */
+export const LIBRARY_PACKS = readdirSync(path.join(ROOT, 'lang/library')).filter(f => f.endsWith('.js')).sort().map(f => 'lang/library/' + f);
+export function loadLibrary() {
+  const ctx = { console };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  for (const f of ['lang/languages.js', ...KIT_PACKS, 'lang/builder.js', ...LIBRARY_PACKS, 'lang/library.js']) vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  return { LIB: ctx.IntuiLibrary, LANGS: ctx.IntuiLanguages, BUILDER: ctx.IntuiBuilder, packs: ctx.IntuiLibraryPacks };
+}
+
+/* A tree-sitter runtime of its own, for checking code in any language lang/languages.js has a grammar for:
+ * parse(grammar, source) gives the tree (grammar as in languages.js, e.g. 'rust', 'c_sharp'). */
+export async function loadTreeSitter() {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/ts_patch.js'), 'utf8'), { filename: 'lang/ts_patch.js' });
+  const tsFile = require.resolve('web-tree-sitter');
+  const m = { exports: {} };
+  new Function('module', 'exports', 'require', '__dirname', '__filename', globalThis.IntuiTsPatch.patch(readFileSync(tsFile, 'utf8')))(m, m.exports, createRequire(tsFile), path.dirname(tsFile), tsFile);
+  const TreeSitter = m.exports;
+  await TreeSitter.init({ locateFile: (f) => path.join(ROOT, 'node_modules/web-tree-sitter', f) });
+  const langs = {};
+  return {
+    async parse(grammar, source) {
+      if (!langs[grammar]) langs[grammar] = await TreeSitter.Language.load(path.join(ROOT, 'node_modules/tree-sitter-wasms/out', `tree-sitter-${grammar}.wasm`));
+      const parser = new TreeSitter();
+      parser.setLanguage(langs[grammar]);
+      return parser.parse(source);
+    },
+  };
+}
