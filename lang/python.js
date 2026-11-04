@@ -15,7 +15,13 @@
   const PY_KEYWORDS = new Set(['False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield']);
   const BUILTINS = new Set(['print', 'input', 'len', 'int', 'float', 'str', 'bool', 'list', 'dict', 'range', 'sum', 'min', 'max', 'abs', 'round', 'sorted', 'reversed', 'enumerate', 'zip', 'type', 'isinstance', 'any', 'all', 'set', 'tuple', 'map', 'filter', 'chr', 'ord', 'pow', 'divmod']);
   const MODULES = new Set(['random', 'math', 'time', 'sys', 'string', 'datetime']);
-  const WORD_NUMBERS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, twenty: 20, fifty: 50, hundred: 100 };
+  const WORD_NUMBERS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 };
+  // "twenty one", "forty-two": one number, not two
+  const TENS_UNITS = /\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/gi;
+  // Words sentences read as values or operators: a name like these would be read as that instead.
+  const VALUE_WORDS = { yes: 'True', no: 'False', true: 'True', false: 'False', nothing: 'None', none: 'None', otherwise: 'else', plus: '+', minus: '-', times: '*', mod: '%', modulo: '%', equals: '==', squared: '** 2', cubed: '** 3', rounded: 'round()' };
+  // How phrases like "length of x" start: a multi-word name starting like this could be read either way.
+  const PHRASE_LEAD = /^(?:(?:length|size|sum|total|count|number) of |(?:first|last) (?:item|one|thing) (?:of|in) |square root of |absolute (?:value )?of |(?:biggest|largest|highest|maximum|smallest|lowest|minimum) (?:of|in) |random (?:item|choice|one) (?:from|of|in) |pairs (?:of|in) )/i;
   const FILE_ORDER = { settings: 0, tools: 1, main: 2 };
   const ALWAYS_KNOWN = new Set(['self', 'cls', '__name__', '__file__', 'Exception', 'ValueError', 'TypeError', 'KeyError', 'IndexError', 'open', 'dict', 'object', 'super', 'getattr', 'setattr', 'hasattr', 'isinstance', 'iter', 'next', 'repr', 'format', 'vars', 'id', 'hash', 'callable', 'exit']);
 
@@ -163,27 +169,30 @@
     { re: R(String.raw`\b(?:smallest|lowest|minimum|min) (?:of|in) (OPD)`), to: 'min($1)', repeat: true },
     { re: R(String.raw`\bsquare root of (OPD)`), to: 'math.sqrt($1)', use: 'math', note: '`math.sqrt` lives in the `math` module, so it is imported for you.' },
     { re: R(String.raw`\babsolute (?:value )?of (OPD)`), to: 'abs($1)' },
-    { re: R(String.raw`\b(OPD) rounded to (OPD) (?:decimal )?places?`), to: 'round($1, $2)' },
-    { re: R(String.raw`\b(OPD) rounded\b`), to: 'round($1)' },
+    // (postfix: these follow their value, so after a sum they could mean the last value or the whole sum)
+    { re: R(String.raw`\b(OPD) rounded to (OPD) (?:decimal )?places?`), to: 'round($1, $2)', postfix: true },
+    { re: R(String.raw`\b(OPD) rounded\b`), to: 'round($1)', postfix: true },
     { re: R(String.raw`\bsorted (OPD)`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.' },
-    { re: R(String.raw`\b(OPD) sorted\b`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.' },
-    { re: R(String.raw`\b(OPD) as (?:a )?(?:whole )?number\b`), to: 'int($1)', note: '`int()` turns text like "42" into the whole number 42. It stops with an error if the text is not a number.' },
-    { re: R(String.raw`\b(OPD) as (?:a )?decimal(?: number)?\b`), to: 'float($1)', note: '`float()` turns text into a decimal number, like 3.5.' },
-    { re: R(String.raw`\b(OPD) as text\b`), to: 'str($1)', note: '`str()` turns a value into text, so it can be joined to other text.' },
-    { re: R(String.raw`\b(OPD) in (?:capitals|capital letters|uppercase|upper case)\b`), to: '$1.upper()' },
-    { re: R(String.raw`\b(OPD) in (?:lowercase|lower case|small letters)\b`), to: '$1.lower()' },
+    { re: R(String.raw`\b(OPD) sorted\b(?!\()`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.', postfix: true },
+    { re: R(String.raw`\b(OPD) as (?:a )?(?:whole )?number\b`), to: 'int($1)', note: '`int()` turns text like "42" into the whole number 42. It stops with an error if the text is not a number.', postfix: true },
+    { re: R(String.raw`\b(OPD) as (?:a )?decimal(?: number)?\b`), to: 'float($1)', note: '`float()` turns text into a decimal number, like 3.5.', postfix: true },
+    { re: R(String.raw`\b(OPD) as text\b`), to: 'str($1)', note: '`str()` turns a value into text, so it can be joined to other text.', postfix: true },
+    { re: R(String.raw`\b(OPD) in (?:capitals|capital letters|uppercase|upper case)\b`), to: '$1.upper()', postfix: true },
+    { re: R(String.raw`\b(OPD) in (?:lowercase|lower case|small letters)\b`), to: '$1.lower()', postfix: true },
     { re: R(String.raw`\bpairs (?:of|in) (OPD)`), to: '$1.items()', note: '`.items()` gives the key and value of each entry in a dictionary, as pairs.' },
     // Randomness
-    { re: R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`), to: 'random.randint($1, $2)', use: 'random', note: '`random.randint(a, b)` can give back a or b, and anything in between. The `random` module is imported for you.' },
+    { re: R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`), to: 'random.randint($1, $2)', use: 'random', range: true, note: '`random.randint(a, b)` can give back a or b, and anything in between. The `random` module is imported for you.' },
     { re: R(String.raw`\brandom (?:decimal|fraction)\b`), to: 'random.random()', use: 'random', note: '`random.random()` gives a decimal from 0 up to (not including) 1.' },
     { re: R(String.raw`\brandom (?:item|choice|one|pick|thing) (?:from|of|in) (OPD)`), to: 'random.choice($1)', use: 'random', note: '`random.choice()` picks one item from a list. The `random` module is imported for you.' },
     // Powers
-    { re: R(String.raw`\b(OPD) squared\b`), to: '$1 ** 2', note: '`**` means "to the power of".' },
-    { re: R(String.raw`\b(OPD) cubed\b`), to: '$1 ** 3', note: '`**` means "to the power of".' },
-    // Comparisons that need both sides
-    { re: R(String.raw`\b(OPD) is (?:exactly )?divisible by (OPD)`), to: '$1 % $2 == 0', note: '`%` gives the remainder after dividing. A remainder of 0 means it divides exactly.' },
-    { re: R(String.raw`\b(OPD) is even\b`), to: '$1 % 2 == 0', note: '`% 2` is the remainder after dividing by 2: 0 for even numbers.' },
-    { re: R(String.raw`\b(OPD) is odd\b`), to: '$1 % 2 == 1', note: '`% 2` is the remainder after dividing by 2: 1 for odd numbers.' },
+    { re: R(String.raw`\b(OPD) squared\b`), to: '$1 ** 2', note: '`**` means "to the power of".', postfix: true },
+    { re: R(String.raw`\b(OPD) cubed\b`), to: '$1 ** 3', note: '`**` means "to the power of".', postfix: true },
+    // Comparisons that need both sides. "n plus 1 is even" is about n plus 1, so a sum on the left goes in brackets.
+    { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is (?:exactly )?divisible by (OPD)`), to: (m, a, b) => `${sumBrackets(a)} % ${b} == 0`, note: '`%` gives the remainder after dividing. A remainder of 0 means it divides exactly.' },
+    { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is not even\b`), to: (m, a) => `${sumBrackets(a)} % 2 != 0`, note: '`% 2` is the remainder after dividing by 2: anything but 0 means it isn\'t even.' },
+    { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is not odd\b`), to: (m, a) => `${sumBrackets(a)} % 2 == 0`, note: '`% 2` is the remainder after dividing by 2: 0 means it isn\'t odd.' },
+    { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is even\b`), to: (m, a) => `${sumBrackets(a)} % 2 == 0`, note: '`% 2` is the remainder after dividing by 2: 0 for even numbers.' },
+    { re: R(String.raw`(?<![\w.])(OPD(?: (?:plus|minus|times|multiplied by|divided by|mod|modulo|[-+*/%]) OPD)*) is odd\b`), to: (m, a) => `${sumBrackets(a)} % 2 == 1`, note: '`% 2` is the remainder after dividing by 2: 1 for odd numbers.' },
     { re: R(String.raw`\b(OPD) (?:does not|doesn't) contain (OPD)`), to: '$2 not in $1' },
     { re: R(String.raw`\b(OPD) contains (OPD)`), to: '$2 in $1', note: 'Python writes "list contains x" the other way round: `x in list`.' },
     // Comparisons
@@ -203,7 +212,7 @@
     { re: /\btimes\b|\bmultiplied by\b/gi, to: ' * ' },
     { re: /\bdivided by\b/gi, to: ' / ', note: '`/` always gives a decimal answer: 7 / 2 is 3.5.' },
     { re: /\bmod\b|\bmodulo\b|\bremainder after dividing by\b/gi, to: ' % ', note: '`%` gives the remainder after dividing: 7 % 3 is 1.' },
-    { re: /\bto the power of\b/gi, to: ' ** ' },
+    { re: /\bto (?:the )?power of\b/gi, to: ' ** ' },   // ("the" is already left out by now)
     // Plain values
     { re: /\ban empty list\b|\bempty list\b/gi, to: '[]' },
     { re: /\ban empty dictionary\b|\bempty dictionary\b/gi, to: '{}' },
@@ -216,6 +225,40 @@
   ];
   // Rules ending in an operand, like "length of x": what follows it must not belong to it (see tExpr).
   for (const r of EXPR_RULES) r.endsInOperand = r.re.source.endsWith(`(${OPD})`);
+  // where a phrase starts: a value starting like this is a phrase still to be read
+  const NESTED = /^(?:sorted \S|(?:length|size|sum|total) of |count of |(?:first|last) (?:item|one|thing) (?:of|in|from) |item \S+ (?:of|in|from) |square root of |absolute (?:value )?of |(?:biggest|largest|highest|maximum|max|smallest|lowest|minimum|min) (?:of|in) |random (?:whole )?number |random (?:item|choice|one|pick|thing) (?:from|of|in) |random (?:decimal|fraction)\b|pairs (?:of|in) |how many |number of items in )/i;
+  /* A phrase ending in a value ("length of x"), applied from the right, so in "item 1 of item 0 of grid" the
+     inner one goes first; one whose value starts another phrase waits for it. */
+  function innermostFirst(q, r) {
+    const sticky = new RegExp(r.re.source, r.re.flags.replace('g', '') + 'y');
+    // a rule that starts with its own value ("n minus 1 is divisible by 3") reads from the left, so that value is all of it
+    const fromLeft = r.re.source.startsWith('(?<![\\w.])(');
+    let waiting = false;
+    for (let guard = 0; guard < 30; guard++) {
+      let changed = false;
+      for (let j = 0; j < q.length; j++) {
+        const i = fromLeft ? j : q.length - 1 - j;
+        sticky.lastIndex = i;
+        const m = sticky.exec(q);
+        if (!m) continue;
+        const last = m[m.length - 1];
+        if (last && NESTED.test(q.slice(i + m[0].length - last.length))) { waiting = true; continue; }
+        const rep = typeof r.to === 'function' ? r.to(...m, i, q) : r.to.replace(/\$(\d)/g, (_, n) => m[+n] ?? '');
+        q = q.slice(0, i) + rep + q.slice(i + m[0].length);
+        changed = true;
+        break;
+      }
+      if (!changed) break;
+    }
+    return { q, waiting };
+  }
+  // a calculation, in brackets when it has more than one value: (n plus 1)
+  function sumBrackets(a) { return / /.test(a.trim()) ? `(${a.trim()})` : a; }
+  // the end of a sum, just before a phrase: "… divided by" or "… +"
+  const BEFORE_OP = /(?:\b(?:plus|minus|times|multiplied by|divided by|mod|modulo|to the power of|added to|take away|joined (?:with|to)|followed by)|[-+*/%])\s*$/i;
+  const AFTER_OP = /^\s+(?:plus|minus|times|multiplied by|divided by|mod|modulo|to the power of|[-+*/%])(?=\s)/i;
+  // a comparison, then "or"/"and" with a bare value after it: `answer == "yes" or "y"`
+  const EITHER = new RegExp(String.raw`(?<![\w.⟧\])])(OPD) (==|!=|<=|>=|<|>|not in|in) (OPD) (or|and) (⟦\d+⟧|-?\d+(?:\.\d+)?|True|False|None)(?= *(?:$|[)\],]|or\b|and\b|else\b|if\b))`.replace(/OPD/g, OPD));
 
   /* ------------------------------------------------------------------ */
   /* The per-line context: collects notes, warnings, errors              */
@@ -265,57 +308,97 @@
     }
     if (PY_KEYWORDS.has(py) || PY_KEYWORDS.has(py[0].toUpperCase() + py.slice(1))) {
       x.err(`"${t}" is one of Python's own words, so it can't be a name. Try something like "my ${t}" or "${t} value".`);
+    } else if (opts.define && VALUE_WORDS[py.toLowerCase()]) {
+      x.err(`"${t}" is a word sentences read as ${code(VALUE_WORDS[py.toLowerCase()])}, so as a name it would be read that way instead. Try something like "my ${t}" or "${t} count".`);
     }
     if (opts.define && BUILTINS.has(py)) {
       x.warn(`${code(py)} is already a built-in Python tool. Naming something ${code(py)} hides the built-in one.`);
+    }
+    if (opts.define && MODULES.has(py)) {
+      x.warn(`${code(py)} is also Python's ${code(py)} module, which some sentences use (${py === 'time' ? '"wait …"' : py === 'random' ? '"random number from …"' : 'it'}). A value called ${code(py)} would stand in its way. Choose another name, like "${py} left".`);
+    }
+    if (opts.define && /\s/.test(t) && PHRASE_LEAD.test(t)) {
+      x.warn(`"${t}" starts like the phrase "${t.match(PHRASE_LEAD)[0].trim()}", so wherever it's used it could be read either way. A name like "${t.replace(PHRASE_LEAD, '')} ${t.match(PHRASE_LEAD)[0].trim().split(' ')[0]}" avoids that.`);
     }
     if (/\s/.test(t)) x.note(`Python names can't contain spaces, so "${t.toLowerCase()}" is written ${code(py)}.`);
     return py;
   }
 
+  /* Where a name is set: a tool ("fn:file/name"), or the top of a file ("mod:file"). What a name holds is
+     kept per place, so a list in Main and some text in a tool, both called result, stay what they are. */
+  const scopeKey = (x) => (x.fn ? `fn:${x.file}/${x.fn.name}` : `mod:${x.file}`);
   function declare(x, py, display, kind, extra = {}) {
     const env = x.env;
+    const where = extra.where || scopeKey(x);
+    delete extra.where;
     let s = env.syms.map.get(py);   // declaring needs the exact spelling
     if (!s) {
-      s = { py, display: display.toLowerCase(), kind: kind || 'value', file: x.file, line: x.info.line, scope: x.fn ? 'local' : 'module', ...extra };
+      s = { py, display: display.toLowerCase(), kind: kind || 'value', file: x.file, line: x.info.line, scope: where.startsWith('fn:') ? 'local' : 'module', kinds: {}, ...extra };
       env.syms.set(py, s);
       if (/\s/.test(s.display)) env.multiDirty = true;
     } else if ((s.kind === 'value' || s.kind === 'unknown') && kind && kind !== 'value') {
       s.kind = kind;
     }
+    s.kinds = s.kinds || {};
+    if (where.startsWith('mod:')) {   // the first line it's set on at the top of each file (see assigned)
+      s.top = s.top || {};
+      if (s.top[x.file] == null || x.info.line < s.top[x.file]) s.top[x.file] = x.info.line;
+    }
+    const had = s.kinds[where];
+    if (!had || ((had === 'value' || had === 'unknown') && kind && kind !== 'value')) s.kinds[where] = kind || 'value';
+    // a number here and a list there, in the same place: it can't be told which it holds at any one line
+    else if (kind && kind !== 'value' && had !== kind) s.kinds[where] = 'mixed';
     if (extra.params && !s.params) s.params = extra.params;
     const firstTime = !env.seen.has(py);
     env.seen.add(py);
     return firstTime;
   }
+  /* What a name holds here: as set in this tool, else at the top of this file, else at the top of another
+     file. 'value' when that can't be known. */
+  function kindHere(x, py) {
+    const s = x.syms.get(py);
+    if (!s) return undefined;
+    const k = s.kinds || {};
+    return k[scopeKey(x)] || k[`mod:${x.file}`] || Object.entries(k).find(([w]) => w.startsWith('mod:'))?.[1] || s.kind;
+  }
+  /* Set somewhere at the top of a file (not only inside tools)? */
+  const atTop = (s, file) => !!s && !!s.kinds && Object.keys(s.kinds).some(w => w.startsWith('mod:') && (!file || w === `mod:${file}`));
 
   function multiNames(env) {
     if (env.multiDirty || !env.multi) {
       env.multi = [...env.syms.values()]
         .filter(s => /\s/.test(s.display))
         .sort((a, b) => b.display.length - a.display.length)
-        .map(s => ({ py: s.py, re: new RegExp('\\b' + s.display.split(/\s+/).map(esc).join('[\\s_-]+') + '\\b', 'gi') }));
+        .map(s => ({ py: s.py, display: s.display, re: new RegExp('\\b' + s.display.split(/\s+/).map(esc).join('[\\s_-]+') + '\\b', 'gi') }));
       env.multiDirty = false;
     }
     return env.multi;
   }
 
-  /* Record assignments inside a tool so `global` can be added when needed. */
-  function assigned(x, py) {
+  /* Record assignments inside a tool so `global` can be added when needed. A name set at the top of the
+     file *above* the tool is the program's shared value, so setting it in the tool changes that one (the
+     translator adds `global`). One set only *below* the tool (like the starting block at the end of a
+     file) isn't: setting it makes the tool's own copy, which is Python's rule. Changing a name in place
+     ("increase score by 1", changes = true) can only mean the one outside, wherever it is. Lines are
+     compared, not the order names were first seen, so the same file always gives the same code. */
+  function assigned(x, py, changes = false) {
     const fn = x.fn;
     if (!fn || x.pass !== 2) return;
-    if (fn.locals.has(py)) return;
+    if (fn.locals.has(py) || fn.globals.has(py)) return;
     const s = x.syms.get(py);
-    const outside = s && s.scope === 'module' && s.file === x.file;
-    const otherFile = s && s.scope === 'module' && s.file !== x.file;
-    if (outside) {
+    const above = !!s && !!s.top && s.top[x.file] != null && s.top[x.file] < fn.line;
+    const below = !above && atTop(s, x.file);
+    // set at the top of a section this one imports (one before it); later sections can't be seen from here
+    const order = x.env.order || [], mine = order.indexOf(x.file);
+    const otherFile = !above && !below && !!s && !!s.top && Object.keys(s.top).some(f => f !== x.file && order.indexOf(f) >= 0 && order.indexOf(f) < mine);
+    const shared = fn.explicit && fn.explicit.has(py);
+    if (above || otherFile || shared || (below && changes)) {
       fn.globals.add(py);
-      x.note(`${code(py)} lives outside this tool, so the translator adds ${code('global ' + py)} at the top of the tool. Without it, Python would make a separate copy inside the tool.`);
-    } else if (otherFile) {
-      fn.globals.add(py);
-      x.warn(`${code(py)} is set in another section. Changing it inside a tool only changes this section's copy. To share a result, use "give back" and store it where you run the tool.`);
+      if (otherFile) x.warn(`${code(py)} is set in another section. Changing it inside a tool only changes this section's copy. To share a result, use "give back" and store it where you run the tool.`);
+      else if (!shared) x.note(`${code(py)} lives outside this tool, so the translator adds ${code('global ' + py)} at the top of the tool. Without it, Python would make a separate copy inside the tool.`);
     } else {
       fn.locals.add(py);
+      if (below) x.note(`${code(py)} is also set further down, outside this tool. Setting it here makes the tool's own copy (that's Python's rule), so that one doesn't change. To change it, start the tool with "use the shared ${py}", or set it above the tool.`);
     }
   }
 
@@ -349,21 +432,35 @@
     if (/(^|\s)'|'(\s|$)/.test(q)) { x.err("A piece of text is missing its closing quote mark (')."); }
 
     // 2. Multi-word names -> snake_case names. Brackets or a .name right after one stay attached: all_notes().
-    for (const m of multiNames(x.env)) q = q.replace(m.re, (w, off, all) => ' ' + m.py + (/^(?:[([]|\.[A-Za-z_])/.test(all.slice(off + w.length)) ? '' : ' '));
+    for (const m of multiNames(x.env)) q = q.replace(m.re, (w, off, all) => {
+      // "length of rope" is a name, but also "length of" + rope when rope is a name too: two readings
+      const lead = m.display.match(PHRASE_LEAD), rest = lead && m.display.slice(lead[0].length).trim().replace(/\s+/g, '_');
+      if (rest && x.syms.has(rest)) x.err(`"${w}" could be the name ${code(m.py)} or "${lead[0].trim()}" ${code(rest)}. Rename one of them (a name like "${m.display.slice(lead[0].length).trim()} ${lead[0].trim().split(' ')[0]}" can't be misread).`);
+      return ' ' + m.py + (/^(?:[([]|\.[A-Za-z_])/.test(all.slice(off + w.length)) ? '' : ' ');
+    });
     // 2b. A tool's name and its brackets belong together even with a space between: "all notes ()" runs all_notes.
     q = q.replace(/(?<![\w.])([A-Za-z_]\w*)\s+\(/g, (w, id) => {
       const kind = x.syms.get(id)?.kind;
       return (kind ? kind === 'function' || kind === 'class' : BUILTINS.has(id)) ? id + '(' : w;
     });
 
-    // 3. Filler words.
-    q = q.replace(/\bthe\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    // 3. Filler words ("my score" is score, as when it was set).
+    q = q.replace(/\bthe\b/gi, ' ').replace(/\bmy\s+(?=[A-Za-z_])/gi, ' ').replace(/\s+/g, ' ').trim();
 
-    // 4. A single = in a condition almost always means "compare".
+    // 4. A single = in a condition almost always means "compare" (but not inside brackets: max(xs, key=abs)).
     if (opts.cond && /(^|[^=!<>])=(?!=)/.test(q)) {
-      q = q.replace(/(^|[^=!<>])=(?!=)/g, '$1 == ');
-      x.note('In a condition, `=` was changed to `==`. In Python `=` stores a value and `==` compares two values.');
+      let depth = 0, out = '', changed = false;
+      for (let i = 0; i < q.length; i++) {
+        const c = q[i];
+        if ('([{'.includes(c)) depth++; else if (')]}'.includes(c)) depth--;
+        if (c === '=' && depth === 0 && q[i + 1] !== '=' && !/[=!<>]/.test(q[i - 1] || '')) { out += ' == '; changed = true; } else out += c;
+      }
+      q = out;
+      if (changed) x.note('In a condition, `=` was changed to `==`. In Python `=` stores a value and `==` compares two values.');
     }
+    // "twenty one" is one number, and so is "three hundred"
+    q = q.replace(TENS_UNITS, (m, t, u) => String(WORD_NUMBERS[t.toLowerCase()] + WORD_NUMBERS[u.toLowerCase()]));
+    q = q.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+) (hundred|thousand)\b/gi, (m, n, h) => String((/^\d+$/.test(n) ? +n : WORD_NUMBERS[n.toLowerCase()]) * (h.toLowerCase() === 'hundred' ? 100 : 1000)));
 
     // 4b. "wait for x" inside a value means await (used with async tools).
     if (/\bwait for\b/i.test(q)) { q = q.replace(/\bwait for\b/gi, ' await '); x.note('`await` waits for an async task to finish before carrying on.'); }
@@ -373,19 +470,64 @@
     for (const m of q.matchAll(/\bfor\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+in\b/g)) m[1].split(/\s*,\s*/).forEach(n => bound.add(n));
     for (const m of q.matchAll(/\blambda\s+([^:]*):/g)) m[1].split(/\s*,\s*/).forEach(n => bound.add(n.replace(/=.*/, '').trim()));
 
-    // 5. Phrase swaps.
+    // 5. Phrase swaps. Two readings are an error, never a guess.
+    const said = (t) => t.trim().replace(/⟦(\d+)⟧/g, (_, i) => strs[+i]).replace(/\s+/g, ' ');
+    // A phrase whose value starts another phrase ("first item of sorted xs") waits for that one, so phrases
+    // inside phrases go first; the rules run again (a few times at most) until nothing is waiting.
+    for (let pass = 0, waiting = true; waiting && pass < 4; pass++) {
+    waiting = false;
     for (const r of EXPR_RULES) {
       let guard = 0, prev;
       do {
         prev = q;
         if (r.endsInOperand) for (const m of q.matchAll(r.re)) looseBrackets(m, q, strs, x);
-        q = q.replace(r.re, r.to);
+        if (r.postfix) for (const m of q.matchAll(r.re)) {
+          // "total divided by count rounded": just count, or the whole sum?
+          const before = q.slice(0, m.index);
+          if (!BEFORE_OP.test(before)) continue;
+          const sum = said(before).split(/\s+(?:and|or|is|==|!=|if|else)\s+|[(,]/).pop();
+          x.err(`"${said(m[0].slice(m[1].length))}" comes after "${sum} ${said(m[1])}", so it could go with just ${code(said(m[1]))} or with all of it. Put brackets round the part you mean: (${sum} ${said(m[1])})${said(m[0].slice(m[1].length)) ? ' ' + said(m[0].slice(m[1].length)) : ''}.`);
+        }
+        if (r.range) for (const m of q.matchAll(r.re)) {
+          if (AFTER_OP.test(q.slice(m.index + m[0].length))) x.err(`"${said(m[0])} ${said(q.slice(m.index + m[0].length).match(AFTER_OP)[0])} …" could mean a number up to ${code(said(m[2]))} and then the sum, or a number up to the whole sum. Put brackets round the end you mean, like random number from 1 to (n plus 1).`);
+        }
+        if (r.endsInOperand) { const out = innermostFirst(q, r); q = out.q; if (out.waiting) waiting = true; }
+        else q = q.replace(r.re, r.to);
         if (q !== prev) {
           if (r.note) x.note(r.note);
           if (r.use) x.use(r.use);
         }
       } while (r.repeat && q !== prev && ++guard < 6);
       q = q.replace(/\s+/g, ' ');
+    }
+    }
+
+    // 5b. "answer is "yes" or "y"": in Python `or "y"` is a test of its own (always true). With a plain name on
+    //     the left, the name is said again (answer == "yes" or answer == "y"); anything else is an error.
+    for (let guard = 0, m; guard < 8 && (m = q.match(EITHER)); guard++) {
+      const [all, lhs, op, rhs, join, lit] = m;
+      if (op === '==' && join === 'or' && /^[A-Za-z_][\w.]*(?:\[[^\]]*\])*$/.test(lhs)) {
+        q = q.slice(0, m.index) + `${lhs} == ${rhs} or ${lhs} == ${lit}` + q.slice(m.index + all.length);
+        x.note(`In Python, \`or\` joins two whole tests, so the name is said again: ${code(`${lhs} == … or ${lhs} == …`)}. (\`${lhs} == ${said(rhs)} or ${said(lit)}\` would always be true.)`);
+        continue;
+      }
+      const words = { '==': 'is', '!=': 'is not', '<': 'is less than', '>': 'is more than', '<=': 'is at most', '>=': 'is at least', in: 'is in', 'not in': 'is not in' }[op];
+      x.err(op === 'in' || op === 'not in'
+        ?`"… ${join} ${said(lit)}" on its own is always ${join === 'or' ? 'true' : 'just that value'}, not a test. Say the whole test each time, like: list contains "a" ${join} list contains "b".`
+        : `"${said(lhs)} ${words} ${said(rhs)} ${join} ${said(lit)}" could mean two things, and as Python it would test ${code(said(lit))} on its own. Say it in full: ${said(lhs)} ${words} ${said(rhs)} ${join} ${said(lhs)} ${words} ${said(lit)}.`);
+      break;
+    }
+    // 5d. Text joined to a number ("Score: " plus score): Python needs the number turned into text first.
+    q = q.replace(/(⟦\d+⟧) \+ ([A-Za-z_]\w*)(?![\w.(\[])|(?<![\w.⟦])([A-Za-z_]\w*) \+ (⟦\d+⟧)/g, (all, s1, n1, n2, s2) => {
+      const name = n1 || n2;
+      if (kindHere(x, name) !== 'number') return all;
+      x.note(`${code(name)} is a number, and Python only joins text to text, so it is turned into text first: ${code('str(' + name + ')')}.`);
+      return s1 ? `${s1} + str(${name})` : `str(${name}) + ${s2}`;
+    });
+    // 5c. Text compared with a number is never equal: "5" is not 5.
+    if (x.pass === 2) for (const m of q.matchAll(/(?<![\w.⟦])([A-Za-z_]\w*) (==|!=|<=|>=|<|>) (-?\d+(?:\.\d+)?)(?![\w.])|(?<![\w.⟦])(-?\d+(?:\.\d+)?) (==|!=|<=|>=|<|>) ([A-Za-z_]\w*)(?![\w.(])/g)) {
+      const name = m[1] || m[6], num = m[3] || m[4];
+      if (kindHere(x, name) === 'text') x.warn(`${code(name)} holds text${x.syms.get(name)?.asked ? ' (an answer from "ask" is always text)' : ''}, so it is never equal to the number ${num}: "${num}" and ${num} are different. Ask for a number, or turn it into one with "${name} as number".`);
     }
 
     // 6. Check every name.
@@ -394,10 +536,16 @@
       if (id === '_' && x.info.errs.some(e => e.startsWith('Fill in the'))) return id; // an unfilled ‹slot›, already reported
       if (/^\s*=(?!=)/.test(whole.slice(off + m.length))) return id; // keyword argument, e.g. end=""
       const low = id.toLowerCase();
-      if (x.syms.has(id)) {
-        const s = x.syms.get(id);
+      const s = x.syms.get(id);
+      if (s && !(s.kind === 'class' && s.py !== id)) {   // (a class isn't found by another spelling: point is not Point)
         if (x.pass === 2 && s.scope === 'module' && FILE_ORDER[s.file] > FILE_ORDER[x.file]) {
           x.warn(`${code(s.py)} is set in ${sectionTitle(s.file)}, which this section can't see. Set it here, or pass it into the tool as an input.`);
+        }
+        // set only inside tools, and not this one: it doesn't exist here
+        const places = Object.keys(s.kinds || {});
+        if (x.pass === 2 && places.length && places.every(w => w.startsWith('fn:')) && !places.includes(scopeKey(x)) && !['function', 'class', 'module'].includes(s.kind)) {
+          const tools = places.map(w => code(w.split('/').pop()));
+          x.warn(`${code(s.py)} is only set inside ${tools.length > 1 ? 'the tools ' + tools.join(', ') : 'the tool ' + tools[0]}, so it doesn't exist here. To use it here, give it back from the tool ("give back ${s.py}") and store it where you run the tool.`);
         }
         return s.py;
       }
@@ -412,6 +560,9 @@
     });
 
     q = q.replace(/⟪!⟫/g, 'is not').replace(/⟪⟫/g, 'is');
+    // two numbers side by side can't be Python ("x = 20 1"): say so here, rather than when it runs
+    const pair = q.match(/(?<![\w.⟦])(\d+(?:\.\d+)?) (\d+(?:\.\d+)?)(?![\w.⟧])/);
+    if (pair) x.err(`"${pair[1]} ${pair[2]}" is two numbers side by side, which isn't a value. Write one number (${pair[1]}${pair[2]}?), or join them with a word like plus.`);
 
     // 7. Tidy spacing. A lone = left now is a keyword argument, like end="".
     q = q.replace(/\s*(?<![=!<>])=(?!=)\s*/g, '=');
@@ -432,6 +583,7 @@
   /* Best guess at what kind of value an expression makes. */
   function kindOf(py, x) {
     const t = py.trim();
+    if (/^f?["'].*["']\.(?:split|splitlines)\(.*\)$/.test(t)) return 'list';   // "a b c".split() is a list, not text
     if (/^f?["']/.test(t) && !/["']\s*[-*/]/.test(t)) return 'text';
     if (isNum(t)) return 'number';
     if (/^\[/.test(t) || /^sorted\(/.test(t)) return 'list';
@@ -439,16 +591,29 @@
     if (/^(True|False)$/.test(t)) return 'yesno';
     if (/^(int|float|len|sum|abs|round|random\.randint|random\.random|math\.)\b/.test(t)) return 'number';
     if (/^(str|input)\(|\.(upper|lower)\(\)$/.test(t)) return 'text';
-    if (/^[A-Za-z_]\w*$/.test(t) && x.syms.has(t)) return x.syms.get(t).kind;
+    if (/^[A-Za-z_]\w*$/.test(t) && x.syms.has(t)) return kindHere(x, t);
+    const run = t.match(/^([A-Za-z_]\w*)\(.*\)$/), ran = run && x.syms.get(run[1]);
+    if (ran && ran.kind === 'function' && ran.returns) return ran.returns;   // a tool's result: what it gives back
+    // lists made from other things: words.split(), list(…), a copy, the keys of a dictionary
+    if (/^(?:list|sorted|reversed)\(|\.(?:split|splitlines|keys|values|items|copy)\(\)?|\.split\(/.test(t) && !/^(?:str|int|float|len)\(/.test(t)) return /\.copy\(\)$/.test(t) && x.syms.has(t.replace(/\.copy\(\)$/, '')) ? kindHere(x, t.replace(/\.copy\(\)$/, '')) : 'list';
+    if (/^dict\(/.test(t)) return 'dict';
     if (/^[\w\s+\-*/%().]+$/.test(t)) {
       const ids = t.match(/[A-Za-z_]\w*/g) || [];
-      if (ids.every(id => x.syms.get(id)?.kind === 'number')) return 'number';
+      if (ids.every(id => kindHere(x, id) === 'number')) return 'number';
     }
     return 'value';
   }
 
-  /* An item picked out of a list or dictionary (room["items"], grid[r][c]): what it holds can't be known. */
+  /* A plain value, not a test: no "is", "contains", "not"… ("milk", total, item 0 of xs). */
+  const plainValue = (p) => !/\b(?:is|isn't|are|contains?|equals?|than|not|or|even|odd|divisible|at least|at most)\b|[=<>!]/i.test(mask(p));
+
+  /* An item picked out of a list or dictionary (room["items"], grid[r][c]): what it holds can't be known,
+     unless every item put in it was the same kind (totals["food"] = 0, then totals[kind] is a number). */
   const pickedOut = (t) => /^[A-Za-z_][\w.]*(?:\[[^\]]*\])+$/.test(t);
+  function itemKind(t, x) {
+    const m = t.match(/^([A-Za-z_]\w*)\[[^\]]*\]$/), s = m && x.syms.get(m[1]);
+    return s && s.items && s.items.size === 1 && !s.items.has('value') ? [...s.items][0] : 'value';
+  }
 
   const KIND_WORDS = { number: 'a number', text: 'text', list: 'a list', dict: 'a dictionary', yesno: 'a yes/no value', function: 'a tool', value: 'a value' };
 
@@ -465,9 +630,9 @@
     if ((m = qmatch(target, /^(?:the\s+)?item\s+(.+?)\s+(?:of|in)\s+(.+)$/i))) {
       const coll = tExpr(m[2], x);
       const key = tExpr(m[1], x);
-      const k = x.syms.get(coll)?.kind;
+      const k = kindHere(x, coll);
       x.note(k === 'dict' ? `${code(coll + '[' + key + ']')} stores the value under the key ${code(key)} in the dictionary.` : `${code(coll + '[' + key + ']')} replaces one item. Positions start at 0.`);
-      return { py: `${coll}[${key}]` };
+      return { py: `${coll}[${key}]`, coll };
     }
     if ((m = target.match(/^(?:the\s+)?(first|last)\s+item\s+(?:of|in)\s+(.+)$/i))) {
       const coll = tExpr(m[2], x);
@@ -482,7 +647,12 @@
     const call = qmatch(valueRaw, /^(?:the\s+)?(?:result|answer|output) of\s+(.+?)(?:\s+(?:with|using|on)\s+(.+))?$/i);
     if (call) value = callExpr(call[1], call[2], x);
     else value = tExpr(valueRaw, x);
-    if (tgt) return { py: `${tgt.py} = ${value}` };
+    if (tgt) {
+      // what the items put in a dictionary or list hold, so "add 1 to totals[kind]" knows they're numbers
+      const cs = tgt.coll && x.syms.get(tgt.coll);
+      if (cs) (cs.items = cs.items || new Set()).add(kindOf(value, x));
+      return { py: `${tgt.py} = ${value}` };
+    }
     if (/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(nameRaw.trim())) {
       x.note(`Stores the value in ${code(nameRaw.trim())}, a value that belongs to an object.`);
       return { py: `${nameRaw.trim()} = ${value}` };
@@ -533,8 +703,8 @@
   rule(/^(?:raw python|python|raw)\s*:\s?(.*)$/i, (m, x) => {
     x.note('Raw Python: copied exactly as written. The translator does not check it; Python will when you press Run.');
     const py = m[1];
-    const a = py.match(/^\s*([A-Za-z_]\w*)\s*=[^=]/);
-    if (a) declare(x, a[1], a[1], 'value');
+    const a = py.match(/^\s*([A-Za-z_]\w*)\s*=(?!=)\s*(.*)$/);
+    if (a) declare(x, a[1], a[1], kindOf(a[2].replace(/\s*#.*$/, ''), x));   // what it holds, from the value's shape (names = [] is a list)
     const imp = py.match(/^\s*(?:from\s+[\w.]+\s+)?import\s+(.+)$/);
     if (imp) for (const part of imp[1].replace(/[()]/g, '').split(',')) {
       const nm = part.trim().split(/\s+as\s+/).pop().split('.')[0];
@@ -543,7 +713,12 @@
     const cls = py.match(/^\s*class\s+([A-Za-z_]\w*)/);
     if (cls) declare(x, cls[1], cls[1], 'class');
     const d = py.match(/^\s*def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
-    if (d) declare(x, d[1], d[1], 'function', { params: d[2].split(',').map(p => p.trim()).filter(Boolean) });
+    if (d) {
+      const ps = d[2].split(',').map(p => p.trim()).filter(Boolean);
+      // inputs with a value to use when none is given (h=1) can be left out when the tool is run
+      // (*args takes any number, so then the inputs aren't counted)
+      declare(x, d[1], d[1], 'function', ps.some(p => p.startsWith('*')) ? {} : { params: ps.map(p => p.replace(/[:=].*$/, '').trim()), required: ps.filter(p => !/=/.test(p)).length });
+    }
     const strOpen = openString(py);   // text in triple quotes that carries on to the next lines
     if (strOpen) x.note('The text in triple quotes carries on over the next lines, which are copied exactly (their spaces are part of the text).');
     const opens = !strOpen && /:\s*(#.*)?$/.test(py);
@@ -685,7 +860,7 @@
     }
     const required = parts.filter(p => !/=(?!=)/.test(p)).length;
     declare(x, name, m[2], 'function', { params, required });
-    for (const p of params) declare(x, p, p, 'value', { scope: 'local' });
+    for (const p of params) declare(x, p, p, 'value', { scope: 'local', where: `fn:${x.file}/${name}` });   // the tool's own inputs
     if (x.level > 0 && !x.inside('class')) x.warn('This tool is defined inside another block. Usually tools are defined at the left edge, with nothing in front.');
     x.note(`${code(m[1] ? 'async def' : 'def')} makes a reusable tool called ${code(name)}. The indented lines under it only run when you "run ${m[2].trim()}".` + (params.length ? ` Its inputs (${params.map(code).join(', ')}) are filled in each time it runs.` : '') + (required < params.length ? ' Inputs with `=` have a value to use if none is given.' : '') + (m[1] ? ' `async` means it can wait for slow things (like the internet) without blocking.' : ''));
     return { py: `${m[1] ? 'async ' : ''}def ${name}(${shown.join(', ')}):`, open: 'def', fn: { name, params } };
@@ -694,7 +869,16 @@
   rule(/^(?:give back|return|send back|answer with|hand back)\b\s*(.*)$/i, (m, x) => {
     if (!x.inside('def')) x.err('"give back" only works inside a tool (a define block). It hands a result back to whoever ran the tool.');
     x.note('`return` ends the tool and hands this value back to the line that ran it.');
-    return { py: m[1] ? `return ${tExpr(m[1], x)}` : 'return', tag: 'return' };
+    // "give back total and count": two values, or "total and count" (a yes/no test)? Plain values joined by "and" are asked about.
+    const parts = m[1] ? splitItems(m[1]) : [];
+    if (parts.length > 1 && /\band\b/i.test(mask(m[1])) && !/,/.test(mask(m[1])) && parts.every(plainValue)) {
+      x.err(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, separate them with a comma: give back ${parts.join(', ')}.`);
+    }
+    const value = m[1] ? tExpr(m[1], x) : '';
+    // what the tool gives back, so a name that stores its result knows what it holds (a mix is "can't tell")
+    const fs = x.fn && x.syms.get(x.fn.name);
+    if (fs && value) { const k = kindOf(value, x); fs.returns = !fs.returns || fs.returns === k ? k : 'value'; }
+    return { py: value ? `return ${value}` : 'return', tag: 'return' };
   });
 
   // --- Decisions --------------------------------------------------------
@@ -740,20 +924,25 @@
     x.note(`${code('range(' + n + ')')} gives ${n} rounds. \`_\` is the name Python programmers use for a counter they don't need.`);
     return { py: `for _ in range(${n}):`, open: 'loop' };
   });
-  rule(/^(?:count(?: down| up)?|for)(?:\s+(.+?))?\s+from\s+(.+?)\s+(down\s+)?to\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i, (m, x) => {
+  rule(/^(?:count(?: down| up)?|for(?: each| every)?)(?:\s+(.+?))?\s+from\s+(.+?)\s+(down\s+)?to\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i, (m, x) => {
     if (!m[1] || /^(?:down|up)$/i.test(m[1])) {
       m[1] = 'n';
       x.note('No name was given for the count, so it is called `n`. Write "count i from …" to choose a name.');
     }
+    // "for each x in numbers from 1 to 2" mixes two sentences
+    if (/\s(?:in|of)\s/i.test(m[1])) { x.err(`This mixes two sentences. To go through a list, say "for each ${m[1].split(/\s+(?:in|of)\s+/i)[0]} in ${m[1].split(/\s+(?:in|of)\s+/i)[1]}"; to count, say "count ${m[1].split(/\s+(?:in|of)\s+/i)[0]} from ${m[2]} to ${m[4]}".`); return { py: '# ??? ' + m.input, open: 'loop' }; }
     const v = toName(m[1], x, { define: true });
     declare(x, v, m[1], 'number');
     const a = tExpr(m[2], x), b = tExpr(m[4], x);
     const step = m[5] ? tExpr(m[5], x) : null;
-    const down = !!m[3] || /^count down/i.test(m.input) || (isNum(a) && isNum(b) && +a > +b);
+    const up = /^count up/i.test(m.input);
+    const down = !up && (!!m[3] || /^count down/i.test(m.input) || (isNum(a) && isNum(b) && +a > +b));
+    // "count i from n to 1": which way? Only numbers written here say; otherwise ask (never count the wrong way)
+    if (!up && !down && !isNum(a) && isNum(b)) x.err(`IntuCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up from …" or "count down from …".`);
     let end, st = step;
     if (down) {
       end = isNum(b) ? String(+b - 1) : `${b} - 1`;
-      st = step ? (isNum(step) ? String(-Math.abs(+step)) : `-${step}`) : '-1';
+      st = step ? (isNum(step) ? String(-Math.abs(+step)) : /^[\w.]+$/.test(step) ? `-${step}` : `-(${step})`) : '-1';
       x.note(`Counting down: \`range(start, end, -1)\` stops just before its end, so the translator uses ${code(end)} to include ${b}.`);
     } else {
       end = isNum(b) ? String(+b + 1) : `${b} + 1`;
@@ -771,7 +960,7 @@
       return { py: `for ${vs.join(', ')} in ${coll}:`, open: 'loop' };
     }
     const v = toName(m[1], x, { define: true });
-    const ck = x.syms.get(coll)?.kind;
+    const ck = kindHere(x, coll);
     declare(x, v, m[1], ck === 'text' ? 'text' : 'value');
     x.note(`Takes the items of ${code(coll)} one at a time. Each round, ${code(v)} holds the current one.` + (ck === 'text' ? ' For text, that means one letter at a time.' : ck === 'dict' ? ' For a dictionary, that means each key.' : ''));
     return { py: `for ${v} in ${coll}:`, open: 'loop' };
@@ -802,13 +991,18 @@
     return { py: 'print()' };
   });
   rule(/^(?:show|print|display|say|write|output)\s+(.+?)(\s+(?:on the same line|without (?:a )?new ?line|and stay on this line))?$/i, (m, x) => {
-    const items = splitItems(m[1]).map(p => tExpr(p, x));
+    // "then show 1 otherwise show 2" on one line: "otherwise" starts a step of its own
+    if (/\botherwise\s+(?:show|print|say|display|set|add|run|ask|give back|stop)\b/i.test(mask(m[1]))) x.err('"otherwise" starts a step of its own here. Put it on its own line, lined up with the "if", and the step under it.');
+    // "and" between things to show shows each; between tests ("a is 1 and b is 2") it is one yes/no test
+    let parts = splitItems(m[1]);
+    if (parts.length > 1 && !parts.every(plainValue)) parts = splitItems(m[1], false);
+    const items = parts.map(p => tExpr(p, x));
     if (items.length > 1) x.note('Several things separated by "and" or commas are shown on one line, with a space between each.');
     if (m[2]) x.note('`end=" "` stops `print` moving to a new line, so the next thing shown continues on this line.');
     return { py: `print(${items.join(', ')}${m[2] ? ', end=" "' : ''})` };
   });
-  rule(/^ask(?:\s+(?:for|the user for|them for))?(?:\s+(?:an?\s+)?(whole number|number|decimal(?: number)?|text|word|answer|name))?(?:\s+(.+?))?\s+(?:and\s+)?(?:store|save|keep|put|remember)(?:\s+(?:it|that|the answer|the reply))?\s+(?:in|as|into)\s+(.+)$/i, (m, x) => {
-    const kindWord = (m[1] || '').toLowerCase();
+  rule(/^ask(?:\s+(?:for|the user for|them for))?(?:\s+(?:an?\s+)?(whole number|number|decimal(?: number)?|text|word|answer|name))?(?:\s+(.+?))?\s+(?:and\s+)?(?:store|save|keep|put|remember)(?:\s+(?:it|that|the answer|the reply))?\s+(?:in|as|into)\s+(.+?)(?:\s+as\s+(?:an?\s+)?(whole number|number|decimal(?: number)?|text))?$/i, (m, x) => {
+    const kindWord = (m[1] || m[4] || '').toLowerCase();   // "ask for a number …" or "… and store in age as a number"
     const prompt = m[2] ? tExpr(m[2], x) : '';
     const name = toName(m[3], x, { define: true });
     let py = `input(${prompt})`, kind = 'text';
@@ -823,6 +1017,7 @@
     }
     if (m[2] && !/^f?["']/.test(prompt)) x.warn('The question usually goes in quotes, like ask "What is your name? " and store in name.');
     declare(x, name, m[3], kind);
+    if (kind === 'text') x.syms.get(name).asked = true;   // (so a comparison with a number can say why it never matches)
     assigned(x, name);
     return { py: `${name} = ${py}` };
   });
@@ -847,32 +1042,47 @@
     x.note('A dictionary stores values under keys, like a word and its meaning. Add to it with: set item "key" of ' + name + ' to value.');
     return { py: `${name} = {}` };
   });
-  rule(/^(?:add|append|put)\s+(.+?)\s+(?:to|onto|into)\s+(?:the\s+end\s+of\s+)?(.+)$/i, (m, x) => {
-    const val = tExpr(m[1], x);
-    const target = tExpr(m[2], x);
+  rule(/^(add|append|put)\s+(.+?)\s+(?:to|onto|into)\s+(?:the\s+end\s+of\s+)?(.+)$/i, (m, x) => {
+    const target = tExpr(m[3], x);
     const s = x.syms.get(target);
-    if (x.pass === 2 && !s && !pickedOut(target)) { x.err(`${code(target)} doesn't exist yet. Create it first, e.g. "set ${m[2].trim()} to 0" or "create list ${m[2].trim()}".`); }
-    const k = s?.kind;
-    if (k === 'list') {
-      x.note(`${code(target)} is a list, so "add" puts ${code(val)} on the end with ${code('.append()')}.`);
-      return { py: `${target}.append(${val})` };
-    }
-    if (!s && pickedOut(target)) {
-      if (['text', 'list', 'dict', 'yesno'].includes(kindOf(val, x))) {
-        x.note(`${code(target)} is taken out of something else, so the translator can't see what it holds. Adding ${code(val)}, which isn't a number, means it's a list: ${code('.append()')} puts it on the end.`);
-        return { py: `${target}.append(${val})` };
-      }
-      x.note(`${code(target)} is taken out of something else, so the translator can't see what it holds: \`+=\` adds to it, as for a number. If it holds a list, write "run ${m[2].trim()}.append with ${m[1].trim()}".`);
-    }
+    const k = s ? kindHere(x, target) : pickedOut(target) ? itemKind(target, x) : undefined;
+    // "put 0 into count" stores a value; "put "milk" into basket" adds to a list
+    if (m[1].toLowerCase() === 'put' && k !== 'list' && !pickedOut(target)) return doSet(m[3], m[2], x);
+    if (x.pass === 2 && !s && !pickedOut(target)) { x.err(`${code(target)} doesn't exist yet. Create it first, e.g. "set ${m[3].trim()} to 0" or "create list ${m[3].trim()}".`); }
     if (k === 'dict') { x.err('To add to a dictionary, give the key: set item "key" of ' + target + ' to value.'); return { py: `${target}` }; }
-    assigned(x, target);
+    // several things at once: "add "milk" and "eggs" to basket" adds both
+    const parts = splitItems(m[2]);
+    const many = parts.length > 1 && parts.every(plainValue);
+    const vals = many ? parts.map(p => tExpr(p, x)) : [tExpr(m[2], x)];
+    const val = vals[0];
+    const appends = () => (many ? { py: `${target}.append(${vals[0]})`, pys: vals.map(v => `${target}.append(${v})`) } : { py: `${target}.append(${val})` });
+    if (k === 'list') {
+      x.note(`${code(target)} is a list, so "add" puts ${many ? 'each one' : code(val)} on the end with ${code('.append()')}.`);
+      return appends();
+    }
+    // what it holds can't be seen (taken out of something else, made by a tool, a python: line…)
+    if (!['text', 'number', 'yesno'].includes(k)) {
+      const vk = vals.map(v => kindOf(v, x));
+      if (vk.some(v => ['text', 'list', 'dict', 'yesno'].includes(v))) {
+        x.note(`The translator can't see what ${code(target)} holds. Adding ${many ? 'these' : code(val)}, which ${many ? "aren't numbers" : "isn't a number"}, means it's a list, so ${code('.append()')} puts ${many ? 'each one' : 'it'} on the end. (If ${code(target)} is text, Python stops with an error here: write "set ${m[3].trim()} to ${m[3].trim()} plus …" to join text.)`);
+        return appends();
+      }
+      if (many) { x.err(`Add one number at a time to ${code(target)}, or add them up first: add ${parts.join(' plus ')} to ${m[3].trim()}.`); return { py: `${target} += ${val}` }; }
+      assigned(x, target, true);
+      // a number, or nothing known about either side: += (if it's really a list and the value text, Python would add each letter)
+      if (vk.every(v => v === 'number')) x.note(`The translator can't see what ${code(target)} holds, so \`+=\` adds ${code(val)} to it, as for a number. If it holds a list, write "append ${m[2].trim()} to ${m[3].trim()}".`);
+      else x.warn(`The translator can't tell what ${code(target)} or ${code(val)} hold, so this adds them as numbers (\`+=\`). If ${code(target)} is a list, write "append ${m[2].trim()} to ${m[3].trim()}" instead: \`+=\` would add text to a list letter by letter.`);
+      return { py: `${target} += ${val}` };
+    }
+    if (many) { x.err(`${code(target)} is ${KIND_WORDS[k]}, so add one thing at a time, or join them first: add ${parts.join(' plus ')} to ${m[3].trim()}.`); return { py: `${target} += ${val}` }; }
+    assigned(x, target, true);
     if (k === 'text') x.note(`${code(target)} is text, so "add" joins ${code(val)} onto the end. \`+=\` is short for ${code(target + ' = ' + target + ' + ' + val)}.`);
     else x.note(`${code(target)} is ${KIND_WORDS[k] || 'a value'}, so "add" increases it with \`+=\` (short for ${code(target + ' = ' + target + ' + ' + val)}). If it were a list, this would use \`.append()\` instead.`);
     return { py: `${target} += ${val}` };
   });
   rule(/^(?:remove|delete)\s+(.+?)\s+from\s+(.+)$/i, (m, x) => {
     const target = tExpr(m[2], x);
-    const k = x.syms.get(target)?.kind;
+    const k = kindHere(x, target);
     if (k === 'dict') {
       const key = tExpr(m[1], x);
       x.note(`\`del\` removes the key ${code(key)} and its value from the dictionary.`);
@@ -884,48 +1094,53 @@
       x.note(`\`.pop(${pos})\` removes the item at position ${pos}. Positions start at 0.`);
       return { py: `${target}.pop(${pos})` };
     }
-    const val = tExpr(m[1], x);
+    // several things at once: "remove "milk" and "jam" from basket" takes out both
+    const parts = splitItems(m[1]);
+    const many = parts.length > 1 && parts.every(plainValue);
+    const vals = many ? parts.map(p => tExpr(p, x)) : [tExpr(m[1], x)];
+    const val = vals[0];
     if (k === 'list' || (!k && pickedOut(target) && kindOf(val, x) !== 'number')) {
       if (k !== 'list') x.note(`${code(target)} is taken out of something else, so the translator can't see what it holds. Taking out ${code(val)}, which isn't a number, means it's a list. (To take a number away from a number in there, write "decrease ${m[2].trim()} by …".)`);
       x.note('`.remove()` takes out the first matching item. If it isn\'t in the list, Python stops with an error, so you might check with "if … is in …" first.');
-      return { py: `${target}.remove(${val})` };
+      return many ? { py: `${target}.remove(${val})`, pys: vals.map(v => `${target}.remove(${v})`) } : { py: `${target}.remove(${val})` };
     }
-    assigned(x, target);
+    if (many) { x.err(`${code(target)} is ${KIND_WORDS[k] || 'a value'}, not a list, so take away one thing at a time.`); return { py: `${target} -= ${val}` }; }
+    assigned(x, target, true);
     x.note(`${code(target)} is ${KIND_WORDS[k] || 'a value'}, so "remove" subtracts with \`-=\`.`);
     return { py: `${target} -= ${val}` };
   });
   rule(/^(?:subtract|take away|take)\s+(.+?)\s+from\s+(.+)$/i, (m, x) => {
-    const target = tExpr(m[2], x); assigned(x, target);
+    const target = tExpr(m[2], x); assigned(x, target, true);
     x.note(`\`-=\` is short for ${code(target + ' = ' + target + ' - …')}.`);
     return { py: `${target} -= ${tExpr(m[1], x)}` };
   });
   rule(/^(?:increase|raise|increment|bump up|go up)\s+(.+?)(?:\s+by\s+(.+))?$/i, (m, x) => {
-    const target = tExpr(m[1], x); assigned(x, target);
+    const target = tExpr(m[1], x); assigned(x, target, true);
     const by = m[2] ? tExpr(m[2], x) : '1';
     if (!m[2]) x.note('No amount given, so it goes up by 1.');
     x.note(`\`+=\` is short for ${code(target + ' = ' + target + ' + ' + by)}.`);
     return { py: `${target} += ${by}` };
   });
   rule(/^(?:decrease|lower|reduce|decrement|go down)\s+(.+?)(?:\s+by\s+(.+))?$/i, (m, x) => {
-    const target = tExpr(m[1], x); assigned(x, target);
+    const target = tExpr(m[1], x); assigned(x, target, true);
     const by = m[2] ? tExpr(m[2], x) : '1';
     if (!m[2]) x.note('No amount given, so it goes down by 1.');
     x.note(`\`-=\` is short for ${code(target + ' = ' + target + ' - ' + by)}.`);
     return { py: `${target} -= ${by}` };
   });
   rule(/^multiply\s+(.+?)\s+by\s+(.+)$/i, (m, x) => {
-    const t = tExpr(m[1], x); assigned(x, t);
+    const t = tExpr(m[1], x); assigned(x, t, true);
     return { py: `${t} *= ${tExpr(m[2], x)}` };
   });
   rule(/^divide\s+(.+?)\s+by\s+(.+)$/i, (m, x) => {
-    const t = tExpr(m[1], x); assigned(x, t);
+    const t = tExpr(m[1], x); assigned(x, t, true);
     x.note('`/=` divides and always leaves a decimal number, even 10 / 2 gives 5.0.');
     return { py: `${t} /= ${tExpr(m[2], x)}` };
   });
   rule(/^(sort|reverse|shuffle|empty|clear)\s+(.+?)(\s+(?:backwards|in reverse|biggest first|largest first|highest first|descending))?$/i, (m, x) => {
     const verb = m[1].toLowerCase();
     const t = tExpr(m[2], x);
-    if (x.pass === 2 && x.syms.get(t) && !['list', 'value', 'dict'].includes(x.syms.get(t).kind)) x.warn(`${code(t)} doesn't look like a list.`);
+    if (x.pass === 2 && x.syms.get(t) && !['list', 'value', 'dict'].includes(kindHere(x, t))) x.warn(`${code(t)} doesn't look like a list.`);
     if (verb === 'sort') {
       x.note(m[3] ? '`.sort(reverse=True)` sorts the list in place, biggest first.' : '`.sort()` changes the list itself into order: smallest first, or A to Z.');
       return { py: `${t}.sort(${m[3] ? 'reverse=True' : ''})` };
@@ -954,7 +1169,8 @@
 
   // --- Storing -------------------------------------------------------------
   rule(/^(?:set|make|let|change|update)\s+(.+?)\s+(?:to be|to|be|equal to|equal|=)\s+(.+)$/i, (m, x) => doSet(m[1], m[2], x));
-  rule(/^(?:remember|store|save|keep)\s+(.+?)\s+(?:as|in|into)\s+(.+)$/i, (m, x) => doSet(m[2], m[1], x));
+  // the last "as", "in" or "into" says where: "store score as text in label" stores score as text in label
+  rule(/^(?:remember|store|save|keep)\s+(.+)\s+(?:as|in|into)\s+(.+?)$/i, (m, x) => doSet(m[2], m[1], x));
 
   // --- Running tools ---------------------------------------------------------
   rule(/^(?:run|call|do|use|perform)\s+(?:the\s+)?(?:tool\s+)?(.+?)(?:\s+(?:with|using|on|for)\s+(.+?))?(?:\s+and\s+(?:store|save|keep|put|remember)(?:\s+(?:it|the result|the answer|what it gives back))?\s+(?:in|as|into)\s+(.+))?$/i, (m, x) => {
@@ -971,7 +1187,7 @@
     const call = callExpr(m[1], m[2], x);
     if (m[3]) {
       const v = toName(m[3], x, { define: true });
-      declare(x, v, m[3], 'value'); assigned(x, v);
+      declare(x, v, m[3], kindOf(call, x)); assigned(x, v);   // (what the tool gives back, when that's known)
       x.note(`Runs the tool and stores whatever it gives back in ${code(v)}.`);
       return { py: `${v} = ${call}` };
     }
@@ -983,7 +1199,7 @@
   rule(/^([A-Za-z_]\w*)\s*([+\-*/]?=)(?!=)\s*(.+)$/, (m, x) => {
     const py = x.syms.has(m[1]) ? x.syms.get(m[1]).py : m[1];
     if (m[2] === '=') declare(x, py, py, kindOf(tExpr(m[3], x), x));
-    assigned(x, py);
+    assigned(x, py, m[2] !== '=');
     x.note('This is already Python, so it is kept almost as written.');
     return { py: `${py} ${m[2]} ${tExpr(m[3], x)}` };
   });
@@ -995,9 +1211,11 @@
   /* ------------------------------------------------------------------ */
 
   // Natural phrasing is never penalised: these words are left out, and the explain strip says so.
-  const LEAD_FILLER = /^(?:(?:please|kindly|ok|okay|so|and|now|next|then|and then|also|just|simply|finally|first(?:ly)?|after that|afterwards|i want to|i'd like to|i would like to|i need to|we need to|we want to|let's|let us|can you|could you|you should|go ahead and|make sure (?:to|you)|try to|remember to|be sure to)\s*,?\s+)+/i;
+  const LEAD_FILLER = /^(?:(?:please|kindly|ok|okay|so|and|now|next|then|and then|also|just|simply|finally|first(?:ly)?|after that|afterwards|i want to|i'd like to|i would like to|i need to|we need to|we want to|let's|let us|can you|could you|you should|go ahead and|make sure (?:to|you)|remember to|be sure to)\s*,?\s+)+/i;
   const ANY_FILLER = /\b(?:please|kindly|just|simply|basically|really|actually|quickly)\b/gi;
   const TAIL_FILLER = /(?:\s*,?\s*\b(?:please|for me|thanks|thank you))+\s*[.!]?\s*$/i;
+  // after "run …", "for me" is the tool's input ("run greet for me"), not filler
+  const TAIL_FILLER_RUN = /(?:\s*,?\s*\b(?:please|thanks|thank you))+\s*[.!]?\s*$/i;
   const STEP_SPLIT = /\s*;\s*|\s*,?\s+(?:and then|then|after that|afterwards)\s+/gi;
   // A colon splits "repeat 3 times: show hi" only when a lower-case sentence follows (so "note: Note" types stay put).
   const STEP_START = /^(?:show|print|say|display|set|ask|run|call|give back|return|add|remove|delete|increase|decrease|multiply|divide|stop|skip|do nothing|wait|create|make|if|repeat|for each|count|fail|check|open|using|sort|shuffle|reverse)\b(?!\s*[:=(.\[])/;
@@ -1012,7 +1230,7 @@
     if (NOT_FILLER.test(s) || /^[A-Za-z_]\w*\s*[+\-*/]?=[^=]/.test(s)) return { text: s, removed };
     const lead = s.match(LEAD_FILLER);
     if (lead && lead[0].length < s.length) { removed.push(lead[0].replace(/,/g, ' ').replace(/\s+/g, ' ').trim()); s = s.slice(lead[0].length); }
-    const tail = mask(s).match(TAIL_FILLER);
+    const tail = mask(s).match(/^(?:run|call|do|use|perform)\b/i.test(s) ? TAIL_FILLER_RUN : TAIL_FILLER);
     if (tail && tail.index > 0) { removed.push(...tail[0].replace(/[.!,]/g, ' ').trim().split(/\s+(?=please|for|thanks|thank)/i)); s = s.slice(0, tail.index); }
     let out = '', last = 0;
     for (const m of mask(s).matchAll(ANY_FILLER)) { out += s.slice(last, m.index); last = m.index + m[0].length; removed.push(m[0].toLowerCase()); }
@@ -1049,6 +1267,10 @@
       if (m) return r.fn(m, x);
     }
     const { text: s, removed } = stripFiller(s0);
+    // "1,000" is two values in Python (1 and 0), so a number is written without its commas
+    const ms = mask(s), depthAt = (i) => [...ms.slice(0, i)].reduce((d, c) => d + ('([{'.includes(c)) - (')]}'.includes(c)), 0);
+    const big = [...ms.matchAll(/(?<![\w.,])\d{1,3}(?:,\d{3})+(?![\w.,])/g)].find(b => !depthAt(b.index));   // (inside brackets it's Python's own [100,200])
+    if (big && !/^(?:create|make|start)\b.*\blist\b/i.test(s)) x.err(`Write numbers without commas: ${big[0].replace(/,/g, '')}, not ${big[0]}. (In Python a comma separates two values, so ${big[0]} would be ${big[0].split(',').length} numbers.)`);
     const parts = splitSteps(s);
     const said = [...new Set(removed)];
     const fillerNote = () => { if (said.length) x.note(`Left out filler: ${said.map(w => '"' + w + '"').join(', ')}. You can write words like these; Python doesn't need them.`); };
@@ -1075,7 +1297,7 @@
   function tOne(text, x) {
     let s = text.trim();
     s = s.replace(/\s*:\s*$/, '')
-      .replace(/(?<![\d.])\.\s*$/, '')
+      .replace(/(?<!\.)\.\s*$/, '')   // a sentence's full stop, after a number too: "set lives to 3." is 3
       .replace(/\s+(?:then|do)$/i, '');
     for (const r of RULES.slice(3)) {
       const m = qmatch(s, r.re);
@@ -1257,7 +1479,7 @@
   }
 
   function compileProject(project) {
-    const env = { syms: new SymTable(), seen: new Set(), pass: 1, imports: new Set(), multiDirty: true };
+    const env = { syms: new SymTable(), seen: new Set(), pass: 1, imports: new Set(), multiDirty: true, order: project.sections.map(s => s.file) };
     const fileDefs = {};
     for (const sec of project.sections) {
       const before = env.syms.size;
