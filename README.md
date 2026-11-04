@@ -28,6 +28,21 @@ rounded corners 8" and used with "when save is clicked". A live preview updates 
 **Pick from the page** puts an element's name into your sentence, and messages and errors from
 the page appear in the terminal, linked back to the sentence that caused them.
 
+Mechanics can make elements too, and they work like the ones in Structure:
+
+```
+for each task in tasks
+    make a new list item saying task.text in todos and store in row
+    when row is clicked
+        run tick with task
+when copy is clicked
+    try
+        wait for navigator.clipboard.writeText(passphrase)
+        set the text of copied to "Copied."
+    if it fails
+        set the text of copied to "Select it and copy it yourself."
+```
+
 Everything you can start from is in the **Library**, by kind of project: Games, Productivity, Money,
 Health & habits, Learning, Creative & media, Social & sharing, Tools & utilities, Websites, Online
 services and Gadgets, then One idea at a time and Starting points. Each project says where it runs (PC,

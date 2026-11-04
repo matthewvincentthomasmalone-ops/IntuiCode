@@ -38,7 +38,7 @@ class El {
   constructor(tag, attrs = {}) {
     this.tagName = tag.toUpperCase(); this.id = attrs.id || ''; this.children = []; this.own = '';
     this.hidden = 'hidden' in attrs; this.classList = new ClassList(); this.style = {}; this.dataset = {};
-    this.title = ''; this.value = attrs.value || ''; this.listeners = {}; this.onclick = null;
+    this.title = ''; this.value = attrs.value || ''; this.step = attrs.step || ''; this.listeners = {}; this.onclick = null;   // (step reflects its attribute, as in a browser)
     (attrs.class || '').split(/\s+/).filter(Boolean).forEach(c => this.classList.add(c));
   }
   get textContent() { return this.own + this.children.map(c => c.textContent).join(''); }

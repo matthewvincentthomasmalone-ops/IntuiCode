@@ -59,6 +59,17 @@ const CASES = [
   ['define class Point\n    field x: decimal\n    field y: decimal = 0\n    field z: float', 'class Point:\n    x: float\n    y: float = 0\n    z: float'],
   ['define class Item\n    field name: text\n    field count: whole number = 1\n    field done: yes/no = no\n    field tags: list of text\n    field scores: list[int]', 'class Item:\n    name: str\n    count: int = 1\n    done: bool = False\n    tags: list[str]\n    scores: list[int]'],
   ['python: from decimal import Decimal\ndefine class Price\n    field amount: Decimal', 'from decimal import Decimal\nclass Price:\n    amount: Decimal'],
+  // a list taken out of a dictionary is still a list; a number taken out of one is still a number
+  ['create dictionary room\nset item "items" of room to ["key"]\nset item "visits" of room to 0\nremove "key" from room["items"]\nadd "map" to room["items"]\nadd 1 to room["visits"]\nremove 1 from room["visits"]',
+    'room = {}\nroom["items"] = ["key"]\nroom["visits"] = 0\nroom["items"].remove("key")\nroom["items"].append("map")\nroom["visits"] += 1\nroom["visits"] -= 1'],
+  ['create dictionary totals\nset item "food" of totals to 0\ndefine spend using kind, amount, thing, bag\n    add amount to totals[kind]\n    remove thing from bag["things"]',
+    'totals = {}\ntotals["food"] = 0\ndef spend(kind, amount, thing, bag):\n    totals[kind] += amount\n    bag["things"].remove(thing)'],
+  // a tool kept in a dictionary, run by picking it out
+  ['define look using what\n    show what\ncreate dictionary verbs\nset item "look" of verbs to look\nset verb to "look"\nrun verbs[verb] with "x"', 'def look(what):\n    print(what)\nverbs = {}\nverbs["look"] = look\nverb = "look"\nverbs[verb]("x")'],
+  // text's own tools keep their dot next to the text
+  ['create list here with "a", "b"\nshow "You see: " plus ", ".join(here) plus "."', 'here = ["a", "b"]\nprint("You see: " + ", ".join(here) + ".")'],
+  // a tool with "for" in its name keeps its whole name
+  ['define look for using what\n    give back what\nrun look for with "clues" and store in found\nrun look for with found', 'def look_for(what):\n    return what\nfound = look_for("clues")\nlook_for(found)'],
 ];
 
 for (const [sentences, expected] of CASES) {

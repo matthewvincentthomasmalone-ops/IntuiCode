@@ -655,7 +655,7 @@ name: The changing wind
 depth: hallway
 summary: The twist. Every few seconds the wind picks a new strength, pushing the plane up or down a little each frame, so the same tap does more or less than it did. It doesn't jump: it moves a small part of the way towards its new strength every frame, so changes feel like weather. The streaks follow the new wind straight away, a second or two before the plane feels it: a warning you learn to read. You fill in the new wind, the catching up and the drift.
 learn: Smoothing a change by moving part of the way each frame (easing, or lerp); showing a game's hidden state so it's fair; random numbers below zero.
-blank: ‹the wind's new strength› | a calculation | Pick a whole \`random number\` from -3 to 3 (below 0 lifts, above 0 pushes down), then divide it by 40, so the push is a small fraction of a pixel each frame. | random number from -3 to 3 divided by 40
+blank: ‹the wind's new strength› | a calculation | Pick a whole \`random number\` from -3 to 3 (below 0 lifts, above 0 pushes down), then divide it by 40, so the push is a small fraction of a pixel each frame. | (random number from -3 to 3) divided by 40
 blank: ‹a small part of the way to the target› | a calculation | The way still to go is \`target\` minus \`wind\`, in brackets. Moving 2% of it each frame (times 0.02) brings the wind round over a second or two. | (target minus wind) times 0.02
 blank: ‹a streak's drift up or down each frame› | a calculation | The streaks show where the wind is heading, so their drift follows \`target\` rather than \`wind\`. \`target\` is a tiny fraction of a pixel, so multiply it by a few dozen for a drift you can see. | target times 60
 == mechanics
@@ -1109,7 +1109,7 @@ set mixRule to mixLine`,
 `component: merge-swipe
 name: Swipes on a phone
 depth: walk
-summary: On a phone people swipe. A swipe is two moments: where the finger went down, and where it lifted. The difference across (dx) and down (dy) says which way it went: whichever is bigger wins, and it has to be long enough (30 pixels) to count, so a tap does nothing. It works with a mouse too. The finger lifting has no sentence yet, so two lines here are JavaScript.
+summary: On a phone people swipe. A swipe is two moments: where the finger went down, and where it lifted. The difference across (dx) and down (dy) says which way it went: whichever is bigger wins, and it has to be long enough (30 pixels) to count, so a tap does nothing. It works with a mouse too.
 learn: Pointer events (down and up), which treat fingers and mice alike; comparing sizes with Math.abs; touch-action, which stops the page scrolling under a swipe.
 == mechanics
 note: Where a finger (or the mouse) went down on the board.
@@ -1120,8 +1120,8 @@ when game is tapped
     set startX to tap x
     set startY to tap y
 
-note: The finger lifting decides the swipe. There's no sentence for that yet, so this line and the last are JavaScript: they listen for "pointerup" on the board.
-js: document.getElementById("game").addEventListener("pointerup", (event) => {
+note: The finger lifting decides the swipe.
+when game is released
     set dx to tap x minus startX
     set dy to tap y minus startY
     note: Long enough to be a swipe, then whichever way it went further.
@@ -1134,8 +1134,7 @@ js: document.getElementById("game").addEventListener("pointerup", (event) => {
         if dy is more than 0
             run move with "down"
         otherwise
-            run move with "up"
-js: });`,
+            run move with "up"`,
 
 `component: merge-motion
 name: Tiles that glide
@@ -1611,9 +1610,10 @@ define look using rest
     show ""
     show room["name"]
     show room["text"]
+    note: ", ".join(…) makes one piece of text from a list, with ", " between the items.
     if here
-        python: print("You can see: " + ", ".join(here) + ".")
-    python: print("Ways out: " + ", ".join(room["exits"]) + ".")
+        show "You can see: " plus ", ".join(here) plus "."
+    show "Ways out: " plus ", ".join(room["exits"]) plus "."
 
 define go using rest
     description: Goes one way, if there's an exit that way and it isn't locked.
@@ -1646,7 +1646,7 @@ create list directions with "north", "south", "east", "west", "up", "down"
 == tools
 define help using rest
     description: Lists the words a command can start with.
-    python: print("Try: " + ", ".join(sorted(verbs)) + ", a direction such as north or up, or quit.")
+    show "Try: " plus ", ".join(sorted(verbs)) plus ", a direction such as north or up, or quit."
 
 set item "look" of verbs to look
 set item "go" of verbs to go
@@ -1670,8 +1670,8 @@ define obey using line
         set rest to verb
         set verb to "go"
     if verb is in verbs
-        set action to verbs[verb]
-        run action with rest
+        note: The verb's tool, picked out of the dictionary and run.
+        run verbs[verb] with rest
     otherwise
         show "I don't know how to '{verb}'. Type help for the words I know."
 == main
@@ -1718,7 +1718,7 @@ define inventory using rest
     description: Lists what you carry.
     run things at with "you" and store in carried
     if carried
-        python: print("You're carrying: " + ", ".join(carried) + ".")
+        show "You're carrying: " plus ", ".join(carried) plus "."
     otherwise
         show "You aren't carrying anything."
 
@@ -1924,7 +1924,7 @@ every frame
 `component: pixel-brush
 name: Painting by clicking and dragging
 depth: walk
-summary: Press on a square to paint it; keep the button (or your finger) down and drag to paint every square you pass. A point becomes a square by dividing by the square size and rounding down. The drawing area may be shown bigger or smaller than its real size, so the point is scaled to its own pixels first: forget that and the paint lands in the wrong place. Moving and lifting have no sentences yet, so a few lines here are JavaScript.
+summary: Press on a square to paint it; keep the button (or your finger) down and drag to paint every square you pass. A point becomes a square by dividing by the square size and rounding down. The drawing area may be shown bigger or smaller than its real size, so the point is scaled to its own pixels first: forget that and the paint lands in the wrong place.
 learn: Pointer events (down, move, up) for mouse and touch alike; screen pixels and the drawing area's own pixels (clientWidth and width); Math.floor.
 == mechanics
 note: The colour the brush paints with ("" rubs out), and whether a drag is going on.
@@ -1945,14 +1945,13 @@ when art is tapped
     set painting to true
     run paintAt with tap x, tap y
 
-note: Dragging paints every square the pointer passes. There are no sentences yet for the pointer moving or lifting, so these are JavaScript lines around sentences: they listen for "pointermove" and "pointerup".
-js: document.getElementById("art").addEventListener("pointermove", (event) => {
+note: Dragging paints every square the pointer passes, until the button or the finger lifts, wherever that is.
+when the pointer moves over art
     if painting
         run paintAt with tap x, tap y
-js: });
-js: document.addEventListener("pointerup", () => {
-    set painting to false
-js: });`,
+
+when the screen is released
+    set painting to false`,
 
 `component: pixel-palette
 name: A palette and a colour picker
