@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { loadEngine, loadLibrary, loadTreeSitter, PYTHON, ROOT, LIBRARY_PACKS } from './helpers/engine.mjs';
@@ -784,4 +784,15 @@ test('library: the generated JavaScript gives the right numbers', async () => {
     } catch (e) { assert.fail(`${id}: ${e.message}`); }
   }
   assert.ok(Object.keys(JS_CHECKS).length >= 40);
+});
+
+test('the page loads every Library pack and the kit packs, before what reads them', () => {
+  const page = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const at = (f) => page.indexOf(`<script src="${f}"></script>`);
+  for (const f of LIBRARY_PACKS) {
+    assert.ok(at(f) > 0, `index.html doesn't load ${f}`);
+    assert.ok(at(f) < at('lang/library.js'), `${f} must load before lang/library.js`);
+  }
+  assert.ok(at('lang/languages.js') < at('lang/library.js') && at('lang/library.js') < at('app.js'));
+  for (const f of readdirSync(path.join(ROOT, 'lang/kits')).filter(f => f.endsWith('.js'))) assert.ok(at('lang/kits/' + f) > 0 && at('lang/kits/' + f) < at('lang/builder.js'), `index.html must load lang/kits/${f} before the builder`);
 });

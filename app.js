@@ -2686,6 +2686,207 @@
   });
 
   /* ------------------------------------------------------------------ */
+  /* Library: kinds of project, and the parts to add to one              */
+  /* ------------------------------------------------------------------ */
+  /* Two ways in: by the kind of project (what it's written in, open-source projects to learn from, the parts
+   * it's made of) or by what a part does (lang/library.js; its packs are plain text in lang/library/). A part
+   * comes in one or more languages; adding it puts it in the project: sentences for a website, C++ or Arduino
+   * join the file of that language that's already there (they're one program), anything else gets its own file
+   * (a Python one is a module the others import). Coding integration parts add every side at once. */
+  const LIB = window.IntuiLibrary;
+  const libState = { view: 'types', sel: null, lang: null, q: '' };   // sel: { kind: 'type' | 'part', id }
+  const libOn = (kind, id) => (libState.sel && libState.sel.kind === kind && libState.sel.id === id ? ' on' : '');
+  const libPlat = (p) => `<em class="bp-plat plat-${escHtml(p)}">${escHtml(LIB.PLATFORMS[p] || p)}</em>`;
+  const libLangTags = (p) => [...new Set(p.variants.map(v => v.name))].map(n => `<em class="bp-tag">${escHtml(n)}</em>`).join('');
+  function libFits(e, q) {
+    if (!q) return true;
+    const hay = [e.title, e.about, e.summary, e.heading, e.learn, ...(e.variants || []).map(v => v.name), ...(e.languages || []).map(l => l.said + ' ' + l.uses.join(' '))].join(' ').toLowerCase();
+    return q.split(/\s+/).every(w => hay.includes(w));
+  }
+  function renderLibList() {
+    const c = LIB.catalog(), q = libState.q.trim().toLowerCase(), box = $('libList'), scroll = box.scrollTop;
+    const typeItem = (t) => `<button type="button" class="bp-item${libOn('type', t.id)}" data-lib-type="${escHtml(t.id)}"><b>${escHtml(t.title)}</b><span>${t.platforms.map(libPlat).join('')}${escHtml(t.about)}</span></button>`;
+    const partItem = (p) => `<button type="button" class="bp-item${libOn('part', p.id)}" data-lib-part="${escHtml(p.id)}"><b>${escHtml(p.title)}</b><span>${libLangTags(p)}${escHtml(p.about)}</span></button>`;
+    const tab = (v, label) => `<button type="button" class="bp-filter${libState.view === v ? ' on' : ''}" data-lib-view="${v}" aria-pressed="${libState.view === v}">${label}</button>`;
+    let body;
+    if (q) {
+      const ts = c.types.filter(t => libFits(t, q)), ps = c.parts.filter(p => libFits(p, q));
+      body = (ts.length ? `<div class="bp-group">Kinds of project</div>${ts.map(typeItem).join('')}` : '')
+        + (ps.length ? `<div class="bp-group">Parts</div>${ps.map(partItem).join('')}` : '')
+        || '<p class="bp-none">Nothing matches. Try fewer words, or a language\'s name.</p>';
+    } else if (libState.view === 'types') {
+      body = c.headings.map(h => `<div class="bp-group">${escHtml(h)}</div>${c.types.filter(t => t.heading === h).map(typeItem).join('')}`).join('');
+    } else {
+      body = c.groups.map(g => { const ps = c.parts.filter(p => p.group === g.id); return ps.length ? `<div class="bp-group" title="${escHtml(g.about)}">${escHtml(g.title)}</div>${ps.map(partItem).join('')}` : ''; }).join('');
+    }
+    box.innerHTML = `<div class="bp-filters" role="group" aria-label="List by">${tab('types', 'Kinds of project')}${tab('parts', 'Parts')}</div>${body}`;
+    box.scrollTop = scroll;
+  }
+
+  /* A part's text, coloured: sentences as sentences, code and data as what they are. */
+  const libHl = (v) => v.text.split('\n').map(l => (v.write === 'sentences' ? hlLine(l) : hlFileLine({ lang: v.lang }, l))).join('\n');
+  /* What a sentences variant writes, compiled on its own (as a file of a project of one). */
+  function libCompiled(v) {
+    const p = normalized({ name: 'library', sections: [{ id: 'lib', path: v.file, lang: v.lang, text: v.text }], start: 'lib', active: 'lib' });
+    const r = p && compileAll(p).results[p.sections[0].id];
+    return r ? { text: r.text, problems: r.info.reduce((n, i) => n + i.errs.length, 0) } : null;
+  }
+  /* Where a variant goes in a project: { sec } to add to a file that's there, or { path } for a new one. */
+  function libPlace(v, p) {
+    const same = p.sections.find(s => s.path.toLowerCase() === v.file.toLowerCase());
+    if (same && same.lang === v.lang) return { sec: same };
+    if (v.write === 'sentences' && v.lang !== 'python') {
+      // one program: the main page's file of that kind, or the start (or first) C++ / Arduino file
+      const join = WEB_ROLE[v.lang] ? PRJ.webTriple(p.sections.filter(s => WEB_ROLE[s.lang]))[WEB_ROLE[v.lang]]
+        : p.sections.find(s => s.lang === v.lang && s.id === p.start) || p.sections.find(s => s.lang === v.lang);
+      if (join) return { sec: join };
+      // the first of a website's files: the names its page links to (index.html, style.css, script.js)
+      // (in the part's own folder, if it has one: static/index.html links static/script.js)
+      const classic = WEB_ROLE[v.lang] && v.file.replace(/[^/]*$/, '') + PRJ.CLASSIC_PATH[WEB_ROLE[v.lang]];
+      if (classic && !p.sections.some(s => s.path.toLowerCase() === classic.toLowerCase())) return { path: classic };
+    }
+    const sep = v.lang === 'python' ? '_' : '-', m = v.file.match(/^(.*?)(\.[^./]+)?$/);
+    for (let n = 1, path = v.file; n < 50; n++, path = `${m[1]}${sep}${n}${m[2] || ''}`) {
+      if (!p.sections.some(s => s.path.toLowerCase() === path.toLowerCase()) && !pathProblem(path, v.lang)) return { path };
+    }
+    return null;
+  }
+  /* The line that marks where a part starts in a file it joins: a note in sentences, a comment in code. */
+  function libBanner(v, title) {
+    if (v.write === 'sentences') return `note: ── Library: ${title} ──`;
+    const l = LANGS.byId(v.lang) || {};
+    if (v.lang === 'markdown') return `## ${title}`;
+    return l.comment ? `${l.comment} Library: ${title}` : '';
+  }
+  /* What "Add" adds: every side of a Coding integration part, a website part's HTML, CSS and JavaScript together
+   * (one feature in three files), or the one language picked. */
+  const libSides = (p, v) => (p.group === 'integration' ? p.variants : WEB_ROLE[v.lang] && v.write === 'sentences' ? p.variants.filter(x => WEB_ROLE[x.lang] && x.write === 'sentences') : [v]);
+  function libWhere(v, p, title) {
+    const at = libPlace(v, p);
+    if (!at) return 'There\'s no free name for it here. Rename a file first.';
+    const banner = libBanner(v, title);
+    if (at.sec && banner && at.sec.text.includes(banner)) return `It's already in ${escHtml(fileName(at.sec))}: adding it again makes a second copy.`;
+    return at.sec ? `Joins ${escHtml(fileName(at.sec))}${at.sec.text.trim() ? ', at the end' : ''}.` : `Adds ${escHtml(at.path)} (${escHtml(v.name)}${v.write === 'sentences' ? ', in sentences' : ''}).`;
+  }
+  function addFromLibrary(part, vs) {
+    activeSec().text = ta.value;
+    const copy = JSON.parse(JSON.stringify(project)), done = [];
+    let open = null;
+    for (const v of vs) {
+      const at = libPlace(v, copy);
+      if (!at) { tLine(`There's no free name for ${v.file} in this project. Rename a file, then add ${part.title} again.`, 't-err'); return; }
+      const banner = libBanner(v, part.title);
+      if (at.sec) {
+        const s = at.sec, before = s.text.replace(/\s+$/, '');
+        s.text = (before ? before + '\n\n' : '') + (banner && !(v.lang === 'markdown' && /^#/.test(v.text)) ? banner + '\n' : '') + v.text + '\n';
+        done.push(`${fileName(s)} (added at the end)`);
+        open = open || s.id;
+      } else {
+        const s = { id: newId(), path: at.path, lang: v.lang, text: v.text + '\n' };
+        copy.sections.push(s);
+        done.push(`${at.path} (new)`);
+        open = open || s.id;
+      }
+    }
+    const made = done.some(d => /\(new\)$/.test(d)) && vs.some(v => v.lang === 'python');
+    codeBase.clear();   // a part added on purpose: the code it changes elsewhere (imports, ids) is meant
+    const err = changeProject(copy, open, `Added ${part.title} from the Library: ${done.join(', ')}.` + (made ? ' The start file can use its tools (it imports every other Python file).' : ''));
+    if (err) { tLine(err, 't-err'); return; }
+    closeLibrary();
+  }
+
+  function renderLibType(box, t) {
+    const c = LIB.catalog(), kits = bldLibrary().kits;
+    const parts = t.parts.map(id => c.partById[id]).filter(Boolean);
+    const byGroup = c.groups.map(g => [g, parts.filter(p => p.group === g.id)]).filter(([, ps]) => ps.length);
+    const fits = t.templates.filter(k => kits[k]);
+    box.innerHTML = `<div class="bp-kind">Kind of project · ${escHtml(t.heading)}</div>
+      <h3 class="bp-title">${escHtml(t.title)}</h3>
+      <p class="bp-lead">${t.platforms.map(libPlat).join('')} ${escHtml(t.about)}</p>
+      ${fits.length ? `<div class="bp-actions">${fits.map(k => `<button type="button" class="btn${fits[0] === k ? ' primary' : ''}" data-lib-template="${escHtml(k)}">Start from the template: ${escHtml(kits[k].title)}</button>`).join('')}</div>` : ''}
+      <div class="lib-sec"><div class="ex-lbl">Languages it's written in</div>
+        <table class="lib-langs"><thead><tr><th>Language</th><th>What it does here</th><th>Usual frameworks and libraries</th></tr></thead><tbody>
+        ${t.languages.map(l => `<tr><td><b>${escHtml(l.lang ? langName(l.lang) : l.said)}</b>${l.lang && (LANGS.byId(l.lang) || {}).write === 'sentences' ? ' <span class="dim">in sentences</span>' : ''}</td><td>${escHtml(l.why)}</td><td>${escHtml(l.uses.join(', ')) || '<span class="dim">none needed</span>'}</td></tr>`).join('')}
+        </tbody></table></div>
+      ${t.learnFrom.length ? `<div class="lib-sec"><div class="ex-lbl">Open-source projects to learn from</div><ul class="lib-learn">
+        ${t.learnFrom.map(l => `<li><b>${escHtml(l.name)}</b> <span class="dim">${escHtml(l.lang ? langName(l.lang) : l.said)} · ${escHtml(l.licence)}</span><span>${escHtml(l.what)}</span><span class="lib-url"><code>${escHtml(l.url)}</code><button type="button" class="btn tiny" data-lib-copy="${escHtml(l.url)}">Copy address</button></span></li>`).join('')}
+        </ul><p class="bp-note">Addresses are shown, not opened: IntuCode never follows links from inside the editor. Copy one into your browser. Read a project's licence before using its code in yours.</p></div>` : ''}
+      <div class="lib-sec"><div class="ex-lbl">Parts it's usually made of</div>
+        ${byGroup.map(([g, ps]) => `<div class="lib-group"><span class="dim">${escHtml(g.title)}</span>${ps.map(p => `<button type="button" class="lib-chip" data-lib-part="${escHtml(p.id)}" title="${escHtml(p.about)}">${escHtml(p.title)}</button>`).join('')}</div>`).join('') || '<p class="bp-none">None listed yet.</p>'}
+      </div>`;
+  }
+  function renderLibPart(box, p) {
+    const c = LIB.catalog(), group = c.groups.find(g => g.id === p.group);
+    const langs = new Set(project.sections.map(s => s.lang));
+    let v = p.variants.find(x => x.lang === libState.lang && x.file === libState.file) || p.variants.find(x => x.lang === activeSec().lang) || p.variants.find(x => langs.has(x.lang)) || p.variants[0];
+    libState.lang = v.lang; libState.file = v.file;
+    const sides = libSides(p, v), both = sides.length > 1;
+    const compiled = v.write === 'sentences' ? libCompiled(v) : null;
+    box.innerHTML = `<div class="bp-kind">Part · ${escHtml(group ? group.title : p.group)}</div>
+      <h3 class="bp-title">${escHtml(p.title)}</h3>
+      <p class="bp-lead">${escHtml(p.about)}</p>
+      <p>${withCode(p.summary)}</p>
+      ${p.learn ? `<p class="bp-note"><b>Learn first:</b> ${withCode(p.learn)}</p>` : ''}
+      <div class="lib-tabs" role="tablist" aria-label="Languages">${p.variants.map(x => `<button type="button" role="tab" class="lib-tab${x === v ? ' on' : ''}" aria-selected="${x === v}" data-lib-lang="${escHtml(x.lang)}" data-lib-file="${escHtml(x.file)}"><b>${escHtml(x.name)}</b> <span class="dim">${escHtml(x.file)}</span></button>`).join('')}</div>
+      <div class="lib-code-h"><span class="ex-lbl">${v.write === 'sentences' ? `Sentences, written as ${escHtml(v.name)}` : v.write === 'code' ? `${escHtml(v.name)} code` : escHtml(v.name)}</span><button type="button" class="btn tiny" id="libCopyText">Copy</button></div>
+      <pre class="lib-code">${libHl(v)}</pre>
+      ${compiled ? `<details class="lib-made"><summary>The ${escHtml(v.name)} it writes${compiled.problems ? ` <span class="ti-badge">${compiled.problems}</span>` : ''}</summary><pre class="lib-code">${compiled.text.replace(/\n$/, '').split('\n').map(l => hlFileLine({ lang: secLang({ lang: v.lang }) }, l)).join('\n')}</pre></details>` : ''}
+      <p class="lib-where">${both ? `${p.group === 'integration' ? 'Adds every side' : 'Adds its page, styling and script together'}: ${sides.map(x => libWhere(x, project, p.title)).join(' ')}` : libWhere(v, project, p.title)}</p>
+      <div class="bp-actions"><button type="button" class="btn primary" id="libAdd">${both ? `Add all ${sides.length} to the project` : 'Add to the project'}</button>${both ? '<button type="button" class="btn" id="libAddOne">Add only this one</button>' : ''}</div>
+      ${p.types.length ? `<div class="lib-sec"><div class="ex-lbl">Used in</div><div class="lib-group">${p.types.map(id => c.typeById[id]).map(t => `<button type="button" class="lib-chip" data-lib-type="${escHtml(t.id)}">${escHtml(t.title)}</button>`).join('')}</div></div>` : ''}
+      ${p.sources.length ? `<div class="lib-sec"><div class="ex-lbl">Where it comes from</div><ul class="lib-learn">${p.sources.map(s => `<li><b>${escHtml(s.name)}</b><span>${escHtml(s.what)}</span>${s.url ? `<span class="lib-url"><code>${escHtml(s.url)}</code><button type="button" class="btn tiny" data-lib-copy="${escHtml(s.url)}">Copy address</button></span>` : ''}</li>`).join('')}</ul></div>` : ''}`;
+  }
+  function renderLibDetail() {
+    const box = $('libDetail'), c = LIB.catalog(), sel = libState.sel;
+    const e = sel && (sel.kind === 'type' ? c.typeById[sel.id] : c.partById[sel.id]);
+    if (!e) { box.innerHTML = '<p class="bp-none">Pick a kind of project or a part on the left.</p>'; return; }
+    if (sel.kind === 'type') renderLibType(box, e); else renderLibPart(box, e);
+    box.scrollTop = 0;
+  }
+  function openLibrary() {
+    activeSec().text = ta.value;
+    const c = LIB.catalog();
+    if (c.errors.length) console.warn('Library:', c.errors);
+    if (!libState.sel && c.types.length) libState.sel = { kind: 'type', id: c.types[0].id };
+    renderLibList(); renderLibDetail();
+    $('libModal').hidden = false;
+    $('libSearch').focus();
+  }
+  function closeLibrary() { $('libModal').hidden = true; }
+  const libPick = (kind, id) => { libState.sel = { kind, id }; if (kind === 'part') { libState.lang = null; libState.file = null; } renderLibList(); renderLibDetail(); };
+
+  $('btnLibrary').hidden = !LIB;
+  if (LIB) {
+    $('btnLibrary').addEventListener('click', openLibrary);
+    $('libClose').addEventListener('click', closeLibrary);
+    $('libModal').addEventListener('click', (e) => { if (e.target.id === 'libModal') closeLibrary(); });
+    $('libSearch').addEventListener('input', (e) => { libState.q = e.target.value; renderLibList(); });
+    $('libList').addEventListener('click', (e) => {
+      const view = e.target.closest('[data-lib-view]');
+      if (view) { libState.view = view.dataset.libView; libState.q = ''; $('libSearch').value = ''; renderLibList(); return; }
+      const t = e.target.closest('[data-lib-type]'), p = e.target.closest('[data-lib-part]');
+      if (t) libPick('type', t.dataset.libType);
+      else if (p) libPick('part', p.dataset.libPart);
+    });
+    $('libDetail').addEventListener('click', (e) => {
+      const t = e.target.closest('[data-lib-type]'), p = e.target.closest('[data-lib-part]'), tab = e.target.closest('[data-lib-lang]');
+      if (t) { libPick('type', t.dataset.libType); return; }
+      if (p) { libPick('part', p.dataset.libPart); return; }
+      if (tab) { libState.lang = tab.dataset.libLang; libState.file = tab.dataset.libFile; renderLibDetail(); return; }
+      const cp = e.target.closest('[data-lib-copy]');
+      if (cp) { copyText(cp.dataset.libCopy, cp, 'Copy address'); return; }
+      const kit = e.target.closest('[data-lib-template]');
+      if (kit) { closeLibrary(); bpSel = { src: 'kit', id: kit.dataset.libTemplate }; openBlueprints(); return; }
+      const part = libState.sel && libState.sel.kind === 'part' && LIB.part(libState.sel.id);
+      if (!part) return;
+      const v = part.variants.find(x => x.lang === libState.lang && x.file === libState.file) || part.variants[0];
+      if (e.target.id === 'libCopyText') copyText(v.text, e.target, 'Copy');
+      if (e.target.id === 'libAdd') addFromLibrary(part, libSides(part, v));
+      if (e.target.id === 'libAddOne') addFromLibrary(part, [v]);
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Read mode: import a file or a whole project, sections, summaries    */
   /* ------------------------------------------------------------------ */
 
@@ -4705,6 +4906,7 @@
       else if (!$('newModal').hidden) closeNewProject();
       else if (!$('fileList').hidden) setFileMenu(false);
       else if (!$('bpModal').hidden) closeBlueprints();
+      else if (!$('libModal').hidden) closeLibrary();
       else if (!$('impModal').hidden) closeImport();
       else if (!ac.hidden) closeAc();
       else if (!$('index').hidden) closeIndex();

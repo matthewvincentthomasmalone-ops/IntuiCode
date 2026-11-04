@@ -1165,6 +1165,36 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .side-sec:hover { background: rgba(255, 255, 255, .045); }
 .side-sec p { margin: 3px 0; }
 
+/* Library: kinds of project and parts */
+.lib-search { margin: -4px 0 12px; }
+.lib-search input { width: 100%; padding: 8px 12px; border: 0; border-radius: 4px; background: var(--field); color: var(--ink); font: 14px var(--f-ui); box-shadow: var(--sunken); }
+.lib-search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.lib-sec { margin-top: 18px; }
+.lib-langs { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 4px; }
+.lib-langs th, .lib-langs td { text-align: left; vertical-align: top; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule); }
+.lib-langs th { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.lib-langs td:first-child { white-space: nowrap; }
+.lib-learn { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.lib-learn li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.lib-learn li > span:not(.dim) { color: var(--ink-2); }
+.lib-url { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lib-url code { font: 12px var(--f-py); color: var(--ink-3); user-select: all; overflow-wrap: anywhere; }
+.lib-group { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 6px; }
+.lib-group > .dim { flex: 0 0 100%; font-size: 12px; }
+.lib-chip { border: 0; cursor: pointer; padding: 4px 9px; border-radius: 3px; font: 600 12.5px var(--f-ui); color: var(--ink); background: var(--card); box-shadow: var(--card-raised); }
+.lib-chip:hover, .lib-chip:focus-visible { color: var(--accent); outline: none; }
+.lib-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 16px 0 8px; padding: 4px; border-radius: 4px; background: #050506; box-shadow: var(--sunken); }
+.lib-tab { border: 0; cursor: pointer; padding: 4px 10px; border-radius: 3px; background: none; color: var(--ink-3); font: 600 12.5px var(--f-ui); }
+.lib-tab:hover { color: var(--ink); }
+.lib-tab.on { background: var(--metal); color: var(--metal-ink); text-shadow: var(--engrave); box-shadow: var(--machined), 0 0 0 1px #000; }
+.lib-tab.on .dim { color: var(--metal-ink-2); }
+.lib-code-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lib-code { margin: 4px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--paper); font: 13px/1.55 var(--f-say); white-space: pre; overflow: auto; max-height: 46vh; tab-size: 4; }
+.lib-made { margin-top: 8px; font-size: 13px; }
+.lib-made summary { cursor: pointer; color: var(--ink-2); }
+.lib-made .lib-code { font-family: var(--f-py); }
+.lib-where { margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
+
 @media (max-width: 900px) {
   html, body { height: auto; }
   .app { height: auto; min-height: 100%; }
