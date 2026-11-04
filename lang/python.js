@@ -736,7 +736,12 @@
       // inputs with a value to use when none is given (h=1) can be left out when the tool is run
       // (*args takes any number, so then the inputs aren't counted)
       declare(x, d[1], d[1], 'function', ps.some(p => p.startsWith('*')) ? {} : { params: ps.map(p => p.replace(/[:=].*$/, '').trim()), required: ps.filter(p => !/=/.test(p)).length });
+      // its inputs are names inside it, for the sentences under it
+      for (const p of ps) { const nm = p.replace(/^\*{1,2}/, '').replace(/[:=].*$/, '').trim(); if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, 'value'); }
     }
+    // names a block line makes: for x in …, with … as f, except E as e
+    const made = py.match(/^\s*(?:async\s+)?for\s+(.+?)\s+in\s/) || py.match(/\bas\s+([A-Za-z_]\w*)\s*:\s*(?:#.*)?$/);
+    if (made) for (const nm of made[1].replace(/[()]/g, '').split(',').map(n => n.trim())) if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, 'value');
     const strOpen = openString(py);   // text in triple quotes that carries on to the next lines
     if (strOpen) x.note('The text in triple quotes carries on over the next lines, which are copied exactly (their spaces are part of the text).');
     const opens = !strOpen && /:\s*(#.*)?$/.test(py);

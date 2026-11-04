@@ -230,3 +230,9 @@ test('an object\'s own list (self.items = [] in a class) gets .append, and Pytho
   assert.deepEqual([...b.errors, ...b.warnings], []);
   assert.match(b.code, /body \+= b"x"/);
 });
+
+test('names made on exact python: lines (a def\'s inputs, for, with … as, except … as) are known to the sentences under them', () => {
+  const r = py('python: def total(prices, tax=0.1):\n    python: s = 0\n    for each p in prices\n        add p to s\n    python: return s * (1 + tax)\npython: for row in []:\n    show row');
+  assert.deepEqual([...r.errors, ...r.warnings], []);
+  assert.match(r.code, /        s \+= p\n/);
+});

@@ -207,3 +207,10 @@ test('C++: a note above a tool stays above main; description, using nothing, mul
   assert.ok(r.info.some(i => i.warns.some(w => /keeps only the whole part/.test(w))), 'dividing a whole number warns');
   assertValidCpp(r.text, 'notes, description, multiply');
 });
+
+test('C++: names made on exact c++: lines are known to the sentences after them', () => {
+  const r = cpp('c++: int n = 3;\nc++: std::string name = "Bo";\nc++: int twice(int x);\nset n to n plus 1\nshow name\nrun twice with n');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /\n    n = n \+ 1;\n/);
+  assert.doesNotMatch(r.text, /auto n/);
+});

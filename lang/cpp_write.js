@@ -353,6 +353,16 @@
     }
     const scopes = [new Set()];
     const isDeclared = (n) => scopes.some(sc => sc.has(n));
+    /* What a line of exact C++ makes, so the sentences after it know it: "int n = 3;" (n holds whole
+       numbers), "std::string name;", or "int twice(int x) {" (a tool). */
+    const learnRaw = (line) => {
+      const d = String(line).match(/^\s*((?:(?:const|static|constexpr|inline|unsigned|signed|long|short|volatile)\s+)*[A-Za-z_][\w:]*(?:\s*<[^;={}()]*>)?(?:\s+(?:long|int|double|char))*\s*[*&]*)\s*\b([A-Za-z_]\w*)\s*(=|\{|\(|;|\[)/);
+      if (!d || /^(?:return|delete|throw|using|goto|case|else|new|typedef|namespace|class|struct|enum|template|public|private|protected|sizeof|if|while|for|switch|do)$/.test(d[1].trim().split(/\s+/)[0])) return;
+      const name = d[2], type = d[1].replace(/^(?:static|inline|constexpr)\s+/, '').trim();
+      if (!type || type === name) return;
+      if (d[3] === '(' && /\(\s*(?:\)|(?:const\s+)?[A-Za-z_][\w:<>]*[\s*&]+[A-Za-z_]\w*)/.test(line.slice(line.indexOf(name)))) { x.fns.add(name); x.known.add(name); return; }
+      scopes[scopes.length - 1].add(name); x.types[name] = type;
+    };
     const declare = (name, type, inf, value) => {
       if (isDeclared(name)) return `${name} = ${value};`;
       if (type === 'int' && x.decimal.has(name)) { type = 'double'; note(inf, `${code(name)} is given a decimal further on, so it is a decimal (\`double\`) from the start: a whole number (\`int\`) would drop what comes after the point.`); }
@@ -391,9 +401,10 @@
         if (stack.length) inf.errs.push('"above main:" lines go at the left edge.');
         note(inf, 'C++ copied exactly as written, placed above `main` (outside every tool).');
         topOut.push({ text: m[1], src: i });
+        learnRaw(m[1]);
         return;
       }
-      if ((m = trimmed.match(RAW))) { note(inf, 'Raw C++: copied exactly as written.'); return say(m[1]); }
+      if ((m = trimmed.match(RAW))) { note(inf, 'Raw C++: copied exactly as written.'); learnRaw(m[1]); return say(m[1]); }
       let s = trimmed.replace(/[.:]$/, '');
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
