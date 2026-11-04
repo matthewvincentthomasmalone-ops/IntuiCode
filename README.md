@@ -125,6 +125,28 @@ added for you; the start file comes last), and a website's other pages, styles a
 main page (`index.html`, `style.css`, `script.js`). **File → New project → Your own files** starts with
 just a README.
 
+**The Library: parts to add to a project**
+
+**Library** (in the menu bar) is what goes *into* a project, where Project Templates is what you start
+*from*. Two ways in:
+
+- **Kinds of project** (web pages, phone apps and games, audio tools and DAWs, plug-ins, desktop apps,
+  games, data and science, servers, boards and more): the languages each is usually written in and what
+  each one does there, the frameworks people use, open-source projects worth reading (Ardour, Audacity,
+  LMMS, Surge XT, Godot…, each with its licence and what to look at), the parts it's made of, and the
+  Project Templates that fit.
+- **Parts**, by what they do: Audio and DSP (gain in decibels, pan laws, filters, meters, compressors…),
+  Music and MIDI, Interface, Shapes and colour, Games, Maths, Data, Files, Storage and databases,
+  Networking, Security, Hardware, and **Coding integration**: ready-made code that joins two languages
+  (Python calling C++, C++ in a web page with WebAssembly, a page talking to an Arduino, Rust from
+  Python…), every side of the link at once.
+
+A part comes in one or more languages; pick one and **Add to the project**. Sentences for a website, C++
+or Arduino join the file of that language that's already there (they're one program); anything else gets
+its own file (a Python one is a module the start file imports). A website part adds its page, styling and
+script together. The Library is plain text in `lang/library/` (see its README), checked by the tests:
+every sentence translates cleanly, and the audio and maths parts give the right numbers when they run.
+
 **Plan a project: a map before you start**
 
 **Plan** (in the menu bar, or from a kit in Project Templates) asks what you're making, by the same kinds as
@@ -375,6 +397,9 @@ npm install && npm run vendor
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact against the original |
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
+| `lang/languages.js` | Every language a project's file can be in: its endings, its tree-sitter grammar, and whether it's written in sentences, as code or as text |
+| `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
+| `lang/library.js`, `lang/library/` | The Library: kinds of project and the parts they're made of, in plain-text packs |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |
 | `samples/` | Example code for Read mode, including a small multi-file project (`samples/taskboard`) |
@@ -397,6 +422,9 @@ every sentence pattern) is described in [INTUICODE.md](INTUICODE.md). Its exampl
 - **A new word inside sentences:** add to `EXPR_RULES` (for example `length of x` → `len(x)`).
 - **A new blueprint:** write it in the app (Project Templates → Write or paste one), or add it to
   `BUILT_IN` in `lang/blueprints.js`. The format is described at the top of that file.
+- **A new Library part or kind of project:** add an entry to a pack in `lang/library/` (the format is at the
+  top of `lang/library.js`, the writing guide in `lang/library/README.md`). `tests/library.test.mjs` checks
+  it translates cleanly and parses; add a number check if it computes something.
 - **Reading more:** library descriptions live in `LIBRARIES`, safety checks in `Facts`,
   and pattern recognisers in `gists()` in `lang/python_reader.py`.
 - **Another language:** a language pack exposes the same shape as `lang/python.js`

@@ -53,6 +53,21 @@ Tick each one. If something is off, note what you did and what the terminal said
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
       of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.
 
+**Files, folders and the Library**
+- [ ] **+ File** → `docs/plan.md`: a `docs/` folder appears with the file; the right side shows it as a page. Add
+      `data/scores.csv` (a table on the right) and `notes.json` with a typo (the problem is named).
+- [ ] A file's **⋯**: rename it, change its language, make it the start file (marked *start*), delete it.
+- [ ] **+ Step** under Project map: name, depth and summary; the step appears in the map and as a note in the file.
+- [ ] **Library** → Kinds of project → Audio tools and DAWs: its languages, open-source projects to learn from (with
+      licences; **Copy address** copies), its parts, and **Start from the template** opens Project Templates.
+- [ ] Library → Parts → Gain in decibels → Python → **Add to the project**: `gain.py` appears. In the start file,
+      `show the result of gain from db with -6 rounded to 3 places` and Run: 0.501.
+- [ ] Library → Little messages (toasts) → **Add all 3**: the page, styling and script are added; the preview shows it.
+- [ ] Library → Coding integration → Python calling C++ with ctypes → **Add all 3 to the project**: `gain.cpp`,
+      `build.sh` and `gain.py`. On the desktop with a compiler: run `$ sh build.sh` (or the Windows lines in it).
+- [ ] Change a sentence so that code on an *untouched* line changes too (e.g. `set total to 0` above a tool, then
+      move it below): the untouched line is flagged with **Keep the new code**.
+
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
       it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.
