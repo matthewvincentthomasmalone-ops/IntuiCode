@@ -701,14 +701,38 @@
     return q;
   }
 
+  // Brackets with brackets inside, up to 4 deep (a regular expression can't count further).
+  const nest = (o, c) => { let s = `[^${o}${c}]*`; for (let i = 0; i < 3; i++) s = `(?:[^${o}${c}]|${o}${s}${c})*`; return o + s + c; };
+  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]');
+
+  /* Brackets right after a phrase like "length of x" would apply to its result: x.length (…) runs the
+     number .length gives back. That is an error on the line, never JavaScript that is silently wrong. */
+  function looseBrackets(m, q, strs, inf) {
+    const after = q.slice(m.index + m[0].length), last = m[m.length - 1];
+    const said = (t) => t.trim().replace(/⟦(\d+)⟧/g, (_, i) => strs[+i]);
+    const err = (e) => { if (!inf.errs.includes(e)) inf.errs.push(e); };
+    if (/^\s+[([]/.test(after)) {
+      const br = after.trim()[0] === '(' ? '(…)' : '[…]';
+      err(`The brackets after "${said(m[0])}" don't belong to anything.` + (/^[A-Za-z_$][\w$]*$/.test(last) ? ` If they go with ${code(last)}, write them right after it, with no space: ${code(last + br)}.` : ''));
+    } else if (/^[([]/.test(after)) {
+      err(`The translator can't follow the brackets in "${said(m[0] + after.match(/^\S*/)[0])}": too many inside each other, or one isn't closed. Work out the inner part on the line before and store it, or write this line as js:.`);
+    }
+  }
+
   function jsExpr(src, x, inf) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return 'null'; }
-    // text in quotes, and regular expressions like /  +/g (a / where a value starts), are kept exactly as written
+    // text in quotes, and regular expressions like /  +/g (a / where a value starts), are kept exactly as written;
+    // a .name or […] typed right after one stays attached to it: "abc".length
     const strs = [];
-    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^])\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m) => { strs.push(m); return ` ⟦${strs.length - 1}⟧ `; });
-    const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|${nameSource(x)}(?:\.[\w$]+|\([^()]*\)|\[[^\[\]]*\])*)`;
-    const R = (p) => new RegExp(p.replace(/OPD/g, OPD), 'gi');
+    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^])\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    // An operand: quoted text, a number or a name (a page element's may have dashes), then any .names, calls and
+    // indexes, with brackets inside brackets (see PAREN).
+    const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|${nameSource(x)})(?:\.[\w$]+|${PAREN}|${SQUARE})*`;
+    // A phrase that starts with an operand ("x as text") never starts partway through one (after a .).
+    const R = (p) => new RegExp(p.replace(/^\(OPD\)/, '(?<![\\w$.])(OPD)').replace(/OPD/g, () => OPD), 'gi');
+    // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
+    const swap = (p, to) => { const re = R(p); if (p.endsWith('(OPD)')) for (const m of q.matchAll(re)) looseBrackets(m, q, strs, inf); q = q.replace(re, to); };
     const quoted = (t) => { strs.push(JSON.stringify(t)); return `⟦${strs.length - 1}⟧`; };
     q = q.replace(/\bthe\b/gi, ' ').replace(/\s+/g, ' ');   // one space between words, so "is in "abc"" reads like "is in abc"
     if (/\bwait for\b/i.test(q)) { q = q.replace(/\bwait for\b/gi, ' await '); note(inf, '`await` waits for something that finishes later (a promise) and gives back its result, without freezing the page.'); }
@@ -730,21 +754,23 @@
     const NOT_ITEM = String.raw`(?!item OPD (?:of|in) |(?:first|last) item (?:of|in) )`;
     for (let k = 0, before; k < 8 && before !== q; k++) {
       before = q;
-      q = q.replace(R(String.raw`\bfirst item (?:of|in) ${NOT_ITEM}(OPD)`), '$1[0]').replace(R(String.raw`\blast item (?:of|in) ${NOT_ITEM}(OPD)`), '$1[$1.length - 1]');
-      q = q.replace(R(String.raw`\bitem (OPD) (?:of|in) ${NOT_ITEM}(OPD)`), '$2[$1]');
+      swap(String.raw`\bfirst item (?:of|in) ${NOT_ITEM}(OPD)`, '$1[0]');
+      swap(String.raw`\blast item (?:of|in) ${NOT_ITEM}(OPD)`, '$1[$1.length - 1]');
+      swap(String.raw`\bitem (OPD) (?:of|in) ${NOT_ITEM}(OPD)`, '$2[$1]');
     }
-    q = q.replace(R(String.raw`\b(?:length|size) of (OPD)`), '$1.length').replace(R(String.raw`\bhow many (?:items )?in (OPD)`), '$1.length');
+    swap(String.raw`\b(?:length|size) of (OPD)`, '$1.length');
+    swap(String.raw`\bhow many (?:items )?in (OPD)`, '$1.length');
     q = randomRange(q, OPD, strs, inf, s);
-    q = q.replace(R(String.raw`\brandom item (?:from|of|in) (OPD)`), '$1[Math.floor(Math.random() * $1.length)]');
+    swap(String.raw`\brandom item (?:from|of|in) (OPD)`, '$1[Math.floor(Math.random() * $1.length)]');
     q = q.replace(R(String.raw`(OPD) as (?:a )?number\b`), 'Number($1)').replace(R(String.raw`(OPD) as text\b`), 'String($1)');
     q = q.replace(R(String.raw`(OPD) in (?:capitals|uppercase)\b`), '$1.toUpperCase()').replace(R(String.raw`(OPD) in lowercase\b`), '$1.toLowerCase()');
     // a checkbox, and an element's groups
     q = q.replace(R(String.raw`(OPD) is not (?:ticked|checked)\b`), '!$1.checked').replace(R(String.raw`(OPD) is (?:ticked|checked)\b`), (m, a) => { note(inf, '`.checked` is true while a checkbox is ticked.'); return `${a}.checked`; });
     q = q.replace(R(String.raw`(OPD) is not in group ([\w-]+)`), (m, a, g) => `!${a}.classList.contains(${quoted(toId(g))})`)
       .replace(R(String.raw`(OPD) is in group ([\w-]+)`), (m, a, g) => { note(inf, '`classList.contains` is true when the element is in that group (has that class).'); return `${a}.classList.contains(${quoted(toId(g))})`; });
-    q = q.replace(R(String.raw`(OPD) contains (OPD)`), '$1.includes($2)');
-    q = q.replace(R(String.raw`(OPD) is not (?:in|one of) (OPD)`), '!$2.includes($1)');
-    q = q.replace(R(String.raw`(OPD) is (?:in|one of) (OPD)`), '$2.includes($1)');
+    swap(String.raw`(OPD) contains (OPD)`, '$1.includes($2)');
+    swap(String.raw`(OPD) is not (?:in|one of) (OPD)`, '!$2.includes($1)');
+    swap(String.raw`(OPD) is (?:in|one of) (OPD)`, '$2.includes($1)');
     q = q.replace(/\ban empty list\b|\bempty list\b/gi, '[]').replace(/\bempty text\b/gi, '""');
     for (const [re, to] of JS_WORDS) q = q.replace(re, to);
     q = q.replace(/(^|[^=!<>])=(?![=>])/g, (m, a) => (x.cond ? a + ' === ' : m));   // (=> is a little function, not a comparison)

@@ -83,6 +83,32 @@ test('C++ and Arduino: "is even" and "is odd" test the remainder after dividing 
   assert.match(s.text, /if \(\(sizeof\(pins\) \/ sizeof\(pins\[0\]\)\) % 2 != 0\) \{/);
 });
 
+test('C++: a tool run inside a phrase keeps its brackets, so "length of" wraps the whole call', () => {
+  const r = cpp('define f using a\n    give back a\ndefine g using a\n    give back a\ncreate list of text called words with "a", "bc"\nshow length of f(g(words))\nshow first item of f(g(words))\nshow item 1 of f(words)\nshow length of f(words)[1]\nshow f(g(1)) as text\nset n to random number from 1 to f(g(6))');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /std::cout << f\(g\(words\)\)\.size\(\) << std::endl;/);
+  assert.match(r.text, /std::cout << f\(g\(words\)\)\.front\(\) << std::endl;/);
+  assert.match(r.text, /std::cout << f\(words\)\[1\] << std::endl;/);
+  assert.match(r.text, /std::cout << f\(words\)\[1\]\.size\(\) << std::endl;/);
+  assert.match(r.text, /std::cout << std::to_string\(f\(g\(1\)\)\) << std::endl;/);
+  assert.match(r.text, /int n = random_number\(1, f\(g\(6\)\)\);/);
+  assertValidCpp(r.text, 'calls inside phrases');
+});
+
+// brackets that would apply to the result of "length of x" (x.size() (…)): an error on that line, never silently wrong C++
+for (const [sentences, re] of [
+  ['create list of numbers called xs with 1\nshow length of xs (0)', /The brackets after "length of xs" don't belong to anything/],
+  ['create list of numbers called xs with 1\nshow length of xs [0]', /write them right after it, with no space: `xs\[…\]`/],
+  ['define f using a\n    give back a\nshow length of f(f(f(f(f(1)))))', /can't follow the brackets in "length of f\(f\(f\(f\(f\(1\)\)\)\)\)".*write this line as c\+\+:/],
+  ['define f using a\n    give back a\nshow length of f(1', /can't follow the brackets/],
+  ['define f using a\n    give back a\nset n to random number from 1 to f (6)', /The brackets after "random number from 1 to f" don't belong to anything. If they go with `f`/],
+]) {
+  test(`C++: explains loose brackets: ${sentences.split('\n').pop()}`, () => {
+    const r = cpp(sentences);
+    assert.ok(r.info.at(-1).errs.some(e => re.test(e)), plain(r.info.flatMap(i => i.errs)).join('\n'));
+  });
+}
+
 test('C++: lists need a kind', () => {
   assert.ok(cpp('create list things').info.flatMap(i => i.errs).some(e => /needs to know what the list will hold/.test(e)));
 });

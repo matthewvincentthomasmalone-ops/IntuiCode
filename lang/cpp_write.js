@@ -144,38 +144,63 @@
     return 'auto';
   }
 
+  // Brackets with brackets inside, up to 4 deep (a regular expression can't count further).
+  const nest = (o, c) => { let s = `[^${o}${c}]*`; for (let i = 0; i < 3; i++) s = `(?:[^${o}${c}]|${o}${s}${c})*`; return o + s + c; };
+  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]');
+  // An operand: a protected string, a number or a name, then any .names, ::names, ->names, calls and indexes.
+  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*)(?:(?:\.|::|->)[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
+  // A phrase that starts with an operand ("x as text") never starts partway through one (after a . or ->).
+  const R = (p) => new RegExp(p.replace(/^\(OPD\)/, '(?<![\\w.]|::|->)(OPD)').replace(/OPD/g, OPD), 'gi');
+
+  /* Brackets right after a phrase like "length of x" would apply to its result: x.size() (…) runs the
+     number size() gives back. That is an error on the line, never C++ that is silently wrong. */
+  function looseBrackets(m, q, strs, inf) {
+    const after = q.slice(m.index + m[0].length), last = m[m.length - 1];
+    const said = (t) => t.trim().replace(/⟦(\d+)⟧/g, (_, i) => strs[+i]);
+    const err = (e) => { if (!inf.errs.includes(e)) inf.errs.push(e); };
+    if (/^\s+[([]/.test(after)) {
+      const br = after.trim()[0] === '(' ? '(…)' : '[…]';
+      err(`The brackets after "${said(m[0])}" don't belong to anything.` + (/^[A-Za-z_]\w*$/.test(last) ? ` If they go with ${code(last)}, write them right after it, with no space: ${code(last + br)}.` : ''));
+    } else if (/^[([]/.test(after)) {
+      err(`The translator can't follow the brackets in "${said(m[0] + after.match(/^\S*/)[0])}": too many inside each other, or one isn't closed. Work out the inner part on the line before and store it, or write this line as c++:.`);
+    }
+  }
+
   function cppExpr(src, x, inf) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return '0'; }
     const strs = [];
-    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m) => { strs.push(m); return ` ⟦${strs.length - 1}⟧ `; });
+    // a .name or […] typed right after the text stays attached to it: "abc".size()
+    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     if (/'/.test(q.replace(/\b\w'\w/g, ''))) inf.warns.push("In C++, text goes in double quotes (\"like this\"). Single quotes are for one character.");
-    const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*(?:(?:\.|::|->)\w+)*(?:\([^()]*\)|\[[^\[\]]*\])*)`;
-    const R = (p) => new RegExp(p.replace(/OPD/g, OPD), 'gi');
+    // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
+    const swap = (p, to) => { const re = R(p); if (p.endsWith('(OPD)')) for (const m of q.matchAll(re)) looseBrackets(m, q, strs, inf); q = q.replace(re, to); };
     q = q.replace(/\bself\s*\.\s*/g, 'this->');
     q = q.replace(/\bthe\b/gi, ' ');
     if (x.arduino) {
       q = q.replace(/\bbuilt-?in (?:light|led)\b/gi, 'LED_BUILTIN');
-      q = q.replace(R(String.raw`\bpin (OPD) is (on|off|high|low)\b`), (m, p, v) => { note(inf, '`digitalRead` checks whether a pin is on (HIGH) or off (LOW).'); return `digitalRead(${p}) == ${/on|high/i.test(v) ? 'HIGH' : 'LOW'}`; });
-      q = q.replace(R(String.raw`\b(?:analog )?(?:reading|level) (?:of|on) pin (OPD)`), (m, p) => { note(inf, '`analogRead` measures the voltage on a pin as a number from 0 to 1023.'); return `analogRead(${p})`; });
-      q = q.replace(R(String.raw`\bpin (OPD)`), '$1');
+      swap(String.raw`\bpin (OPD) is (on|off|high|low)\b`, (m, p, v) => { note(inf, '`digitalRead` checks whether a pin is on (HIGH) or off (LOW).'); return `digitalRead(${p}) == ${/on|high/i.test(v) ? 'HIGH' : 'LOW'}`; });
+      swap(String.raw`\b(?:analog )?(?:reading|level) (?:of|on) pin (OPD)`, (m, p) => { note(inf, '`analogRead` measures the voltage on a pin as a number from 0 to 1023.'); return `analogRead(${p})`; });
+      swap(String.raw`\bpin (OPD)`, '$1');
       q = q.replace(/\b(?:time|milliseconds) since (?:the )?start\b/gi, () => { note(inf, '`millis()` is how many milliseconds have passed since the board started.'); return 'millis()'; });
     }
-    q = q.replace(R(String.raw`\bfirst item (?:of|in) (OPD)`), x.arduino ? '$1[0]' : '$1.front()').replace(R(String.raw`\blast item (?:of|in) (OPD)`), x.arduino ? '$1[(sizeof($1) / sizeof($1[0])) - 1]' : '$1.back()');
-    q = q.replace(R(String.raw`\bitem (OPD) (?:of|in) (OPD)`), '$2[$1]');
-    q = q.replace(R(String.raw`\b(?:length|size) of (OPD)`), (m, a) => {
+    swap(String.raw`\bfirst item (?:of|in) (OPD)`, x.arduino ? '$1[0]' : '$1.front()');
+    swap(String.raw`\blast item (?:of|in) (OPD)`, x.arduino ? '$1[(sizeof($1) / sizeof($1[0])) - 1]' : '$1.back()');
+    swap(String.raw`\bitem (OPD) (?:of|in) (OPD)`, '$2[$1]');
+    swap(String.raw`\b(?:length|size) of (OPD)`, (m, a) => {
       if (!x.arduino) return `${a}.size()`;
       if (/^String$/.test(x.types[a] || '')) return `${a}.length()`;
       note(inf, 'Arduino lists are plain arrays: `sizeof(list) / sizeof(list[0])` works out how many items they hold.');
       return `(sizeof(${a}) / sizeof(${a}[0]))`;
     });
-    q = q.replace(R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`), (m, a, b) => {
+    swap(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`, (m, a, b) => {
       if (x.arduino) { note(inf, '`random(low, high)` on Arduino never reaches `high`, so 1 is added to include the top number.'); return `random(${a}, ${/^\d+$/.test(b) ? +b + 1 : b + ' + 1'})`; }
       x.needs.add('random'); note(inf, 'C++ has no one-word random function, so a small helper, `random_number`, is added at the top. It uses `<random>` and includes both ends.'); return `random_number(${a}, ${b})`;
     });
-    q = q.replace(R(String.raw`(OPD) as (?:a )?(?:whole )?number\b`), (m, a) => { if (x.arduino) return `${a}.toInt()`; note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`; });
-    q = q.replace(R(String.raw`(OPD) as (?:a )?decimal\b`), x.arduino ? '$1.toFloat()' : 'std::stod($1)').replace(R(String.raw`(OPD) as text\b`), x.arduino ? 'String($1)' : 'std::to_string($1)');
-    q = q.replace(R(String.raw`(OPD) squared\b`), '($1 * $1)');
+    swap(String.raw`(OPD) as (?:a )?(?:whole )?number\b`, (m, a) => { if (x.arduino) return `${a}.toInt()`; note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`; });
+    swap(String.raw`(OPD) as (?:a )?decimal\b`, x.arduino ? '$1.toFloat()' : 'std::stod($1)');
+    swap(String.raw`(OPD) as text\b`, x.arduino ? 'String($1)' : 'std::to_string($1)');
+    swap(String.raw`(OPD) squared\b`, '($1 * $1)');
     // "is even" / "is odd": the remainder after dividing by 2. A sum before it is checked as a whole: "n plus 1 is even" is (n + 1) % 2 == 0.
     const GROUP = String.raw`\((?:[^()]|\([^()]*\))*\)`, PART = `(?:${GROUP}|OPD)`, MATHS = String.raw`\s+(?:plus|minus|times|divided by|mod)\s+`;
     q = q.replace(R(String.raw`(?<![\w.:>])(not\s+)?(${PART}(?:${MATHS}${PART})*)\s+(is not|isn't|is)\s+(even|odd)\b`), (m, notFirst, a, is, which) => {
