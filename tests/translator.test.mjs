@@ -137,6 +137,7 @@ const ERRORS = [
   ['set total to 10\nset count to 3\nshow total divided by count rounded to 2 places', /Put brackets round the part you mean: \(total divided by count\) rounded to 2 places/],
   ['set price to 3\nset qty to 2\nshow price times qty as text', /could go with just `qty` or with all of it/],
   ['set n to 5\nshow random number from 1 to n plus 1', /Put brackets round the end you mean/],
+  ['set a to 0\nset a b to 1', /could be your name `a` followed by "b"/],
   ['set colour to "red"\nif colour is not "red" or "blue"\n    show "other"', /Say it in full: colour is not "red" or colour is not "blue"/],
   ['set name to "Bob"\nif name contains "a" and "b"\n    show "both"', /Say the whole test each time/],
   ['set x to 5\nif x is more than 1 or 2\n    show "?"', /could mean two things/],

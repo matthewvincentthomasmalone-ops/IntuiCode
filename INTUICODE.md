@@ -1156,6 +1156,7 @@ meant, the line is an error that says how to put it, instead of picking one:
 | `colour is not "red" or "blue"` (and `is more than 1 or 2`…) | Python would test `"blue"` on its own | `colour is not "red" or colour is not "blue"` |
 | `name contains "a" and "b"` | the same | `name contains "a" and name contains "b"` |
 | `give back total and count` | two values, or "both are true"? | `give back total, count` |
+| `set a b to 1` when there's a name `a` | the name `a` then "b", or "a" as in "set a counter to 1"? | `set a_b to 1`, or a name that doesn't start with "a" |
 | `count i from n to 1` | up or down? only numbers written here say | `count down from n to 1` |
 | `length of rope`, when both `length of rope` and `rope` are names | the name, or the phrase? | rename one (`rope length`) |
 | `set budget to 1,000` | one number, or two (Python's 1 and 0)? | `1000` |
@@ -1267,18 +1268,15 @@ and [Python context](#python-context)). Still wrong:
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `set a b to 1` | `b = 1` | a name's first word "a" is read as the article, as in `set a counter to 1` | a name that doesn't start with "a", "an" or "the" |
 | `same = a is b`, written as Python | `same = a == b` | in a line read as sentences, `is` compares values; Python's `is` checks for the very same object | `python: same = a is b` |
 
 ```intuicode python
-set a b to 1
 python: a = [1]
 python: b = [1]
 same = a is b
 ```
 
 ```python
-b = 1
 a = [1]
 b = [1]
 same = a == b

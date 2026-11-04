@@ -296,6 +296,10 @@
   /* Turn a name slot into a Python name, e.g. "High Score" -> high_score */
   function toName(raw, x, opts = {}) {
     let t = String(raw || '').trim();
+    // "a b" when there's a name a: the name a and then b, or "a" as in "a counter"? Never guess which.
+    const lead = t.match(/^(a|an|the|my)\s+(\S.*)$/i);
+    if (x.pass === 2 && lead && x.syms.get(lead[1]) && /^[A-Za-z_]\w*$/.test(lead[2].replace(/\s+/g, '_')))
+      x.err(`"${t}" could be your name ${code(lead[1])} followed by "${lead[2]}", or "${lead[1]}" as a word that's left out (as in "set a counter to 1"). Write the name you mean with _ (${lead[1]}_${lead[2].replace(/\s+/g, '_')}) or give it a name that doesn't start with "${lead[1]}".`);
     t = t.replace(/^(?:the|my|a new|an|a)\s+(?=\S+)/i, (m) => (/^a$/i.test(t) ? m : ''));
     t = t.replace(/^(?:variable|value|number|text|tool|function)\s+(?:called|named)\s+/i, '').replace(/^(?:called|named)\s+/i, '');
     if (!t) { x.err('A name is missing here.'); return '_'; }
