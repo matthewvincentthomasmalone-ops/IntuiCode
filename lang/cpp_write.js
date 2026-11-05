@@ -413,7 +413,16 @@
         learnRaw(m[1]);
         return;
       }
-      if ((m = trimmed.match(RAW))) { note(inf, 'Raw C++: copied exactly as written.'); learnRaw(m[1]); return say(m[1]); }
+      if ((m = trimmed.match(RAW))) {
+        note(inf, 'Raw C++: copied exactly as written.');
+        learnRaw(m[1]);
+        if (stack.length) return say(m[1]);
+        // outside every sentence block: its own indentation is kept (code written as code, as Unity mode does),
+        // and a sketch that writes its own setup() or loop() isn't given an empty one
+        if (A && /^void\s+setup\s*\(\s*\)/.test(m[1])) hasSetup = true;
+        if (A && /^void\s+loop\s*\(\s*\)/.test(m[1])) hasLoop = true;
+        return out.push({ text: '    '.repeat(depthNow()) + raw.match(/^[ \t]*/)[0].replace(/\t/g, '    ') + m[1], src: i });
+      }
       let s = trimmed.replace(/[.:]$/, '');
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }

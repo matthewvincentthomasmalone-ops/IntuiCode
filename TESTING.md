@@ -69,8 +69,12 @@ Tick each one. If something is off, note what you did and what the terminal said
       move it below): the untouched line is flagged with **Keep the new code**.
 
 **Unity mode**
-- [ ] **Unity** (beside Write and Read): the Python sample. Select lines 4–6 (inside `roll`): a **Translate to Plain Language Syntax** button
-      appears over the selection; press it. Those lines become sentences in dark green, in the same place.
+- [ ] **Unity** (beside Write and Read): the project's tree and Problems are on the left, and the open file shows with its
+      sentences in green. Click another file in the tree: it opens in Unity. Write mode shows the same file.
+- [ ] In Unity, Library → a Python part → Add to the project: the new file opens in Unity, in green.
+- [ ] **Open a file…** → a small `.py` file: it's added to the project as code. Select lines 4–6 (inside a `def`): a
+      **Translate to Plain Language Syntax** button appears over the selection; press it. Those lines become sentences
+      in dark green, in the same place.
 - [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Original Code**: the code is exactly as before.
 - [ ] Translate one line, then Select all (Ctrl+A) and Translate again: the rest becomes sentences and the green part stays as it
       was. With only green lines selected, Translate to Plain Language Syntax is greyed out and Ctrl+Shift+D does nothing.
@@ -80,8 +84,10 @@ Tick each one. If something is off, note what you did and what the terminal said
       terminal says why. **Copy the code** refuses until it's fixed.
 - [ ] The code reaches about three quarters of the way down, with the terminal under it. Fold the terminal away (its
       chevron): the code fills the room. The corner button: full screen, no side panel or terminal; Esc comes back.
-- [ ] Language → C++ (with an empty pane): Translate `count += i;`, change it to `increase count by i times 2`, Original Code:
-      `count += i * 2;` inside the loop.
+- [ ] **Open a file…** → a `.cpp` program: it comes in as sentences, one green part per statement. Original Code on the loop:
+      its code, inside `main` in Write mode's code. Original Code on `include <iostream>`: it stays green and says why.
+- [ ] The Arduino sample: Original Code (all), then Write mode: one `setup()` and one `loop()`. Select all, Translate: the
+      sentences are back.
 
 **Reading other languages**
 - [ ] Import code → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's named `pasted.rs`, the

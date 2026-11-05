@@ -12,12 +12,20 @@
  *        convert(kind, source) -> { text, exact, reason } (or a promise of it): the readers, from the shell
  *   toCode(lang, lines, regions, i, W)             -> { code, needs, problems }: region i as code
  *   reRegex(lang, lines, regions, i, W)            -> { ok, lines, regions, needs, problems }
- *   deRegex(lang, lines, regions, from, to, convert) -> Promise<{ lines, regions, done, failed, blocked }>:
- *        the code in a selection into sentences; the regions in it stay as they are
+ *   deRegex(lang, lines, regions, from, to, convert, opts) -> Promise<{ lines, regions, done, failed, blocked }>:
+ *        the code in a selection into sentences; the regions in it stay as they are (opts.body: see toWords)
  *   adjust(regions, before, after, caretRegion)    -> regions, after an edit of the text
+ *   fromFile(lang, text)                           -> { lines, regions }: a project file (sentences, with exact
+ *        lines like python: …) as Unity shows it: exact lines as their code, sentences as regions
+ *   toFile(lang, lines, regions)                   -> the project file again: regions as they are, code as exact lines
  *
- * A region is { from, to, original: [code lines], words: [the sentences as made], base: indentation }.
- * W: { LANG (IntuiLang.python), WEB, CPP }, the writers. No DOM here.
+ * Unity edits the project's own files, line for line: what it shows as code is the file's exact lines, so the
+ * writer's own wrapping (a C++ main, a page's head) isn't shown, as in Write mode.
+ *
+ * A region is { from, to, original: [code lines] or null, words: [the sentences as made], base: indentation,
+ * needs?: [lines its code needs at the top] }. original is null while its sentences can't be code yet.
+ * W: { LANG (IntuiLang.python), WEB, CPP, compile? }, the writers; compile(lang, text), when given, compiles the
+ * file's text in its project (so names from the other files are known) and returns its result. No DOM here.
  */
 (function (root) {
   'use strict';
@@ -27,9 +35,22 @@
   const UNIT = { python: 4, html: 2, css: 2, js: 2, cpp: 4, arduino: 4 };   // the writers' indentation per level
   const KIND = { html: 'html', css: 'css', js: 'js', cpp: 'cpp', arduino: 'arduino', python: 'python' };
 
+  // an exact line in a sentence file, as each writer reads it: its indentation, and the code after the prefix
+  const EXACT = {
+    python: /^([ \t]*)(?:raw python|python|raw)\s*:\s?(.*)$/i,
+    html: /^([ \t]*)(?:html|raw)\s*:\s?(.*)$/i,
+    css: /^([ \t]*)(?:css|raw)\s*:\s?(.*)$/i,
+    js: /^([ \t]*)(?:js|javascript|raw)\s*:\s?(.*)$/i,
+    cpp: /^([ \t]*)(?:c\+\+|cpp|raw)\s*:\s?(.*)$/i,
+    arduino: /^([ \t]*)(?:c\+\+|cpp|raw)\s*:\s?(.*)$/i,
+  };
+
   const indentOf = (s) => String(s).match(/^[ \t]*/)[0];
   const width = (ind) => ind.replace(/\t/g, '    ').length;
   const blank = (s) => !String(s).trim();
+  // a region's code, or a stand-in line for each of its sentences while it has none (so line counts and the
+  // nesting, by indentation, still line up)
+  const orig = (r) => r.original || r.words.map(l => (blank(l) ? '' : indentOf(l) + '…'));
 
   /* The indentation one level is in this text: a tab, or the commonest step between lines (2 or 4 spaces). */
   function unitOf(lines) {
@@ -175,14 +196,15 @@
 
   /* The selected code as sentences. The code is taken out of its place (its indentation removed), wrapped
      where its language needs it to be a whole file (statements inside a C++ tool go in a main, inside an
-     Arduino sketch in "over and over"), read by the shell's converter, and unwrapped again. */
-  async function toWords(lang, lines, from, to, convert) {
+     Arduino sketch in "over and over"), read by the shell's converter, and unwrapped again. opts.body: the text is
+     a project's C++ file, whose top level is the program's main (the writer wraps it), so it's read as inside one. */
+  async function toWords(lang, lines, from, to, convert, opts = {}) {
     const original = lines.slice(from, to + 1);
     const solid = original.filter(l => !blank(l));
     const base = solid.reduce((b, l) => (width(indentOf(l)) < width(b) ? indentOf(l) : b), indentOf(solid[0] || ''));
     const ded = original.map(l => (l.startsWith(base) ? l.slice(base.length) : l.trimStart()));
     let source = ded.join('\n') + '\n', unwrap = (t) => t;
-    const inside = (lang === 'cpp' || lang === 'arduino') && insideAt(lang, lines, from);
+    const inside = (lang === 'cpp' && opts.body) || ((lang === 'cpp' || lang === 'arduino') && insideAt(lang, lines, from));
     if (inside && lang === 'cpp') source = 'int main() {\n' + ded.map(l => (l ? '    ' + l : l)).join('\n') + '\n}\n';
     if (inside && lang === 'arduino') {
       source = 'void setup() {\n}\n\nvoid loop() {\n' + ded.map(l => (l ? '    ' + l : l)).join('\n') + '\n}\n';
@@ -230,15 +252,56 @@
     return { text: out.join('\n'), map };
   }
   /* Where line n of the text is in codeView's lines. */
-  const codeIndex = (regions, n) => regions.reduce((at, x) => (x.to < n ? at + x.original.length - (x.to - x.from + 1) : at), n);
+  const codeIndex = (regions, n) => regions.reduce((at, x) => (x.to < n ? at + orig(x).length - (x.to - x.from + 1) : at), n);
   /* The text with every region's original code in place of its sentences: where the braces are. */
   function codeView(lines, regions) {
     const out = lines.slice();
-    for (const r of [...regions].sort((a, b) => b.from - a.from)) out.splice(r.from, r.to - r.from + 1, ...r.original);
+    for (const r of [...regions].sort((a, b) => b.from - a.from)) out.splice(r.from, r.to - r.from + 1, ...orig(r));
     return out;
   }
 
+  /* ---------- A project file, as Unity shows it ---------- */
+
+  /* Line for line: an exact line (python: …) shows as its code at its own indentation; every other line as it
+     is. Runs of sentence lines (without blank lines at their edges) are regions (in C++, one per statement), with
+     no code yet: the shell gives each the code it makes (toCode), so one nobody changes goes back exactly. */
+  function fromFile(lang, text) {
+    const src = String(text).replace(/\r\n?/g, '\n').split('\n'), lines = [], isCode = [];
+    for (const l of src) {
+      const m = EXACT[lang] && l.match(EXACT[lang]);
+      lines.push(m ? m[1] + m[2] : l);
+      isCode.push(!!m);
+    }
+    const regions = [];
+    const baseOf = (ls) => { const solid = ls.filter(l => !blank(l)); return solid.reduce((b, l) => (width(indentOf(l)) < width(b) ? indentOf(l) : b), indentOf(solid[0])); };
+    const add = (from, to) => {
+      while (to > from && blank(lines[to])) to--;
+      const words = lines.slice(from, to + 1);
+      regions.push({ from, to, original: null, words, base: baseOf(words) });
+    };
+    for (let n = 0; n < lines.length; n++) {
+      if (isCode[n] || blank(lines[n])) continue;
+      let to = n;
+      for (let k = n + 1; k < lines.length && !isCode[k]; k++) if (!blank(lines[k])) to = k;
+      if (lang === 'cpp') {
+        // C++: one region per statement at the run's left edge (with what's indented under it), so a statement
+        // in main can become code while a tool or an include, whose code goes above main, stays as sentences
+        const edge = width(baseOf(lines.slice(n, to + 1)));
+        let start = n;
+        for (let k = n + 1; k <= to; k++) if (!blank(lines[k]) && width(indentOf(lines[k])) <= edge) { add(start, k - 1); start = k; }
+        add(start, to);
+      } else add(n, to);
+      n = to;
+    }
+    return { lines, regions };
+  }
+  /* The project file again: the regions' sentences as they are, every other line as an exact line. */
+  function toFile(lang, lines, regions) {
+    return lines.map((l, n) => (regionAt(regions, n) >= 0 ? l : blank(l) ? '' : indentOf(l) + RAW[lang] + l.trimStart())).join('\n');
+  }
+
   function compileWith(lang, text, W) {
+    if (W.compile) { const r = W.compile(lang, text); if (r) return r; }
     if (lang === 'python') return W.LANG.compileProject({ sections: [{ id: 'main', file: 'main', text }] }).results.main;
     if (lang === 'cpp' || lang === 'arduino') {
       const id = lang === 'arduino' ? 'sketch' : 'program';
@@ -291,18 +354,32 @@
       const inf = res.info[s];
       if (inf && (inf.errs.length || (inf.warns || []).length)) problems.push({ line: n, errs: inf.errs.slice(), warns: (inf.warns || []).slice() });
     });
+    // C++ puts tools, classes and includes above main, but a C++ file's exact lines (c++: …) go inside it, so
+    // code from there can't be written back as exact lines: that part stays as sentences
+    const mainAt = lang === 'cpp' ? res.lines.findIndex(o => o.src < 0 && /^int main\(\)\s*\{$/.test(o.text)) : -1;
+    if (mainAt >= 0 && res.lines.some((o, k) => k < mainAt && mine.has(o.src) && o.text.trim())) {
+      problems.push({ line: r.from, errs: ['This part makes a tool, a class or an include, which C++ puts above main. In a C++ file those are written in sentences, so it stays as sentences here (its code is in Write mode, on the right).'], warns: [] });
+    }
+    // sentences that write nothing of their own here (an include IntuaCode adds anyway) would just disappear
+    else if (!code.some(l => l.trim()) && lines.slice(r.from, r.to + 1).some(l => !blank(l)) && !problems.some(p => p.errs.length)) {
+      problems.push({ line: r.from, errs: ['This part writes no code of its own here (IntuaCode adds it anyway), so it stays as sentences.'], warns: [] });
+    }
     return { code, needs, problems };
   }
 
   const unchanged = (r, lines) => lines.slice(r.from, r.to + 1).join('\n') === r.words.join('\n');
 
-  /* Region i back into code. A region nobody changed gets its original code back, exactly. One with errors
-     stays as sentences (ok: false) and says why. */
+  /* Region i back into code. A region nobody changed gets its original code back, exactly (and, if it came from
+     a project file's sentences, the lines its code needs at the top that the writer used to add for it). One with
+     errors stays as sentences (ok: false) and says why. */
   function reRegex(lang, lines, regions, i, W) {
     const r = regions[i];
     let code, needs = [], problems = [];
-    if (unchanged(r, lines)) code = r.original.slice();
-    else {
+    if (r.original && unchanged(r, lines)) {
+      code = r.original.slice();
+      const have = new Set(lines.map(l => l.trim()));
+      needs = (r.needs || []).filter(x => !have.has(x));
+    } else {
       ({ code, needs, problems } = toCode(lang, lines, regions, i, W));
       if (problems.some(p => p.errs.length)) return { ok: false, lines, regions, needs: [], problems };
     }
@@ -328,12 +405,12 @@
      Parts and blocks: { from, to } in the text, and cFrom/cTo in codeView's lines (for toWords). */
   function deRegexParts(lang, lines, regions, from, to) {
     const code = codeView(lines, regions);
-    const spans = regions.map(r => { const at = codeIndex(regions, r.from); return { r, from: at, to: at + r.original.length - 1 }; });
+    const spans = regions.map(r => { const at = codeIndex(regions, r.from); return { r, from: at, to: at + orig(r).length - 1 }; });
     // the text's line for code line c: a line outside every region, or the first or last line of the region it's in
     const toText = (c, end) => {
       const s = spans.find(x => c >= x.from && c <= x.to);
       if (s) return end ? s.r.to : s.r.from;
-      return spans.filter(x => x.to < c).reduce((n, x) => n - (x.r.original.length - (x.r.to - x.r.from + 1)), c);
+      return spans.filter(x => x.to < c).reduce((n, x) => n - (orig(x.r).length - (x.r.to - x.r.from + 1)), c);
     };
     const runs = [];
     for (let n = Math.max(0, from); n <= Math.min(to, lines.length - 1); n++) {
@@ -364,7 +441,7 @@
     for (const c of merged) {
       const inside = spans.filter(s => s.from >= c.from && s.to <= c.to).map(s => s.r);
       const p = { from: toText(c.from, false), to: toText(c.to, true), cFrom: c.from, cTo: c.to, absorbs: inside };
-      const changed = inside.filter(r => !unchanged(r, lines)), last = parts[parts.length - 1];
+      const changed = inside.filter(r => !r.original || !unchanged(r, lines)), last = parts[parts.length - 1];   // (no code yet: can't be said again from it)
       if (changed.length) blocked.push({ from: p.from, to: p.to, changed: changed.map(r => ({ from: r.from, to: r.to })) });
       else if (last && c.from === last.cTo + 1) Object.assign(last, { to: p.to, cTo: p.cTo, absorbs: last.absorbs.concat(inside) });   // parts that touch are one
       else parts.push(p);
@@ -376,12 +453,12 @@
      parts) stay as they are. from/to in done, failed and blocked are lines of the text as it was.
      -> Promise<{ lines, regions, done: [{ from, to, exact, reason, absorbed }], failed: [{ from, to, reason }],
                   blocked: [{ from, to, changed: [{ from, to }] }] }> */
-  async function deRegex(lang, lines, regions, from, to, convert) {
+  async function deRegex(lang, lines, regions, from, to, convert, opts = {}) {
     const { parts, blocked, code } = deRegexParts(lang, lines, regions, from, to);
     const done = [], failed = [];
     for (const p of parts) {   // everything is read before anything changes
       let w;
-      try { w = await toWords(lang, code, p.cFrom, p.cTo, convert); } catch (e) { w = { words: null, reason: e.message }; }
+      try { w = await toWords(lang, code, p.cFrom, p.cTo, convert, opts); } catch (e) { w = { words: null, reason: e.message }; }
       if (w.words && w.words.length) done.push({ ...p, w });
       else failed.push({ from: p.from, to: p.to, reason: w.reason || 'the reader had nothing to say' });
     }
@@ -423,5 +500,5 @@
     return out;
   }
 
-  root.IntuiUnity = { LANGS, RAW, expand, toWords, toCode, reRegex, deRegexParts, deRegex, adjust, unchanged, unitOf, depths, sentenceFile, codeView };
+  root.IntuiUnity = { LANGS, RAW, EXACT, expand, toWords, toCode, reRegex, deRegexParts, deRegex, adjust, unchanged, unitOf, depths, sentenceFile, codeView, fromFile, toFile };
 })(typeof window !== 'undefined' ? window : globalThis);

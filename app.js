@@ -164,7 +164,7 @@
     runtimeMark = null;
     ta.value = activeSec().text;
     Runner.reset();
-    setMode('write');
+    setMode(mode === 'unity' ? 'unity' : 'write');
     openSection(project.active);
     $('work').classList.toggle('web', webOn());
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
@@ -803,6 +803,7 @@
     $('tabPreview').hidden = !(mode === 'write' && webOn());
     if (!webOn()) showBottom('terminal');
     save(); autosave();
+    if (mode === 'unity') unityShow();
     if (message) tLine(message, 't-sys');
     return '';
   }
@@ -930,7 +931,8 @@
     closeAc();
     bandLink.hidden = true;
     refreshAll();
-    if (line != null) goToLine(line); else { ta.setSelectionRange(0, 0); ta.scrollTop = 0; syncScroll(); }
+    if (mode === 'unity') unityShow(line);   // Unity shows the same file, in one pane
+    else if (line != null) goToLine(line); else { ta.setSelectionRange(0, 0); ta.scrollTop = 0; syncScroll(); }
     if (!$('index').hidden) renderIndex();
     save();
   }
@@ -2273,7 +2275,7 @@
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
     const engines = [...new Set(project.sections.map(s => ENGINE[s.lang]).filter(Boolean))].map(e => ENGINE_NAME[e]);
-    chip.textContent = mode === 'read' ? 'Reading' : mode === 'unity' ? 'Unity · ' + langName(unityState().lang) : engines.length ? engines.join(' + ') : 'Files';
+    chip.textContent = mode === 'read' ? 'Reading' : mode === 'unity' ? 'Unity · ' + langName(activeSec().lang) : engines.length ? engines.join(' + ') : 'Files';
   }
   function showBottom(which) {
     const web = webOn();
@@ -2960,36 +2962,143 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Unity mode: one pane of code; translate any part of it to sentences */
+  /* Unity mode: the project's file in one pane; any part in sentences  */
   /* ------------------------------------------------------------------ */
-  /* The text is code; a region is some of its lines said in sentences (lang/unity.js). Translate to Plain Language Syntax turns
-   * the selected lines into sentences right where they are; Original Code turns a region back into code: exactly
-   * as it was if nobody changed it, or written in the context of the code around it if they did. */
+  /* Unity is Write mode's project in one pane instead of two. It shows the file open in the project, line for
+   * line (lang/unity.js fromFile): its exact lines (python: …) as code, its sentences in green. Translate to Plain
+   * Language Syntax turns selected code into sentences right where it is; Original Code turns a green part back
+   * into code: exactly as it was if nobody changed it, or written in the context of the code around it (and the
+   * project's other files) if they did. Every change is the project's file at once (toFile), so Write mode, Run,
+   * Problems and the Library all see the same file. */
   const UNITY = window.IntuiUnity;
-  const UNITY_KEY = 'intuicode.unity.v1';
-  const UNITY_START = {
-    python: 'import random\n\ndef roll(sides):\n    n = random.randint(1, sides)\n    if n == sides:\n        print("Top roll!")\n    return n\n\ntotal = 0\nfor i in range(3):\n    total += roll(6)\nprint("Total:", total)\n',
-    js: 'function total(prices) {\n  let sum = 0;\n  for (const p of prices) {\n    sum += p;\n  }\n  return sum;\n}\n\nconsole.log(total([3, 4, 5]));\n',
-    html: '<main>\n  <h1>Hello</h1>\n  <div id="box">\n    <p>Some words.</p>\n    <button id="go">Go</button>\n  </div>\n</main>\n',
-    css: '.card {\n  color: #333333;\n  padding: 12px;\n}\n\n.card:hover {\n  color: red;\n}\n',
-    cpp: '#include <iostream>\n\nint main() {\n    int count = 0;\n    for (int i = 1; i <= 5; i++) {\n        count += i;\n    }\n    std::cout << "Total: " << count << std::endl;\n    return 0;\n}\n',
-    arduino: 'void setup() {\n  pinMode(13, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(13, HIGH);\n  delay(500);\n  digitalWrite(13, LOW);\n  delay(500);\n}\n',
-  };
-  let unity = store.get(UNITY_KEY, null);
-  if (!unity || !UNITY || !UNITY.LANGS.includes(unity.lang) || typeof unity.text !== 'string' || !Array.isArray(unity.regions)) unity = { lang: 'python', text: UNITY_START.python, regions: [] };
-  const unityState = () => unity;
+  const UNITY_OLD = 'intuicode.unity.v1';   // Unity's own scratch file, from before it worked on the project
+  const UNITY_KEY = 'intuicode.unity.v2';   // per file: Unity's view of it, used while the file is still what it made
+  // what the scratch file started with (one that holds anything else is kept in the project, once: uMoveOldScratch)
+  const UNITY_SAMPLES = [
+    'import random\n\ndef roll(sides):\n    n = random.randint(1, sides)\n    if n == sides:\n        print("Top roll!")\n    return n\n\ntotal = 0\nfor i in range(3):\n    total += roll(6)\nprint("Total:", total)\n',
+    'function total(prices) {\n  let sum = 0;\n  for (const p of prices) {\n    sum += p;\n  }\n  return sum;\n}\n\nconsole.log(total([3, 4, 5]));\n',
+    '<main>\n  <h1>Hello</h1>\n  <div id="box">\n    <p>Some words.</p>\n    <button id="go">Go</button>\n  </div>\n</main>\n',
+    '.card {\n  color: #333333;\n  padding: 12px;\n}\n\n.card:hover {\n  color: red;\n}\n',
+    '#include <iostream>\n\nint main() {\n    int count = 0;\n    for (int i = 1; i <= 5; i++) {\n        count += i;\n    }\n    std::cout << "Total: " << count << std::endl;\n    return 0;\n}\n',
+    'void setup() {\n  pinMode(13, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(13, HIGH);\n  delay(500);\n  digitalWrite(13, LOW);\n  delay(500);\n}\n',
+  ];
+  let uViews = store.get(UNITY_KEY, {});
+  if (!uViews || typeof uViews !== 'object' || Array.isArray(uViews)) uViews = {};
+  // the file Unity shows: id, lang (null for a file with no sentences: notes, data, other code), text, regions
+  let unity = { id: null, lang: null, text: '', regions: [] };
   const uTa = $('uTa');
-  let uBefore = unity.text.split('\n'), uCaret = -1, uProblems = [], uStripTimer = 0, uSaveTimer = 0, uFrame = 0;
-  const uW = () => ({ LANG, WEB, CPP });
+  let uBefore = [''], uCaret = -1, uProblems = [], uStripTimer = 0, uFrame = 0, uViewsTimer = 0;
+  const uCan = (sec) => !!UNITY && !!sec && UNITY.LANGS.includes(sec.lang);
+  const uSec = () => project.sections.find(s => s.id === unity.id);
   const uCodeLang = () => (unity.lang === 'arduino' ? 'cpp' : unity.lang);
   const uLines = () => uTa.value.split('\n');
   const uRegionAt = (n) => unity.regions.findIndex(r => n >= r.from && n <= r.to);
   const uLineOf = (pos) => uTa.value.slice(0, pos).split('\n').length - 1;
   const uPosOf = (line) => uLines().slice(0, line).reduce((n, l) => n + l.length + 1, 0);
-  const uSave = () => { clearTimeout(uSaveTimer); uSaveTimer = setTimeout(() => store.set(UNITY_KEY, unity), 300); };
-  function uSetText(text) { uTa.value = text; unity.text = text; uBefore = text.split('\n'); uSave(); }
 
-  /* The readers, for De-Regex: Python's (checked exact, in the page's Python), and the web and C++ one. */
+  /* The writers, and the project to write in: a file's text compiled with the project's other files, so the
+     names they make are known. */
+  function uCompileIn(lang, text) {
+    const sec = uSec();
+    if (!sec || sec.lang !== lang) return null;
+    try { return compileAll({ ...project, sections: project.sections.map(s => (s.id === sec.id ? { ...s, text } : s)) }).results[sec.id] || null; }
+    catch (e) { console.error(e); return null; }
+  }
+  const uW = () => ({ LANG, WEB, CPP, compile: uCompileIn });
+
+  /* Unity's view of a file, kept while the file is still what it made (so code turned into sentences here goes
+     back exactly as it was); null if the file has changed since. */
+  function uKept(sec) {
+    const v = uViews[sec.id];
+    if (!v || typeof v.text !== 'string' || !Array.isArray(v.regions)) return null;
+    try {
+      const lines = v.text.split('\n');
+      const ok = v.regions.every(r => r && Number.isInteger(r.from) && Number.isInteger(r.to) && r.from >= 0 && r.to >= r.from && r.to < lines.length && Array.isArray(r.words) && typeof r.base === 'string' && (r.original === null || Array.isArray(r.original)));
+      return ok && UNITY.toFile(sec.lang, lines, v.regions) === sec.text ? v : null;
+    } catch (_) { return null; }
+  }
+  /* The project's open file, as Unity shows it. */
+  function uLoad() {
+    activeSec().text = ta.value;
+    const sec = activeSec();
+    if (!uCan(sec)) unity = { id: sec.id, lang: null, text: sec.text, regions: [] };
+    else {
+      const kept = uKept(sec), f = kept ? null : UNITY.fromFile(sec.lang, sec.text);
+      unity = { id: sec.id, lang: sec.lang, text: kept ? kept.text : f.lines.join('\n'), regions: JSON.parse(JSON.stringify(kept ? kept.regions : f.regions)) };
+      uGiveCode();
+    }
+    uTa.value = unity.text;
+    uBefore = unity.text.split('\n');
+    uProblems = [];
+  }
+  /* Sentences from Write mode (or the Library) come with no code of their own: each green part gets the code
+     its sentences make now, so Original Code on one nobody changes gives exactly that. A part whose sentences
+     can't be code yet gets none, and is written when they can. */
+  function uGiveCode() {
+    const lines = unity.text.split('\n');
+    unity.regions.forEach((r, i) => {
+      if (r.original || !UNITY.unchanged(r, lines)) return;
+      try {
+        const out = UNITY.toCode(unity.lang, lines, unity.regions, i, uW());
+        if (!out.problems.some(p => p.errs.length)) { r.original = out.code; r.needs = out.needs; }
+      } catch (e) { console.error(e); }
+    });
+  }
+  /* Unity's text is the project's file: written back at every change, as Write mode's typing is. */
+  function uCommit() {
+    const sec = uSec();
+    if (!sec) return;
+    unity.text = uTa.value;
+    const text = unity.lang ? UNITY.toFile(unity.lang, unity.text.split('\n'), unity.regions) : unity.text;
+    if (unity.lang) {
+      uViews[sec.id] = { text: unity.text, regions: unity.regions };
+      clearTimeout(uViewsTimer);
+      uViewsTimer = setTimeout(() => {
+        for (const id of Object.keys(uViews)) if (!project.sections.some(s => s.id === id)) delete uViews[id];
+        store.set(UNITY_KEY, uViews);
+      }, 300);
+    }
+    if (text === sec.text) return;
+    sec.text = text;
+    if (sec.id === project.active) ta.value = text;
+    lastEdit = { title: metaOf(sec).title, line: uLineOf(uTa.selectionStart) };
+    autosave(); save(); scheduleCompile();
+  }
+  function uSetText(text) { uTa.value = text; unity.text = text; uBefore = text.split('\n'); uCommit(); }
+  /* Show the project's open file (after another file is opened, or the project changes). */
+  function unityShow(line) {
+    uLoad();
+    renderUnity();
+    if (line != null) uGoTo(line);
+  }
+  function uGoTo(line) {
+    const p = uPosOf(line) + (uLines()[line] || '').length;
+    uTa.focus();
+    uTa.setSelectionRange(p, p);
+    const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22;
+    uTa.scrollTop = Math.max(0, line * lh - 40);
+    uTools();
+  }
+
+  /* Unity's text from before it worked on the project: if it held anything but its sample, it's kept in the
+     project as a note (once), so nothing is lost. */
+  function uMoveOldScratch() {
+    const old = store.get(UNITY_OLD, null);
+    if (!old) return;
+    try { localStorage.removeItem(UNITY_OLD); } catch (_) { /* storage unavailable */ }
+    if (typeof old.text !== 'string' || !old.text.trim() || UNITY_SAMPLES.includes(old.text)) return;
+    let path = 'unity-notes.md';
+    for (let n = 2; project.sections.some(s => s.path.toLowerCase() === path) && n < 50; n++) path = `unity-notes-${n}.md`;
+    const fence = old.text.includes('```') ? '~~~' : '```';
+    const lang = typeof old.lang === 'string' ? old.lang : '';
+    const text = `# Unity notes\n\nWhat was in Unity before it worked on the project's files${lang ? ` (${langName(lang)})` : ''}. The parts that were green are the sentences.\n\n${fence}${LANGS.extOf(lang) || ''}\n${old.text.replace(/\n+$/, '')}\n${fence}\n`;
+    const copy = JSON.parse(JSON.stringify(project));
+    copy.sections.push({ id: newId(), path, lang: 'markdown', text });
+    const err = changeProject(copy, null, `Unity now works on the project's files. What it held before is kept in ${path}.`);
+    if (err) tLine(err, 't-err');
+  }
+
+  /* The readers, for Translate: Python's (checked exact, in the page's Python), and the web and C++ one. */
   async function uConvert(kind, source) {
     if (kind === 'python') {
       if (!(await ensurePython())) return { ok: false, reason: 'Python couldn\'t start in the page, so Python can\'t be read here' };
@@ -3004,10 +3113,11 @@
 
   function renderUnity() {
     if (!UNITY) return;
+    const sec = uSec() || activeSec();
     if (uTa.value !== unity.text) uTa.value = unity.text;
     const lines = unity.text.split('\n'), code = uCodeLang();
     const bad = new Map(uProblems.map(p => [p.line, p.errs.length ? 'err' : 'warn']));
-    const lineHtml = (l, words) => `<div class="ul">${(words ? hlLine(l) : hlCode(code, l)) || '​'}</div>`;
+    const lineHtml = (l, words) => `<div class="ul">${(words ? hlLine(l) : unity.lang ? hlCode(code, l) : hlFileLine(sec, l)) || '​'}</div>`;
     const sorted = unity.regions.slice().sort((a, b) => a.from - b.from);
     let html = '', n = 0;
     for (const r of sorted) {
@@ -3018,13 +3128,13 @@
     while (n < lines.length) html += lineHtml(lines[n++], false);
     $('uHl').innerHTML = html;
     $('uGutter').innerHTML = lines.map((_, i) => `<div class="gl${uRegionAt(i) >= 0 ? ' u-in' : ''}${bad.has(i) ? ' ' + bad.get(i) : ''}">${i + 1}</div>`).join('');
-    $('uTitle').textContent = 'Unity · ' + langName(unity.lang);
-    $('uLang').value = unity.lang;
+    $('uTitle').textContent = fileName(sec);
+    $('uSub').textContent = unity.lang ? `${langName(sec.lang)}, in one pane. The green parts are sentences.` : `${langName(sec.lang)}, as it is: it has no sentences, so nothing here turns green.`;
     $('uCount').textContent = unity.regions.length || '';
     $('uRegions').innerHTML = sorted.map((r) => {
       const i = unity.regions.indexOf(r), same = UNITY.unchanged(r, lines);
       return `<li><button type="button" class="u-reg" data-u-go="${i}" title="Go to it">Lines ${r.from + 1}–${r.to + 1}${same ? '' : ' <span class="dim">changed</span>'}</button><button type="button" class="btn tiny" data-u-re="${i}">Original Code</button></li>`;
-    }).join('') || '<li class="side-note">None yet.</li>';
+    }).join('') || `<li class="side-note">${unity.lang ? 'None in this file.' : 'This file has no sentences.'}</li>`;
     uSync(); uTools();
     if (mode === 'unity') updateChip();
   }
@@ -3042,6 +3152,7 @@
   }
   /* Is there code (outside the green parts) in the selection, or on the cursor's line? */
   function uHasCode() {
+    if (!unity.lang) return false;
     const { from, to } = uSelLines(), lines = uLines();
     for (let n = from; n <= to; n++) if (uRegionAt(n) < 0 && lines[n].trim()) return true;
     return false;
@@ -3067,13 +3178,18 @@
   function uStrip() {
     if (mode !== 'unity') return;
     const box = $('uStrip'), lines = uLines(), at = uRegionAt(uLineOf(uTa.selectionStart)), code = uCodeLang();
+    if (!unity.lang) {
+      const sec = uSec() || activeSec();
+      box.innerHTML = `<span class="dim">${escHtml(langName(sec.lang))} has no sentences in IntuaCode, so Unity shows this file as it is: change it here. Python, HTML, CSS, JavaScript, C++ and Arduino files can be put in sentences.</span>`;
+      return;
+    }
     if (at < 0) {
       box.innerHTML = uTa.selectionEnd > uTa.selectionStart ? '<span class="dim">Press <b>Translate to Plain Language Syntax</b> to say the selected code in sentences, right where it is.</span>'
         : '<span class="dim">Select some code to translate it to plain language syntax. The green parts are sentences: put the cursor in one to see the code it makes.</span>';
       return;
     }
     const r = unity.regions[at];
-    if (UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Original Code gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
+    if (r.original && UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Original Code gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
     let out;
     try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { box.textContent = 'The writer hit a problem: ' + e.message; return; }
     const errs = out.problems.flatMap(p => p.errs.map(e => [p.line, e, 'err'])), warns = out.problems.flatMap(p => p.warns.map(w => [p.line, w, 'warn']));
@@ -3087,20 +3203,22 @@
      so a selection can take in everything. */
   async function uDeRegex() {
     if (!UNITY) return;
-    const lines = uLines(), sel = uSelLines();
+    if (!unity.lang) { tLine(`This file is ${langName((uSec() || activeSec()).lang)}, which has no sentences in IntuaCode, so it stays as it is.`, 't-sys'); return; }
+    const lines = uLines(), sel = uSelLines(), id = unity.id;
     if (!uHasCode()) {   // all sentences already: nothing to do
       if (!unity.regions.some(r => r.from <= sel.to && r.to >= sel.from)) tLine('Select some code first: Translate to Plain Language Syntax turns it into sentences.', 't-sys');
       return;
     }
     $('uDe').disabled = true;
     let d;
-    try { d = await UNITY.deRegex(unity.lang, lines, unity.regions, sel.from, sel.to, uConvert); }
+    // a project's C++ file is its program's main (IntuaCode writes the main around it), so its code is read as inside one
+    try { d = await UNITY.deRegex(unity.lang, lines, unity.regions, sel.from, sel.to, uConvert, { body: unity.lang === 'cpp' }); }
     catch (e) { tLine('That part couldn\'t be read: ' + e.message, 't-err'); uTools(); return; }
-    if (uLines().join('\n') !== lines.join('\n')) { tLine('The code changed while it was being read. Try again.', 't-sys'); uTools(); return; }
+    if (unity.id !== id || uLines().join('\n') !== lines.join('\n')) { tLine('The code changed while it was being read. Try again.', 't-sys'); uTools(); return; }
     const span = (p) => (p.from === p.to ? `${p.from + 1}` : `${p.from + 1}–${p.to + 1}`);
     const lineWord = (ps) => (ps.length === 1 && ps[0].from === ps[0].to ? 'line ' : 'lines ') + ps.map(span).join(', ');
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
-    for (const b of d.blocked) tLine(`${cap(lineWord([b]))} stay as code: they're one statement with sentences you changed (${lineWord(b.changed)}). Press Original Code on those first.`, 't-err');
+    for (const b of d.blocked) tLine(`${cap(lineWord([b]))} stay as code: they're one statement with sentences that have changed or can't be code yet (${lineWord(b.changed)}). Press Original Code on those first.`, 't-err');
     for (const f of d.failed) tLine(`${cap(lineWord([f]))} couldn't be said in sentences: ${f.reason}.`, 't-err');
     if (!d.done.length) { uTools(); return; }
     unity.regions = d.regions;
@@ -3121,7 +3239,7 @@
       uProblems = r.problems;
       renderUnity();
       const p = r.problems.find(x => x.errs.length);
-      if (!quiet && p) tLine(`Line ${p.line + 1}: ${p.errs[0]} It stays as sentences until that's fixed.`, 't-err');
+      if (!quiet && p) tLine(`Line ${p.line + 1}: ${p.errs[0]}${/stays as sentences/.test(p.errs[0]) ? '' : ' It stays as sentences until that\'s fixed.'}`, 't-err');
       return false;
     }
     const caret = uTa.selectionStart;
@@ -3142,15 +3260,42 @@
     else if (ok) tLine('Every green part is code again.', 't-sys');
   }
 
+  /* A code file from the computer, added to the project and opened here. Python, CSS and JavaScript come in as
+     code (translate any part); a whole C++ program, Arduino sketch or HTML page comes in as sentences, because
+     IntuaCode writes the main, setup and loop, or the page's head, around a file's sentences itself. */
+  async function uAddFile(f) {
+    const lang = LANGS.fromPath(f.name);
+    if (!UNITY.LANGS.includes(lang)) { tLine(`Unity opens Python, HTML, CSS, JavaScript, C++ and Arduino files. ${f.name} can be read in Read mode.`, 't-err'); return; }
+    const code = (await f.text()).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+    const m = f.name.match(/^(.*?)(\.[^.]+)?$/);
+    const stem = lang === 'python' ? m[1].replace(/\W/g, '_').replace(/^(\d)/, '_$1') : m[1].replace(/[^\w+ .-]/g, '-');
+    let path = null;
+    for (let n = 1, p = stem + (m[2] || ''); n < 50; n++, p = `${stem}${lang === 'python' ? '_' : '-'}${n}${m[2] || ''}`) {
+      if (!project.sections.some(s => s.path.toLowerCase() === p.toLowerCase()) && !pathProblem(p, lang)) { path = p; break; }
+    }
+    if (!path) { tLine(`There's no free name for ${f.name} in this project. Rename a file, then open it again.`, 't-err'); return; }
+    let text = UNITY.toFile(lang, code.split('\n'), []) + '\n', how = 'as code: select any part and press Translate to Plain Language Syntax.', note = '';
+    if (lang === 'cpp' || lang === 'arduino' || lang === 'html') {
+      const r = await uConvert(lang, code + '\n');
+      if (!r.ok) { tLine(`${f.name} couldn't be read into sentences (${r.reason}), so it wasn't added.`, 't-err'); return; }
+      text = r.text.replace(/\n+$/, '') + '\n';
+      how = `in sentences: IntuaCode writes ${lang === 'html' ? 'the page around them' : lang === 'arduino' ? 'setup and loop' : 'the main'} itself. Press Original Code on any part to see its code.`;
+      if (r.exact === false) note = ` Some of it may not come back exactly: ${r.reason || 'check it'}.`;
+    }
+    const copy = JSON.parse(JSON.stringify(project)), id = newId();
+    copy.sections.push({ id, path, lang, text });
+    const err = changeProject(copy, id, `Added ${path} to the project, ${how}${note}`);
+    if (err) tLine(err, 't-err');
+  }
+
   if (UNITY) {
-    $('uLang').innerHTML = UNITY.LANGS.map(l => `<option value="${l}">${escHtml(langName(l))}</option>`).join('');
     uTa.addEventListener('beforeinput', () => { uCaret = uRegionAt(uLineOf(uTa.selectionStart)); });
     uTa.addEventListener('input', () => {
       const now = uTa.value.split('\n');
       unity.regions = UNITY.adjust(unity.regions, uBefore, now, uCaret);
-      uBefore = now; unity.text = uTa.value;
+      uBefore = now;
       uProblems = [];
-      uSave();
+      uCommit();
       // drawn at most once a frame, however fast the typing (the regions above are already right); a timer,
       // not requestAnimationFrame, so it still draws when the window isn't in front
       if (!uFrame) uFrame = setTimeout(() => { uFrame = 0; renderUnity(); }, 16);
@@ -3181,37 +3326,18 @@
       if (re) { uReRegex(+re.dataset.uRe); return; }
       if (go) { const r = unity.regions[+go.dataset.uGo]; if (!r) return; uTa.focus(); const p = uPosOf(r.from) + r.base.length; uTa.setSelectionRange(p, p); const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22; uTa.scrollTop = Math.max(0, r.from * lh - 40); uTools(); }
     });
-    $('uLang').addEventListener('change', (e) => {
-      const next = e.target.value;
-      if (unity.regions.length) { e.target.value = unity.lang; tLine(`Press Original Code on the green parts first: they're sentences for ${langName(unity.lang)}.`, 't-err'); return; }
-      const sample = !unity.text.trim() || Object.values(UNITY_START).includes(unity.text);
-      unity.lang = next;
-      if (sample) uSetText(UNITY_START[next]);
-      uSave(); renderUnity();
-    });
-    $('uOpen').addEventListener('click', () => {
-      if (unity.regions.length) { tLine('Press Original Code on the green parts first, so nothing is lost.', 't-err'); return; }
-      $('uFile').click();
-    });
+    $('uOpen').addEventListener('click', () => $('uFile').click());
     $('uFile').addEventListener('change', async (e) => {
       const f = e.target.files[0];
       e.target.value = '';
-      if (!f) return;
-      const l = LANGS.fromPath(f.name);
-      unity.lang = UNITY.LANGS.includes(l) ? l : unity.lang;
-      uSetText((await f.text()).replace(/\r\n?/g, '\n'));
-      unity.regions = [];
-      renderUnity();
-      tLine(`Opened ${f.name} in Unity (${langName(unity.lang)}). Select some of it and press Translate to Plain Language Syntax.`, 't-sys');
+      if (f) await uAddFile(f);
     });
     $('uCopy').addEventListener('click', (e) => {
-      let lines = uLines(), regions = unity.regions.slice();
-      for (let i = regions.length - 1; i >= 0; i--) {
-        const r = UNITY.reRegex(unity.lang, lines, regions, i, uW());
-        if (!r.ok) { uProblems = r.problems; renderUnity(); tLine(`Lines ${regions[i].from + 1}–${regions[i].to + 1} can't be code yet, so nothing was copied. Fix the red lines first.`, 't-err'); return; }
-        lines = r.lines; regions = r.regions;
-      }
-      copyText(lines.join('\n'), e.target, 'Copy the code');
+      const sec = uSec() || activeSec();
+      uCommit();
+      refreshAll();
+      if (isSentences(sec) && issues(sec, 'errs')) { tLine(`${fileName(sec)} has problems (in Problems), so its code wasn't copied. Fix them first.`, 't-err'); return; }
+      copyText(codeOf(sec), e.target, 'Copy the code');
     });
   } else $('modeUnity').hidden = true;
 
@@ -3257,10 +3383,11 @@
     $('modeUnity').setAttribute('aria-selected', String(next === 'unity'));
     $('unityView').hidden = next !== 'unity';
     $('unitySide').hidden = next !== 'unity';
+    $('writeSide').classList.toggle('in-unity', next === 'unity');
     $('work').classList.toggle('unity', next === 'unity');
     $('writeView').hidden = next !== 'write';
     $('explainWrap').hidden = next !== 'write';
-    $('writeSide').hidden = next !== 'write';
+    $('writeSide').hidden = next !== 'write' && next !== 'unity';
     $('readView').hidden = next !== 'read';
     $('readSide').hidden = next !== 'read';
     renderImages();
@@ -3270,7 +3397,7 @@
     $('tabPreview').hidden = !(next === 'write' && webOn());
     updateChip();
     if (next === 'read') renderRead();
-    else if (next === 'unity') { renderUnity(); $('uTa').focus(); }
+    else if (next === 'unity') { uMoveOldScratch(); unityShow(); $('uTa').focus(); }
     else { measure(); syncScroll(); }
     if (!$('index').hidden) renderIndex();
   }
