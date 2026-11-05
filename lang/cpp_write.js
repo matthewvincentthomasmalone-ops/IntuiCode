@@ -261,8 +261,14 @@
       if (x.arduino) { note(inf, '`random(low, high)` on Arduino never reaches `high`, so 1 is added to include the top number.'); return `random(${a}, ${/^\d+$/.test(b) ? +b + 1 : b + ' + 1'})`; }
       x.needs.add('random'); note(inf, 'C++ has no one-word random function, so a small helper, `random_number`, is added at the top. It uses `<random>` and includes both ends.'); return `random_number(${a}, ${b})`;
     });
-    swap(String.raw`(OPD) as (?:a )?(?:whole )?number\b`, (m, a) => { if (x.arduino) return `${a}.toInt()`; note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`; });
-    swap(String.raw`(OPD) as (?:a )?decimal\b`, x.arduino ? '$1.toFloat()' : 'std::stod($1)');
+    // "as a whole number": text is read as one (stoi); a number is cut to its whole part (a cast)
+    const numeric = (a) => /^-?\d+(?:\.\d+)?$/.test(a) || /^(?:(?:unsigned|signed|long|short|const)\s+)*(?:int|long|short|double|float|size_t|unsigned|byte|u?int\d+_t)$/.test((x.types[a] || '').trim());
+    swap(String.raw`(OPD) as (?:a )?(?:whole )?number\b`, (m, a) => {
+      if (numeric(a)) { note(inf, `\`static_cast<int>\` keeps the whole part of ${code(a)} (2.7 becomes 2).`); return `static_cast<int>(${a})`; }
+      if (x.arduino) return `${a}.toInt()`;
+      note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`;
+    });
+    swap(String.raw`(OPD) as (?:a )?decimal\b`, (m, a) => (numeric(a) ? `static_cast<double>(${a})` : x.arduino ? `${a}.toFloat()` : `std::stod(${a})`));
     swap(String.raw`(OPD) as text\b`, x.arduino ? 'String($1)' : 'std::to_string($1)');
     swap(String.raw`(OPD) squared\b`, '($1 * $1)');
     // "is even" / "is odd": the remainder after dividing by 2. A sum before it is checked as a whole: "n plus 1 is even" is (n + 1) % 2 == 0.
@@ -282,7 +288,7 @@
     for (const [re, to] of W) q = q.replace(re, to);
     q = cppTwoReadings(q, x, strs, inf, cond);
     q = q.replace(/(?<![\w.:>⟦])([A-Za-z_]\w*)\b(?!\s*::)/g, (m, id, off) => {
-      if (/^(true|false|std|random_number|random|text|auto|int|double|bool|char|return|nullptr|this|sizeof|String|HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP|LED_BUILTIN|A\d+|millis|digitalRead|analogRead|Serial|new|delete|static_cast)$/.test(id) || x.types[id] || x.fns.has(id) || x.classes.has(id) || x.known.has(id)) return id;
+      if (/^(true|false|std|random_number|random|text|auto|int|double|float|long|short|unsigned|signed|size_t|uint8_t|uint16_t|uint32_t|int8_t|int16_t|int32_t|byte|bool|char|const|return|nullptr|this|sizeof|String|HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP|LED_BUILTIN|A\d+|millis|micros|digitalRead|analogRead|Serial|new|delete|static_cast|reinterpret_cast|const_cast)$/.test(id) || x.types[id] || x.fns.has(id) || x.classes.has(id) || x.known.has(id)) return id;
       if (/^\d/.test(id) || /^\s*\(/.test(q.slice(off + m.length))) return id;
       inf.warns.push(`${code(id)} hasn't been set anywhere yet.`);
       return id;
@@ -574,6 +580,10 @@
           note(inf, analog ? '`analogRead` measures the voltage on a pin as a number from 0 to 1023.' : '`digitalRead` reads a pin: HIGH (on) or LOW (off).');
           return say(declare(m[3], 'int', inf, `${analog ? 'analogRead' : 'digitalRead'}(${pin(m[2])})`));
         }
+        if ((m = M(/^wait\s+(?:for\s+)?(.+?)\s+(?:microseconds?|us|µs)$/i))) {
+          note(inf, '`delayMicroseconds` pauses for millionths of a second: for timing a sensor\'s pulse. Up to about 16000; use "wait … milliseconds" for longer.');
+          return say(`delayMicroseconds(${E(m[1].trim(), inf)});`);
+        }
         if ((m = M(/^wait\s+(?:for\s+)?(.+?)\s+(milliseconds?|ms|seconds?|secs?)$/i))) {
           const secs = /^s/i.test(m[2]);
           const v = m[1].trim();
@@ -598,7 +608,8 @@
         const items = splitItems(m[1]);
         const plainOnly = items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')));
         // a comparison shown goes in brackets: std::cout << n == 3 doesn't build (<< comes first)
-        const shown = (p) => (/[=!<>]=|&&|\|\||(?<!<)[<>](?![<>])/.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')) && !/^\(.*\)$/.test(p) ? `(${p})` : p);
+        // (a comparison needs brackets after <<; the < > of static_cast<int> or std::vector<int> aren't one)
+        const shown = (p) => (/[=!<>]=|&&|\|\||(?<!<)[<>](?![<>])/.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/\b(?:static_cast|reinterpret_cast|const_cast|std::\w+)\s*<[\w:\s*&,]*>/g, 'T')) && !/^\(.*\)$/.test(p) ? `(${p})` : p);
         const pieces = (joined.length > 1 ? joined.map(v => E(v, inf)) : (plainOnly ? items : splitItems(m[1], false)).map(v => E(v, inf))).map(shown);
         const gap = joined.length > 1 ? '' : ' ';
         if (A) {
@@ -673,6 +684,13 @@
         const call = `${name}(${m[2] ? splitItems(m[2]).map(v => E(v, inf)).join(', ') : ''})`;
         if (!x.fns.has(m[1]) && !/[.:>]/.test(m[1]) && !x.known.has(m[1])) inf.errs.push(`There's no tool called ${code(m[1])}. Make one with "define ${m[1]} using …".`);
         return say(m[3] ? declare(m[3], 'auto', inf, call) : call + ';');
+      }
+      // one item of a list: "set item 0 of scores to 5", "set the last item of scores to 0"
+      if ((m = M(/^(?:set|change)\s+(?:the\s+)?(?:(first|last)\s+item|item\s+(.+?))\s+(?:of|in)\s+([A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*)\s+to\s+(.+)$/i))) {
+        const list = E(m[3], inf), at = m[1] ? (/first/i.test(m[1]) ? '0' : null) : E(m[2], inf);
+        note(inf, `Square brackets pick one item of ${code(list)} by its position (the first is 0), and \`=\` replaces it.`);
+        if (at == null) return say(/\[\]$/.test(x.types[m[3]] || '') ? `${list}[sizeof(${list}) / sizeof(${list}[0]) - 1] = ${E(m[4], inf)};` : `${list}.back() = ${E(m[4], inf)};`);
+        return say(`${list}[${at}] = ${E(m[4], inf)};`);
       }
       if ((m = M(/^(?:set|let|make)\s+(self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)+|[A-Za-z_]\w*\[.+\])\s+(?:to|be)\s+(.+)$/i))) {
         return say(`${E(m[1], { ...inf, warns: [] })} = ${E(m[2], inf)};`);
@@ -766,6 +784,7 @@
     T('Values', 'constant ‹NAME› is ‹value›', 'const int NAME = value;', 'A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14".', ['program', 'sketch']),
     T('Values', 'set ‹decimal› ‹name› to ‹value›', 'double name = value;', 'Name the kind yourself: whole number, decimal, text, yes/no.', ['program', 'sketch']),
     T('Values', 'increase ‹name› by ‹amount›', 'name += amount;', '', ['program', 'sketch']),
+    T('Values', 'multiply ‹name› by ‹amount›', 'name *= amount;', 'Also "divide ‹name› by ‹amount›" (/=).', ['program', 'sketch']),
     T('Show & ask', 'show ‹value›', 'std::cout << value << std::endl;', 'Join several things with "and" (a space between) or "followed by" (no space).'),
     T('Show & ask', 'ask for a number "‹question›" and store in ‹name›', 'std::cin >> name;', 'Or "ask … and store in …" for text.'),
     T('Decisions', 'if ‹condition›', 'if (condition) {', '', ['program', 'sketch']),
@@ -777,6 +796,7 @@
     T('Loops', 'repeat forever', 'while (true) {', 'Pair with "stop the loop".'),
     T('Lists', 'create list of ‹numbers› called ‹name› with ‹1, 2, 3›', 'std::vector<int> name = {1, 2, 3};', 'Also "list of text", "list of decimals".', ['program', 'sketch']),
     T('Lists', 'add ‹value› to ‹list›', 'list.push_back(value);', ''),
+    T('Lists', 'set item ‹0› of ‹list› to ‹value›', 'list[0] = value;', 'Positions start at 0. Also "set the last item of ‹list› to ‹value›".', ['program', 'sketch']),
     T('Tools', 'define ‹name› using ‹inputs›', 'auto name(auto inputs) {', 'Tools go above main automatically.', ['program', 'sketch']),
     T('Tools', 'define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›', 'double name(double w, double h) {', 'Name the kinds: whole number, decimal, text, yes/no, nothing.', ['program', 'sketch']),
     T('Tools', 'give back ‹value›', 'return value;', '', ['program', 'sketch']),
@@ -795,6 +815,7 @@
     T('Pins', 'set the brightness of pin ‹9› to ‹128›', 'analogWrite(9, 128);', '0 to 255, on pins marked ~.', ['sketch']),
     T('Pins', 'read pin ‹2› and store in ‹pressed›', 'int pressed = digitalRead(2);', 'Or "read analog pin A0 …" for 0 to 1023.', ['sketch']),
     T('Time', 'wait ‹500› milliseconds', 'delay(500);', 'Or "wait 2 seconds".', ['sketch']),
+    T('Time', 'wait ‹10› microseconds', 'delayMicroseconds(10);', 'Millionths of a second, for timing a sensor\'s pulse.', ['sketch']),
     T('Serial', 'start the serial monitor at ‹9600›', 'Serial.begin(9600);', 'Put it in "when the board starts".', ['sketch']),
     T('Serial', 'show ‹value›', 'Serial.println(value);', 'Shows in the serial monitor.', ['sketch']),
     T('Sound', 'play a tone of ‹440› on pin ‹8› for ‹200› milliseconds', 'tone(8, 440, 200);', '', ['sketch']),

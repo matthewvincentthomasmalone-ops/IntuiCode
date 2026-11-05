@@ -1786,6 +1786,7 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 |  | `for each ‹item› in ‹list›` | `for (const item of list) {` |  |
 |  | `set item ‹i› of ‹list› to ‹value›` | `list[i] = value` | Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field). |
 |  | `define ‹name› using ‹inputs›` | `function name(inputs) {` | Its first lines can be "description: …", what the tool is for. |
+|  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
 
 #### JavaScript words inside sentences
 
@@ -1819,6 +1820,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
+|  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
 | **Show & ask** | `show ‹value›` | `std::cout << value << std::endl;` | Join several things with "and" (a space between) or "followed by" (no space). |
 |  | `ask for a number "‹question›" and store in ‹name›` | `std::cin >> name;` | Or "ask … and store in …" for text. |
 | **Decisions** | `if ‹condition›` | `if (condition) {` |  |
@@ -1830,6 +1832,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `repeat forever` | `while (true) {` | Pair with "stop the loop". |
 | **Lists** | `create list of ‹numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". |
 |  | `add ‹value› to ‹list›` | `list.push_back(value);` |  |
+|  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
 |  | `give back ‹value›` | `return value;` |  |
@@ -1875,6 +1878,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
+|  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
 | **Decisions** | `if ‹condition›` | `if (condition) {` |  |
 |  | `otherwise` | `} else {` |  |
 | **Loops** | `repeat ‹number› times` | `for (int i = 0; i < number; i++) {` |  |
@@ -1882,6 +1886,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` |  |
 |  | `while ‹condition›` | `while (condition) {` |  |
 | **Lists** | `create list of ‹numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". |
+|  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
 |  | `give back ‹value›` | `return value;` |  |
@@ -1899,6 +1904,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `set the brightness of pin ‹9› to ‹128›` | `analogWrite(9, 128);` | 0 to 255, on pins marked ~. |
 |  | `read pin ‹2› and store in ‹pressed›` | `int pressed = digitalRead(2);` | Or "read analog pin A0 …" for 0 to 1023. |
 | **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds". |
+|  | `wait ‹10› microseconds` | `delayMicroseconds(10);` | Millionths of a second, for timing a sensor's pulse. |
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
 |  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. |
 | **Sound** | `play a tone of ‹440› on pin ‹8› for ‹200› milliseconds` | `tone(8, 440, 200);` |  |

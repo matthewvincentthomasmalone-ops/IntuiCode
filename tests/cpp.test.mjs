@@ -214,3 +214,14 @@ test('C++: names made on exact c++: lines are known to the sentences after them'
   assert.match(r.text, /\n    n = n \+ 1;\n/);
   assert.doesNotMatch(r.text, /auto n/);
 });
+
+test('C++: one item of a list is set by position; a decimal as a whole number is cast, text is read; Arduino waits microseconds', () => {
+  const r = cpp('create list of whole numbers called xs with 1, 2, 3\nset item 0 of xs to 5\nset the last item of xs to 9\nset f to 2.5\nset words to "42"\nshow f as a whole number\nshow words as a whole number\nset s to static_cast<float>(3)');
+  assert.deepEqual(plain(r.info.flatMap(i => [...i.errs, ...i.warns])), []);
+  assert.match(r.text, /xs\[0\] = 5;\n    xs\.back\(\) = 9;/);
+  assert.match(r.text, /std::cout << static_cast<int>\(f\) << std::endl;/);
+  assert.match(r.text, /std::cout << std::stoi\(words\) << std::endl;/);
+  assertValidCpp(r.text, 'items and casts');
+  const ino = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 'sketch', file: 'sketch', text: 'over and over\n    wait 10 microseconds' }] }).results.sketch;
+  assert.match(ino.text, /delayMicroseconds\(10\);/);
+});

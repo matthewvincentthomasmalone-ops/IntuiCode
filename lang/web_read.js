@@ -65,10 +65,18 @@
   }
   const hasLang = (key) => !!langs[key];
 
+  /* One parser per language, reused, and the trees freed once they're old: tree-sitter's memory is WebAssembly
+     memory, which JavaScript's garbage collector never gives back, and the tutor parses on every edit. Every
+     caller reads its tree straight away and keeps only plain data, so the last few trees are plenty. */
+  const parsers = {}, live = [], KEEP_TREES = 64;
   function parse(kind, source) {
-    const p = new TS();
-    p.setLanguage(langs[kind]);
-    return p.parse(source).rootNode;
+    if (!langs[kind]) throw new Error(`The ${kind} grammar isn't loaded.`);
+    let p = parsers[kind];
+    if (!p) { p = parsers[kind] = new TS(); p.setLanguage(langs[kind]); }
+    const tree = p.parse(source);
+    live.push(tree);
+    while (live.length > KEEP_TREES) { try { live.shift().delete(); } catch (_) { /* already gone */ } }
+    return tree.rootNode;
   }
 
   function kindOfPath(path) {

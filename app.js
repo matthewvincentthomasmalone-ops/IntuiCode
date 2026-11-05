@@ -2906,7 +2906,7 @@
   if (!unity || !UNITY || !UNITY.LANGS.includes(unity.lang) || typeof unity.text !== 'string' || !Array.isArray(unity.regions)) unity = { lang: 'python', text: UNITY_START.python, regions: [] };
   const unityState = () => unity;
   const uTa = $('uTa');
-  let uBefore = unity.text.split('\n'), uCaret = -1, uProblems = [], uStripTimer = 0, uSaveTimer = 0;
+  let uBefore = unity.text.split('\n'), uCaret = -1, uProblems = [], uStripTimer = 0, uSaveTimer = 0, uFrame = 0;
   const uW = () => ({ LANG, WEB, CPP });
   const uCodeLang = () => (unity.lang === 'arduino' ? 'cpp' : unity.lang);
   const uLines = () => uTa.value.split('\n');
@@ -3065,7 +3065,10 @@
       unity.regions = UNITY.adjust(unity.regions, uBefore, now, uCaret);
       uBefore = now; unity.text = uTa.value;
       uProblems = [];
-      uSave(); renderUnity();
+      uSave();
+      // drawn at most once a frame, however fast the typing (the regions above are already right); a timer,
+      // not requestAnimationFrame, so it still draws when the window isn't in front
+      if (!uFrame) uFrame = setTimeout(() => { uFrame = 0; renderUnity(); }, 16);
     });
     uTa.addEventListener('scroll', uSync);
     for (const ev of ['select', 'click', 'keyup', 'focus']) uTa.addEventListener(ev, uTools);

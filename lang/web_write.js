@@ -680,7 +680,7 @@
   }
   /* Names JavaScript in a browser already has, so using them is never "not set yet". A page element with the
      same name still comes first. */
-  const BROWSER_NAMES = /^(?:Object|Array|URL|crypto|navigator|Intl|Promise|Set|Map|WeakMap|Symbol|Error|Infinity|NaN|BigInt|Boolean|RegExp|location|history|performance|sessionStorage|screen|globalThis|Audio|AudioContext|Event|Image|FileReader|Blob|Notification|Uint8Array|Uint32Array|Float32Array|Int32Array|alert|confirm|prompt|fetch|setTimeout|setInterval|clearTimeout|clearInterval|requestAnimationFrame|cancelAnimationFrame|parseInt|parseFloat|isNaN|isFinite|encodeURIComponent|decodeURIComponent|matchMedia|structuredClone)$/;
+  const BROWSER_NAMES = /^(?:Object|Array|URL|crypto|navigator|Intl|Promise|Set|Map|WeakMap|Symbol|Error|Infinity|NaN|BigInt|Boolean|RegExp|location|history|performance|sessionStorage|screen|globalThis|Audio|AudioContext|Event|Image|FileReader|Blob|Notification|Uint8Array|Uint32Array|Float32Array|Int32Array|alert|confirm|prompt|fetch|setTimeout|setInterval|clearTimeout|clearInterval|requestAnimationFrame|cancelAnimationFrame|parseInt|parseFloat|isNaN|isFinite|encodeURIComponent|decodeURIComponent|matchMedia|structuredClone|AbortController|AbortSignal|TextEncoder|TextDecoder|Response|Request|Headers|FormData|URLSearchParams|WebSocket|Worker|BroadcastChannel|IntersectionObserver|ResizeObserver|MutationObserver|CustomEvent|KeyboardEvent|MouseEvent|DOMParser|Proxy|Reflect|atob|btoa|queueMicrotask|ArrayBuffer|DataView|Uint8ClampedArray|Int8Array|Int16Array|Uint16Array|Float64Array|MIDIAccess|OfflineAudioContext|AudioWorkletNode|MediaRecorder|MediaStream|devicePixelRatio)$/;
 
   /* "random number from A to B". The low end runs to "to" (or "and"), so it can be a calculation
      ("from gap plus 10 to …"). The high end is one value, or a calculation in brackets: in "to height minus
@@ -1541,6 +1541,7 @@
     T('Logic', 'for each ‹item› in ‹list›', 'for (const item of list) {', '', ['mechanics']),
     T('Logic', 'set item ‹i› of ‹list› to ‹value›', 'list[i] = value', 'Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field).', ['mechanics']),
     T('Logic', 'define ‹name› using ‹inputs›', 'function name(inputs) {', 'Its first lines can be "description: …", what the tool is for.', ['mechanics']),
+    T('Logic', 'multiply ‹name› by ‹amount›', 'name *= amount;', 'Also "divide ‹name› by ‹amount›" (/=).', ['mechanics']),
   ];
   const GUIDES = {
     structure: {

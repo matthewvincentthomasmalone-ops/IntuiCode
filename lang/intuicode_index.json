@@ -1699,6 +1699,15 @@
             "mechanics"
           ],
           "tip": "Its first lines can be \"description: …\", what the tool is for."
+        },
+        {
+          "topic": "Logic",
+          "say": "multiply ‹name› by ‹amount›",
+          "becomes": "name *= amount;",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Also \"divide ‹name› by ‹amount›\" (/=)."
         }
       ],
       "words": [
@@ -1806,6 +1815,15 @@
           "tip": ""
         },
         {
+          "topic": "Values",
+          "say": "multiply ‹name› by ‹amount›",
+          "becomes": "name *= amount;",
+          "folders": [
+            "program"
+          ],
+          "tip": "Also \"divide ‹name› by ‹amount›\" (/=)."
+        },
+        {
           "topic": "Show & ask",
           "say": "show ‹value›",
           "becomes": "std::cout << value << std::endl;",
@@ -1903,6 +1921,15 @@
             "program"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Lists",
+          "say": "set item ‹0› of ‹list› to ‹value›",
+          "becomes": "list[0] = value;",
+          "folders": [
+            "program"
+          ],
+          "tip": "Positions start at 0. Also \"set the last item of ‹list› to ‹value›\"."
         },
         {
           "topic": "Tools",
@@ -2113,6 +2140,15 @@
           "tip": ""
         },
         {
+          "topic": "Values",
+          "say": "multiply ‹name› by ‹amount›",
+          "becomes": "name *= amount;",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Also \"divide ‹name› by ‹amount›\" (/=)."
+        },
+        {
           "topic": "Decisions",
           "say": "if ‹condition›",
           "becomes": "if (condition) {",
@@ -2174,6 +2210,15 @@
             "sketch"
           ],
           "tip": "Also \"list of text\", \"list of decimals\"."
+        },
+        {
+          "topic": "Lists",
+          "say": "set item ‹0› of ‹list› to ‹value›",
+          "becomes": "list[0] = value;",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Positions start at 0. Also \"set the last item of ‹list› to ‹value›\"."
         },
         {
           "topic": "Tools",
@@ -2327,6 +2372,15 @@
             "sketch"
           ],
           "tip": "Or \"wait 2 seconds\"."
+        },
+        {
+          "topic": "Time",
+          "say": "wait ‹10› microseconds",
+          "becomes": "delayMicroseconds(10);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Millionths of a second, for timing a sensor's pulse."
         },
         {
           "topic": "Serial",
