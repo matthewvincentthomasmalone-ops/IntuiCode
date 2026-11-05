@@ -12,6 +12,8 @@
  *        convert(kind, source) -> { text, exact, reason } (or a promise of it): the readers, from the shell
  *   toCode(lang, lines, regions, i, W)             -> { code, needs, problems }: region i as code
  *   reRegex(lang, lines, regions, i, W)            -> { ok, lines, regions, needs, problems }
+ *   deRegex(lang, lines, regions, from, to, convert) -> Promise<{ lines, regions, done, failed, blocked }>:
+ *        the code in a selection into sentences; the regions in it stay as they are
  *   adjust(regions, before, after, caretRegion)    -> regions, after an edit of the text
  *
  * A region is { from, to, original: [code lines], words: [the sentences as made], base: indentation }.
@@ -317,6 +319,83 @@
     return { ok: true, lines: out, regions: rest, needs, problems };
   }
 
+  /* ---------- De-Regex a selection with sentences in it ---------- */
+
+  /* The parts of lines from..to to De-Regex: each run of code between the regions there, grown to whole
+     statements. Statements are worked out on the code (every region's original code in its place), so a
+     statement that takes in a region nobody changed takes it in whole: it's said again from its original code.
+     One that would take in a changed region is blocked, so sentences someone edited are never rewritten.
+     Parts and blocks: { from, to } in the text, and cFrom/cTo in codeView's lines (for toWords). */
+  function deRegexParts(lang, lines, regions, from, to) {
+    const code = codeView(lines, regions);
+    const spans = regions.map(r => { const at = codeIndex(regions, r.from); return { r, from: at, to: at + r.original.length - 1 }; });
+    // the text's line for code line c: a line outside every region, or the first or last line of the region it's in
+    const toText = (c, end) => {
+      const s = spans.find(x => c >= x.from && c <= x.to);
+      if (s) return end ? s.r.to : s.r.from;
+      return spans.filter(x => x.to < c).reduce((n, x) => n - (x.r.original.length - (x.r.to - x.r.from + 1)), c);
+    };
+    const runs = [];
+    for (let n = Math.max(0, from); n <= Math.min(to, lines.length - 1); n++) {
+      if (regionAt(regions, n) >= 0) continue;
+      const last = runs[runs.length - 1];
+      if (last && last.to === n - 1) last.to = n; else runs.push({ from: n, to: n });
+    }
+    const ranges = [];
+    for (const run of runs) {
+      let c = expand(lang, code, codeIndex(regions, run.from), codeIndex(regions, run.to));
+      if (!c) continue;   // only blank lines
+      for (let guard = 0; guard < 20; guard++) {   // a region the statement reaches into comes in whole
+        let a = c.from, b = c.to;
+        for (const s of spans) if (s.from <= b && s.to >= a) { a = Math.min(a, s.from); b = Math.max(b, s.to); }
+        const next = expand(lang, code, a, b);
+        if (next.from === c.from && next.to === c.to) break;
+        c = next;
+      }
+      ranges.push(c);
+    }
+    ranges.sort((a, b) => a.from - b.from);
+    const merged = [];
+    for (const c of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && c.from <= last.to) last.to = Math.max(last.to, c.to); else merged.push({ ...c });
+    }
+    const parts = [], blocked = [];
+    for (const c of merged) {
+      const inside = spans.filter(s => s.from >= c.from && s.to <= c.to).map(s => s.r);
+      const p = { from: toText(c.from, false), to: toText(c.to, true), cFrom: c.from, cTo: c.to, absorbs: inside };
+      const changed = inside.filter(r => !unchanged(r, lines)), last = parts[parts.length - 1];
+      if (changed.length) blocked.push({ from: p.from, to: p.to, changed: changed.map(r => ({ from: r.from, to: r.to })) });
+      else if (last && c.from === last.cTo + 1) Object.assign(last, { to: p.to, cTo: p.cTo, absorbs: last.absorbs.concat(inside) });   // parts that touch are one
+      else parts.push(p);
+    }
+    return { parts, blocked, code };
+  }
+
+  /* De-Regex lines from..to: the code in them becomes sentences in place, and the regions there (the green
+     parts) stay as they are. from/to in done, failed and blocked are lines of the text as it was.
+     -> Promise<{ lines, regions, done: [{ from, to, exact, reason, absorbed }], failed: [{ from, to, reason }],
+                  blocked: [{ from, to, changed: [{ from, to }] }] }> */
+  async function deRegex(lang, lines, regions, from, to, convert) {
+    const { parts, blocked, code } = deRegexParts(lang, lines, regions, from, to);
+    const done = [], failed = [];
+    for (const p of parts) {   // everything is read before anything changes
+      let w;
+      try { w = await toWords(lang, code, p.cFrom, p.cTo, convert); } catch (e) { w = { words: null, reason: e.message }; }
+      if (w.words && w.words.length) done.push({ ...p, w });
+      else failed.push({ from: p.from, to: p.to, reason: w.reason || 'the reader had nothing to say' });
+    }
+    let out = lines, rest = regions;
+    for (const p of done.slice().reverse()) {   // from the bottom up, so the lines above stay where they are
+      const delta = p.w.words.length - (p.to - p.from + 1);
+      rest = rest.filter(r => !p.absorbs.includes(r)).map(r => (r.from > p.to ? { ...r, from: r.from + delta, to: r.to + delta } : r));
+      rest.push({ from: p.from, to: p.from + p.w.words.length - 1, original: p.w.original, words: p.w.words, base: p.w.base });
+      out = out.slice(0, p.from).concat(p.w.words, out.slice(p.to + 1));
+    }
+    rest = rest.slice().sort((a, b) => a.from - b.from);
+    return { lines: out, regions: rest, failed, blocked, done: done.map(p => ({ from: p.from, to: p.to, exact: p.w.exact, reason: p.w.reason, absorbed: p.absorbs.length })) };
+  }
+
   /* ---------- Keeping regions in place while the text is edited ---------- */
 
   /* Lines the same at the start and the end are the same lines; the regions move with them. Lines typed
@@ -344,5 +423,5 @@
     return out;
   }
 
-  root.IntuiUnity = { LANGS, RAW, expand, toWords, toCode, reRegex, adjust, unchanged, unitOf, depths, sentenceFile, codeView };
+  root.IntuiUnity = { LANGS, RAW, expand, toWords, toCode, reRegex, deRegexParts, deRegex, adjust, unchanged, unitOf, depths, sentenceFile, codeView };
 })(typeof window !== 'undefined' ? window : globalThis);

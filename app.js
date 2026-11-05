@@ -2968,9 +2968,15 @@
     const from = uLineOf(a);
     return { from, to: Math.max(from, to) };
   }
+  /* Is there code (outside the green parts) in the selection, or on the cursor's line? */
+  function uHasCode() {
+    const { from, to } = uSelLines(), lines = uLines();
+    for (let n = from; n <= to; n++) if (uRegionAt(n) < 0 && lines[n].trim()) return true;
+    return false;
+  }
   function uTools() {
-    const sel = uTa.selectionEnd > uTa.selectionStart, at = uRegionAt(uLineOf(uTa.selectionStart));
-    $('uDe').disabled = !sel && at >= 0;
+    const at = uRegionAt(uLineOf(uTa.selectionStart));
+    $('uDe').disabled = !uHasCode();
     $('uRe').disabled = at < 0;
     $('uReAll').disabled = !unity.regions.length;
     uFloatPos();
@@ -2979,9 +2985,8 @@
   /* A De-Regex/Translate button just above a selection of code. */
   function uFloatPos() {
     const f = $('uFloat'), a = uTa.selectionStart, b = uTa.selectionEnd;
-    const { from, to } = uSelLines();
-    const inWords = unity.regions.some(r => r.from <= to && r.to >= from);
-    if (mode !== 'unity' || b <= a || inWords || (document.activeElement !== uTa && document.activeElement !== f)) { f.hidden = true; return; }
+    const { from } = uSelLines();
+    if (mode !== 'unity' || b <= a || !uHasCode() || (document.activeElement !== uTa && document.activeElement !== f)) { f.hidden = true; return; }
     const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22;
     f.style.top = Math.max(4, 12 + from * lh - uTa.scrollTop - lh - 2) + 'px';
     f.hidden = false;
@@ -3006,30 +3011,37 @@
       + (out.needs.length ? `<div class="u-msg">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</div>` : '');
   }
 
+  /* The code in the selection into sentences. The green parts in it are sentences already and stay as they are,
+     so a selection can take in everything. */
   async function uDeRegex() {
     if (!UNITY) return;
     const lines = uLines(), sel = uSelLines();
-    const at = UNITY.expand(unity.lang, lines, sel.from, sel.to);
-    if (!at) { tLine('Select some code first: De-Regex/Translate turns it into sentences.', 't-sys'); return; }
-    if (unity.regions.some(r => r.from <= at.to && r.to >= at.from)) { tLine('Part of that is already sentences (in green). Re-Regex it first, or select only code.', 't-err'); return; }
+    if (!uHasCode()) {   // all sentences already: nothing to do
+      if (!unity.regions.some(r => r.from <= sel.to && r.to >= sel.from)) tLine('Select some code first: De-Regex/Translate turns it into sentences.', 't-sys');
+      return;
+    }
     $('uDe').disabled = true;
-    let w;
-    try { w = await UNITY.toWords(unity.lang, lines, at.from, at.to, uConvert); }
+    let d;
+    try { d = await UNITY.deRegex(unity.lang, lines, unity.regions, sel.from, sel.to, uConvert); }
     catch (e) { tLine('That part couldn\'t be read: ' + e.message, 't-err'); uTools(); return; }
-    if (!w.words || !w.words.length) { tLine(`That part couldn't be said in sentences: ${w.reason || 'the reader had nothing to say'}.`, 't-err'); uTools(); return; }
     if (uLines().join('\n') !== lines.join('\n')) { tLine('The code changed while it was being read. Try again.', 't-sys'); uTools(); return; }
-    const delta = w.words.length - (at.to - at.from + 1);
-    unity.regions = unity.regions.map(r => (r.from > at.to ? { ...r, from: r.from + delta, to: r.to + delta } : r));
-    unity.regions.push({ from: at.from, to: at.from + w.words.length - 1, original: w.original, words: w.words, base: w.base });
-    unity.regions.sort((a, b) => a.from - b.from);
-    uSetText(lines.slice(0, at.from).concat(w.words, lines.slice(at.to + 1)).join('\n'));
+    const span = (p) => (p.from === p.to ? `${p.from + 1}` : `${p.from + 1}–${p.to + 1}`);
+    const lineWord = (ps) => (ps.length === 1 && ps[0].from === ps[0].to ? 'line ' : 'lines ') + ps.map(span).join(', ');
+    const cap = (s) => s[0].toUpperCase() + s.slice(1);
+    for (const b of d.blocked) tLine(`${cap(lineWord([b]))} stay as code: they're one statement with sentences you changed (${lineWord(b.changed)}). Re-Regex those first.`, 't-err');
+    for (const f of d.failed) tLine(`${cap(lineWord([f]))} couldn't be said in sentences: ${f.reason}.`, 't-err');
+    if (!d.done.length) { uTools(); return; }
+    unity.regions = d.regions;
+    uSetText(d.lines.join('\n'));
     uTa.focus();
-    const pos = uPosOf(at.from) + w.base.length;
+    const first = unity.regions.find(r => r.from === d.done[0].from);
+    const pos = uPosOf(d.done[0].from) + (first ? first.base.length : 0);
     uTa.setSelectionRange(pos, pos);
     uProblems = [];
     renderUnity();
-    const grew = at.from !== sel.from || at.to !== sel.to;
-    tLine(`De-Regexed lines ${at.from + 1}–${at.to + 1}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Re-Regex puts code back.` + (w.exact ? '' : ` Some of it stays as exact code: ${w.reason}.`), w.exact ? 't-sys' : 't-err');
+    const grew = d.done.some(p => p.from < sel.from || p.to > sel.to), loose = d.done.find(p => !p.exact);
+    tLine(`De-Regexed ${lineWord(d.done)}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Re-Regex puts code back.`
+      + (loose ? ` Some of it stays as exact code: ${loose.reason}.` : ''), loose ? 't-err' : 't-sys');
   }
   function uReRegex(i, quiet) {
     const r = UNITY.reRegex(unity.lang, uLines(), unity.regions, i, uW());

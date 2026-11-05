@@ -72,6 +72,8 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Unity** (beside Write and Read): the Python sample. Select lines 4–6 (inside `roll`): a **De-Regex/Translate** button
       appears over the selection; press it. Those lines become sentences in dark green, in the same place.
 - [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Re-Regex**: the code is exactly as before.
+- [ ] De-Regex one line, then Select all (Ctrl+A) and De-Regex again: the rest becomes sentences and the green part stays as it
+      was. With only green lines selected, De-Regex/Translate is greyed out and Ctrl+Shift+D does nothing.
 - [ ] De-Regex them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the strip shows the f-string it will write.
       **Re-Regex** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
 - [ ] Write a sentence that doesn't exist in a green part and Re-Regex: it stays green, the line number turns red, and the

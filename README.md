@@ -250,7 +250,9 @@ C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the not
 **Unity** (beside Write and Read) is one pane of real code in Python, HTML, CSS, JavaScript, C++ or
 Arduino. Select some of it and press **De-Regex/Translate** (Ctrl+Shift+D, or the button that appears
 over the selection): those lines turn into sentences right where they are, shown in translucent dark
-green. The selection grows to whole statements (an `if` takes its `else`; a `{` takes its `}`). Change
+green. The selection grows to whole statements (an `if` takes its `else`; a `{` takes its `}`), and it
+can take in green parts (even Select all): they stay as they are, and only the code around them is
+translated. Change
 the sentences, and **Re-Regex** (Ctrl+Shift+B) turns them back into code in the same place:
 
 - a part nobody changed comes back **exactly** as it was;
