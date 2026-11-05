@@ -435,9 +435,10 @@
     const slot = s.match(/‹[^›]*›/);
     if (slot) { x.err(`Fill in the ${slot[0]} slot.`); s = s.replace(/‹[^›]*›/g, '_'); }
 
-    // 1. Protect text in quotes so nothing inside is swapped.
+    // 1. Protect text in quotes so nothing inside is swapped. A .name or [ right after the text stays attached,
+    //    so it is part of the same operand: length of "a b".split() is len("a b".split()), not len("a b").split().
     const strs = [];
-    let q = s.replace(/(?<![\w])[rRbBuUfF]{0,2}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, (m) => { strs.push(m); return ` ⟦${strs.length - 1}⟧ `; });
+    let q = s.replace(/(?<![\w])[rRbBuUfF]{0,2}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     if (/["]/.test(q)) { x.err('A piece of text is missing its closing quote mark (").'); q = q.replace(/"/g, ''); }
     if (/(^|\s)'|'(\s|$)/.test(q)) { x.err("A piece of text is missing its closing quote mark (')."); }
 
@@ -580,9 +581,12 @@
     q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').replace(/⟧\s+\.(?=[A-Za-z_])/g, '⟧.').trim();   // ", ".join(x) keeps its dot next to the text
 
     // 8. Put the text back. Text with {name} inside becomes an f-string; {{ and }} are braces.
-    q = q.replace(/⟦(\d+)⟧/g, (m, i) => {
+    q = q.replace(/⟦(\d+)⟧/g, (m, i, off, all) => {
       const str = strs[+i];
       if (/^[rRbBuUfF]/.test(str)) return str; // already Python (f"…", r"…"): keep exactly
+      // "{x}".format(x=5): .format fills in the {…} itself (and reads {{ as a brace), so the text stays exact.
+      // As an f-string the {x} would be filled first, from the x outside: 3, not 5.
+      if (/^\.format(?:_map)?\b/.test(all.slice(off + m.length))) return str;
       if (str[0] !== '"' || !/[{}]/.test(str)) return str;   // only double-quoted text fills in {names}; 'single' stays exact
       if (!fillsIn(str)) return str.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
       x.note('Text with {…} inside becomes an f-string (the `f` before the quotes). Python swaps in the current value of whatever is in the curly brackets. (A brace itself is written twice: {{ or }}.)');
