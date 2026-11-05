@@ -1010,10 +1010,41 @@
     if (e > s) ta.setSelectionRange(start, start + changed.length);
   }
 
-  let acItems = [], acIndex = 0, acRange = null;
-  function closeAc() { ac.hidden = true; acItems = []; }
+  /* Predictive Mode (the button over the sentences): while it's on, the sentence being typed is predicted the
+   * way a terminal predicts a command. The best guess shows after the cursor in dim text (the ghost), and
+   * the list under the line shows the others: sentences written before (in this project's files, and lines
+   * entered with Enter, most recent first), then the sentence patterns, then names. Off: no predictions. */
+  const PRED = window.IntuiPredict;
+  const PREDICT_KEY = 'intuicode.predict.v1';
+  let predictMem = store.get(PREDICT_KEY, {});
+  if (!predictMem || typeof predictMem !== 'object' || Array.isArray(predictMem)) predictMem = {};
+  const predictOn = () => !!(PRED && layout.predict);
+  let ghostRest = '';   // what the ghost would add, '' when none shows
+
+  /* Sentences to predict from, for the file's language: the ones entered before, then the project's own. */
+  function predictLines() {
+    const sec = activeSec(), cur = caretLine(), out = (predictMem[sec.lang] || []).slice();
+    for (const s of project.sections) {
+      if (s.lang !== sec.lang) continue;
+      (s.id === sec.id ? ta.value : s.text).split('\n').forEach((l, i) => { if (s.id !== sec.id || i !== cur) out.push(l); });
+    }
+    return out;
+  }
+  /* A line entered with Enter is remembered (whether Predictive Mode is on or not), as a terminal keeps its history. */
+  function rememberLine(text) {
+    if (!PRED || !isSentences(activeSec())) return;
+    const lang = activeSec().lang, before = predictMem[lang] || [];
+    const next = PRED.remember(before, text);
+    if (next[0] === before[0] && next.length === before.length) return;
+    predictMem[lang] = next;
+    store.set(PREDICT_KEY, predictMem);
+  }
+
+  let acItems = [], acIndex = 0;
+  function closeAc() { ac.hidden = true; acItems = []; updateGhost(); }
 
   function updateAc() {
+    if (!predictOn()) return closeAc();
     const pos = ta.selectionStart;
     if (pos !== ta.selectionEnd) return closeAc();
     const b = lineBounds(pos);
@@ -1026,16 +1057,17 @@
     if (!isSentences(activeSec())) return closeAc();   // code and notes files are written as they are
     const file = tplRole(activeSec());
     const lower = typed.toLowerCase();
+    const whole = { from: b.start + indent.length, to: pos };
     let items = [];
 
     if (!/‹/.test(b.text)) {
-      const pk = packFor(activeSec());
-      items = pk.templates.filter(t => (!pk.webOnly || pk.filter(t)) && (() => {
+      items = PRED.history(typed, predictLines(), 3).map(s => ({ kind: 'history', label: s, py: '', tag: 'written before', ...whole }));
+      const pk = packFor(activeSec()), have = new Set(items.map(it => it.label.toLowerCase()));
+      items = items.concat(pk.templates.filter(t => (!pk.webOnly || pk.filter(t)) && !have.has(t.pattern.toLowerCase()) && (() => {
         const lead = t.pattern.split('‹')[0].toLowerCase();
         return (lead.startsWith(lower) || (lower.startsWith(lead.trim()) && lower.length <= lead.length + 1 && lead.trim().length)) && t.pattern.toLowerCase() !== lower;
-      })()).sort((a, b2) => (b2.sections.includes(file) - a.sections.includes(file))).slice(0, 7)
-        .map(t => ({ kind: 'template', label: t.pattern, py: t.py, tag: t.group, t }));
-      if (items.length) acRange = { from: b.start + indent.length, to: pos };
+      })()).sort((a, b2) => (b2.sections.includes(file) - a.sections.includes(file)))
+        .map(t => ({ kind: 'template', label: t.pattern, py: t.py, tag: t.group, t, ...whole }))).slice(0, 7);
     }
 
     if (!items.length && /\s/.test(typed) && compiled) {
@@ -1043,23 +1075,22 @@
       for (let k = Math.min(3, words.length - 1); k >= 1 && !items.length; k--) {
         const tail = words.slice(-k).join(' ').toLowerCase();
         if (!tail || /["'‹]/.test(tail)) continue;
-        const seen = new Set();
+        const seen = new Set(), from = pos - words.slice(-k).join(' ').length;
         for (const s of compiled.syms.values()) {
           if (s.kind === 'module' || seen.has(s.display)) continue;
           if (s.display.startsWith(tail) && s.display !== tail) {
             seen.add(s.display);
-            items.push({ kind: 'name', label: s.display, py: s.kind === 'function' ? `${s.py}(${(s.params || []).join(', ')})` : s.py, tag: { number: 'number', text: 'text', list: 'list', dict: 'dictionary', function: 'tool', yesno: 'yes/no' }[s.kind] || 'name' });
+            items.push({ kind: 'name', label: s.display, py: s.kind === 'function' ? `${s.py}(${(s.params || []).join(', ')})` : s.py, tag: { number: 'number', text: 'text', list: 'list', dict: 'dictionary', function: 'tool', yesno: 'yes/no' }[s.kind] || 'name', from, to: pos });
           }
         }
-        if (items.length) acRange = { from: pos - words.slice(-k).join(' ').length, to: pos };
       }
       items = items.slice(0, 7);
     }
 
     if (!items.length) return closeAc();
     acItems = items; acIndex = 0;
-    ac.innerHTML = items.map((it, i) => `<div class="ac-item${i === 0 ? ' on' : ''}" role="option" data-i="${i}"><span class="ac-say">${escHtml(it.label).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>')}</span><span class="ac-kind">${escHtml(it.tag)}</span><span class="ac-py">${escHtml(it.py)}</span></div>`).join('')
-      + '<div class="ac-foot"><kbd>Tab</kbd> or <kbd>Enter</kbd> to use · <kbd>↑</kbd><kbd>↓</kbd> to choose · <kbd>Esc</kbd> to close</div>';
+    ac.innerHTML = items.map((it, i) => `<div class="ac-item${i === 0 ? ' on' : ''}" role="option" data-i="${i}"><span class="ac-say">${escHtml(it.label).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>')}</span><span class="ac-kind">${escHtml(it.tag)}</span>${it.py ? `<span class="ac-py">${escHtml(it.py)}</span>` : ''}</div>`).join('')
+      + '<div class="ac-foot"><kbd>→</kbd> takes the dim text · <kbd>Ctrl</kbd>+<kbd>→</kbd> one word · <kbd>Tab</kbd> or <kbd>Enter</kbd> to use · <kbd>↑</kbd><kbd>↓</kbd> to choose · <kbd>Esc</kbd> to close</div>';
     ac.hidden = false;
     const line = caretLine();
     const top = PAD_T + (line + 1) * LH - ta.scrollTop + 4;
@@ -1067,21 +1098,60 @@
     const flip = top + ac.offsetHeight > codewrap.clientHeight - 8 && top - LH - ac.offsetHeight - 8 > 0;
     ac.style.top = (flip ? top - LH - ac.offsetHeight - 8 : top) + 'px';
     ac.style.left = left + 'px';
+    updateGhost();
   }
+
+  /* The dim rest of the chosen prediction, after the cursor, when the cursor is at the end of its line. */
+  function updateGhost() {
+    const g = $('ghost');
+    const hide = () => { ghostRest = ''; if (g && !g.hidden) g.hidden = true; };
+    if (!g || !predictOn() || ac.hidden || !acItems.length) return hide();
+    const pos = ta.selectionStart, it = acItems[acIndex];
+    if (pos !== ta.selectionEnd || !it || pos !== it.to) return hide();
+    const b = lineBounds(pos);
+    if (b.text.slice(pos - b.start).trim()) return hide();
+    const r = PRED.rest(ta.value.slice(it.from, pos), it.label);
+    if (!r) return hide();
+    ghostRest = r;
+    g.innerHTML = escHtml(r).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>');
+    g.style.top = (PAD_T + caretLine() * LH - ta.scrollTop) + 'px';
+    g.style.left = (PAD_L + (pos - b.start) * CW - ta.scrollLeft) + 'px';
+    g.hidden = false;
+  }
+  /* Ctrl+→: the next word of the ghost only. */
+  function acceptWord() {
+    if (!ghostRest) return;
+    insertText(PRED.nextWord(ghostRest));
+    updateAc();
+  }
+
+  function applyPredict() {
+    const b = $('btnPredict');
+    b.hidden = !PRED;
+    b.setAttribute('aria-pressed', String(predictOn()));
+    if (!predictOn()) closeAc();
+  }
+  function setPredict(on) {
+    layout.predict = on; store.set(LAYOUT_KEY, layout); applyPredict();
+    ta.focus({ preventScroll: true });
+    if (on) updateAc();
+  }
+  $('btnPredict').addEventListener('click', () => setPredict(!layout.predict));
 
   function moveAc(d) {
     acIndex = (acIndex + d + acItems.length) % acItems.length;
     [...ac.querySelectorAll('.ac-item')].forEach((el, i) => el.classList.toggle('on', i === acIndex));
     ac.querySelectorAll('.ac-item')[acIndex].scrollIntoView({ block: 'nearest' });
+    updateGhost();
   }
 
   function acceptAc(i = acIndex) {
     const it = acItems[i];
     if (!it) return;
     closeAc();
-    insertText(it.label, acRange.from, acRange.to);
+    insertText(it.label, it.from, it.to);
     if (it.kind === 'template') {
-      const b = lineBounds(acRange.from);
+      const b = lineBounds(it.from);
       ta.setSelectionRange(b.start, b.start);
       selectNextSlot(true);
     }
@@ -1125,6 +1195,7 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); return; }
     if (e.altKey && e.key === 'ArrowDown' && ddOn()) { if (openDdAtCaret()) { e.preventDefault(); return; } }
     if (!ac.hidden) {
+      if (ghostRest && e.key === 'ArrowRight' && !e.shiftKey && !e.altKey) { e.preventDefault(); return e.ctrlKey || e.metaKey ? acceptWord() : acceptAc(); }
       if (e.key === 'ArrowDown') { e.preventDefault(); return moveAc(1); }
       if (e.key === 'ArrowUp') { e.preventDefault(); return moveAc(-1); }
       if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); return acceptAc(); }
@@ -1142,6 +1213,7 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const b = lineBounds(ta.selectionStart);
+      rememberLine(b.text);
       const before = b.text.slice(0, ta.selectionStart - b.start);
       let indent = before.match(/^\s*/)[0];
       if (packFor(activeSec()).opens.test(before) && before.trim()) indent += '    ';
@@ -1164,7 +1236,7 @@
     if (item) { e.preventDefault(); acceptAc(+item.dataset.i); }
   });
   document.addEventListener('selectionchange', () => {
-    if (document.activeElement === ta) afterCaretMove(false);
+    if (document.activeElement === ta) { afterCaretMove(false); updateGhost(); }
     if (mode === 'read') updateSummariseButton();
   });
 
@@ -1618,7 +1690,7 @@
   /* ------------------------------------------------------------------ */
 
   const LAYOUT_KEY = 'intuicode.layout.v1';
-  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false }, store.get(LAYOUT_KEY, {}));
+  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false, predict: false }, store.get(LAYOUT_KEY, {}));
   const ROW_PROP = { termRow: '--term-row', webRow: '--web-row', unityRow: '--unity-row' };   // the terminal's height in each layout
   function applyLayout() {
     const work = $('work'), hb = $('btnHelpDock'), tb = $('btnTermDock');
@@ -5276,6 +5348,7 @@
   function start() {
     applyLayout();
     applyDropDown();
+    applyPredict();
     ta.value = activeSec().text;
     renderSectionHeader();
     refreshAll();

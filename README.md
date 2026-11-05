@@ -190,6 +190,15 @@ make it taller or shorter (double-click it for the usual size). Run, and a progr
 the terminal back; while it's folded, a dot on its tab says there's something new. IntuaCode remembers how
 you left them.
 
+**Predictive Mode:** the black **Predictive Mode** button on the sentences turns predictions on and off. While
+it's on, the sentence you're typing is predicted the way a terminal predicts a command: the rest of it shows
+after the cursor in dim text, and a list under the line shows other guesses. Guesses come from sentences
+you've written before (in the project's files, and every line you finish with Enter, newest first), then
+the sentences IntuaCode knows (with their blanks), then the names in your program. **→** takes all of
+the dim text, **Ctrl+→** one word, **↑ ↓** choose another, **Tab** or **Enter** use the one picked, and
+**Esc** puts it away. Off, nothing pops up while you type. IntuaCode remembers whether it's on, and the
+history of lines stays in this browser or app (`lang/predict.js`).
+
 **Drop down:** the **Drop down** button on the sentences puts a small box under every value: numbers (with
 or without units), colour codes, colour names and CSS words like `center` or `bold`. **−** and **+** nudge it
 (hold for more; for a colour they make it darker or lighter), and **▾** lists the values usually chosen in

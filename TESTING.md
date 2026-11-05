@@ -89,6 +89,13 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Read as** → C++: it's read as C++ (and says it can't be, for Rust). Back to Auto: Rust again.
 - [ ] Open a folder with a `README.md`, a `package.json` and a `.sql` file: each is listed and read.
 
+**Predictive Mode**
+- [ ] With **Predictive Mode** off (its dot hollow), type `set` on a new line: nothing pops up.
+- [ ] Turn it on (the dot lights): type `set `. The rest of a sentence already in the file shows in dim text after the
+      cursor, and the list has it first ("written before"), then `set ‹name› to ‹value›`. **↓**: the dim text follows.
+      **Ctrl+→** takes one word, **→** the rest. On a pattern, **→** fills it in and selects its first blank.
+- [ ] Finish a new line with **Enter**, start the same words on another line: it's offered first. Reload: still on.
+
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
       it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.
