@@ -101,6 +101,13 @@ const CASES = [
   ['set s to 3\ncount down from 10 to 0 by s minus 1\n    show n\nset top to 3\ncount up i from 1 to top\n    show i', 's = 3\nfor n in range(10, -1, -(s - 1)):\n    print(n)\ntop = 3\nfor i in range(1, top + 1):\n    print(i)'],
   // a python: tool with an input that has a value to use when none is given
   ['python: def area(w, h=1):\n    python: return w * h\nrun area with 3', 'def area(w, h=1):\n    return w * h\narea(3)'],
+  // a .name or [ right after text belongs to the text, inside the phrase (not len("a b").split())
+  ['show length of "a b".split()\nshow count of \'a,b\'.split(",")\nshow length of "abc"[1:]', 'print(len("a b".split()))\nprint(len(\'a,b\'.split(",")))\nprint(len("abc"[1:]))'],
+  ['show first item of "a b c".split()\nshow last item of "a b c".split()\nshow item 1 of "abc".upper()', 'print("a b c".split()[0])\nprint("a b c".split()[-1])\nprint("abc".upper()[1])'],
+  // ... and text with {names}, .format and keys picked from a dictionary are as before
+  ['set name to "Sam"\nshow "Hello {name}".upper()\nshow "x is {}".format(3)\nshow "abc"[0]\npython: d = {"k": 1}\nshow item "k" of d', 'name = "Sam"\nprint(f"Hello {name}".upper())\nprint("x is {}".format(3))\nprint("abc"[0])\nd = {"k": 1}\nprint(d["k"])'],
+  // text before .format( stays exact: .format fills in the {…} (an f-string would fill {x} from the x outside first)
+  ['set x to 3\nshow "{x}".format(x=5)\nshow "{{}} {}".format(1)\npython: d = {"x": 1}\nshow "{x}".format_map(d)', 'x = 3\nprint("{x}".format(x=5))\nprint("{{}} {}".format(1))\nd = {"x": 1}\nprint("{x}".format_map(d))'],
 ];
 
 for (const [sentences, expected] of CASES) {
@@ -193,6 +200,9 @@ test('programs from these sentences do what they say', () => {
   assert.equal(run('set words to "a b".split()\nadd "cat" to words\nshow words'), "['a', 'b', 'cat']");
   assert.equal(run('set n to 3\nif n plus 1 is even\n    show "even"\notherwise\n    show "odd"'), 'even');
   assert.equal(run('create list basket\nadd "milk" and "eggs" to basket\nshow basket'), "['milk', 'eggs']");
+  assert.equal(run('show length of "a b".split()\nshow first item of "a b c".split()'), '2\na');
+  assert.equal(run('set x to 3\nshow "{x}".format(x=5)\nshow "{{}} {}".format(1)'), '5\n{} 1');
+  assert.deepEqual(py('show "{x}".format_map({"x": 1})').warnings, [], 'a {name} that .format_map fills in is not a name to set');
 });
 
 test('a tool run inside {…} in text runs the tool, not what "length of" gives back', () => {
