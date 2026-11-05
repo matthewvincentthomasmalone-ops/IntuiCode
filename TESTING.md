@@ -76,6 +76,8 @@ Tick each one. If something is off, note what you did and what the terminal said
       **Re-Regex** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
 - [ ] Write a sentence that doesn't exist in a green part and Re-Regex: it stays green, the line number turns red, and the
       terminal says why. **Copy the code** refuses until it's fixed.
+- [ ] The code reaches about three quarters of the way down, with the terminal under it. Fold the terminal away (its
+      chevron): the code fills the room. The corner button: full screen, no side panel or terminal; Esc comes back.
 - [ ] Language → C++ (with an empty pane): De-Regex `count += i;`, change it to `increase count by i times 2`, Re-Regex:
       `count += i * 2;` inside the loop.
 
