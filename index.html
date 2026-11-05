@@ -90,7 +90,7 @@
               <h2 id="secTitle">Main program</h2>
               <p id="secPurpose">What happens, step by step, when you press Run</p>
             </div>
-            <div class="pane-tools"><button type="button" class="btn small dd-btn" id="btnDropDown" aria-pressed="false" title="Drop down: a small box under every value (numbers, colour codes, CSS words). − and + nudge it; ▾ lists the values usually chosen there, and what each one means. Alt+↓ opens the list for the value at the cursor."><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 7l1.75 2 1.75-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Drop down</button><span class="file-tag">sentences</span><button type="button" class="btn small max-btn" data-max="say" aria-pressed="false" title="Full screen: the sentences (Esc to come back)" aria-label="Full screen: the sentences"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="pane-tools"><button type="button" class="btn small predict-btn" id="btnPredict" aria-pressed="false" title="Predictive Mode: as you type, the rest of the sentence shows in dim text, from sentences you've written before and the sentences IntuaCode knows. → takes all of it, Ctrl+→ one word, ↑↓ another one from the list, Esc puts it away. Off: no predictions."><span class="pm-dot" aria-hidden="true"></span>Predictive Mode</button><button type="button" class="btn small dd-btn" id="btnDropDown" aria-pressed="false" title="Drop down: a small box under every value (numbers, colour codes, CSS words). − and + nudge it; ▾ lists the values usually chosen there, and what each one means. Alt+↓ opens the list for the value at the cursor."><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 7l1.75 2 1.75-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Drop down</button><span class="file-tag">sentences</span><button type="button" class="btn small max-btn" data-max="say" aria-pressed="false" title="Full screen: the sentences (Esc to come back)" aria-label="Full screen: the sentences"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div>
           <div class="editor" id="editor">
             <div class="gutter" id="gutter"><div id="gutterInner"></div></div>
@@ -99,6 +99,7 @@
               <div class="band band-link" id="bandLink" hidden></div>
               <div class="band band-mask" id="bandMask" hidden><span>your turn: say it in the balloon</span></div>
               <pre class="hl" id="hl" aria-hidden="true"></pre>
+              <div class="ghost" id="ghost" aria-hidden="true" hidden></div>
               <div class="dd-layer" id="ddLayer"></div>
               <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Sentences"></textarea>
               <div class="ac" id="ac" role="listbox" hidden></div>
@@ -411,5 +412,6 @@
 <script src="lang/library/types.js"></script>
 <script src="lang/library/web.js"></script>
 <script src="lang/library.js"></script>
+<script src="lang/predict.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>
