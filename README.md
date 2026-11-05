@@ -245,10 +245,12 @@ expected line, however it is spaced.
 Python's habits are found with Python's own parser (`style_points` in `lang/python_reader.py`),
 C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the notes are too).
 
-**Unity: one pane of code, any part of it in sentences**
+**Unity: the project in one pane, any part of it in sentences**
 
-**Unity** (beside Write and Read) is one pane of real code in Python, HTML, CSS, JavaScript, C++ or
-Arduino. Select some of it and press **Translate to Plain Language Syntax** (Ctrl+Shift+D, or the button that appears
+**Unity** (beside Write and Read) is the same project as Write mode, in one pane instead of two: the file
+picked in the project's tree (on the left, with Problems), its sentences in translucent dark green and its exact
+lines (`python: …`, `c++: …`) as plain code. Parts added from the Library, new files and other projects show
+up in it straight away, and Write mode always shows the same file. Select some code and press **Translate to Plain Language Syntax** (Ctrl+Shift+D, or the button that appears
 over the selection): those lines turn into sentences right where they are, shown in translucent dark
 green. The selection grows to whole statements (an `if` takes its `else`; a `{` takes its `}`), and it
 can take in green parts (even Select all): they stay as they are, and only the code around them is
@@ -262,10 +264,17 @@ the sentences, and **Original Code** (Ctrl+Shift+B) turns them back into code in
 - a part with a problem stays as sentences until it's fixed, and the strip under the pane says why
   (and shows the code it will write while you type).
 
+What turns into code is the file's own code, so the code IntuaCode writes around a file (a C++ `main` and its
+includes, a page's head) isn't shown, as in Write mode. A C++ file's tools, classes and includes stay as
+sentences, because their code goes above `main`; each statement in it is its own green part. **Open a file…**
+adds a code file from your computer to the project: Python, CSS and JavaScript come in as code, a whole C++
+program, Arduino sketch or HTML page as sentences (IntuaCode writes its `main`, `setup` and `loop`, or head).
+Notes and other files open as they are.
+
 The code takes the top three quarters of the window, the terminal the rest; fold the terminal away and the
 code takes its room too, or press the corner button for full screen (Esc comes back). **Copy the code** copies
-the whole file with every green part turned back into code. It's what IntuaCode
-does everywhere, a piece at a time: the symbols of a language said as words, and back.
+the file's code, what Run uses. It's what IntuaCode does everywhere, a piece at a time: the symbols of a
+language said as words, and back.
 
 **Read: existing code → sections → plain English**
 

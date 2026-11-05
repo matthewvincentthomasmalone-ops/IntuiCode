@@ -15,7 +15,7 @@ the desktop app.
 | `lang/code_read.js` | Read mode for every other language: which language a file (or pasted code) is in, and sections, summaries, facts, warnings and steps for it |
 | `lang/languages.js` | The languages a project's files can be in: names, file endings, grammars |
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files (`compileAll`), Markdown, CSV and JSON shown as what they are |
-| `lang/unity.js` | Unity mode: a selection grown to whole statements, turned into sentences in place, and back into code in the context of the code around it (the rest given to the writer as exact lines) |
+| `lang/unity.js` | Unity mode: a project file shown line for line (exact lines as code, sentences as regions) and written back; a selection grown to whole statements, turned into sentences in place, and back into code in the context of the code around it (the rest given to the writer as exact lines) |
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
@@ -126,6 +126,21 @@ changed region is compiled as part of the whole file, where every other line is 
 (`python:`, `js:`, `c++:`…), so the writer knows the names around it; only the region's own lines are
 taken back. Exact lines teach the writers the names they make (a `def`'s inputs, `int n = 3;`,
 `function f(a)`), which also helps any sentence file that mixes in exact code.
+
+## Decision: Unity mode edits the project's own files
+
+*Decided 2026-11-05.*
+
+Unity is Write mode's project in one pane, not a workspace of its own. It shows the open file line for line
+(`fromFile` in `lang/unity.js`): an exact line (`python: …`) as its code, sentence lines as green regions. Every
+change is written straight back (`toFile`: regions as they are, every other line as an exact line), so Write mode,
+Run, Problems and the Library work on the same text, and compiling happens in the project's context. The writer's
+own wrapping (a C++ `main`, a page's head) is never shown, as in Write mode. Regions read from sentences get the
+code they make as their original; regions made in Unity keep the code they came from (kept per file in
+`intuicode.unity.v2` while the file is still what Unity made), so looking still never changes code. In C++ a
+file's exact lines go inside `main`, so a part whose code goes above it (a tool, a class, an include) stays as
+sentences, and C++ regions are one statement each. The Arduino writer keeps exact lines' own indentation and
+doesn't add an empty `setup()` or `loop()` to a sketch whose exact lines write one.
 
 ## Testing
 

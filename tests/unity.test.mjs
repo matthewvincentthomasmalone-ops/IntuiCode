@@ -172,3 +172,78 @@ test('Unity: regions move with the text, and lines typed at a region\'s edge joi
   assert.deepEqual(plain(U.adjust(r, before, ['a', 'b', 'w1', 'w2', 'w3', 'c'], -1).map(x => [x.from, x.to])), [[2, 3]], 'a line added after it from outside stays outside');
   assert.deepEqual(plain(U.adjust(r, before, ['a', 'b', 'c'])), [], 'deleting it all removes it');
 });
+
+/* ---------- Unity on a project's own files ---------- */
+
+test('Unity: a project file shows line for line, its exact lines as code and its sentences as regions', () => {
+  const file = ['python: import math', 'python: def area(r):', '    give back math.pi times r times r', 'python: x = 2', '', 'show area(x)', 'Python: y = 3', '  raw: z = 4'].join('\n');
+  const f = U.fromFile('python', file);
+  assert.deepEqual(plain(f.lines), ['import math', 'def area(r):', '    give back math.pi times r times r', 'x = 2', '', 'show area(x)', 'y = 3', '  z = 4']);
+  assert.deepEqual(plain(f.regions.map(r => [r.from, r.to, r.base, r.original])), [[2, 2, '    ', null], [5, 5, '', null]]);
+  assert.equal(U.toFile('python', f.lines, f.regions), file.replace('Python: y', 'python: y').replace('raw: z', 'python: z'), 'back to the same file (prefixes written the usual way)');
+  const blanks = U.fromFile('js', 'show "a"\n\n\nshow "b"\njs: let c = 1;');
+  assert.deepEqual(plain(blanks.regions.map(r => [r.from, r.to])), [[0, 3]], 'blank lines between sentences stay in the region; none at its edges');
+  assert.deepEqual(plain(U.fromFile('html', 'html: <main>\n  add a heading "Hi"\nhtml: </main>').lines), ['<main>', '  add a heading "Hi"', '</main>']);
+});
+
+test('Unity: a project file\'s sentences become code in place, and back to sentences in the file', () => {
+  const file = ['python: def area(r):', '    give back math.pi times r times r', 'python: print(area(2))'].join('\n');
+  const f = U.fromFile('python', file);
+  const made = U.toCode('python', f.lines, f.regions, 0, W);
+  assert.deepEqual(plain(made.problems), []);
+  assert.deepEqual(plain(made.code), ['    return math.pi * r * r']);
+  // the shell gives the region the code it makes, so one nobody changed goes back exactly, with what it needs
+  const regions = [{ ...f.regions[0], original: made.code, needs: made.needs }];
+  const back = U.reRegex('python', f.lines, regions, 0, W);
+  assert.ok(back.ok);
+  assert.equal(U.toFile('python', back.lines, back.regions), ['python: import math', 'python: def area(r):', '    python: return math.pi * r * r', 'python: print(area(2))'].join('\n'), 'its code, and the import the writer used to add for it');
+  // without code yet (its sentences have a problem), it's written afresh, and stays as sentences while it can't be code
+  const bad = U.fromFile('python', 'python: x = 1\nmake this a sentence nobody knows');
+  const no = U.reRegex('python', bad.lines, bad.regions, 0, W);
+  assert.equal(no.ok, false);
+  assert.ok(no.problems.length);
+  // the writer in the project's context, when the shell gives one
+  let asked = 0;
+  U.toCode('python', f.lines, f.regions, 0, { ...W, compile: () => { asked++; return null; } });
+  assert.equal(asked, 1);
+});
+
+test('Unity: a statement around sentences without code is left alone (they can\'t be said again from code)', async () => {
+  const f = U.fromFile('python', 'python: for i in range(3):\n    make this a sentence nobody knows');
+  const d = await U.deRegex('python', f.lines, f.regions, 0, 0, convert);
+  assert.deepEqual(plain(d.done), []);
+  assert.deepEqual(plain(d.blocked), [{ from: 0, to: 1, changed: [{ from: 1, to: 1 }] }]);
+});
+
+test('Unity: a project\'s C++ file is the program\'s main, so its code is read as inside one', async () => {
+  const f = U.fromFile('cpp', 'c++: int n = 3;\nincrease n by 2\nshow n');
+  const d = await U.deRegex('cpp', f.lines, f.regions, 0, 0, convert, { body: true });
+  assert.deepEqual(plain(d.lines), ['set n to 3', 'increase n by 2', 'show n']);
+  assert.equal(U.toFile('cpp', d.lines, d.regions), 'set n to 3\nincrease n by 2\nshow n');
+});
+
+test('Unity: a project\'s C++ tool stays as sentences (its code goes above main, where exact lines can\'t)', () => {
+  const f = U.fromFile('cpp', ['define add using whole number a, whole number b giving back whole number', '    give back a plus b', '', 'c++: int n = add(2, 3);', 'show n'].join('\n'));
+  assert.deepEqual(plain(f.regions.map(r => [r.from, r.to])), [[0, 1], [4, 4]]);
+  const split = U.fromFile('cpp', ['include <iostream>', '', 'set total to 0', 'count i from 1 to 3', '    increase total by i'].join('\n'));
+  assert.deepEqual(plain(split.regions.map(r => [r.from, r.to])), [[0, 0], [2, 2], [3, 4]], 'one region per statement in C++');
+  const tool = U.toCode('cpp', f.lines, f.regions, 0, W);
+  assert.ok(tool.problems.some(p => p.errs.some(e => /above main/.test(e))), 'a tool stays as sentences');
+  const body = U.toCode('cpp', f.lines, f.regions, 1, W);
+  assert.deepEqual(plain(body.problems), []);
+  assert.deepEqual(plain(body.code), ['std::cout << n << std::endl;'], 'a statement in main becomes code');
+});
+
+test('Unity: a sketch written as code keeps its own setup and loop, and its indentation', () => {
+  const file = ['c++: int led = 13;', 'c++: void setup() {', '    c++: pinMode(led, OUTPUT);', 'c++: }', 'c++: void loop() {', '    c++: digitalWrite(led, HIGH);', 'c++: }'].join('\n');
+  const out = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 'sketch', file: 'sketch', text: file }] }).results.sketch;
+  assert.equal(out.text, 'int led = 13;\nvoid setup() {\n    pinMode(led, OUTPUT);\n}\nvoid loop() {\n    digitalWrite(led, HIGH);\n}\n');
+});
+
+test('Unity: sentences that write no code of their own stay as sentences (nothing disappears)', () => {
+  const f = U.fromFile('cpp', ['include <iostream>', '', 'show "hi"'].join('\n'));
+  const r = U.reRegex('cpp', f.lines, f.regions, 0, W);
+  assert.equal(r.ok, false);
+  assert.ok(r.problems.some(p => p.errs.some(e => /no code of its own/.test(e))));
+  assert.ok(U.reRegex('cpp', f.lines, f.regions, 1, W).ok, 'the statement after it still becomes code');
+});

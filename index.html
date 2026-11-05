@@ -46,6 +46,15 @@
         <div class="side-h">Project <span class="side-acts"><button type="button" class="btn tiny" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">+ File</button><button type="button" class="btn tiny" id="btnAddFolder" title="Add a folder">+ Folder</button></span></div>
         <div class="tree-root" id="treeRoot"></div>
         <nav id="tree" class="tree"></nav>
+        <div id="unitySide" hidden>
+          <div class="side-pad u-side">
+            <div class="u-acts"><button type="button" class="btn small" id="uOpen" title="Add a code file from your computer to the project, and open it here">Open a file…</button><button type="button" class="btn small" id="uCopy" title="Copy this file's code: what Run uses, with every green part as code">Copy the code</button></div>
+            <input type="file" id="uFile" hidden accept=".py,.pyw,.html,.htm,.css,.js,.mjs,.cjs,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino">
+          </div>
+          <div class="side-h">In sentences <span id="uCount" class="count"></span></div>
+          <ul id="uRegions" class="u-regions"></ul>
+          <p class="side-note u-how">The file picked above, in one pane: sentences in green. <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>) turns selected code into sentences in place; <b>Original Code</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>) puts code back, exactly as it was if unchanged. Write mode shows the same file.</p>
+        </div>
         <div id="imgWrap" hidden>
           <div class="side-h">Images <span id="imgCount" class="count"></span></div>
           <ul id="imgList" class="img-list"></ul>
@@ -67,18 +76,6 @@
           <div class="side-h">Sections in this file</div>
           <nav id="rdOutline" class="outline"></nav>
         </div>
-      </div>
-      <div id="unitySide" hidden>
-        <div class="side-h">Unity</div>
-        <div class="side-pad u-side">
-          <label class="u-lang" for="uLang">Language</label>
-          <select id="uLang"></select>
-          <div class="u-acts"><button type="button" class="btn small" id="uOpen">Open a file…</button><button type="button" class="btn small" id="uCopy" title="Copy the code, with every green part turned back into code">Copy the code</button></div>
-          <input type="file" id="uFile" hidden accept=".py,.pyw,.html,.htm,.css,.js,.mjs,.cjs,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino">
-        </div>
-        <div class="side-h">In sentences <span id="uCount" class="count"></span></div>
-        <ul id="uRegions" class="u-regions"></ul>
-        <p class="side-note u-how">Select some code and press <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it turns into sentences right where it is, in green. Change the sentences, then <b>Original Code</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>) puts code back. A part you didn't change comes back exactly as it was.</p>
       </div>
     </aside>
 
@@ -151,7 +148,7 @@
         <div class="pane-h">
           <div class="pane-title">
             <h2 id="uTitle">Unity</h2>
-            <p>One pane of code. The green parts are sentences.</p>
+            <p id="uSub">One pane of code. The green parts are sentences.</p>
           </div>
           <div class="pane-tools">
             <button type="button" class="btn small primary" id="uDe" title="Turn the selected code into sentences, right where it is (Ctrl+Shift+D)">Translate to Plain Language Syntax</button>
