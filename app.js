@@ -1600,7 +1600,7 @@
     maxed = maxed === which ? '' : which;
     if (maxed === 'term') setDock('term', true);
     const ws = document.querySelector('.workspace');
-    ws.classList.remove('max-say', 'max-code', 'max-term');
+    ws.classList.remove('max-say', 'max-code', 'max-term', 'max-unity');
     if (maxed) ws.classList.add('max-' + maxed);
     document.querySelectorAll('.max-btn').forEach(b => {
       const on = b.dataset.max === maxed;
@@ -1608,7 +1608,7 @@
       b.title = (on ? 'Back to all the windows' : 'Full screen: ' + b.getAttribute('aria-label').replace(/^Full screen: /, '')) + ' (Esc)';
     });
     measure(); syncScroll(); placeTip();
-    if (maxed === 'term') termIn.focus(); else if (maxed === 'say') ta.focus(); else if (maxed === 'code') pycode.focus();
+    if (maxed === 'term') termIn.focus(); else if (maxed === 'say') ta.focus(); else if (maxed === 'code') pycode.focus(); else if (maxed === 'unity') { $('uTa').focus(); uSync(); }
   }
   document.addEventListener('click', (e) => { const b = e.target.closest('.max-btn'); if (b) setMax(b.dataset.max); });
 
@@ -1618,7 +1618,8 @@
   /* ------------------------------------------------------------------ */
 
   const LAYOUT_KEY = 'intuicode.layout.v1';
-  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, dd: false }, store.get(LAYOUT_KEY, {}));
+  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false }, store.get(LAYOUT_KEY, {}));
+  const ROW_PROP = { termRow: '--term-row', webRow: '--web-row', unityRow: '--unity-row' };   // the terminal's height in each layout
   function applyLayout() {
     const work = $('work'), hb = $('btnHelpDock'), tb = $('btnTermDock');
     $('explainWrap').classList.toggle('shut', !layout.help);
@@ -1629,7 +1630,7 @@
     tb.setAttribute('aria-expanded', String(layout.term));
     tb.title = layout.term ? 'Hide the terminal, for more room' : 'Show the terminal';
     tb.setAttribute('aria-label', tb.title);
-    for (const [key, prop] of [['termRow', '--term-row'], ['webRow', '--web-row']]) {
+    for (const [key, prop] of Object.entries(ROW_PROP)) {
       if (layout[key]) work.style.setProperty(prop, layout[key] + 'px'); else work.style.removeProperty(prop);
     }
     measure(); syncScroll(); placeTip();
@@ -1645,11 +1646,11 @@
   $('btnTermDock').addEventListener('click', () => setDock('term', !layout.term));
 
   const grip = $('termGrip');
-  const rowKey = () => ($('work').classList.contains('web') ? 'webRow' : 'termRow');
+  const rowKey = () => ($('work').classList.contains('unity') ? 'unityRow' : $('work').classList.contains('web') ? 'webRow' : 'termRow');
   function setTermHeight(h) {
     const r = $('work').getBoundingClientRect(), key = rowKey();
     layout[key] = Math.round(Math.min(Math.max(h, 90), Math.max(r.height - 170, 90)));
-    $('work').style.setProperty(key === 'webRow' ? '--web-row' : '--term-row', layout[key] + 'px');
+    $('work').style.setProperty(ROW_PROP[key], layout[key] + 'px');
     placeTip();
   }
   grip.addEventListener('pointerdown', (e) => {
@@ -3164,6 +3165,7 @@
   }
 
   function setMode(next) {
+    if (maxed && next !== mode) setMax(maxed);   // full screen belongs to the mode it was opened in
     mode = next;
     hideTip();
     $('modeWrite').setAttribute('aria-selected', String(next === 'write'));

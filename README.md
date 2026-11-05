@@ -260,7 +260,9 @@ the sentences, and **Re-Regex** (Ctrl+Shift+B) turns them back into code in the 
 - a part with a problem stays as sentences until it's fixed, and the strip under the pane says why
   (and shows the code it will write while you type).
 
-**Copy the code** copies the whole file with every green part turned back into code. It's what IntuCode
+The code takes the top three quarters of the window, the terminal the rest; fold the terminal away and the
+code takes its room too, or press the corner button for full screen (Esc comes back). **Copy the code** copies
+the whole file with every green part turned back into code. It's what IntuCode
 does everywhere, a piece at a time: the symbols of a language said as words, and back.
 
 **Read: existing code → sections → plain English**

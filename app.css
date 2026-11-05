@@ -390,7 +390,10 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .modes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .side-pad { padding: 4px 16px 0; }
 .side-note { padding: 2px 16px; color: var(--ink-3); font-size: 12.5px; margin: 0; }
-.work.reading, .work.unity { grid-template-rows: minmax(0, 1fr) var(--term-row, minmax(130px, 24%)); }
+.work.reading { grid-template-rows: minmax(0, 1fr) var(--term-row, minmax(130px, 24%)); }
+/* Unity: the code reaches three quarters of the way down; the terminal has the rest (its own height, dragged
+   apart from Write's), and none of it when it's folded away */
+.work.unity { grid-template-rows: minmax(0, 1fr) var(--unity-row, minmax(110px, 21%)); }
 .work.unity.term-shut { grid-template-rows: minmax(0, 1fr) auto; }
 .p-dec { color: var(--fn); }
 .bad-text { color: var(--bad); }
@@ -835,9 +838,10 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .max-btn svg { width: 14px; height: 14px; }
 .max-btn .max-out, .max-btn[aria-pressed="true"] .max-in { display: none; }
 .max-btn[aria-pressed="true"] .max-out { display: block; }
-.workspace.max-say, .workspace.max-code, .workspace.max-term { grid-template-columns: minmax(0, 1fr); }
-.workspace.max-say .side, .workspace.max-code .side, .workspace.max-term .side { display: none; }
-.max-say .work, .max-code .work, .max-term .work { grid-template-rows: minmax(0, 1fr); }
+.workspace.max-say, .workspace.max-code, .workspace.max-term, .workspace.max-unity { grid-template-columns: minmax(0, 1fr); }
+.workspace.max-say .side, .workspace.max-code .side, .workspace.max-term .side, .workspace.max-unity .side { display: none; }
+.max-say .work, .max-code .work, .max-term .work, .max-unity .work { grid-template-rows: minmax(0, 1fr); }
+.max-unity .term, .max-unity .explain-wrap, .max-term #unityView { display: none !important; }
 .max-say .pane-py, .max-say .explain-wrap, .max-say .term,
 .max-code .pane-say, .max-code .explain-wrap, .max-code .term,
 .max-term .panes, .max-term .explain-wrap, .max-term #readView { display: none !important; }
@@ -1200,7 +1204,7 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .lib-where { margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
 
 /* Unity mode: one pane of code; the parts said in sentences are dark green, translucent, with a faint glow */
-.unity { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.u-view { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .u-editor { flex: 1; }
 .u-gutter { padding: 12px 0; font: 12px/var(--lh) var(--f-py); color: var(--ink-3); text-align: right; will-change: transform; }
 .u-gutter .gl.u-in { color: #7FE0A6; }
@@ -1211,7 +1215,7 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .u-float { position: absolute; right: 18px; z-index: 3; border: 0; cursor: pointer; padding: 3px 10px; border-radius: 3px; font: 600 12px var(--f-ui);
   color: #D9FBE6; background: rgba(16, 92, 52, .92); box-shadow: 0 0 10px rgba(72, 214, 134, .35), inset 0 1px 0 rgba(160, 255, 200, .25), 0 0 0 1px #000; }
 .u-float:hover { background: rgba(22, 116, 66, .95); }
-.u-strip { flex: none; max-height: 30%; overflow: auto; margin: 0 7px 7px; padding: 8px 12px; border-radius: 3px; font-size: 13px; color: var(--ink-2); background: var(--field); box-shadow: var(--sunken); }
+.u-strip { flex: none; max-height: 7.5em; overflow: auto; margin: 0 7px 7px; padding: 8px 12px; border-radius: 3px; font-size: 13px; color: var(--ink-2); background: var(--field); box-shadow: var(--sunken); }
 .u-code { margin: 4px 0 0; font: 12.5px/1.5 var(--f-py); white-space: pre; overflow-x: auto; }
 .u-msg { margin-top: 4px; }
 .u-msg.err { color: var(--bad); }
