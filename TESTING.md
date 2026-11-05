@@ -69,18 +69,18 @@ Tick each one. If something is off, note what you did and what the terminal said
       move it below): the untouched line is flagged with **Keep the new code**.
 
 **Unity mode**
-- [ ] **Unity** (beside Write and Read): the Python sample. Select lines 4–6 (inside `roll`): a **De-Regex/Translate** button
+- [ ] **Unity** (beside Write and Read): the Python sample. Select lines 4–6 (inside `roll`): a **Translate to Plain Language Syntax** button
       appears over the selection; press it. Those lines become sentences in dark green, in the same place.
-- [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Re-Regex**: the code is exactly as before.
-- [ ] De-Regex one line, then Select all (Ctrl+A) and De-Regex again: the rest becomes sentences and the green part stays as it
-      was. With only green lines selected, De-Regex/Translate is greyed out and Ctrl+Shift+D does nothing.
-- [ ] De-Regex them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the strip shows the f-string it will write.
-      **Re-Regex** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
-- [ ] Write a sentence that doesn't exist in a green part and Re-Regex: it stays green, the line number turns red, and the
+- [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Original Code**: the code is exactly as before.
+- [ ] Translate one line, then Select all (Ctrl+A) and Translate again: the rest becomes sentences and the green part stays as it
+      was. With only green lines selected, Translate to Plain Language Syntax is greyed out and Ctrl+Shift+D does nothing.
+- [ ] Translate them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the strip shows the f-string it will write.
+      **Original Code** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
+- [ ] Write a sentence that doesn't exist in a green part and press Original Code: it stays green, the line number turns red, and the
       terminal says why. **Copy the code** refuses until it's fixed.
 - [ ] The code reaches about three quarters of the way down, with the terminal under it. Fold the terminal away (its
       chevron): the code fills the room. The corner button: full screen, no side panel or terminal; Esc comes back.
-- [ ] Language → C++ (with an empty pane): De-Regex `count += i;`, change it to `increase count by i times 2`, Re-Regex:
+- [ ] Language → C++ (with an empty pane): Translate `count += i;`, change it to `increase count by i times 2`, Original Code:
       `count += i * 2;` inside the loop.
 
 **Reading other languages**

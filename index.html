@@ -14,7 +14,7 @@
       <div class="modes" role="tablist" aria-label="Mode">
         <button type="button" role="tab" id="modeWrite" aria-selected="true" title="Write a program in sentences">Write</button>
         <button type="button" role="tab" id="modeRead" aria-selected="false" title="Read existing code in plain English">Read</button>
-        <button type="button" role="tab" id="modeUnity" aria-selected="false" title="One pane of real code: select any part and De-Regex/Translate it into sentences, right where it is">Unity</button>
+        <button type="button" role="tab" id="modeUnity" aria-selected="false" title="One pane of real code: select any part and translate it to plain language syntax, right where it is">Unity</button>
       </div>
     </div>
     <div class="bar-actions">
@@ -78,7 +78,7 @@
         </div>
         <div class="side-h">In sentences <span id="uCount" class="count"></span></div>
         <ul id="uRegions" class="u-regions"></ul>
-        <p class="side-note u-how">Select some code and press <b>De-Regex/Translate</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it turns into sentences right where it is, in green. Change the sentences, then <b>Re-Regex</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>) puts code back. A part you didn't change comes back exactly as it was.</p>
+        <p class="side-note u-how">Select some code and press <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it turns into sentences right where it is, in green. Change the sentences, then <b>Original Code</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>) puts code back. A part you didn't change comes back exactly as it was.</p>
       </div>
     </aside>
 
@@ -154,9 +154,9 @@
             <p>One pane of code. The green parts are sentences.</p>
           </div>
           <div class="pane-tools">
-            <button type="button" class="btn small primary" id="uDe" title="Turn the selected code into sentences, right where it is (Ctrl+Shift+D)">De-Regex/Translate</button>
-            <button type="button" class="btn small" id="uRe" title="Turn the green part the cursor is in back into code (Ctrl+Shift+B)">Re-Regex</button>
-            <button type="button" class="btn small" id="uReAll" title="Turn every green part back into code">Re-Regex all</button>
+            <button type="button" class="btn small primary" id="uDe" title="Turn the selected code into sentences, right where it is (Ctrl+Shift+D)">Translate to Plain Language Syntax</button>
+            <button type="button" class="btn small" id="uRe" title="Turn the green part the cursor is in back into code (Ctrl+Shift+B)">Original Code</button>
+            <button type="button" class="btn small" id="uReAll" title="Turn every green part back into code">Original Code (all)</button>
             <button type="button" class="btn small max-btn" data-max="unity" aria-pressed="false" title="Full screen: Unity (Esc to come back)" aria-label="Full screen: Unity"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
         </div>
@@ -165,7 +165,7 @@
           <div class="codewrap">
             <pre class="hl u-hl" id="uHl" aria-hidden="true"></pre>
             <textarea id="uTa" class="u-ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Code, with some parts in sentences"></textarea>
-            <button type="button" class="u-float" id="uFloat" hidden>De-Regex/Translate</button>
+            <button type="button" class="u-float" id="uFloat" hidden>Translate to Plain Language Syntax</button>
           </div>
         </div>
         <div class="u-strip" id="uStrip" aria-live="polite"></div>

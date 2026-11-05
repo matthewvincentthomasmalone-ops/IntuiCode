@@ -2888,10 +2888,10 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Unity mode: one pane of code; De-Regex/Translate any part of it     */
+  /* Unity mode: one pane of code; translate any part of it to sentences */
   /* ------------------------------------------------------------------ */
-  /* The text is code; a region is some of its lines said in sentences (lang/unity.js). De-Regex/Translate turns
-   * the selected lines into sentences right where they are; Re-Regex turns a region back into code: exactly
+  /* The text is code; a region is some of its lines said in sentences (lang/unity.js). Translate to Plain Language Syntax turns
+   * the selected lines into sentences right where they are; Original Code turns a region back into code: exactly
    * as it was if nobody changed it, or written in the context of the code around it if they did. */
   const UNITY = window.IntuiUnity;
   const UNITY_KEY = 'intuicode.unity.v1';
@@ -2951,7 +2951,7 @@
     $('uCount').textContent = unity.regions.length || '';
     $('uRegions').innerHTML = sorted.map((r) => {
       const i = unity.regions.indexOf(r), same = UNITY.unchanged(r, lines);
-      return `<li><button type="button" class="u-reg" data-u-go="${i}" title="Go to it">Lines ${r.from + 1}–${r.to + 1}${same ? '' : ' <span class="dim">changed</span>'}</button><button type="button" class="btn tiny" data-u-re="${i}">Re-Regex</button></li>`;
+      return `<li><button type="button" class="u-reg" data-u-go="${i}" title="Go to it">Lines ${r.from + 1}–${r.to + 1}${same ? '' : ' <span class="dim">changed</span>'}</button><button type="button" class="btn tiny" data-u-re="${i}">Original Code</button></li>`;
     }).join('') || '<li class="side-note">None yet.</li>';
     uSync(); uTools();
     if (mode === 'unity') updateChip();
@@ -2982,7 +2982,7 @@
     uFloatPos();
     clearTimeout(uStripTimer); uStripTimer = setTimeout(uStrip, 120);
   }
-  /* A De-Regex/Translate button just above a selection of code. */
+  /* A Translate to Plain Language Syntax button just above a selection of code. */
   function uFloatPos() {
     const f = $('uFloat'), a = uTa.selectionStart, b = uTa.selectionEnd;
     const { from } = uSelLines();
@@ -2996,16 +2996,16 @@
     if (mode !== 'unity') return;
     const box = $('uStrip'), lines = uLines(), at = uRegionAt(uLineOf(uTa.selectionStart)), code = uCodeLang();
     if (at < 0) {
-      box.innerHTML = uTa.selectionEnd > uTa.selectionStart ? '<span class="dim">Press <b>De-Regex/Translate</b> to say the selected code in sentences, right where it is.</span>'
-        : '<span class="dim">Select some code to De-Regex/Translate it. The green parts are sentences: put the cursor in one to see the code it makes.</span>';
+      box.innerHTML = uTa.selectionEnd > uTa.selectionStart ? '<span class="dim">Press <b>Translate to Plain Language Syntax</b> to say the selected code in sentences, right where it is.</span>'
+        : '<span class="dim">Select some code to translate it to plain language syntax. The green parts are sentences: put the cursor in one to see the code it makes.</span>';
       return;
     }
     const r = unity.regions[at];
-    if (UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Re-Regex gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
+    if (UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Original Code gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
     let out;
     try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { box.textContent = 'The writer hit a problem: ' + e.message; return; }
     const errs = out.problems.flatMap(p => p.errs.map(e => [p.line, e, 'err'])), warns = out.problems.flatMap(p => p.warns.map(w => [p.line, w, 'warn']));
-    box.innerHTML = `<span class="ex-lbl">${errs.length ? 'Can\'t go back to code yet' : 'Re-Regex will write'}</span>`
+    box.innerHTML = `<span class="ex-lbl">${errs.length ? 'Can\'t go back to code yet' : 'Original Code will write'}</span>`
       + (errs.length ? '' : `<pre class="u-code">${out.code.map(l => hlCode(code, l)).join('\n')}</pre>`)
       + [...errs, ...warns].slice(0, 4).map(([n, msg, k]) => `<div class="u-msg ${k}">Line ${n + 1}: ${withCode(msg)}</div>`).join('')
       + (out.needs.length ? `<div class="u-msg">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</div>` : '');
@@ -3017,7 +3017,7 @@
     if (!UNITY) return;
     const lines = uLines(), sel = uSelLines();
     if (!uHasCode()) {   // all sentences already: nothing to do
-      if (!unity.regions.some(r => r.from <= sel.to && r.to >= sel.from)) tLine('Select some code first: De-Regex/Translate turns it into sentences.', 't-sys');
+      if (!unity.regions.some(r => r.from <= sel.to && r.to >= sel.from)) tLine('Select some code first: Translate to Plain Language Syntax turns it into sentences.', 't-sys');
       return;
     }
     $('uDe').disabled = true;
@@ -3028,7 +3028,7 @@
     const span = (p) => (p.from === p.to ? `${p.from + 1}` : `${p.from + 1}–${p.to + 1}`);
     const lineWord = (ps) => (ps.length === 1 && ps[0].from === ps[0].to ? 'line ' : 'lines ') + ps.map(span).join(', ');
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
-    for (const b of d.blocked) tLine(`${cap(lineWord([b]))} stay as code: they're one statement with sentences you changed (${lineWord(b.changed)}). Re-Regex those first.`, 't-err');
+    for (const b of d.blocked) tLine(`${cap(lineWord([b]))} stay as code: they're one statement with sentences you changed (${lineWord(b.changed)}). Press Original Code on those first.`, 't-err');
     for (const f of d.failed) tLine(`${cap(lineWord([f]))} couldn't be said in sentences: ${f.reason}.`, 't-err');
     if (!d.done.length) { uTools(); return; }
     unity.regions = d.regions;
@@ -3040,7 +3040,7 @@
     uProblems = [];
     renderUnity();
     const grew = d.done.some(p => p.from < sel.from || p.to > sel.to), loose = d.done.find(p => !p.exact);
-    tLine(`De-Regexed ${lineWord(d.done)}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Re-Regex puts code back.`
+    tLine(`Translated ${lineWord(d.done)}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Original Code puts code back.`
       + (loose ? ` Some of it stays as exact code: ${loose.reason}.` : ''), loose ? 't-err' : 't-sys');
   }
   function uReRegex(i, quiet) {
@@ -3111,14 +3111,14 @@
     });
     $('uLang').addEventListener('change', (e) => {
       const next = e.target.value;
-      if (unity.regions.length) { e.target.value = unity.lang; tLine(`Re-Regex the green parts first: they're sentences for ${langName(unity.lang)}.`, 't-err'); return; }
+      if (unity.regions.length) { e.target.value = unity.lang; tLine(`Press Original Code on the green parts first: they're sentences for ${langName(unity.lang)}.`, 't-err'); return; }
       const sample = !unity.text.trim() || Object.values(UNITY_START).includes(unity.text);
       unity.lang = next;
       if (sample) uSetText(UNITY_START[next]);
       uSave(); renderUnity();
     });
     $('uOpen').addEventListener('click', () => {
-      if (unity.regions.length) { tLine('Re-Regex the green parts first, so nothing is lost.', 't-err'); return; }
+      if (unity.regions.length) { tLine('Press Original Code on the green parts first, so nothing is lost.', 't-err'); return; }
       $('uFile').click();
     });
     $('uFile').addEventListener('change', async (e) => {
@@ -3130,7 +3130,7 @@
       uSetText((await f.text()).replace(/\r\n?/g, '\n'));
       unity.regions = [];
       renderUnity();
-      tLine(`Opened ${f.name} in Unity (${langName(unity.lang)}). Select some of it and De-Regex/Translate.`, 't-sys');
+      tLine(`Opened ${f.name} in Unity (${langName(unity.lang)}). Select some of it and press Translate to Plain Language Syntax.`, 't-sys');
     });
     $('uCopy').addEventListener('click', (e) => {
       let lines = uLines(), regions = unity.regions.slice();

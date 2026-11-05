@@ -1,7 +1,7 @@
 /* IntuaCode — Unity mode: one pane of real code, any part of which can be said in sentences in place.
  *
- * You write or paste code in one language. Select some of it and De-Regex/Translate it: those lines become
- * sentences, right there, and are marked as a region. Edit the sentences; Re-Regex turns them back into code
+ * You write or paste code in one language. Select some of it and press Translate to Plain Language Syntax: those lines become
+ * sentences, right there, and are marked as a region. Edit the sentences; Original Code turns them back into code
  * in the same place. A region nobody changed goes back exactly as it was (its original code is kept), so
  * looking never changes anything. A changed region is translated in the context of the rest of the file:
  * the code around it is given to the writer as exact lines (python:, js:, c++: …), so the names and kinds
