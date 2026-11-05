@@ -11,7 +11,11 @@ the desktop app.
 | `lang/python.js` | Sentences → Python (Write mode) |
 | `lang/python_reader.py` | Python → sections, summaries, sentences; project analysis (Read mode) |
 | `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects); the preview document |
-| `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, links |
+| `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, links; loads any tree-sitter grammar named in `lang/languages.js` |
+| `lang/code_read.js` | Read mode for every other language: which language a file (or pasted code) is in, and sections, summaries, facts, warnings and steps for it |
+| `lang/languages.js` | The languages a project's files can be in: names, file endings, grammars |
+| `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files (`compileAll`), Markdown, CSV and JSON shown as what they are |
+| `lang/unity.js` | Unity mode: a selection grown to whole statements, turned into sentences in place, and back into code in the context of the code around it (the rest given to the writer as exact lines) |
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
@@ -20,7 +24,8 @@ the desktop app.
 | `lang/glossary_terms.js` | The glossary itself: terms for Python, C++, Arduino, HTML, CSS, JavaScript and the sentences, as plain data |
 | `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
-| `lang/ts_patch.js` | A fix to the tree-sitter runtime for pages with SVG or custom elements |
+| `lang/library.js` | The Library: kinds of project (the languages they use, open-source projects to learn from) and the parts they're made of, each in one or more languages, from the plain-text packs in `lang/library/`; Coding integration parts give both sides of a link between two languages |
+| `lang/ts_patch.js` | Fixes to the tree-sitter runtime: C library functions some grammars' scanners need (HTML with SVG or custom elements, Ruby, PHP, Bash, Vue, YAML) |
 
 Engine files must not touch the page (no `document`, no DOM). The shell (`app.js`,
 `app.css`, `index.html`, `runner.js`) calls them. The desktop layer (`src-tauri/src/lib.rs`)
@@ -48,12 +53,39 @@ kept for "restore" shares them. Saving writes them into `images/` (the desktop's
 opening a folder reads them back from there, so the files win, as the code does. The preview
 can't reach files, so each `images/…` name in the page becomes the picture's data.
 
+## Decision: a project is a tree of files, each in its own language
+
+*Decided 2026-11-04.*
+
+A project's files (`project.sections`) each have a `path` and a language id from `lang/languages.js`.
+The language says how the file is written: in **sentences** (Python, HTML, CSS, JavaScript, C++,
+Arduino), as **code** that IntuCode reads to you, or as **text** (Markdown, CSV, JSON…), kept as
+written. The engines still work by role (Python by module name; a website by structure, styling and
+mechanics; C++ by program; Arduino by sketch), and the shell works a file's role out from its path and
+language (`roleOf` in `app.js`). Each engine compiles its own files (`compileAll`): Python together with
+the start file last, a website's main page together and its other pages, styles and scripts each
+against it, C++ together, Arduino together. Projects saved before this keep their ids (`main`,
+`structure`…) and compile exactly as they did; `normalized()` gives them paths and languages on load.
+
+Paths are checked wherever they come from (`pathProblem`): relative, no `..`, nothing in `.intuicode/`
+or `images/`, Python files named as Python modules, and never two files in one place (ignoring case, as
+Windows and macOS do). The desktop layer refuses paths outside the project's folder as well.
+
 ## Decision: reading other languages
 
 Python is read with Python's own parser (`ast`), which also powers the exact "same program"
 check. Other languages (JavaScript, HTML, CSS, C++) are read with tree-sitter, which has
 parsers for all of them and runs in browsers, Node and desktop apps. Each language has its
 own reader and translator behind the same interface.
+
+*Added 2026-11-04:* every other language in `lang/languages.js` is read by `lang/code_read.js`,
+one engine driven by each language's settings (which parts are tools, types, imports, tests…),
+giving the same section shape as the C++ reader. Sentences stay with Python, HTML, CSS,
+JavaScript and C++. Four of the installed grammars can't be used with our runtime
+(web-tree-sitter 0.20.8): Dart (built for a newer tree-sitter), Elm and CodeQL (older), and Lua
+(its scanner can end the program on unfinished text, and its parses go wrong after other
+grammars have run). Those, and SQL, Markdown, CSV and plain text, are read without a grammar.
+Every parse gets a final newline, because several scanners misbehave without one.
 
 ## Decision: nothing untrusted runs in the desktop window
 
@@ -83,6 +115,17 @@ must not turn into a command:
   Python of a project's virtual environment), or ones built in those folders. Shell commands
   typed after `$` run in those folders. A drop is allowed from the window's own drop event in
   `lib.rs`; the page can send itself a pretend `tauri://drag-drop`, but that allows nothing.
+
+## Decision: Unity mode keeps the code, and changes only what was changed
+
+*Decided 2026-11-04.*
+
+In Unity mode the text is code; a region is some of its lines said in sentences. A region nobody changed
+goes back to its original code, byte for byte, without being translated (looking never changes code). A
+changed region is compiled as part of the whole file, where every other line is an exact line
+(`python:`, `js:`, `c++:`…), so the writer knows the names around it; only the region's own lines are
+taken back. Exact lines teach the writers the names they make (a `def`'s inputs, `int n = 3;`,
+`function f(a)`), which also helps any sentence file that mixes in exact code.
 
 ## Testing
 

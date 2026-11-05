@@ -9,7 +9,7 @@
  *   title: Countdown
  *   kind: snippet                      project | snippet
  *   layout: script                     projects only: script | structured | website | cpp | arduino
- *   shelf: games                       projects only: its kind, where it sits in the Library (games,
+ *   shelf: games                       projects only: its kind, where it sits in Project Templates (games,
  *                                      productivity, money, health, learning, creative, social, tools,
  *                                      web, service, gadget, lessons or start; see SHELVES in lang/builder.js)
  *   platform: phone                    projects only: where it runs (pc, phone, web, board; from the layout

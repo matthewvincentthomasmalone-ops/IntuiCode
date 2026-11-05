@@ -269,12 +269,12 @@ class Words:
             if isinstance(e.op, ast.Pow) and isinstance(e.right, ast.Constant) and e.right.value == 2:
                 return f"{self.wrap(e.left)} squared"
             if isinstance(e.op, ast.Pow):
-                return f"{self.wrap(e.left)} to the power of {self.wrap(e.right)}"
+                return f"{self.wrap(e.left)} to the power of {self.right(e.right)}"
             word = ops.get(type(e.op))
             if not word:
                 return self.raw(e)
             left = self.w(e.left, False) if self._chain(e.left, e.op) else self.wrap(e.left)
-            return f"{left} {word} {self.wrap(e.right)}"
+            return f"{left} {word} {self.right(e.right)}"
         if isinstance(e, ast.UnaryOp):
             if isinstance(e.op, ast.Not):
                 return f"not {self.wrap(e.operand)}"
@@ -327,6 +327,16 @@ class Words:
 
     def _chain(self, left, op):
         return isinstance(left, ast.BinOp) and type(left.op) is type(op) and type(op) in (ast.Add, ast.Mult)
+
+    # Words that follow their value ("qty as text"). After "times" they would read as being about the whole
+    # calculation ("price times qty as text"), so a value said that way stays as code on the right of one.
+    POSTFIX = re.compile(r" (?:as (?:number|decimal|text)|in (?:capitals|lowercase)|rounded(?: to .*)?)$")
+
+    def right(self, e):
+        text = self.wrap(e)
+        if isinstance(e, ast.Call) and self.POSTFIX.search(text):
+            return self.raw(e)
+        return text
 
     def wrap(self, e):
         text = self.w(e, False)

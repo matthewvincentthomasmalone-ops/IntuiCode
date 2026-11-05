@@ -83,6 +83,32 @@ test('C++ and Arduino: "is even" and "is odd" test the remainder after dividing 
   assert.match(s.text, /if \(\(sizeof\(pins\) \/ sizeof\(pins\[0\]\)\) % 2 != 0\) \{/);
 });
 
+test('C++: a tool run inside a phrase keeps its brackets, so "length of" wraps the whole call', () => {
+  const r = cpp('define f using a\n    give back a\ndefine g using a\n    give back a\ncreate list of text called words with "a", "bc"\nshow length of f(g(words))\nshow first item of f(g(words))\nshow item 1 of f(words)\nshow length of f(words)[1]\nshow f(g(1)) as text\nset n to random number from 1 to f(g(6))');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /std::cout << f\(g\(words\)\)\.size\(\) << std::endl;/);
+  assert.match(r.text, /std::cout << f\(g\(words\)\)\.front\(\) << std::endl;/);
+  assert.match(r.text, /std::cout << f\(words\)\[1\] << std::endl;/);
+  assert.match(r.text, /std::cout << f\(words\)\[1\]\.size\(\) << std::endl;/);
+  assert.match(r.text, /std::cout << std::to_string\(f\(g\(1\)\)\) << std::endl;/);
+  assert.match(r.text, /int n = random_number\(1, f\(g\(6\)\)\);/);
+  assertValidCpp(r.text, 'calls inside phrases');
+});
+
+// brackets that would apply to the result of "length of x" (x.size() (…)): an error on that line, never silently wrong C++
+for (const [sentences, re] of [
+  ['create list of numbers called xs with 1\nshow length of xs (0)', /The brackets after "length of xs" don't belong to anything/],
+  ['create list of numbers called xs with 1\nshow length of xs [0]', /write them right after it, with no space: `xs\[…\]`/],
+  ['define f using a\n    give back a\nshow length of f(f(f(f(f(1)))))', /can't follow the brackets in "length of f\(f\(f\(f\(f\(1\)\)\)\)\)".*write this line as c\+\+:/],
+  ['define f using a\n    give back a\nshow length of f(1', /can't follow the brackets/],
+  ['define f using a\n    give back a\nset n to random number from 1 to f (6)', /The brackets after "random number from 1 to f" don't belong to anything. If they go with `f`/],
+]) {
+  test(`C++: explains loose brackets: ${sentences.split('\n').pop()}`, () => {
+    const r = cpp(sentences);
+    assert.ok(r.info.at(-1).errs.some(e => re.test(e)), plain(r.info.flatMap(i => i.errs)).join('\n'));
+  });
+}
+
 test('C++: lists need a kind', () => {
   assert.ok(cpp('create list things').info.flatMap(i => i.errs).some(e => /needs to know what the list will hold/.test(e)));
 });
@@ -119,4 +145,83 @@ test('reader: Arduino sketches read naturally', () => {
   assert.match(steps, /turn LED_PIN on/);
   assert.match(steps, /wait 5000 milliseconds/);
   assert.match(a.sections.flatMap(s => s.warnings).join(' '), /millis\(\)/);
+});
+
+// ---- from the 2026-11 audit: C++ sentences that gave code meaning something else, with nothing shown ----
+test('C++: text joined with plus is text (never pointer arithmetic); a decimal given later makes a double', () => {
+  const r = cpp('set score to 3\nshow "Score: " plus score\nset label to "Total: " plus score plus " points"\nset total to 0\nincrease total by 0.5\nshow total');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs.concat(i.warns))), []);
+  assert.match(r.text, /std::cout << std::string\("Score: "\) \+ std::to_string\(score\) << std::endl;/);
+  assert.match(r.text, /std::string label = std::string\("Total: "\) \+ std::to_string\(score\) \+ " points";/);   // (a std::string plus quoted text is text)
+  assert.match(r.text, /double total = 0;/);
+  assertValidCpp(r.text, 'text and decimals');
+  const s = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 's', file: 'sketch', text: 'set t to 20\nwhen the board starts\n    start the serial monitor at 9600\nover and over\n    show "Temp: " plus t' }] }).results.s;
+  assert.match(s.text, /Serial\.println\(String\("Temp: "\) \+ t\);/);
+});
+
+test('C++: "not x is y", chains, "is A or B", = in a condition, a comparison shown, size minus 1 mean what they say', () => {
+  const r = cpp('set x to 5\nset y to 2\nset answer to "y"\ncreate list of numbers called xs with 1\nif not x is y\n    show "differ"\nif 1 is less than x is less than 10\n    show "between"\nif answer is "yes" or "y"\n    show "going"\nif x = 5\n    show "five"\nshow x is 5\ncount i from 0 to length of xs minus 1\n    show i');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs.concat(i.warns))), []);
+  assert.match(r.text, /if \(!\(x == y\)\) \{/);
+  assert.match(r.text, /if \(1 < x && x < 10\) \{/);
+  assert.match(r.text, /if \(answer == "yes" \|\| answer == "y"\) \{/);
+  assert.match(r.text, /if \(x == 5\) \{/);
+  assert.match(r.text, /std::cout << \(x == 5\) << std::endl;/);
+  assert.match(r.text, /i <= static_cast<int>\(xs\.size\(\)\) - 1/);
+  assertValidCpp(r.text, 'two readings');
+});
+
+test('C++: count down with no name, in steps of, and text asked for after a number', () => {
+  const r = cpp('count down from 3 to 1\n    show n\ncount i from 0 to 10 in steps of 5\n    show i\nask for a number "Age? " and store in age\nask "Name? " and store in name');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /for \(int n = 3; n >= 1; n--\) \{/);
+  assert.match(r.text, /for \(int i = 0; i <= 10; i \+= 5\) \{/);
+  assert.match(r.text, /std::getline\(std::cin >> std::ws, name\);/);
+  assertValidCpp(r.text, 'counting and asking');
+  const b = cpp('create list of text called basket with "jam"\nadd "milk" and "eggs" to basket');
+  assert.match(b.text, /basket\.push_back\("milk"\); basket\.push_back\("eggs"\);/);
+});
+
+for (const [sentences, re, warn] of [
+  ['set n to 3\ncount i from n to 1\n    show i', /can't tell which way this counts/],
+  ['set n to 5\nset r to random number from 1 to n plus 1', /Put brackets round the end you mean/],
+  ['set price to 3\nset qty to 2\nshow price times qty as text', /could go with just `qty` or with all of it/],
+  ['set colour to "red"\nif colour is not "red" or "blue"\n    show "x"', /could mean two things/],
+  ['set x to nothing', /can't be set to nothing/],
+  ['define stats using a, b\n    give back a and b', /could mean two values/],
+  ['set half to 7 divided by 2', /7 \/ 2 is 3, not 3\.5/, true],
+]) {
+  test(`C++: explains a problem: ${sentences.split('\n').pop()}`, () => {
+    const r = cpp(sentences);
+    const said = plain(r.info.flatMap(i => (warn ? i.warns : i.errs)));
+    assert.ok(said.some(e => re.test(e)), said.join('\n'));
+  });
+}
+
+test('C++: a note above a tool stays above main; description, using nothing, multiply and divide', () => {
+  const r = cpp('note: greets people\ndefine greet using nothing\n    description: says hi\n    show "hi"\nnote: start here\nrun greet\nset x to 2\nmultiply x by 3\ndivide x by 2\nshow x');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /\/\/ greets people\n\/\*\*\n \* says hi\n \*\/\nauto greet\(\) \{/);
+  assert.match(r.text, /int main\(\) \{\n    \/\/ start here\n    greet\(\);/);
+  assert.match(r.text, /x \*= 3;\n    x \/= 2;/);
+  assert.ok(r.info.some(i => i.warns.some(w => /keeps only the whole part/.test(w))), 'dividing a whole number warns');
+  assertValidCpp(r.text, 'notes, description, multiply');
+});
+
+test('C++: names made on exact c++: lines are known to the sentences after them', () => {
+  const r = cpp('c++: int n = 3;\nc++: std::string name = "Bo";\nc++: int twice(int x);\nset n to n plus 1\nshow name\nrun twice with n');
+  assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+  assert.match(r.text, /\n    n = n \+ 1;\n/);
+  assert.doesNotMatch(r.text, /auto n/);
+});
+
+test('C++: one item of a list is set by position; a decimal as a whole number is cast, text is read; Arduino waits microseconds', () => {
+  const r = cpp('create list of whole numbers called xs with 1, 2, 3\nset item 0 of xs to 5\nset the last item of xs to 9\nset f to 2.5\nset words to "42"\nshow f as a whole number\nshow words as a whole number\nset s to static_cast<float>(3)');
+  assert.deepEqual(plain(r.info.flatMap(i => [...i.errs, ...i.warns])), []);
+  assert.match(r.text, /xs\[0\] = 5;\n    xs\.back\(\) = 9;/);
+  assert.match(r.text, /std::cout << static_cast<int>\(f\) << std::endl;/);
+  assert.match(r.text, /std::cout << std::stoi\(words\) << std::endl;/);
+  assertValidCpp(r.text, 'items and casts');
+  const ino = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 'sketch', file: 'sketch', text: 'over and over\n    wait 10 microseconds' }] }).results.sketch;
+  assert.match(ino.text, /delayMicroseconds\(10\);/);
 });

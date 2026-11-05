@@ -43,7 +43,7 @@ when copy is clicked
         set the text of copied to "Select it and copy it yourself."
 ```
 
-Everything you can start from is in the **Library**, by kind of project: Games, Productivity, Money,
+Everything you can start from is in **Project Templates**, by kind of project: Games, Productivity, Money,
 Health & habits, Learning, Creative & media, Social & sharing, Tools & utilities, Websites, Online
 services and Gadgets, then One idea at a time and Starting points. Each project says where it runs (PC,
 Phone, Web or Board), and the chips at the top show only those. A **kit** plans a whole kind of project
@@ -104,10 +104,53 @@ over and over
 In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
 uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
+**Files and folders: one project, several languages**
+
+A project is a tree of files. **+ File** and **+ Folder** (beside Project) add them; a file goes in a folder
+when its name says so (`docs/plan.md`, `dsp/gain.py`). Each file has a language, from its ending or chosen
+in the list, and the language decides how it's written:
+
+| Language | You write | On the right |
+|---|---|---|
+| Python, HTML, CSS, JavaScript, C++, Arduino | sentences | the code they make |
+| Rust, C#, Swift, Kotlin, Go, Lua, TypeScript… (30+) | the code itself | what it does, in plain words |
+| Markdown, CSV, JSON, YAML, TOML, text | notes and data | Markdown as a page, CSV as a table, JSON's shape |
+
+A file's **⋯** renames or moves it, changes its language (the text stays as it is), makes it the file
+**Run starts** (marked *start*), or deletes it. A folder's **⋯** renames it (its files move with it) or
+deletes it with what's in it. Run starts the start file in its own way: a page in the preview, Python
+(from the project's folder, so `open("data/scores.csv")` works), C++ or a sketch; only problems in the
+files that run stop it. Python files can use what the Python files before them define (the import is
+added for you; the start file comes last), and a website's other pages, styles and scripts work with its
+main page (`index.html`, `style.css`, `script.js`). **File → New project → Your own files** starts with
+just a README.
+
+**The Library: parts to add to a project**
+
+**Library** (in the menu bar) is what goes *into* a project, where Project Templates is what you start
+*from*. Two ways in:
+
+- **Kinds of project** (web pages, phone apps and games, audio tools and DAWs, plug-ins, desktop apps,
+  games, data and science, servers, boards and more): the languages each is usually written in and what
+  each one does there, the frameworks people use, open-source projects worth reading (Ardour, Audacity,
+  LMMS, Surge XT, Godot…, each with its licence and what to look at), the parts it's made of, and the
+  Project Templates that fit.
+- **Parts**, by what they do: Audio and DSP (gain in decibels, pan laws, filters, meters, compressors…),
+  Music and MIDI, Interface, Shapes and colour, Games, Maths, Data, Files, Storage and databases,
+  Networking, Security, Hardware, and **Coding integration**: ready-made code that joins two languages
+  (Python calling C++, C++ in a web page with WebAssembly, a page talking to an Arduino, Rust from
+  Python…), every side of the link at once.
+
+A part comes in one or more languages; pick one and **Add to the project**. Sentences for a website, C++
+or Arduino join the file of that language that's already there (they're one program); anything else gets
+its own file (a Python one is a module the start file imports). A website part adds its page, styling and
+script together. The Library is plain text in `lang/library/` (see its README), checked by the tests:
+every sentence translates cleanly, and the audio and maths parts give the right numbers when they run.
+
 **Plan a project: a map before you start**
 
-**Plan** (in the menu bar, or from a kit in the Library) asks what you're making, by the same kinds as the
-Library, then lists the steps that kind of project usually has, in the order you'd build them. Start from
+**Plan** (in the menu bar, or from a kit in Project Templates) asks what you're making, by the same kinds as
+Project Templates, then lists the steps that kind of project usually has, in the order you'd build them. Start from
 the smallest that works, the usual, or everything; preview any step's sentences; and watch **Your plan**
 fill in beside them before you name it and build. IntuCode lays the steps out in your folders as
 sentences, with a **Project map** beside the folders. Each step says how much is done for you:
@@ -119,7 +162,8 @@ sentences, with a **Project map** beside the folders. Each step says how much is
   for you, but now you know where it goes.
 
 Click a step for its role in the project and a jump to its sentences; the explanation panel says
-which step your cursor is in.
+which step your cursor is in. **+ Step** (beside Project map) adds a step of your own to any project: a
+name, how far along it is, and what it's for. Its note goes at the cursor, so the map takes you there.
 
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the help under the windows says what kind of thing to write
@@ -128,13 +172,13 @@ already has, and, behind **Show an example**, an answer that works, with **Put i
 ‹blank›; Problems lists the ones left, and clicking one selects it. Kit authors write these as `blank:` lines
 (see `lang/kits/README.md`); the tests fill every ‹blank› with its answer and check the project works.
 
-**Change this kit** (in planning, or from a kit in the Library) opens it as a form: its title, kind, where it
+**Change this kit** (in planning, or from a kit in Project Templates) opens it as a form: its title, kind, where it
 runs and what it's made of; its steps, which you can reorder, remove, mark as always included or ticked at
 first, edit, add from any other kit, or write from scratch, with a Walk/Hallway/Horizon switch and its
 sentences folder by folder. A check builds the kit as you go and says whether it works. A built-in kit is
 changed as your copy, which replaces it (delete yours to get the original back), and a new kit appears in
 planning under its kind as soon as it's saved. Everything underneath is plain text (**Edit as text**), kept
-on your computer. The built-in library and its format are in `lang/builder.js`, and more kits are in the
+on your computer. The built-in templates and their format are in `lang/builder.js`, and more kits are in the
 packs in `lang/kits/`.
 
 **Full screen:** the corner button on the sentences, the code and the terminal makes that window fill the
@@ -201,11 +245,35 @@ expected line, however it is spaced.
 Python's habits are found with Python's own parser (`style_points` in `lang/python_reader.py`),
 C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the notes are too).
 
+**Unity: one pane of code, any part of it in sentences**
+
+**Unity** (beside Write and Read) is one pane of real code in Python, HTML, CSS, JavaScript, C++ or
+Arduino. Select some of it and press **De-Regex/Translate** (Ctrl+Shift+D, or the button that appears
+over the selection): those lines turn into sentences right where they are, shown in translucent dark
+green. The selection grows to whole statements (an `if` takes its `else`; a `{` takes its `}`). Change
+the sentences, and **Re-Regex** (Ctrl+Shift+B) turns them back into code in the same place:
+
+- a part nobody changed comes back **exactly** as it was;
+- a changed part is written in the context of the code around it, so the names and kinds there are
+  known, and it comes back in the file's own indentation, with any `import` or `#include` it now needs
+  added at the top;
+- a part with a problem stays as sentences until it's fixed, and the strip under the pane says why
+  (and shows the code it will write while you type).
+
+**Copy the code** copies the whole file with every green part turned back into code. It's what IntuCode
+does everywhere, a piece at a time: the symbols of a language said as words, and back.
+
 **Read: existing code → sections → plain English**
 
 Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
 code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML,
-CSS and C++ (including Arduino sketches) are all read. For a project, IntuCode shows:
+CSS and C++ (including Arduino sketches) are read in depth, and can be opened as sentences. Every
+other language in the file list is read too: C, Rust, Go, Zig, C#, Java, Kotlin, Swift, Scala,
+Objective-C, PHP, Ruby, Bash, Elixir, Lua, Dart, Elm, OCaml, Solidity, SQL, Vue, and data and notes
+(JSON, YAML, TOML, CSV, Markdown), each split into its parts (tools, types, tests, starting points…)
+and said in plain English (`lang/code_read.js`). The language comes from the file's name; pasted code
+and files whose name doesn't say are **auto-detected** from their text (with the reason shown), and
+**Read as** above the code picks another language for a file. For a project, IntuCode shows:
 
 - what kind of app it looks like, and which file to start reading;
 - a reading order, and a map of which files use which;
@@ -353,6 +421,9 @@ npm install && npm run vendor
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
 | `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact against the original |
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
+| `lang/languages.js` | Every language a project's file can be in: its endings, its tree-sitter grammar, and whether it's written in sentences, as code or as text |
+| `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
+| `lang/library.js`, `lang/library/` | The Library: kinds of project and the parts they're made of, in plain-text packs |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |
 | `samples/` | Example code for Read mode, including a small multi-file project (`samples/taskboard`) |
@@ -365,11 +436,19 @@ The reader can be used on its own: `python3 lang/python_reader.py some_file.py`
 
 ### Extending it
 
+The language itself (file format, grammar, precedence, context, known wrong translations, and an index of
+every sentence pattern) is described in [INTUICODE.md](INTUICODE.md). Its examples are tests.
+
 - **A new sentence:** add a `rule(regex, fn)` in `lang/python.js` (first match wins), then a
-  matching entry in `TEMPLATES` so it appears in the phrase picker and the Index.
+  matching entry in `TEMPLATES` so it appears in the phrase picker and the Index. After changing
+  `TEMPLATES` or `WORDS` in any writer, run `node tools/intuicode_index.mjs` to update the index in
+  `INTUICODE.md` and `lang/intuicode_index.json` (`npm test` fails until you do).
 - **A new word inside sentences:** add to `EXPR_RULES` (for example `length of x` → `len(x)`).
-- **A new blueprint:** write it in the app (Library → Write or paste one), or add it to
+- **A new blueprint:** write it in the app (Project Templates → Write or paste one), or add it to
   `BUILT_IN` in `lang/blueprints.js`. The format is described at the top of that file.
+- **A new Library part or kind of project:** add an entry to a pack in `lang/library/` (the format is at the
+  top of `lang/library.js`, the writing guide in `lang/library/README.md`). `tests/library.test.mjs` checks
+  it translates cleanly and parses; add a number check if it computes something.
 - **Reading more:** library descriptions live in `LIBRARIES`, safety checks in `Facts`,
   and pattern recognisers in `gists()` in `lang/python_reader.py`.
 - **Another language:** a language pack exposes the same shape as `lang/python.js`

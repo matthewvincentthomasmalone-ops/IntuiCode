@@ -1,0 +1,31 @@
+<% content_for :title, "Order #{@order.number}" %>
+<h1>Order <%= @order.number %></h1>
+<p class="status">Status: <%= @order.status.humanize %></p>
+
+<% if @order.items.any? %>
+  <table class="items">
+    <thead>
+      <tr><th>Item</th><th>Quantity</th><th>Price</th></tr>
+    </thead>
+    <tbody>
+      <% @order.items.each do |item| %>
+        <tr>
+          <td><%= item.name %></td>
+          <td><%= item.quantity %></td>
+          <td><%= number_to_currency(item.price) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% else %>
+  <p>This order is empty.</p>
+<% end %>
+
+<%# Totals are worked out in the model, not here %>
+<p class="total">Total: <%= number_to_currency(@order.total) %></p>
+
+<% if current_user.admin? %>
+  <%= link_to "Refund", refund_order_path(@order), method: :post, data: { confirm: "Refund this order?" } %>
+<% end %>
+
+<%= render partial: "shared/footer", locals: { shop: @shop } %>

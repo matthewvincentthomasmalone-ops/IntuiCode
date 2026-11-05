@@ -16,6 +16,9 @@ const CASES = [
   ['set high score to 10', 'high_score = 10'],
   ['set API_KEY to "x"', 'API_KEY = "x"'],
   ['set total to 3 plus 4 times 2', 'total = 3 + 4 * 2'],
+  // a power binds tightest, as in maths (not a two-readings error): x minus x squared is x - x²
+  ['set e to 1 minus t squared', 'e = 1 - t ** 2'],
+  ['set e to (1 minus t) squared', 'e = (1 - t) ** 2'],
   ['set x to 1\nif x is at least 1 and x is not 5\n    show "ok"', 'x = 1\nif x >= 1 and x != 5:\n    print("ok")'],
   ['ask for a number "Age? " and store in age', 'age = int(input("Age? "))'],
   ['create list names with "Ana", "Bo"\nadd "Cy" to names', 'names = ["Ana", "Bo"]\nnames.append("Cy")'],
@@ -70,6 +73,34 @@ const CASES = [
   ['create list here with "a", "b"\nshow "You see: " plus ", ".join(here) plus "."', 'here = ["a", "b"]\nprint("You see: " + ", ".join(here) + ".")'],
   // a tool with "for" in its name keeps its whole name
   ['define look for using what\n    give back what\nrun look for with "clues" and store in found\nrun look for with found', 'def look_for(what):\n    return what\nfound = look_for("clues")\nlook_for(found)'],
+  // ---- from the 2026-11 audit: sentences that used to give code meaning something else, with no warning ----
+  // "is A or B": the name is said again (`answer == "yes" or "y"` is always true)
+  ['ask "Go on? " and store in answer\nif answer is "yes" or "y"\n    show "going"', 'answer = input("Go on? ")\nif answer == "yes" or answer == "y":\n    print("going")'],
+  ['set x to 2\nif x is 1 or 2 or 3\n    show "small"', 'x = 2\nif x == 1 or x == 2 or x == 3:\n    print("small")'],
+  // several things added or taken out at once
+  ['create list basket\nadd "milk" and "eggs" to basket\nremove "milk" and "eggs" from basket', 'basket = []\nbasket.append("milk")\nbasket.append("eggs")\nbasket.remove("milk")\nbasket.remove("eggs")'],
+  // "is even / odd / divisible by" after a sum is about the sum
+  ['set n to 3\nif n plus 1 is even\n    show "even"\nif n minus 1 is divisible by 2\n    show "yes"\nif n is not odd\n    show "no"', 'n = 3\nif (n + 1) % 2 == 0:\n    print("even")\nif (n - 1) % 2 == 0:\n    print("yes")\nif n % 2 == 0:\n    print("no")'],
+  // lists the translator can now see: from .split(), a python: line, a tool's result
+  ['set words to "a b".split()\nadd "cat" to words', 'words = "a b".split()\nwords.append("cat")'],
+  ['python: names = []\nadd "Bob" to names', 'names = []\nnames.append("Bob")'],
+  ['define fresh list\n    give back []\nrun fresh list and store in items\nadd "x" to items', 'def fresh_list():\n    return []\nitems = fresh_list()\nitems.append("x")'],
+  // each place keeps its own kinds: a tool's text called result, and Main's list called result
+  ['define label using x\n    set result to "x"\n    give back result\ncreate list result\nadd "milk" to result', 'def label(x):\n    result = "x"\n    return result\nresult = []\nresult.append("milk")'],
+  // a number joined to text is turned into text first
+  ['set score to 3\nshow "Score: " followed by score', 'score = 3\nprint("Score: " + str(score))'],
+  // "put … into" a value stores it; "store … as text in …" stores in the last name
+  ['set count to 5\nput 0 into count\nset score to 5\nstore score as text in label', 'count = 5\ncount = 0\nscore = 5\nlabel = str(score)'],
+  // numbers in words, "my", powers, a full stop, "for each … from … to"
+  ['set x to twenty one\nset y to three hundred\nset my score to 2 to the power of 3\nshow my score\nset lives to 3.\nfor each k from 1 to 2\n    show k', 'x = 21\ny = 300\nscore = 2 ** 3\nprint(score)\nlives = 3\nfor k in range(1, 3):\n    print(k)'],
+  // phrases inside phrases go first
+  ['create list xs with 3, 1\nshow first item of sorted xs\nshow length of sorted xs\ncreate list grid with [1, 2], [3, 4]\nshow item 1 of item 0 of grid', 'xs = [3, 1]\nprint(sorted(xs)[0])\nprint(len(sorted(xs)))\ngrid = [[1, 2], [3, 4]]\nprint(grid[0][1])'],
+  // "and" between tests is one test; "ask … in age as a number"; a keyword argument in a condition
+  ['set a to 1\nset b to 2\nshow a is 1 and b is 2\nask "Age? " and store in age as a number\nif max([a, b], key=abs) is 2\n    show "two"', 'a = 1\nb = 2\nprint(a == 1 and b == 2)\nage = int(input("Age? "))\nif max([a, b], key=abs) == 2:\n    print("two")'],
+  // a step worked out for counting down keeps its brackets; "count up" is said
+  ['set s to 3\ncount down from 10 to 0 by s minus 1\n    show n\nset top to 3\ncount up i from 1 to top\n    show i', 's = 3\nfor n in range(10, -1, -(s - 1)):\n    print(n)\ntop = 3\nfor i in range(1, top + 1):\n    print(i)'],
+  // a python: tool with an input that has a value to use when none is given
+  ['python: def area(w, h=1):\n    python: return w * h\nrun area with 3', 'def area(w, h=1):\n    return w * h\narea(3)'],
 ];
 
 for (const [sentences, expected] of CASES) {
@@ -102,6 +133,26 @@ const ERRORS = [
   ['set x to [[1]]\nshow length of x [0]', /write them right after it, with no space: `x\[…\]`/],
   ['define f using a\n    give back [a]\nshow length of f(f(f(f(f(1)))))', /can't follow the brackets/],
   ['define f using a\n    give back [a]\nshow length of f(1', /can't follow the brackets/],
+  // ---- two readings are an error, never a guess (2026-11 audit) ----
+  ['set total to 10\nset count to 3\nshow total divided by count rounded to 2 places', /Put brackets round the part you mean: \(total divided by count\) rounded to 2 places/],
+  ['set price to 3\nset qty to 2\nshow price times qty as text', /could go with just `qty` or with all of it/],
+  ['set n to 5\nshow random number from 1 to n plus 1', /Put brackets round the end you mean/],
+  ['set a to 0\nset a b to 1', /could be your name `a` followed by "b"/],
+  ['set colour to "red"\nif colour is not "red" or "blue"\n    show "other"', /Say it in full: colour is not "red" or colour is not "blue"/],
+  ['set name to "Bob"\nif name contains "a" and "b"\n    show "both"', /Say the whole test each time/],
+  ['set x to 5\nif x is more than 1 or 2\n    show "?"', /could mean two things/],
+  ['define stats using xs\n    set total to 1\n    set count to 2\n    give back total and count', /separate them with a comma: give back total, count/],
+  ['set budget to 1,000', /Write numbers without commas: 1000, not 1,000/],
+  ['set n to 3\ncount i from n to 1\n    show i', /can't tell which way this counts/],
+  ['set no to 5', /a word sentences read as `False`/],
+  ['set times to 2', /a word sentences read as `\*`/],
+  ['python: rope = [1]\nset length of rope to 10\nshow length of rope', /could be the name `length_of_rope` or "length of" `rope`/],
+  ['set x to 1\nif x is 1 then show 1 otherwise show 2', /"otherwise" starts a step of its own/],
+  ['create list numbers with 1, 2\nfor each x in numbers from 1 to 2\n    show x', /This mixes two sentences/],
+  ['set x to 20 1', /two numbers side by side/],
+  ['define backup\n    show "b"\ntry to run backup', /don't recognise/],
+  ['create list nums with 1\nadd 1 and 2 to total', /doesn't exist yet/],
+  ['set n to 0\nadd 1 and 2 to n', /add one thing at a time/],
 ];
 for (const [sentences, re] of ERRORS) {
   test(`explains a problem: ${sentences.trim()}`, () => {
@@ -112,6 +163,36 @@ for (const [sentences, re] of ERRORS) {
 test('unknown names are warnings with a suggestion', () => {
   const out = py('set score to 1\nshow scroe');
   assert.ok(out.warnings.some(w => /Did you mean `score`/.test(w)));
+});
+
+test('warnings where a sentence can\'t be checked: text compared with a number, a name only set in a tool, a name that hides a module', () => {
+  assert.ok(py('ask "Age? " and store in age\nif age is 18\n    show "x"').warnings.some(w => /`age` holds text \(an answer from "ask" is always text\), so it is never equal to the number 18/.test(w)));
+  assert.ok(py('define f\n    set temp to 1\nshow temp').warnings.some(w => /`temp` is only set inside the tool `f`/.test(w)));
+  assert.ok(py('set time to 5').warnings.some(w => /`time` is also Python's `time` module/.test(w)));
+  assert.ok(py('python: from shop import load\nset stock to load()\nset item to load()\nadd item to stock').warnings.some(w => /can't tell what `stock` or `item` hold/.test(w)));
+  assert.ok(py('show point\ndefine class Point\n    pass').warnings.some(w => /`point` hasn't been set anywhere yet\. Did you mean `Point`\?/.test(w)), 'a class isn\'t found by another spelling');
+});
+
+test('an edit somewhere else doesn\'t change what another line means (each tool keeps its own kinds)', () => {
+  const before = py('create list names\nadd "Ann" to names').code;
+  const after = py('define shout using names\n    set names to names in capitals\n    give back names\ncreate list names\nadd "Ann" to names').code;
+  assert.equal(after.split('\n').slice(-2).join('\n'), before);
+});
+
+test('setting a name in a tool: shared when it\'s set above the tool, the tool\'s own copy when it\'s only set below (Python\'s rule)', () => {
+  const run = (text) => execFileSync(PYTHON, ['-c', py(text).code], { encoding: 'utf8' }).trim();
+  assert.equal(run('set total to 100\ndefine reset\n    set total to 3\nrun reset\nshow total'), '3');
+  assert.equal(run('define reset\n    set total to 3\nset total to 100\nrun reset\nshow total'), '100');
+  assert.match(py('define reset\n    set total to 3\nset total to 100').code, /^def reset\(\):\n    total = 3/, 'no `global` for a name set only below');
+  assert.equal(run('define bump\n    increase score by 1\nset score to 1\nrun bump\nshow score'), '2', 'changing in place means the one outside, wherever it is');
+});
+
+test('programs from these sentences do what they say', () => {
+  const run = (text, input = '') => execFileSync(PYTHON, ['-c', py(text).code], { encoding: 'utf8', input }).replace(/\r/g, '').trim();
+  assert.equal(run('ask "Go on? " and store in answer\nif answer is "yes" or "y"\n    show "going"\notherwise\n    show "stopped"', 'no\n'), 'Go on? stopped');
+  assert.equal(run('set words to "a b".split()\nadd "cat" to words\nshow words'), "['a', 'b', 'cat']");
+  assert.equal(run('set n to 3\nif n plus 1 is even\n    show "even"\notherwise\n    show "odd"'), 'even');
+  assert.equal(run('create list basket\nadd "milk" and "eggs" to basket\nshow basket'), "['milk', 'eggs']");
 });
 
 test('a tool run inside {…} in text runs the tool, not what "length of" gives back', () => {
@@ -137,4 +218,21 @@ test('`global` goes after a tool\'s description, so the description stays its do
   assert.equal(py('set score to 0\ndefine bump\n    description: Adds one.\n    description: Never below 0.\n\n    increase score by 1').code, 'score = 0\ndef bump():\n    """Adds one.\n    Never below 0."""\n    global score\n\n    score += 1');
   const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: 'set score to 0\ndefine bump\n    description: Adds one.\n    increase score by 1\nbump()\nprint(bump.__doc__, score)' }] }).results.main;
   assert.equal(execFileSync(PYTHON, ['-c', r.text], { encoding: 'utf8' }).trim(), 'Adds one. 1');
+});
+
+test('an object\'s own list (self.items = [] in a class) gets .append, and Python\'s own errors and kinds are known', () => {
+  const r = py('define class Queue\n    define __init__ using self\n        set self.items to []\n    define push using self, item\n        add item to self.items\n        add 1 to self.count');
+  assert.deepEqual(r.errors, []);
+  assert.match(r.code, /self\.items\.append\(item\)\n        self\.count \+= 1/);
+  const e = py('try\n    python: data = open("a.txt").read()\nif it fails with FileNotFoundError\n    set data to bytes(0)');
+  assert.deepEqual([...e.errors, ...e.warnings], []);
+  const b = py('set body to b""\nadd b"x" to body');
+  assert.deepEqual([...b.errors, ...b.warnings], []);
+  assert.match(b.code, /body \+= b"x"/);
+});
+
+test('names made on exact python: lines (a def\'s inputs, for, with … as, except … as) are known to the sentences under them', () => {
+  const r = py('python: def total(prices, tax=0.1):\n    python: s = 0\n    for each p in prices\n        add p to s\n    python: return s * (1 + tax)\npython: for row in []:\n    show row');
+  assert.deepEqual([...r.errors, ...r.warnings], []);
+  assert.match(r.code, /        s \+= p\n/);
 });

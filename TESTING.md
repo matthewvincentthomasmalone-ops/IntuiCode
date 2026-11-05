@@ -33,18 +33,18 @@ Tick each one. If something is off, note what you did and what the terminal said
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
-**Planning and the Library**
-- [ ] **Library**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
+**Planning and Project Templates**
+- [ ] **Project Templates**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
       top show only those. A kit's **Choose its steps…** opens planning at that kit; **Plan one ›** at its kind.
 - [ ] **Plan** (menu bar) → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
       works**, **The usual** and **Everything** change **Your plan**; **Preview its sentences** shows a step's sentences.
       Tick Mixer, Build my project: the Project map lists the steps in order, and Problems lists the hallway ‹blanks›.
 - [ ] Click a step in the Project map: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the
       blanks and Run: the terminal shows the peak and RMS levels, and `output.wav` plays.
-- [ ] **Change this kit…**: move a step, untick Always, add a step from the library (search "save"), write a new step;
+- [ ] **Change this kit…**: move a step, untick Always, add a step from the templates (search "save"), write a new step;
       the check under the steps says whether the kit builds. Save: planning uses your version. Delete yours (in the
       list on the left): the original comes back.
-- [ ] Build a game from the Library (Games): it plays in the preview with the keys or a tap.
+- [ ] Build a game from Project Templates (Games): it plays in the preview with the keys or a tap.
 - [ ] The corner button on the sentences, the code and the terminal: each fills the work area; Esc comes back.
 - [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
@@ -52,6 +52,38 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
       of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.
+
+**Files, folders and the Library**
+- [ ] **+ File** → `docs/plan.md`: a `docs/` folder appears with the file; the right side shows it as a page. Add
+      `data/scores.csv` (a table on the right) and `notes.json` with a typo (the problem is named).
+- [ ] A file's **⋯**: rename it, change its language, make it the start file (marked *start*), delete it.
+- [ ] **+ Step** under Project map: name, depth and summary; the step appears in the map and as a note in the file.
+- [ ] **Library** → Kinds of project → Audio tools and DAWs: its languages, open-source projects to learn from (with
+      licences; **Copy address** copies), its parts, and **Start from the template** opens Project Templates.
+- [ ] Library → Parts → Gain in decibels → Python → **Add to the project**: `gain.py` appears. In the start file,
+      `show the result of gain from db with -6 rounded to 3 places` and Run: 0.501.
+- [ ] Library → Little messages (toasts) → **Add all 3**: the page, styling and script are added; the preview shows it.
+- [ ] Library → Coding integration → Python calling C++ with ctypes → **Add all 3 to the project**: `gain.cpp`,
+      `build.sh` and `gain.py`. On the desktop with a compiler: run `$ sh build.sh` (or the Windows lines in it).
+- [ ] Change a sentence so that code on an *untouched* line changes too (e.g. `set total to 0` above a tool, then
+      move it below): the untouched line is flagged with **Keep the new code**.
+
+**Unity mode**
+- [ ] **Unity** (beside Write and Read): the Python sample. Select lines 4–6 (inside `roll`): a **De-Regex/Translate** button
+      appears over the selection; press it. Those lines become sentences in dark green, in the same place.
+- [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Re-Regex**: the code is exactly as before.
+- [ ] De-Regex them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the strip shows the f-string it will write.
+      **Re-Regex** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
+- [ ] Write a sentence that doesn't exist in a green part and Re-Regex: it stays green, the line number turns red, and the
+      terminal says why. **Copy the code** refuses until it's fixed.
+- [ ] Language → C++ (with an empty pane): De-Regex `count += i;`, change it to `increase count by i times 2`, Re-Regex:
+      `count += i * 2;` inside the loop.
+
+**Reading other languages**
+- [ ] Import code → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's named `pasted.rs`, the
+      terminal says why it's Rust, and the code is split into its parts with plain-English summaries.
+- [ ] **Read as** → C++: it's read as C++ (and says it can't be, for Rust). Back to Auto: Rust again.
+- [ ] Open a folder with a `README.md`, a `package.json` and a `.sql` file: each is listed and read.
 
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
@@ -80,7 +112,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Read mode → import `samples/cpp/blink/blink.ino` → **Style tour**: setup and loop, pinMode, delay…
 
 **Python (Write mode)**
-- [ ] Library → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
+- [ ] Project Templates → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
 - [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
 - [ ] Edit `main.py` in that editor (change a message), save it, then **Open folder** on that folder in IntuCode: the sentence shows your change.
@@ -92,16 +124,16 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Run `$ python3 -m http.server 8765`, then close IntuCode: http://localhost:8765 no longer answers.
 
 **Website**
-- [ ] Library → **To-do list page** → Build. The preview shows the page; add a task.
+- [ ] Project Templates → **To-do list page** → Build. The preview shows the page; add a task.
 - [ ] **Pick from the page**, then click the page's button: its name goes into your sentence.
 
 **C++ (needs a compiler)**
-- [ ] Library → **C++ bank account (a class)** → Build → Run. On Windows the terminal says
+- [ ] Project Templates → **C++ bank account (a class)** → Build → Run. On Windows the terminal says
       "Compiling main.cpp with Visual Studio …" and then shows "Sam has 75".
 - [ ] Add a line `c++: oops;` and Run: the compiler's complaint links to that line.
 
 **Arduino (needs the Arduino IDE)**
-- [ ] Library → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
+- [ ] Project Templates → **Arduino: blink a light** → Build → Run. The terminal says the sketch builds
       (the first time it may ask you to run `$ arduino-cli core install arduino:avr`: type it, then Run again).
 - [ ] With a board plugged in by USB: Run uploads it; the light blinks and "Blinks so far" lines appear.
 - [ ] A board with a USB-serial chip (many ESP32 boards): Run says there is a board it can't name.

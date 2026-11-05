@@ -70,7 +70,7 @@ test('the library reads without problems', () => {
   assert.ok(lib.questions.start, 'the first question is "start"');
 });
 
-test('the Library: every kit and project blueprint is on a shelf, and every shelf leads into the builder', () => {
+test('Project Templates: every kit and project blueprint is on a shelf, and every shelf leads into the builder', () => {
   const shelves = new Set(B.SHELVES.map(s => s.id));
   for (const k of Object.values(lib.kits)) assert.ok(shelves.has(k.shelf), `kit ${k.id} is on a shelf (${k.shelf})`);
   for (const src of BP.BUILT_IN) {

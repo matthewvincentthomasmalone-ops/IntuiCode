@@ -168,6 +168,32 @@ test('text in quotes: {name} fills in a value, {{ and }} are braces', () => {
   assert.doesNotThrow(() => new vm.Script(js));
 });
 
+test('mechanics: a tool run inside a phrase keeps its brackets, so "length of" wraps the whole call', () => {
+  const r = site('', '', 'define f using a\n    give back a\nset words to ["a", "bc"]\nshow length of f(f(words))\nshow first item of f(words)\nshow last item of f(f(words))\nshow length of f(words)[1]\nshow f(words) contains f("a")\nshow f(f(1)) as text\nshow "a b".split(" ") as text');
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  const js = r.results.mechanics.text;
+  assert.match(js, /console\.log\(f\(f\(words\)\)\.length\);/);
+  assert.match(js, /console\.log\(f\(f\(words\)\)\.at\(-1\)\);/);   // (the tool runs once, not twice)
+  assert.match(js, /console\.log\(String\("a b"\.split\(" "\)\)\);/);
+  const shown = [];
+  vm.runInNewContext(js, { console: { log: (v) => shown.push(String(v)) } });
+  assert.deepEqual(shown, ['2', 'a', 'bc', '2', 'true', '1', 'a,b']);
+});
+
+// brackets that would apply to the result of "length of x" (x.length (…)): an error on that line, never silently wrong JavaScript
+for (const [mechanics, re] of [
+  ['set xs to [1]\nshow length of xs (0)', /The brackets after "length of xs" don't belong to anything/],
+  ['set xs to [[1]]\nshow length of xs [0]', /write them right after it, with no space: `xs\[…\]`/],
+  ['define f using a\n    give back a\nshow length of f(f(f(f(f(1)))))', /can't follow the brackets in "length of f\(f\(f\(f\(f\(1\)\)\)\)\)".*write this line as js:/],
+  ['define f using a\n    give back a\nshow length of f(1', /can't follow the brackets/],
+  ['define f using a\n    give back a\nset xs to [1]\nshow xs contains f (1)', /The brackets after "xs contains f" don't belong to anything. If they go with `f`/],
+]) {
+  test(`mechanics: explains loose brackets: ${mechanics.split('\n').pop()}`, () => {
+    const r = site('', '', mechanics);
+    assert.ok(r.results.mechanics.info.at(-1).errs.some(e => re.test(e)), problems(r, 'mechanics').join('\n'));
+  });
+}
+
 test('structure: the doctype, the <html> tag and the usual settings can be left out or replaced', () => {
   const html = site('no doctype\nno page language\nhtml attributes: dir="rtl" class="no-js"\nleave out the character set\nhead: <meta name="viewport" content="width=1024">\nhead: <link rel="stylesheet" href="style.css">\nhead: <style>\nhead:   p { color: red; }\nhead: </style>\nhtml: <pre>\nhtml:   two  spaces\nhtml: </pre>\nadd a paragraph "Say \\"hi\\" \\\\o/"\nhtml: <script src="script.js"></script>\nadd a paragraph "after"').results.structure.text;
   assert.match(html, /^<html dir="rtl" class="no-js">\n<head>\n  <title>My page<\/title>\n  <meta name="viewport" content="width=1024">\n  <link rel="stylesheet" href="style.css">\n  <style>\n  p \{ color: red; \}\n<\/style>\n<\/head>/);   // no doctype, charset or second viewport; styles in order
@@ -217,7 +243,7 @@ test('structure: number box settings, a time box, a slider, file pickers and nam
   assert.deepEqual([...problems(r, 'structure'), ...problems(r, 'mechanics')], []);
   assert.match(html, /<input id="amount" type="number" placeholder="4\.50" step="any" min="0" max="1000">/);
   assert.match(html, /<input id="rounds" type="number" step="1" min="1">/);
-  assert.match(html, /<input id="pin" type="text" inputmode="numeric">/);
+  assert.match(html, /<input id="pin" inputmode="numeric">/);   // (a text box has no type: text is the browser's default)
   assert.match(html, /<input id="wake" type="time">/);
   assert.match(html, /<input id="volume" type="range" min="0" max="11">/);
   assert.match(html, /<input id="photo" type="file" accept="image\/\*">/);
@@ -457,4 +483,65 @@ test('styles: a plain CSS property with one value too many is pointed out', () =
   assert.match(warns('style paragraph: font-weight 700 bold')[0], /If `bold` is another style, separate it with a comma\./);
   // shorthands and calculations take several values, and are left alone
   assert.deepEqual(warns('style paragraph: line-height: 1.5, margin: 0 auto, width: calc(100% - 20px), font-family: "A B", serif, padding 4 8'), []);
+});
+
+// ---- from the 2026-11 audit: Mechanics sentences that gave code meaning something else, with nothing shown ----
+test('mechanics: add on a number or text grows it; items and inputs split at "and"; one test stays one', () => {
+  const r = site('', '', 'set n to 0\nadd 1 to n\nset label to "a"\nadd "b" to label\ncreate list xs with 1, 2 and 3\nadd 4 and 5 to xs\ndefine sum using a, b\n    give back a plus b\nrun sum with 1 and 2\nshow n is 1 and label is "ab"');
+  const js = r.results.mechanics.text;
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  assert.match(js, /^n \+= 1;$/m);
+  assert.match(js, /^label \+= "b";$/m);
+  assert.match(js, /^let xs = \[1, 2, 3\];$/m);
+  assert.match(js, /^xs\.push\(4, 5\);$/m);
+  assert.match(js, /^sum\(1, 2\);$/m);
+  assert.match(js, /^console\.log\(n === 1 && label === "ab"\);$/m);
+});
+
+test('mechanics: "not x is y", comparison chains, "is an empty list" and "is A or B" mean what they say', () => {
+  const r = site('', '', 'set x to 5\nset y to 2\ncreate list basket\nset answer to "y"\nif not x is y\n    show "differ"\nif 1 is less than x is less than 10\n    show "between"\nif basket is an empty list\n    show "empty"\nif answer is "yes" or "y"\n    show "going"');
+  const js = r.results.mechanics.text;
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  assert.match(js, /if \(!\(x === y\)\) \{/);
+  assert.match(js, /if \(1 < x && x < 10\) \{/);
+  assert.match(js, /if \(basket\.length === 0\) \{/);
+  assert.match(js, /if \(answer === "yes" \|\| answer === "y"\) \{/);
+  // and they run that way
+  const out = [];
+  new Function('console', js)({ log: (...a) => out.push(a.join(' ')) });
+  assert.deepEqual(out, ['differ', 'between', 'empty', 'going']);
+});
+
+for (const [mech, re, warn] of [
+  ['set colour to "red"\nif colour is not "red" or "blue"\n    show "x"', /could mean two things/],
+  ['set price to 3\nset qty to 2\nshow price times qty as text', /Put brackets round the part you mean: \(price times qty\) as text/],
+  ['define stats using xs\n    give back 1 and 2', /could mean two values/],
+  ['set n to 1\nif n is 1 then show 1', /the step goes on its own line/],
+  ['set n to 0\nadd 1 and 2 to n', /add one thing at a time/],
+  ['set x to 1\nif x is more than 0\n    set label to "big"\nshow label', /`label` is set inside a block that has ended/, true],
+  ['run frobnicate with 1', /There's no tool called `frobnicate`/, true],
+]) {
+  test(`mechanics: explains a problem: ${mech.split('\n').pop()}`, () => {
+    const r = site('', '', mech);
+    const said = plain(r.results.mechanics.info.flatMap(i => (warn ? i.warns : i.errs)));
+    assert.ok(said.some(e => re.test(e)), said.join('\n'));
+  });
+}
+
+test('mechanics: a tab at the start of a line indents it, as 4 spaces do', () => {
+  const r = site('', '', 'set n to 1\nif n is 1\n\tshow "one"\nshow "after"');
+  assert.match(r.results.mechanics.text, /if \(n === 1\) \{\n  console\.log\("one"\);\n\}\nconsole\.log\("after"\);/);
+});
+
+test('mechanics and styling: default inputs, multiply/divide, a worked-out position, a name with a group on it', () => {
+  const r = site('add a block called toast', 'style toast: opacity: 0\nstyle toast.shown: opacity: 1',
+    'define greet using name, greeting = "hi"\n    show greeting\nset x to 2\nmultiply x by 3\ndivide x by 2\ncreate list stars with 1, 2, 3\nset k to 0\nshow item ((k plus 1) mod 3) of stars');
+  const js = r.results.mechanics;
+  assert.deepEqual(plain(js.info.flatMap(i => [...i.errs, ...i.warns])), []);
+  assert.match(js.text, /function greet\(name, greeting = "hi"\) \{/);
+  assert.match(js.text, /x \*= 3;\nx \/= 2;/);
+  assert.match(js.text, /console\.log\(stars\[\(k \+ 1\) % 3\]\);/);
+  assert.match(r.results.styling.text, /#toast\.shown \{/);
+  const bad = site('', '', 'create list stars with 1, 2, 3\nset k to 0\nshow item k plus 1 of stars');
+  assert.ok(problems(bad, 'mechanics').some(e => /has to be one value/.test(e)));
 });

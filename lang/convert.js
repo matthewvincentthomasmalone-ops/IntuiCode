@@ -796,7 +796,8 @@
       }
       if (tag === 'a' && others(['href']) && get('href') != null) { const t = text(), h = quote(get('href')); return t != null && h != null && say(`add a link${called} to ${h} saying ${t}`); }
       if (tag === 'img' && others(['src', 'alt']) && get('src') != null && get('alt') != null) { const s = quote(get('src')), al = quote(get('alt')); return s != null && al != null && say(`add a picture${called} of ${s}${get('alt') ? ' described as ' + al : ''}`); }
-      if (tag === 'input' && others(['type', 'placeholder']) && INPUT_WORD[get('type') || 'text']) {
+      // (a text box is written with no type, the browser's default; an <input type="text"> stays as exact code)
+      if (tag === 'input' && others(['type', 'placeholder']) && get('type') !== 'text' && INPUT_WORD[get('type') || 'text']) {
         const hint = get('placeholder') != null ? quote(get('placeholder')) : '';
         if (hint == null || (get('placeholder') === '')) return false;
         return say(`add a ${INPUT_WORD[get('type') || 'text']} box${called}${hint ? ' with hint ' + hint : ''}`);
@@ -862,7 +863,7 @@
         found[kind] = true;
         return { t: 'el', v: `(${kind}) ` + attrText(attrs.filter(a => a[0] !== (kind === 'style' ? 'href' : 'src'))), k: n.startIndex };
       }
-      if (tag === 'input' && !attrs.some(a => a[0] === 'type')) attrs.push(['type', 'text']);
+      // (<input> and <input type="text"> are not counted as the same: CSS like input[type="text"] tells them apart)
       if (tag === 'button' && !attrs.some(a => a[0] === 'form')) {   // with no form to send, a button's type changes nothing
         const i = attrs.findIndex(a => a[0] === 'type');
         const type = i >= 0 ? attrs[i][1] : null;

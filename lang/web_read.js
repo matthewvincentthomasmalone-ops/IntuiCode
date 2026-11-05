@@ -44,15 +44,39 @@
     }
     await loadLangs(opts.only || Object.keys(GRAMMARS));
   }
-  /* Grammars load on demand (the C++ one is large). */
-  async function loadLangs(kinds) {
-    for (const key of kinds) if (GRAMMARS[key] && !langs[key]) langs[key] = await TS.Language.load(OPTS.locate(`tree-sitter-${GRAMMARS[key]}.wasm`));
+  /* The grammar a key names: the short keys above, or any language id (or grammar name) in lang/languages.js. */
+  function grammarOf(key) {
+    if (GRAMMARS[key]) return GRAMMARS[key];
+    const L = root.IntuiLanguages;
+    if (!L) return null;
+    const lang = L.byId(key);
+    if (lang) return lang.grammar || null;
+    return L.LANGUAGES.some(l => l.grammar === key) ? key : null;
   }
+  /* Grammars load on demand (the C++ one is large); keys sharing a grammar (cpp, arduino) share one copy. */
+  const byGrammar = {};
+  async function loadLangs(kinds) {
+    for (const key of kinds) {
+      const g = grammarOf(key);
+      if (!g || langs[key]) continue;
+      if (!byGrammar[g]) byGrammar[g] = await TS.Language.load(OPTS.locate(`tree-sitter-${g}.wasm`));
+      langs[key] = byGrammar[g];
+    }
+  }
+  const hasLang = (key) => !!langs[key];
 
+  /* One parser per language, reused, and the trees freed once they're old: tree-sitter's memory is WebAssembly
+     memory, which JavaScript's garbage collector never gives back, and the tutor parses on every edit. Every
+     caller reads its tree straight away and keeps only plain data, so the last few trees are plenty. */
+  const parsers = {}, live = [], KEEP_TREES = 64;
   function parse(kind, source) {
-    const p = new TS();
-    p.setLanguage(langs[kind]);
-    return p.parse(source).rootNode;
+    if (!langs[kind]) throw new Error(`The ${kind} grammar isn't loaded.`);
+    let p = parsers[kind];
+    if (!p) { p = parsers[kind] = new TS(); p.setLanguage(langs[kind]); }
+    const tree = p.parse(source);
+    live.push(tree);
+    while (live.length > KEEP_TREES) { try { live.shift().delete(); } catch (_) { /* already gone */ } }
+    return tree.rootNode;
   }
 
   function kindOfPath(path) {
@@ -1101,7 +1125,7 @@
     return { files: results, edges, routes, fetches, calledBy: Object.fromEntries(Object.entries(calledBy).map(([k, v]) => [k, [...v]])), hasServer };
   }
 
-  const api = { init, loadLangs, analyzeCpp, kindOfPath, analyzeJs: (p, s, k, c) => analyzeJs(p, s, k || kindOfPath(p), c), analyzeHtml, analyzeCss, analyzeProject, colorName, describeDecl, ROLE_LABEL, ready: () => !!TS, parse };
+  const api = { init, loadLangs, hasLang, grammarOf, analyzeCpp, kindOfPath, analyzeJs: (p, s, k, c) => analyzeJs(p, s, k || kindOfPath(p), c), analyzeHtml, analyzeCss, analyzeProject, colorName, describeDecl, ROLE_LABEL, ready: () => !!TS, parse };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWebReader = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -39,12 +39,37 @@
   const LANG_NAME = { python: 'Python', html: 'HTML', css: 'CSS', js: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', cpp: 'C++' };
   const KIND_OF_LAYOUT = { website: 'website', cpp: 'cpp', arduino: 'arduino' };
   const isCpp = () => project.kind === 'cpp' || project.kind === 'arduino';
+
+  /* ---------- Files: every file has a path and a language (see lang/project.js) ---------- */
+  const LANGS = window.IntuiLanguages;
+  const PRJ = window.IntuiProject;
+  const { ENGINE, WEB_ROLE, isSentences, writeOf, roleOf, pathProblem } = PRJ;
+  const ENGINE_NAME = { python: 'Python', website: 'Website', cpp: 'C++', arduino: 'Arduino' };
+  const langName = (id) => (LANGS.byId(id) || { name: id }).name;
   // An Arduino sketch must be named after its folder (blink/blink.ino).
   const sketchName = () => (desk.folder ? baseName(desk.folder) : project.name || 'sketch');
-  const fileName = (sec) => (sec.file === 'sketch' ? sketchName() + '.ino' : FILE_NAME[sec.file] || sec.file + '.py');
-  const secLang = (sec) => SEC_LANG[sec.file] || 'python';
+  const fileName = (sec) => (sec.file === 'sketch' && sec.path === 'sketch.ino' ? sketchName() + '.ino' : sec.path);
+  const secLang = (sec) => (sec.lang === 'arduino' ? 'cpp' : sec.lang);
+  const startSec = () => project.sections.find(s => s.id === project.start) || project.sections[0];
+  const webOn = () => project.sections.some(s => WEB_ROLE[s.lang]);
+  /* What a file shows as its title: the sections IntuCode always had keep their names; others show their path. */
+  function metaOf(sec) {
+    const m = SECTION_META[sec.file];
+    if (m && (FILE_NAME[sec.file] === sec.path || (sec.file === 'sketch' && sec.lang === 'arduino'))) return m;
+    const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+    const what = isSentences(sec) ? `${l.name}, written in sentences` : l.write === 'code' ? `${l.name}: you write the code, IntuCode reads it to you` : `${l.name}: notes or data, kept as written`;
+    return { title: sec.path.split('/').pop(), purpose: what, icon: l.write === 'text' ? 'M4 2.5h6l2 2v9H4zM6 7h4M6 9.5h4' : 'M5 3.5L2 8l3 4.5M11 3.5l3 4.5-3 4.5' };
+  }
   /* What the phrase picker, Index and auto-indent use for a folder. */
+  const NO_PACK = { templates: [], opens: /(?!)/, words: [], howtos: [], filter: () => false, webOnly: true };
+  // A Python file of your own takes the sentences Main program takes.
+  const tplRole = (sec) => (sec.lang === 'python' && !['settings', 'tools', 'main'].includes(sec.file) ? 'main' : sec.file);
   function packFor(sec) {
+    if (!isSentences(sec)) {
+      const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+      return { ...NO_PACK, guide: { name: l.name, purpose: l.write === 'code' ? `${l.name} files are written as code here: IntuCode has no sentences for ${l.name} yet. Read mode explains it in plain words, section by section.` : `${l.name} files hold notes or data, kept exactly as written.`, section: metaOf(sec).purpose + '.', rules: [] } };
+    }
+    if (sec.lang === 'python' && tplRole(sec) !== sec.file) return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: 'A Python file of your own. The Python files listed before it in the project can use what it defines (IntuCode adds the import); the start file can use them all.' }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes('main') };
     if (secLang(sec) === 'cpp') { const ino = sec.file === 'sketch'; return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: ino ? CPP.ARDUINO_WORDS : CPP.WORDS, guide: ino ? CPP.ARDUINO_GUIDE : CPP.GUIDE, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true }; }
     if (secLang(sec) === 'python') return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: LANG.GUIDE.sections[sec.file] }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes(sec.file) };
     const g = WEB.GUIDES[sec.file];
@@ -73,11 +98,11 @@
   const IMAGE_MAX = 8e6;
   const BOARD_ID = /^[\w.-]+:[\w.-]+:[\w.-]+(?::[\w.=,-]+)?$/;   // arduino-cli's name for a kind of board, e.g. esp32:esp32:esp32
   function checkedProject(p) {
-    if (!p || typeof p !== 'object' || !Array.isArray(p.sections) || !p.sections.length) return null;
-    const kind = KIND_FILES[p.kind] ? p.kind : 'python';
-    const sections = p.sections.map(s => (s && KIND_FILES[kind].includes(s.file) && /^[\w-]{1,40}$/.test(s.id) ? { id: s.id, file: s.file, text: typeof s.text === 'string' ? s.text : '' } : null));
-    if (sections.includes(null) || new Set(sections.map(s => s.id)).size !== sections.length || sections.length > KIND_FILES[kind].length) return null;
-    const out = { version: 1, lang: 'python', kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: sections.some(s => s.id === p.active) ? p.active : sections[sections.length - 1].id };
+    const sections = PRJ.checkedSections(p, KIND_FILES);   // each file a safe path and a known language
+    if (!sections) return null;
+    const out = normalized({ version: 2, lang: 'python', kind: p.kind, name: typeof p.name === 'string' && p.name.trim() ? p.name.slice(0, 80) : 'my-program', sections, active: p.active, start: p.start });
+    if (!out) return null;
+    if (Array.isArray(p.folders)) out.folders = p.folders.filter(f => typeof f === 'string' && !pathProblem(f)).slice(0, 50);   // folders with nothing in them yet
     if (typeof p.board === 'string' && BOARD_ID.test(p.board)) out.board = p.board;
     // its pictures: names and sizes here; the pictures themselves are kept by content (see Images)
     if (Array.isArray(p.images)) {
@@ -99,10 +124,12 @@
     return out;
   }
 
+  const normalized = PRJ.normalized;
+
   const PROJECT_KEY = 'intuicode.project.v1';
   const PREVIOUS_KEY = 'intuicode.previous.v1';
   function loadProject() {
-    return checkedProject(store.get(PROJECT_KEY, null)) || projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {});
+    return checkedProject(store.get(PROJECT_KEY, null)) || normalized(projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {}));
   }
   let saveTimer = null;
   function save() {
@@ -132,16 +159,17 @@
       desk.dirty = !folder;
     }
     store.set(PREVIOUS_KEY, project);
-    project = next;
+    project = normalized(next);
+    codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
     ta.value = activeSec().text;
     Runner.reset();
     setMode('write');
     openSection(project.active);
-    $('work').classList.toggle('web', project.kind === 'website');
+    $('work').classList.toggle('web', webOn());
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
-    if (project.kind === 'website') runWebsite(false);
+    if (webOn()) runWebsite(false);
     if (desk.on) showFolder();
     loadImages();
     if (message) tLine(message + ' (Your previous project is kept: type "restore" in the terminal to swap back.)', 't-sys');
@@ -172,11 +200,59 @@
   /* Compile + render (Write mode)                                       */
   /* ------------------------------------------------------------------ */
 
+  const webTriple = PRJ.webTriple;
+  const compileAll = (p) => PRJ.compileAll(p, { LANG, WEB, CPP });
+  /* The page the preview shows: the HTML file being edited, or the main page, with the main page's CSS
+   * and JavaScript. */
+  function previewPage() {
+    const t = (compiled && compiled.page) || {}, act = activeSec();
+    const html = act && act.file === 'structure' ? act : t.structure;
+    return { html, styling: t.styling, mechanics: t.mechanics };
+  }
   function compile() {
-    try { compiled = project.kind === 'website' ? WEB.compileWebsite(project) : isCpp() ? CPP.compileCppProject(project) : LANG.compileProject(project); }
-    catch (e) { console.error(e); }
+    try { compiled = compileAll(project); }
+    catch (e) { console.error(e); return; }
+    checkDrift();
+  }
+
+  /* ---------- Never silently change code ----------
+   * Each sentence line's code is remembered from when the line was written. If it comes out different
+   * while the line itself hasn't changed (an edit elsewhere changed what a name holds, or made a tool
+   * share a value), the line gets a warning saying what it was, until it's edited or the new code is kept. */
+  const codeBase = new Map();   // section id -> Map(line text + its count -> code)
+  let lastEdit = null;          // { title, line }: the edit that might have caused it
+  const DRIFT = /^Its code changed after an edit elsewhere/;
+  function lineKeys(sec) {
+    const seen = new Map();
+    return sec.text.split('\n').map(l => { const t = l.trim(), n = (seen.get(t) || 0) + 1; seen.set(t, n); return t + '\u0001' + n; });
+  }
+  const lineCode = (r, i) => (r.info[i] ? r.info[i].py.map(k => r.lines[k].text.trim()).filter(Boolean).join('\n') : '');
+  function checkDrift() {
+    for (const s of project.sections) {
+      const r = compiled.results[s.id];
+      if (!r || !isSentences(s)) continue;
+      const base = codeBase.get(s.id) || codeBase.set(s.id, new Map()).get(s.id);
+      const keys = lineKeys(s), live = new Set(keys);
+      keys.forEach((key, i) => {
+        if (!key.split('\u0001')[0] || !r.info[i]) return;
+        const now = lineCode(r, i);
+        if (!base.has(key)) { base.set(key, now); return; }
+        const was = base.get(key);
+        if (was === now || (s.id === project.active && i === typingLine)) return;
+        r.info[i].drift = { key, was, now };
+        r.info[i].warns.push(`Its code changed after an edit elsewhere${lastEdit ? ` (${lastEdit.title}, line ${lastEdit.line + 1})` : ''}, though this line didn't: it was \`${was.replace(/\n/g, ' ⏎ ') || '(nothing)'}\`. Check it still does what you mean, then keep the new code (in the help below), or change the line.`);
+      });
+      for (const k of [...base.keys()]) if (!live.has(k)) base.delete(k);   // lines that are gone, or were edited
+    }
+  }
+  function keepNewCode(secId, line) {
+    const r = secResult(secId), d = r && r.info[line] && r.info[line].drift;
+    if (d) codeBase.get(secId).set(d.key, d.now);
+    refreshAll();
   }
   const secResult = (id) => compiled && compiled.results[id];
+  /* What a file holds on disk: the code its sentences make, or (code, notes, data) its text as written. */
+  const codeOf = (sec) => (isSentences(sec) ? (secResult(sec.id) || { text: '' }).text : sec.text);
   const caretLine = () => ta.value.slice(0, ta.selectionStart).split('\n').length - 1;
 
   const STARTER = /^(if (?:it|that|this|anything|something) fails(?: with)?|if nothing failed|in any case|if this file is run directly|fail with|fail again|check that|open the file|async using|using|define class|define async|make a new|field|decorate with|use the shared|delete|try|otherwise if|else if|otherwise|else|if|when|repeat until|repeat while|repeat forever|repeat|keep going|while|as long as|count down|count|for each|for every|for|define|give back|return|show|print|say|display|ask for an? (?:whole number|number|decimal)|ask for|ask|set|make|let|change|update|create (?:an? )?(?:empty )?(?:list|dictionary)|create|increase|decrease|multiply|divide|add|remove|subtract|sort|reverse|shuffle|wait|run|call|stop the loop|stop the program|skip to next|do nothing|use|remember|forever)(?=\s|$)/i;
@@ -245,9 +321,10 @@
   function renderOverlay() {
     const sec = activeSec();
     const lines = ta.value.split('\n');
-    const marks = lineMarks(sec);
-    const names = nameSets();
-    hl.innerHTML = lines.map((l, i) => hlLine(l, marks[i], names)).join('\n') + '\n ';
+    const plain = !isSentences(sec);   // code, notes and data: coloured as what they are
+    const marks = plain ? [] : lineMarks(sec);
+    const names = plain ? null : nameSets();
+    hl.innerHTML = lines.map((l, i) => (plain ? hlFileLine(sec, l) : hlLine(l, marks[i], names))).join('\n') + '\n ';
     const cur = caretLine();
     gutterInner.innerHTML = lines.map((_, i) => `<div class="gl${i === cur ? ' cur' : ''}${marks[i] ? ' ' + marks[i] : ''}">${i + 1}</div>`).join('');
     syncScroll();
@@ -303,8 +380,89 @@
     return out + escHtml(text.slice(last));
   }
 
+  /* ---------- Code, notes and data files ----------
+   * Written as they are. The editor colours them; the right-hand side shows what they are: a Markdown
+   * page, a table, the shape of JSON, or what the code does in plain words (Read mode's reader). */
+  const OTHER_KW = new Set('if else elif elsif unless for foreach while loop do return fn func function def fun sub class struct enum union trait impl interface protocol module mod namespace package import use using require include export from let var val const mut static pub public private protected internal final override virtual abstract async await yield try catch except finally throw throws raise match switch case when default break continue goto new delete this self super true false null nil none None True False and or not in is as then end begin local where type typedef extends implements defer go chan select guard extension lambda'.split(' '));
+  function hlOther(lang, line) {
+    const l = LANGS.byId(lang) || {};
+    if (lang === 'markdown') {
+      if (/^\s*#{1,6}\s/.test(line)) return `<span class="p-kw">${escHtml(line)}</span>`;
+      if (/^\s*(```|~~~)/.test(line)) return `<span class="p-com">${escHtml(line)}</span>`;
+      return escHtml(line).replace(/(`[^`]+`)/g, '<span class="p-str">$1</span>').replace(/(\*\*[^*]+\*\*)/g, '<span class="p-fn">$1</span>').replace(/^(\s*(?:[-*+]|\d+\.)\s)/, '<span class="p-num">$1</span>');
+    }
+    if (lang === 'csv' || lang === 'text') return escHtml(line);
+    const com = l.comment ? l.comment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
+    const re = new RegExp(`${com ? `(${com}.*$)|` : '()'}("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\`[^\`]*\`)|\\b(\\d+(?:\\.\\d+)?)\\b|\\b([A-Za-z_][\\w]*)\\b(?=\\s*[:=]\\s)|([A-Za-z_]\\w*)`, 'g');
+    let out = '', last = 0, m;
+    while ((m = re.exec(line))) {
+      if (!m[0].length) { re.lastIndex++; continue; }
+      out += escHtml(line.slice(last, m.index));
+      const cls = m[1] ? 'p-com' : m[2] ? 'p-str' : m[3] ? 'p-num' : m[4] && /^(json|yaml|toml)$/.test(lang) ? 'p-bi' : OTHER_KW.has(m[0]) ? 'p-kw' : '';
+      out += cls ? `<span class="${cls}">${escHtml(m[0])}</span>` : escHtml(m[0]);
+      last = m.index + m[0].length;
+    }
+    return out + escHtml(line.slice(last));
+  }
+  const hlFileLine = (sec, line) => (WEB_TOKEN[sec.lang] || sec.lang === 'python' ? hlCode(sec.lang, line) : hlOther(sec.lang, line));
+
+  const { mdToHtml, csvRows, jsonKind } = PRJ;   // notes and data, shown as what they are
+  function jsonOutline(v, depth = 0) {
+    if (depth > 2 || v === null || typeof v !== 'object') return '';
+    const entries = Array.isArray(v) ? v.slice(0, 5).map((x, i) => [i, x]) : Object.entries(v).slice(0, 40);
+    return `<ul>${entries.map(([k, x]) => `<li><code>${escHtml(String(k))}</code> ${escHtml(jsonKind(x))}${jsonOutline(x, depth + 1)}</li>`).join('')}${Array.isArray(v) && v.length > 5 ? `<li class="dim">… and ${v.length - 5} more</li>` : ''}</ul>`;
+  }
+
+  /* Read mode's reader on a code file of the project (when it's loaded): its sections, for the side and the strip. */
+  const fileReads = new Map();   // sec.id -> { text, analysis }
+  function readOf(sec) {
+    const got = fileReads.get(sec.id);
+    if (got && got.text === sec.text) return got.analysis;
+    if (got && got.pending) return null;
+    fileReads.set(sec.id, { text: sec.text, pending: true });
+    analyseFile(sec).then(a => { fileReads.set(sec.id, { text: sec.text, analysis: a }); if (activeSec() === sec) { renderPython(); renderExplain(); } }).catch(() => fileReads.set(sec.id, { text: sec.text, analysis: null }));
+    return null;
+  }
+  async function analyseFile(sec) {
+    const CR = window.IntuiCodeReader;
+    if (!CR) return null;
+    await Runner.webReader(() => {});   // (the grammars come through the web reader's tree-sitter)
+    await CR.load(sec.lang);
+    return CR.analyze(sec.lang, sec.path, sec.text);
+  }
+  function renderSide(sec) {
+    const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+    $('pyFile').textContent = fileName(sec);
+    $('codeTitle').textContent = l.name;
+    let body = '';
+    if (sec.lang === 'markdown') { $('codeSub').textContent = 'How it reads, as a page.'; body = `<div class="md-page">${mdToHtml(sec.text) || '<p class="dim">Nothing written yet.</p>'}</div>`; }
+    else if (sec.lang === 'csv') {
+      const rows = csvRows(sec.text);
+      $('codeSub').textContent = rows.length ? `A table: ${Math.max(0, rows.length - 1)}${rows.length >= 200 ? '+' : ''} rows under a header row.` : 'A table, one row per line, cells separated by commas.';
+      body = rows.length ? `<table class="md-table"><thead><tr>${rows[0].map(c => `<th>${escHtml(c)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r => `<tr>${r.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+    } else if (sec.lang === 'json') {
+      try { const v = JSON.parse(sec.text || 'null'); $('codeSub').textContent = `Reads as JSON: ${jsonKind(v)}.`; body = `<div class="md-page">${jsonOutline(v) || `<p>${escHtml(jsonKind(v))}</p>`}</div>`; }
+      catch (e) { $('codeSub').textContent = 'This isn\'t JSON yet.'; body = `<p class="sum-empty">${escHtml(e.message)}</p>`; }
+    } else if (l.write === 'code') {
+      $('codeSub').textContent = 'You write the code; this is what it does, in plain words.';
+      const a = readOf(sec);
+      body = a && a.sections ? `<div class="md-page">${a.overview ? `<p>${rich(a.overview)}</p>` : ''}${a.sections.map(s => `<div class="side-sec" data-line="${(s.start || 1) - 1}"><b>${escHtml(s.title)}</b> <span class="dim">lines ${s.start}–${s.end}</span><p>${rich(s.headline || '')}</p>${(s.facts || []).slice(0, 4).map(f => `<p class="dim">${rich(f)}</p>`).join('')}</div>`).join('')}</div>`
+        : `<p class="sum-empty">${window.IntuiCodeReader || /^(ts|tsx)$/.test(sec.lang) ? 'Reading it…' : `IntuCode keeps ${escHtml(l.name)} exactly as you write it. Read mode can explain it.`}</p>`;
+    } else { $('codeSub').textContent = 'Kept exactly as written.'; body = `<pre class="md-code">${escHtml(sec.text)}</pre>`; }
+    pycode.innerHTML = `<div class="side-file">${body}</div>`;
+  }
+  /* The strip under the windows, for a code or notes file: where the cursor is, and (code) what that part does. */
+  function renderExplainFile(sec) {
+    const li = caretLine(), l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
+    const a = l.write === 'code' ? readOf(sec) : null;
+    const part = a && a.sections && a.sections.find(s => li + 1 >= s.start && li + 1 <= s.end);
+    $('explain').innerHTML = `<p class="ex-guide">${withCode(metaOf(sec).purpose)}.${l.write === 'code' ? ' Changing its language (⋯ beside it in Project) keeps the text as it is.' : ''}</p>`
+      + (part ? `<div class="ex-map"><div class="ex-cell"><span class="ex-lbl">Line ${li + 1} is in</span><div class="ex-say">${escHtml(part.title)}</div></div><div class="ex-cell"><span class="ex-lbl">What it does</span><div>${rich(part.headline || '')}</div></div></div>` : '');
+  }
+
   function renderPython() {
     const sec = activeSec();
+    if (!isSentences(sec)) return renderSide(sec);
     const r = secResult(sec.id);
     $('pyFile').textContent = fileName(sec);
     $('codeTitle').textContent = sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)];
@@ -343,6 +501,7 @@
    * said (its shape, its words, how to talk to the program); in the code it's about the code (what each
    * term is, your names, why it's written that way). */
   function renderExplain() {
+    if (!isSentences(activeSec())) return renderExplainFile(activeSec());
     if (pane === 'code' && mode === 'write' && codeIdx >= 0) return renderExplainCode();
     const sec = activeSec();
     const r = secResult(sec.id);
@@ -351,7 +510,7 @@
     const box = $('explain');
     if (!r || !text.trim()) {
       box.innerHTML = `${planBanner(li)}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
-        <div class="ex-hint"><span>Start from an idea: open the <b>Library</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> explains the words in a line or a selection</span><span>Click a line of ${escHtml(tutorSays(sec))} on the right to learn about the code itself.</span></div>`;
+        <div class="ex-hint"><span>Start from an idea: open <b>Project Templates</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> explains the words in a line or a selection</span><span>Click a line of ${escHtml(tutorSays(sec))} on the right to learn about the code itself.</span></div>`;
       return;
     }
     const inf = r.info[li] || { py: [], notes: [], warns: [], errs: [] };
@@ -360,7 +519,7 @@
     if (runtimeMark && runtimeMark.sec === sec.id && runtimeMark.line === li) items.push(`<li class="err">${withCode(runtimeMark.msg)}</li>`);
     if (li === typingLine && inf.errs.length) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
     else inf.errs.forEach(e => { if (!(fill && /^Fill in the ‹[^›]*› slot\.$/.test(e))) items.push(`<li class="err">${withCode(e)}</li>`); });
-    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${li}">Keep the new code</button>` : ''}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim());
     const why = inf.notes.length && pyLines.length ? `<button type="button" class="linklike ex-why" data-pick="${pyLines[0]}">${inf.notes.length === 1 ? 'A note' : inf.notes.length + ' notes'} on the ${escHtml(tutorSays(sec))}: click its line on the right</button>` : '';
     box.innerHTML = `${planBanner(li)}${fill}<div class="ex-map">
@@ -373,7 +532,7 @@
       <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
   }
 
-  /* ‹Blanks›: what goes in one, from its step's "blank:" line in the library (your own kits' too): what
+  /* ‹Blanks›: what goes in one, from its step's "blank:" line in the templates (your own kits' too): what
    * kind of thing it is, how to work it out, and an example that works, shown only when asked for. */
   let blankIndex = null, blankLib = null;
   function blankInfo(slot) {
@@ -431,7 +590,7 @@
     const inf = src >= 0 && r.info[src] ? r.info[src] : { notes: [], warns: [], errs: [] };
     const items = [];
     inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
-    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${src}">Keep the new code</button>` : ''}</li>`));
     const notes = (o.note ? [o.note] : []).concat(inf.notes);
     $('explain').innerHTML = `${src >= 0 ? planBanner(src) : ''}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} line ${codeIdx + 1}</span><div class="ex-py">${hlCode(lang, o.text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
@@ -530,15 +689,194 @@
     return r ? r.info.reduce((n, inf, i) => n + (waitForTyping && s.id === project.active && i === typingLine ? 0 : inf[kind].length), 0) : 0;
   }
 
+  /* The project's files, folder by folder (folders first, then files in the project's order). Each has a
+   * ⋯ for its name, language and start, and folders one for their name. */
+  const FOLDER_ICON = 'M2 4.5h4.5L8 6h6v7H2z';
+  function projectFolders() {
+    const set = new Set(project.folders || []);
+    for (const s of project.sections) { const parts = s.path.split('/'); for (let i = 1; i < parts.length; i++) set.add(parts.slice(0, i).join('/')); }
+    return set;
+  }
   function renderTree() {
     $('treeRoot').innerHTML = `${FOLDER_SVG}${escHtml(project.name)}/`;
-    $('tree').innerHTML = project.sections.map(s => {
-      const meta = SECTION_META[s.file];
+    const folders = projectFolders(), many = project.sections.length > 1, out = [];
+    const fileRow = (s, depth) => {
+      const meta = metaOf(s);
       const errs = issues(s, 'errs', true), warns = issues(s, 'warns', true);
       const badge = errs ? `<span class="ti-badge" title="${errs} problem${errs > 1 ? 's' : ''}">${errs}</span>` : warns ? `<span class="ti-badge warn" title="${warns} warning${warns > 1 ? 's' : ''}">${warns}</span>` : '';
-      return `<button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${meta.title}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}</span></button>`;
-    }).join('');
+      const start = many && s.id === project.start ? ' <span class="ti-start" title="Run starts here">start</span>' : '';
+      return `<div class="tree-row" style="--depth:${depth}"><button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${escHtml(meta.title)}${start}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}${isSentences(s) ? '' : ' · ' + escHtml(langName(s.lang))}</span></button><button type="button" class="ti-more" data-file-menu="${escHtml(s.id)}" title="Name, language, start, delete" aria-label="${escHtml(fileName(s))}: name, language, start, delete">⋯</button></div>`;
+    };
+    const walk = (dir, depth) => {
+      const prefix = dir ? dir + '/' : '';
+      const subs = [...folders].filter(f => f.startsWith(prefix) && f !== dir && !f.slice(prefix.length).includes('/')).sort();
+      for (const f of subs) {
+        out.push(`<div class="tree-row folder" style="--depth:${depth}"><span class="tree-folder">${iconSvg(FOLDER_ICON)}<span>${escHtml(f.slice(prefix.length))}/</span></span><button type="button" class="ti-more" data-folder-menu="${escHtml(f)}" title="Rename or delete this folder" aria-label="${escHtml(f)}/: rename or delete">⋯</button></div>`);
+        walk(f, depth + 1);
+      }
+      for (const s of project.sections) if (s.path.startsWith(prefix) && !s.path.slice(prefix.length).includes('/')) out.push(fileRow(s, depth));
+    };
+    walk('', 0);
+    $('tree').innerHTML = out.join('');
   }
+
+  /* ---------- Adding, renaming and removing files and folders ---------- */
+  const fileDlg = { kind: 'file', id: null, folder: null, isNew: true, deleting: false, lang: 'python' };
+  function langOptions(selected) {
+    const fam = LANGS.FAMILIES, groups = {};
+    for (const l of LANGS.LANGUAGES) (groups[l.write === 'sentences' ? 'sentences' : l.family] = groups[l.write === 'sentences' ? 'sentences' : l.family] || []).push(l);
+    const label = (g) => (g === 'sentences' ? 'Written in sentences' : fam[g] + ' (written as code)');
+    return Object.keys(groups).sort((a, b) => (b === 'sentences') - (a === 'sentences') || (a === 'docs' || a === 'data') - (b === 'docs' || b === 'data')).map(g => `<optgroup label="${escHtml(g === 'docs' || g === 'data' ? fam[g] : label(g))}">${groups[g].map(l => `<option value="${l.id}"${l.id === selected ? ' selected' : ''}>${escHtml(l.name)}</option>`).join('')}</optgroup>`).join('');
+  }
+  function fileHow(lang) {
+    const l = LANGS.byId(lang) || { name: lang, write: 'text' };
+    if (l.write === 'sentences') return `You write sentences; IntuCode writes the ${l.name} and shows it on the right.` + (lang === 'arduino' ? ' A project has one sketch that Run puts on the board; more .ino files are more tabs of it.' : '');
+    if (l.write === 'code') return `You write ${l.name} itself: IntuCode has no sentences for it yet. It reads the code to you in plain words, on the right and in Read mode.`;
+    return { markdown: 'Notes: headings (#), lists (-), **bold**, `code` and tables, shown as a page on the right.', csv: 'A table: one row per line, cells separated by commas. Python files in the project can open it.', json: 'Data (JSON): checked as you type, and its shape is shown on the right. Python files can open it.' }[lang] || `${l.name}, kept exactly as written.`;
+  }
+  function openFileDialog(opts) {
+    activeSec().text = ta.value;
+    Object.assign(fileDlg, { kind: 'file', id: null, folder: null, isNew: true, deleting: false }, opts);
+    const sec = fileDlg.id && project.sections.find(s => s.id === fileDlg.id);
+    const isFolder = fileDlg.kind === 'folder';
+    // a new file goes in the folder of the file you're in
+    const here = (activeSec().path.includes('/') ? activeSec().path.replace(/\/[^/]*$/, '/') : '');
+    fileDlg.lang = sec ? sec.lang : opts.lang || 'markdown';
+    $('fileTitle').textContent = isFolder ? (fileDlg.isNew ? 'New folder' : `Folder: ${fileDlg.folder}/`) : (sec ? `File: ${fileName(sec)}` : 'New file');
+    $('fileLead').textContent = isFolder ? (fileDlg.isNew ? 'A folder to keep files together. Name it, then add files to it with + File (as "folder/name").' : 'Rename it (its files move with it), or delete it with everything in it.')
+      : sec ? 'Rename or move it (folders are separated with /), change its language, or make it the file Run starts.' : 'Name it with its folder if it goes in one (notes/ideas.md). Its language follows its ending, or choose one.';
+    $('filePath').value = isFolder ? (fileDlg.folder || '') : sec ? sec.path : here + 'notes.md';
+    $('fileLangRow').hidden = isFolder;
+    $('fileStartRow').hidden = isFolder;
+    $('fileLang').innerHTML = langOptions(fileDlg.lang);
+    $('fileStart').checked = !!sec && sec.id === project.start;
+    $('fileGo').textContent = fileDlg.isNew ? 'Create' : 'Save';
+    $('fileDelWrap').hidden = fileDlg.isNew;
+    $('fileDelWrap').innerHTML = '<button type="button" class="btn ghost" id="fileDelete">Delete…</button>';
+    $('fileProblem').textContent = '';
+    showFileHow();
+    $('fileModal').hidden = false;
+    $('filePath').focus();
+    const v = $('filePath').value, dot = v.lastIndexOf('.'), slash = v.lastIndexOf('/');
+    $('filePath').setSelectionRange(slash + 1, isFolder || dot <= slash ? v.length : dot);   // the name, without its folder or ending
+  }
+  function showFileHow() {
+    const sec = fileDlg.id && project.sections.find(s => s.id === fileDlg.id);
+    if (fileDlg.kind === 'folder') { $('fileHow').textContent = ''; return; }
+    let how = fileHow($('fileLang').value);
+    if (sec && $('fileLang').value !== sec.lang) how += ' Its text stays as it is: ' + (isSentences(sec) && ENGINE[$('fileLang').value] ? 'sentences that fit the new language carry over, and Problems shows any that don\'t.' : 'change it to suit the new language.');
+    if (sec && desk.on && desk.folder) how += ' In the project\'s folder, a renamed file is written under its new name, and the old one stays until you delete it there.';
+    $('fileHow').textContent = how;
+  }
+  $('fileLang').addEventListener('change', () => {
+    // the ending follows the language (a .md that becomes Python is .py)
+    const v = $('filePath').value, ext = LANGS.extOf($('fileLang').value), m = v.match(/^(.*?)(\.[A-Za-z0-9]+)?$/);
+    if (m && (!m[2] || LANGS.fromPath(v) !== 'text' || /\.txt$/i.test(v))) $('filePath').value = m[1] + '.' + ext;
+    showFileHow();
+  });
+  $('filePath').addEventListener('input', () => {
+    // …and the language follows the ending
+    const v = $('filePath').value;
+    if (fileDlg.kind === 'file' && /\.[A-Za-z0-9]+$/.test(v)) { const l = LANGS.fromPath(v); if ((l !== 'text' || /\.txt$/i.test(v)) && l !== $('fileLang').value) { $('fileLang').value = l; showFileHow(); } }
+    $('fileProblem').textContent = '';
+  });
+  const newId = () => 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  // What a new file starts with.
+  const START_TEXT = { markdown: (p) => `# ${p.split('/').pop().replace(/\.[^.]*$/, '').replace(/[-_]+/g, ' ')}\n\n`, html: (p) => `page title is "${p.split('/').pop().replace(/\.[^.]*$/, '').replace(/["\\{}]/g, '')}"`, arduino: () => NEW_START.sketch() };
+  /* Swap in a changed copy of the project, if it holds together (no two files in one place). '' or why not. */
+  function changeProject(next, openId, message) {
+    const before = new Map(project.sections.map(s => [s.id, s.path + '|' + s.lang]));
+    const n = normalized(next);
+    if (!n) return 'That would put two files in the same place, or give two Python files the same module name. Choose another name.';
+    // a file renamed, moved or given another language makes other code on purpose: learn it afresh
+    for (const s of n.sections) { const was = before.get(s.id); if (!was || was !== s.path + '|' + s.lang) codeBase.delete(s.id); }
+    project = n;
+    if (!project.sections.some(s => s.id === project.active)) project.active = project.start;
+    fileReads.clear();
+    if (openId) project.active = openId;
+    ta.value = activeSec().text;
+    runtimeMark = null;
+    renderSectionHeader();
+    refreshAll();
+    updateChip();
+    $('work').classList.toggle('web', mode === 'write' && webOn());
+    $('tabPreview').hidden = !(mode === 'write' && webOn());
+    if (!webOn()) showBottom('terminal');
+    save(); autosave();
+    if (message) tLine(message, 't-sys');
+    return '';
+  }
+  function applyFileDialog() {
+    const copy = JSON.parse(JSON.stringify(project));
+    const path = $('filePath').value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const say = (msg) => { $('fileProblem').textContent = msg; };
+    if (fileDlg.kind === 'folder') {
+      const why = pathProblem(path);
+      if (why) return say(why);
+      const taken = (p) => copy.sections.some(s => s.path.toLowerCase() === p.toLowerCase());
+      if (taken(path)) return say(`There's already a file called ${path}.`);
+      if (fileDlg.isNew) {
+        if (projectFolders().has(path)) return say(`There's already a folder called ${path}/.`);
+        copy.folders = [...(copy.folders || []), path];
+        const err = changeProject(copy, null, `Added the folder ${path}/. Add files to it with + File.`);
+        return err ? say(err) : closeFileDialog();
+      }
+      const old = fileDlg.folder;
+      for (const s of copy.sections) if (s.path.startsWith(old + '/')) { s.path = path + s.path.slice(old.length); const why2 = pathProblem(s.path, s.lang); if (why2) return say(`${s.path}: ${why2}`); }
+      copy.folders = (copy.folders || []).map(f => (f === old || f.startsWith(old + '/') ? path + f.slice(old.length) : f));
+      const err = changeProject(copy, null, `Renamed the folder ${old}/ to ${path}/.`);
+      return err ? say(err) : closeFileDialog();
+    }
+    const lang = $('fileLang').value;
+    const why = pathProblem(path, lang);
+    if (why) return say(why);
+    if (fileDlg.isNew) {
+      const s = { id: newId(), path, lang, text: START_TEXT[lang] ? START_TEXT[lang](path) : '' };
+      copy.sections.push(s);
+      if ($('fileStart').checked) copy.start = s.id;
+      const err = changeProject(copy, null, `Added ${path} (${langName(lang)}).`);
+      if (err) return say(err);
+      closeFileDialog();
+      openSection(s.id);
+      return;
+    }
+    const s = copy.sections.find(x => x.id === fileDlg.id);
+    const was = s.path;
+    s.path = path; s.lang = lang;
+    if ($('fileStart').checked) copy.start = s.id;
+    else if (copy.start === s.id) copy.start = null;   // another file becomes the start
+    const err = changeProject(copy, null, was !== path ? `Renamed ${was} to ${path}.` : '');
+    if (err) return say(err);
+    closeFileDialog();
+  }
+  function deleteFromDialog() {
+    const copy = JSON.parse(JSON.stringify(project));
+    const isFolder = fileDlg.kind === 'folder';
+    const gone = isFolder ? copy.sections.filter(s => s.path.startsWith(fileDlg.folder + '/')) : copy.sections.filter(s => s.id === fileDlg.id);
+    if (gone.length === copy.sections.length) { $('fileProblem').textContent = 'A project needs at least one file, so this can\'t be deleted. Add another file first.'; return; }
+    if (!fileDlg.deleting) {
+      fileDlg.deleting = true;
+      $('fileDelWrap').innerHTML = `<span class="file-del-ask">${isFolder ? `Delete ${escHtml(fileDlg.folder)}/ and the ${gone.length} file${gone.length === 1 ? '' : 's'} in it?` : `Delete ${escHtml(gone[0].path)}?`} It can't be undone.</span><button type="button" class="btn danger small" id="fileDeleteYes">Delete</button><button type="button" class="btn small" id="fileDeleteNo">Keep</button>`;
+      return;
+    }
+    copy.sections = copy.sections.filter(s => !gone.includes(s));
+    if (isFolder) copy.folders = (copy.folders || []).filter(f => f !== fileDlg.folder && !f.startsWith(fileDlg.folder + '/'));
+    const err = changeProject(copy, null, `Deleted ${isFolder ? fileDlg.folder + '/' : gone[0].path}.` + (desk.on && desk.folder ? ' (In the project\'s folder, the file stays until you delete it there.)' : ''));
+    if (err) { $('fileProblem').textContent = err; return; }
+    closeFileDialog();
+  }
+  function closeFileDialog() { $('fileModal').hidden = true; }
+  $('btnAddFile').addEventListener('click', () => openFileDialog({}));
+  $('btnAddFolder').addEventListener('click', () => openFileDialog({ kind: 'folder' }));
+  $('fileClose').addEventListener('click', closeFileDialog);
+  $('fileGo').addEventListener('click', applyFileDialog);
+  $('fileModal').addEventListener('click', (e) => {
+    if (e.target.id === 'fileModal') return closeFileDialog();
+    if (e.target.id === 'fileDelete' || e.target.id === 'fileDeleteYes') return deleteFromDialog();
+    if (e.target.id === 'fileDeleteNo') { fileDlg.deleting = false; $('fileDelWrap').innerHTML = '<button type="button" class="btn ghost" id="fileDelete">Delete…</button>'; }
+  });
+  $('filePath').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyFileDialog(); } });
+  $('fileLang').addEventListener('input', showFileHow);
 
   function renderProblems() {
     const items = [];
@@ -556,15 +894,19 @@
     pc.textContent = items.length ? String(items.length) : '';
     pc.className = 'count' + (errCount ? ' bad' : '');
     $('problems').innerHTML = items.length
-      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${SECTION_META[p.s.file].title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
+      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
     return errCount;
   }
 
   function renderSectionHeader() {
-    const meta = SECTION_META[activeSec().file];
+    const sec = activeSec(), meta = metaOf(sec);
     $('secTitle').textContent = meta.title;
     $('secPurpose').textContent = meta.purpose;
+    // what the left side holds: sentences, code, or notes and data (which have no values to drop down)
+    const tag = document.querySelector('.pane-say .file-tag');
+    if (tag) tag.textContent = isSentences(sec) ? 'sentences' : writeOf(sec) === 'code' ? 'code' : sec.lang === 'markdown' || sec.lang === 'text' ? 'notes' : 'data';
+    $('btnDropDown').hidden = !isSentences(sec);
   }
 
   let compileTimer = null;
@@ -681,7 +1023,8 @@
     if (lead) indent += lead[0];   // "please set…" still suggests "set ‹name› to ‹value›"
     const typed = before.slice(indent.length);
     if (!typed || /^(?:note|python|#)/i.test(typed)) return closeAc();
-    const file = activeSec().file;
+    if (!isSentences(activeSec())) return closeAc();   // code and notes files are written as they are
+    const file = tplRole(activeSec());
     const lower = typed.toLowerCase();
     let items = [];
 
@@ -752,6 +1095,7 @@
     autosave();
     typingLine = caretLine();
     activeSec().text = ta.value;
+    lastEdit = { title: metaOf(activeSec()).title, line: typingLine };
     ensureCaretVisible();
     renderOverlay();
     scheduleCompile();
@@ -863,6 +1207,8 @@
   pycode.addEventListener('click', (e) => {
     const pl = e.target.closest('.pl');
     if (pl) pickCode(+pl.dataset.i);
+    const part = e.target.closest('.side-sec');   // a part of a code file, in its outline
+    if (part) goToLine(+part.dataset.line);
   });
   pycode.addEventListener('dblclick', (e) => {
     const pl = e.target.closest('.pl');
@@ -877,7 +1223,12 @@
   pycode.addEventListener('scroll', placeTip);
   ta.addEventListener('focus', () => { if (pane !== 'say') { setPane('say'); renderExplain(); } });
 
-  $('tree').addEventListener('click', (e) => { const b = e.target.closest('.tree-item'); if (b) openSection(b.dataset.id); });
+  $('tree').addEventListener('click', (e) => {
+    const more = e.target.closest('.ti-more');
+    if (more) return more.dataset.folderMenu ? openFileDialog({ kind: 'folder', folder: more.dataset.folderMenu, isNew: false }) : openFileDialog({ id: more.dataset.fileMenu, isNew: false });
+    const b = e.target.closest('.tree-item');
+    if (b) openSection(b.dataset.id);
+  });
   $('problems').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-sec]');
     if (!b) return;
@@ -892,7 +1243,7 @@
     catch (_) { btn.textContent = 'Copy blocked here'; }
     setTimeout(() => { btn.textContent = label; }, 1800);
   }
-  $('btnCopy').addEventListener('click', () => { const r = secResult(activeSec().id); if (r) copyText(r.text, $('btnCopy'), 'Copy'); });
+  $('btnCopy').addEventListener('click', () => { activeSec().text = ta.value; copyText(codeOf(activeSec()), $('btnCopy'), 'Copy'); });
 
   /* ------------------------------------------------------------------ */
   /* Tutor: how the language likes things said, and lines to write      */
@@ -987,7 +1338,7 @@
     lines[li] = lines[li].match(/^\s*/)[0] + answer.trim();
     copy.sections.find(s => s.id === sec.id).text = lines.join('\n');
     let other;
-    try { other = project.kind === 'website' ? WEB.compileWebsite(copy) : isCpp() ? CPP.compileCppProject(copy) : LANG.compileProject(copy); } catch (e) { return { same: false, error: 'IntuCode couldn\'t read that sentence.' }; }
+    try { other = compileAll(copy); } catch (e) { return { same: false, error: 'IntuCode couldn\'t read that sentence.' }; }
     const mine = other.results[sec.id];
     if (!mine || !mine.info[li] || mine.info[li].errs.length) return { same: false, error: mine && mine.info[li] && mine.info[li].errs[0] };
     return { same: copy.sections.every(s => (other.results[s.id] || {}).text === (compiled.results[s.id] || {}).text) };
@@ -1036,6 +1387,7 @@
     const t = (sel) => e.target.closest(sel);
     let b;
     if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
+    if ((b = t('[data-keep-code]'))) return keepNewCode(project.active, +b.dataset.keepCode);
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
     if ((b = t('[data-go-say]'))) return goToLine(+b.dataset.goSay);
     if ((b = t('[data-term]'))) return openGlossary(b.dataset.term);
@@ -1193,7 +1545,7 @@
     if (tutor.on) tutorRun.timer = setTimeout(tutorCheck, delay);
   }
   function tutorCheck() {
-    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])') || !$('gloss').hidden) return;
+    if (!tutor.on || mode !== 'write' || !tip.hidden || document.querySelector('.modal:not([hidden])') || !$('gloss').hidden || !isSentences(activeSec())) return;
     const sec = activeSec();
     if (pane === 'code' && codeIdx >= 0) {
       const lang = tutorLang(sec), r = secResult(sec.id);
@@ -1332,7 +1684,7 @@
   const ddLayer = $('ddLayer'), ddMenu = $('ddMenu');
   let ddVals = [], ddHold = null, ddOpen = null;
   const ddInfo = new Map();   // "lang|line|start" -> what the value is (cleared when it grows)
-  const ddOn = () => !!(layout.dd && VALUES && mode === 'write');
+  const ddOn = () => !!(layout.dd && VALUES && mode === 'write' && isSentences(activeSec()));
   const lineStartOf = (line) => { const ls = ta.value.split('\n'); let p = 0; for (let i = 0; i < line && i < ls.length; i++) p += ls[i].length + 1; return p; };
   function infoOf(lang, text, v) {
     const k = `${lang}|${text}|${v.start}`;
@@ -1663,7 +2015,7 @@
     const sec = project.sections.find(s => s.id === secId);
     if (!sec) return;
     if (!keepFirst || !runtimeMark) runtimeMark = { sec: secId, line, msg };
-    tLink(`  Go to ${SECTION_META[sec.file].title}, line ${line + 1}: ${(sec.text.split('\n')[line] || '').trim()}`, secId, line);
+    tLink(`  Go to ${metaOf(sec).title}, line ${line + 1}: ${(sec.text.split('\n')[line] || '').trim()}`, secId, line);
     if (secId === project.active) { renderOverlay(); renderExplain(); }
   }
   function setStatus(text, cls) { const el = $('pyStatus'); el.textContent = text; el.className = 'py-status' + (cls ? ' ' + cls : ''); }
@@ -1719,7 +2071,7 @@
   }
 
   function locate(file, pyLine) {
-    const sec = project.sections.find(s => s.file + '.py' === file);
+    const sec = project.sections.find(s => s.lang === 'python' && (s.path === file || s.path.split('/').pop() === file));
     if (!sec || !pyLine) return null;
     const o = secResult(sec.id) && secResult(sec.id).lines[pyLine - 1];
     if (!o) return { sec: sec.id, line: null };
@@ -1729,11 +2081,18 @@
   async function run() {
     setDock('term', true);   // Run shows what happens, even when the terminal was folded away
     if (mode === 'read') { tLine('Run works on the program in Write mode. Use "Open as sentences" to bring imported code there.', 't-sys'); return; }
-    if (project.kind === 'website') return runWebsite(true);
-    if (isCpp()) {
-      typingLine = -1; activeSec().text = ta.value; refreshAll();
-      if (renderProblems()) { tLine('Can\'t run yet: fix the problems first (see Problems on the left).', 't-err'); return; }
-      if (project.kind === 'arduino') {
+    // Run starts the project's start file, in its own way: a page in the preview, a program, a sketch on a board
+    const st = startSec();
+    // only problems in the files that run stop a run (a half-written note or page doesn't stop the Python)
+    const blocking = (langs) => { typingLine = -1; activeSec().text = ta.value; refreshAll(); closeAc(); renderProblems(); return project.sections.filter(s => langs.includes(s.lang)).reduce((n, s) => n + issues(s, 'errs'), 0); };
+    if (WEB_ROLE[st.lang]) return runWebsite(true);
+    if (!isSentences(st)) {
+      tLine(`This project starts at ${st.path} (${langName(st.lang)}), which IntuCode doesn't run. To run another file, open its ⋯ menu in the Project list and choose "Start here".` + (writeOf(st) === 'code' && desk.on ? ' Its own tools can run it from the terminal, after $.' : ''), 't-sys');
+      return;
+    }
+    if (st.lang === 'cpp' || st.lang === 'arduino') {
+      if (blocking([st.lang])) { tLine('Can\'t run yet: fix the problems first (see Problems on the left).', 't-err'); return; }
+      if (st.lang === 'arduino') {
         if (desk.on && desk.arduino) return runDesktopArduino();
         tLine(desk.on
           ? (desk.linux
@@ -1746,31 +2105,28 @@
       tLine(desk.on ? (desk.linux ? 'No C++ compiler was found on this computer. Install g++: type $ sudo apt install g++ (Ubuntu, Debian, Mint), $ sudo dnf install gcc-c++ (Fedora) or $ sudo pacman -S gcc (Arch). Then restart IntuCode.' : 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuCode.') : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
       return;
     }
-    typingLine = -1;
-    activeSec().text = ta.value;
-    refreshAll();
-    closeAc();
-    const errs = renderProblems();
+    const errs = blocking(['python']);
     if (errs) {
       tLine(`Can't run yet: ${errs} problem${errs > 1 ? 's' : ''} to fix first.`, 't-err');
-      for (const s of project.sections) {
-        secResult(s.id).info.forEach((inf, i) => inf.errs.forEach(e => tLink(`${SECTION_META[s.file].title}, line ${i + 1}: ${e.replace(/`/g, '')}`, s.id, i)));
+      for (const s of project.sections.filter(x => x.lang === 'python')) {
+        secResult(s.id).info.forEach((inf, i) => inf.errs.forEach(e => tLink(`${metaOf(s).title}, line ${i + 1}: ${e.replace(/`/g, '')}`, s.id, i)));
       }
       return;
     }
     if (desk.on && desk.python) return runDesktopPython();
     if (!(await ensurePython())) return;
-    const files = {};
-    for (const s of project.sections) files[s.file + '.py'] = secResult(s.id).text;
+    // the Python files, and the notes and data beside them (so the program can open data.csv)
+    const files = {}, py = project.sections.filter(s => s.lang === 'python');
+    for (const s of project.sections) if (s.lang === 'python' || writeOf(s) === 'text') files[s.path] = codeOf(s);
     Runner.writeFiles(files);
-    tLine(`▶ Running ${project.name} (main.py${project.sections.length > 1 ? ' + ' + project.sections.filter(s => s.file !== 'main').map(s => s.file + '.py').join(', ') : ''})`, 't-sys');
-    session = { answers: [], shown: 0, seed: Math.floor(Math.random() * 1e9), modules: project.sections.map(s => s.file) };
+    tLine(`▶ Running ${project.name} (${st.path}${py.length > 1 ? ' + ' + py.filter(s => s !== st).map(s => s.path).join(', ') : ''})`, 't-sys');
+    session = { answers: [], shown: 0, seed: Math.floor(Math.random() * 1e9), modules: py.map(s => s.file), start: st.path };
     step();
   }
 
   function step() {
     let r;
-    try { r = Runner.run(session.answers, session.seed, session.modules); }
+    try { r = Runner.run(session.answers, session.seed, session.modules, session.start); }
     catch (e) { tLine('The Python engine hit a problem: ' + e.message, 't-err'); setAsking(false); return; }
     tWrite(r.out.slice(session.shown));
     session.shown = r.out.length;
@@ -1843,10 +2199,11 @@
   let previewInfo = null, picking = false, previewTimer = null;
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
-    chip.textContent = mode === 'read' ? 'Reading' : project.kind === 'website' ? 'Website' : project.kind === 'cpp' ? 'C++' : project.kind === 'arduino' ? 'Arduino' : 'Python';
+    const engines = [...new Set(project.sections.map(s => ENGINE[s.lang]).filter(Boolean))].map(e => ENGINE_NAME[e]);
+    chip.textContent = mode === 'read' ? 'Reading' : mode === 'unity' ? 'Unity · ' + langName(unityState().lang) : engines.length ? engines.join(' + ') : 'Files';
   }
   function showBottom(which) {
-    const web = project.kind === 'website';
+    const web = webOn();
     $('tabPreview').hidden = !web;
     const showPreview = web && which === 'preview';
     $('previewWrap').hidden = !showPreview;
@@ -1858,7 +2215,9 @@
   }
   function runWebsite(announce) {
     if (!compiled) compile();
-    previewInfo = WEB.previewDocument(compiled, previewHelper());
+    const pg = previewPage(), res = (s) => (s ? secResult(s.id) : null);
+    previewInfo = WEB.previewDocument({ results: { structure: res(pg.html), styling: res(pg.styling), mechanics: res(pg.mechanics) } }, previewHelper());
+    previewInfo.page = pg;
     showPreviewPage(withImages(previewInfo.html), announce);
     setPicking(false);
     if (announce) {
@@ -1889,7 +2248,7 @@
   /* The live preview follows the sentences, but not a line still being typed that doesn't work yet
    * (half a condition, a ‹blank› not filled in): it waits until the line works, or the cursor leaves it. */
   function schedulePreview() {
-    if (project.kind !== 'website' || $('previewWrap').hidden) return;
+    if (!webOn() || $('previewWrap').hidden) return;
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
       const r = secResult(project.active), inf = r && typingLine >= 0 && r.info[typingLine];
@@ -1922,27 +2281,27 @@
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
       let where = '';
-      const js = secResult('mechanics');
+      const mech = previewInfo && previewInfo.page.mechanics;
+      const js = mech && secResult(mech.id);
       if (d.line && previewInfo && js) {
         const o = js.lines[d.line - previewInfo.jsLine];
         if (o && o.src >= 0) where = o.src;
       }
       // an unfilled ‹blank› runs as _ : say that, not "_ is not defined"
-      const mech = project.sections.find(s => s.file === 'mechanics');
       if (/\b_ is not defined/.test(d.text) && mech && /‹[^›]*›/.test(where !== '' ? mech.text.split('\n')[where] || '' : mech.text)) {
         tLine(`■ The page stopped at a ‹blank› that isn't filled in yet${where !== '' ? '' : ': Problems on the left lists them'}. The help says what goes in it.`, 't-sys');
         if (where !== '') pointAt(mech.id, where, 'The page stops here until this ‹blank› is filled in.');
         return;
       }
       tLine(`✕ The page hit an error: ${d.text}`, 't-err');
-      if (where !== '') pointAt(mech.id, where, `The page hit an error: ${d.text}`);
+      if (where !== '' && mech) pointAt(mech.id, where, `The page hit an error: ${d.text}`);
     } else if (d.type === 'pick') {
       setPicking(false);
       const sec = activeSec();
       if (d.alt) { insertText(`${d.x}, ${d.y}`); tLine(`Picked the position ${d.x}, ${d.y}. (Exact positions can break on other screen sizes; "in a row" or a grid adapt better.)`, 't-sys'); return; }
       if (d.id && sec.file !== 'structure') { insertText(d.id); tLine(`Picked ${d.id}.`, 't-sys'); return; }
-      if (d.line != null) {
-        openSection('structure', d.line);
+      if (d.line != null && previewInfo && previewInfo.page.html) {
+        openSection(previewInfo.page.html.id, d.line);
         tLine(d.id ? `Picked ${d.id}: here is where it is added.` : `Picked a <${d.tag}> with no name. To style it or use it in Mechanics, give it one: add "called …" to this sentence.`, 't-sys');
       }
     }
@@ -1980,15 +2339,18 @@
       return replaceProject(prev, `Restored "${prev.name}".` + (desk.on ? ' It isn\'t saved in a folder: press Save to keep it.' : ''));
     }
     if (low === 'files' || low === 'ls') {
-      return tLine(project.name + '/\n' + project.sections.map(s => `  ${fileName(s).padEnd(13)} ${SECTION_META[s.file].title}: ${SECTION_META[s.file].purpose}`).join('\n'), 't-help');
+      return tLine(project.name + '/\n' + project.sections.map(s => `  ${fileName(s).padEnd(13)} ${metaOf(s).title}: ${metaOf(s).purpose}${s.id === project.start ? ' (starts here)' : ''}`).join('\n'), 't-help');
     }
     if (low === 'reset') { Runner.reset(); return tLine('Forgot all values from earlier runs.', 't-sys'); }
     if (low === 'board' || low.startsWith('board ')) return chooseBoard(cmd.slice(5).trim());
     if (!compiled) compile();
-    if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
-    if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
-    if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in Python projects.', 't-sys');
-    const tr = LANG.translateOne(cmd, compiled.syms);
+    if (!project.sections.some(s => s.lang === 'python')) {   // the terminal's sentences are Python's
+      if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
+      if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
+      if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in projects with a Python file.', 't-sys');
+      return tLine('Sentences typed here are Python\'s. Add a Python file to this project (+ File) to try them.', 't-sys');
+    }
+    const tr = LANG.translateOne(cmd, compiled.pySyms);
     if (tr.info.errs.length) return tLine(tr.info.errs.join('\n'), 't-err');
     if (tr.open) return tLine('Blocks (if, loops, define) need more than one line. Write them in a folder and press Run.', 't-err');
     if (tr.py.trim() !== cmd) tLine('→ ' + tr.py, 't-py');
@@ -2054,12 +2416,12 @@
 
   function renderIndex() {
     const q = $('indexSearch').value.trim().toLowerCase();
-    const file = activeSec().file;
+    const file = tplRole(activeSec());
     const PK = packFor(activeSec());
     const G = PK.guide;
     const match = (...parts) => !q || parts.join(' ').toLowerCase().includes(q);
     let html = '';
-    $('indexTitle').textContent = mode === 'read' ? `${G.name} · reading code` : `${G.name} · ${SECTION_META[file].title}`;
+    $('indexTitle').textContent = mode === 'read' ? `${G.name} · reading code` : `${G.name} · ${metaOf(activeSec()).title}`;
     if (!G.rules) G.rules = [];
     if (!q) {
       html += `<div class="ix"><h3>What ${G.name} is for</h3><p>${withCode(G.purpose)}</p>
@@ -2122,10 +2484,10 @@
 
   const bpSource = (sel) => sel.src === 'built' ? BP.BUILT_IN[sel.i] : myBlueprints[sel.i].source;
 
-  /* The Library: shelves by what you're making (the project builder's own questions), each holding the
+  /* Project Templates: shelves by what you're making (the project builder's own questions), each holding the
    * builder's kits (a whole kind of project, planned step by step) and blueprints (a story with blanks). */
   const bpOn = (sel) => !!bpSel && bpSel.src === sel.src && (sel.src === 'kit' ? bpSel.id === sel.id : bpSel.i === sel.i);
-  let bpPlatform = '';   // the Library's filter: '' (everything), or pc, phone, web, board
+  let bpPlatform = '';   // the templates' filter: '' (everything), or pc, phone, web, board
   const platTag = (p) => `<em class="bp-plat plat-${escHtml(p)}">${escHtml(BUILDER.PLATFORMS[p] || p)}</em>`;
   function renderBpList() {
     const lib = bldLibrary();
@@ -2150,7 +2512,7 @@
     const chip = (p, label) => `<button type="button" class="bp-filter${bpPlatform === p ? ' on' : ''}" data-platform="${p}" aria-pressed="${bpPlatform === p}">${label}</button>`;
     $('bpList').innerHTML = `<div class="bp-filters" role="group" aria-label="Where it runs">${chip('', 'All')}${Object.entries(BUILDER.PLATFORMS).map(([p, label]) => chip(p, label)).join('')}</div>`
       + (shelves || '<p class="bp-none">Nothing here runs there yet.</p>')
-      + (bpPlatform ? '' : group(`Add to ${SECTION_META[activeSec().file].title}`, built.filter(x => x.bp.kind === 'snippet')))
+      + (bpPlatform ? '' : group(`Add to ${metaOf(activeSec()).title}`, built.filter(x => x.bp.kind === 'snippet')))
       + `<div class="bp-group">Yours</div>`
       + myKitsOff.map(kitItem).join('')
       + (mine.length ? mine.map(item).join('') : myKitsOff.length ? '' : '<p class="bp-none">None yet. Edit a copy of any blueprint, or turn your current project into one.</p>')
@@ -2158,10 +2520,10 @@
     $('bpList').scrollTop = scroll;
   }
 
-  /* A kit in the Library: its steps in build order, each with its depth, and a way into the builder. */
+  /* A kit in Project Templates: its steps in build order, each with its depth, and a way into the builder. */
   function renderKitPage(box) {
     const lib = bldLibrary(), kit = lib.kits[bpSel.id];
-    if (!kit) { box.innerHTML = '<p class="bp-none">This kit isn\'t in the library any more.</p>'; return; }
+    if (!kit) { box.innerHTML = '<p class="bp-none">This kit isn\'t in Project Templates any more.</p>'; return; }
     const shelf = BUILDER.SHELVES.find(sh => sh.id === kit.shelf);
     const steps = kit.steps.map(s => ({ s, c: lib.components[s.id] })).filter(x => x.c);
     const count = (d) => steps.filter(x => x.c.depth === d).length;
@@ -2195,7 +2557,7 @@
   function bpPreview(bp) {
     const filled = BP.fill(bp, bpValues);
     return Object.entries(filled).map(([sec, text]) => {
-      const label = sec === 'here' ? `Goes into ${SECTION_META[activeSec().file].title} at the cursor` : `${SECTION_META[sec].title} · ${FILE_NAME[sec] || sec + '.py'}`;
+      const label = sec === 'here' ? `Goes into ${metaOf(activeSec()).title} at the cursor` : `${SECTION_META[sec].title} · ${FILE_NAME[sec] || sec + '.py'}`;
       return `<div class="bp-sec"><div class="ex-lbl">${label}</div><pre>${text.replace(/\n$/, '').split('\n').map(l => hlLine(l)).join('\n')}</pre></div>`;
     }).join('');
   }
@@ -2231,7 +2593,7 @@
     if (bpSel.src === 'kit') return renderKitPage(box);
     const bp = BP.parse(bpSource(bpSel));
     const isProject = bp.kind === 'project';
-    const where = 'Blueprint · ' + (isProject ? ({ structured: 'Settings, Tools and Main program', website: 'a website: Structure, Styling and Mechanics', cpp: 'C++, one Program file', arduino: 'Arduino, one Sketch for a board' }[bp.layout] || 'one Main program file') : `adds lines to ${SECTION_META[activeSec().file].title}`);
+    const where = 'Blueprint · ' + (isProject ? ({ structured: 'Settings, Tools and Main program', website: 'a website: Structure, Styling and Mechanics', cpp: 'C++, one Program file', arduino: 'Arduino, one Sketch for a board' }[bp.layout] || 'one Main program file') : `adds lines to ${metaOf(activeSec()).title}`);
     box.innerHTML = `<div class="bp-kind">${escHtml(where)}</div>
       <h3 class="bp-title">${escHtml(bp.title)}</h3>
       ${bp.errors.length ? `<div class="bp-errors">${bp.errors.map(e => `<div>${escHtml(e)}</div>`).join('')}</div>` : ''}
@@ -2293,7 +2655,7 @@
       if (bp.errors.length) return;
       closeBlueprints();
       if (bp.kind === 'project') replaceProject(projectFromBlueprint(bp, bpValues), `Built "${bp.title}" from its blueprint. Press Run to try it.` + (desk.on ? ' Press Save to keep it as files.' : ''));
-      else { insertSnippet(BP.fill(bp, bpValues).here); tLine(`Added "${bp.title}" to ${SECTION_META[activeSec().file].title}.`, 't-sys'); }
+      else { insertSnippet(BP.fill(bp, bpValues).here); tLine(`Added "${bp.title}" to ${metaOf(activeSec()).title}.`, 't-sys'); }
     }
     if (id === 'bpCopyEdit') {
       const src = bpSource(bpSel).replace(/^title:\s*(.*)$/m, (m, t) => `title: ${t} (my version)`);
@@ -2324,6 +2686,451 @@
   });
 
   /* ------------------------------------------------------------------ */
+  /* Library: kinds of project, and the parts to add to one              */
+  /* ------------------------------------------------------------------ */
+  /* Two ways in: by the kind of project (what it's written in, open-source projects to learn from, the parts
+   * it's made of) or by what a part does (lang/library.js; its packs are plain text in lang/library/). A part
+   * comes in one or more languages; adding it puts it in the project: sentences for a website, C++ or Arduino
+   * join the file of that language that's already there (they're one program), anything else gets its own file
+   * (a Python one is a module the others import). Coding integration parts add every side at once. */
+  const LIB = window.IntuiLibrary;
+  const libState = { view: 'types', sel: null, lang: null, q: '' };   // sel: { kind: 'type' | 'part', id }
+  const libOn = (kind, id) => (libState.sel && libState.sel.kind === kind && libState.sel.id === id ? ' on' : '');
+  const libPlat = (p) => `<em class="bp-plat plat-${escHtml(p)}">${escHtml(LIB.PLATFORMS[p] || p)}</em>`;
+  const libLangTags = (p) => [...new Set(p.variants.map(v => v.name))].map(n => `<em class="bp-tag">${escHtml(n)}</em>`).join('');
+  function libFits(e, q) {
+    if (!q) return true;
+    const hay = [e.title, e.about, e.summary, e.heading, e.learn, ...(e.variants || []).map(v => v.name), ...(e.languages || []).map(l => l.said + ' ' + l.uses.join(' '))].join(' ').toLowerCase();
+    return q.split(/\s+/).every(w => hay.includes(w));
+  }
+  function renderLibList() {
+    const c = LIB.catalog(), q = libState.q.trim().toLowerCase(), box = $('libList'), scroll = box.scrollTop;
+    const typeItem = (t) => `<button type="button" class="bp-item${libOn('type', t.id)}" data-lib-type="${escHtml(t.id)}"><b>${escHtml(t.title)}</b><span>${t.platforms.map(libPlat).join('')}${escHtml(t.about)}</span></button>`;
+    const partItem = (p) => `<button type="button" class="bp-item${libOn('part', p.id)}" data-lib-part="${escHtml(p.id)}"><b>${escHtml(p.title)}</b><span>${libLangTags(p)}${escHtml(p.about)}</span></button>`;
+    const tab = (v, label) => `<button type="button" class="bp-filter${libState.view === v ? ' on' : ''}" data-lib-view="${v}" aria-pressed="${libState.view === v}">${label}</button>`;
+    let body;
+    if (q) {
+      const ts = c.types.filter(t => libFits(t, q)), ps = c.parts.filter(p => libFits(p, q));
+      body = (ts.length ? `<div class="bp-group">Kinds of project</div>${ts.map(typeItem).join('')}` : '')
+        + (ps.length ? `<div class="bp-group">Parts</div>${ps.map(partItem).join('')}` : '')
+        || '<p class="bp-none">Nothing matches. Try fewer words, or a language\'s name.</p>';
+    } else if (libState.view === 'types') {
+      body = c.headings.map(h => `<div class="bp-group">${escHtml(h)}</div>${c.types.filter(t => t.heading === h).map(typeItem).join('')}`).join('');
+    } else {
+      body = c.groups.map(g => { const ps = c.parts.filter(p => p.group === g.id); return ps.length ? `<div class="bp-group" title="${escHtml(g.about)}">${escHtml(g.title)}</div>${ps.map(partItem).join('')}` : ''; }).join('');
+    }
+    box.innerHTML = `<div class="bp-filters" role="group" aria-label="List by">${tab('types', 'Kinds of project')}${tab('parts', 'Parts')}</div>${body}`;
+    box.scrollTop = scroll;
+  }
+
+  /* A part's text, coloured: sentences as sentences, code and data as what they are. */
+  const libHl = (v) => v.text.split('\n').map(l => (v.write === 'sentences' ? hlLine(l) : hlFileLine({ lang: v.lang }, l))).join('\n');
+  /* What a sentences variant writes, compiled on its own (as a file of a project of one). */
+  function libCompiled(v) {
+    const p = normalized({ name: 'library', sections: [{ id: 'lib', path: v.file, lang: v.lang, text: v.text }], start: 'lib', active: 'lib' });
+    const r = p && compileAll(p).results[p.sections[0].id];
+    return r ? { text: r.text, problems: r.info.reduce((n, i) => n + i.errs.length, 0) } : null;
+  }
+  /* Where a variant goes in a project: { sec } to add to a file that's there, or { path } for a new one. */
+  function libPlace(v, p) {
+    const same = p.sections.find(s => s.path.toLowerCase() === v.file.toLowerCase());
+    if (same && same.lang === v.lang) return { sec: same };
+    if (v.write === 'sentences' && v.lang !== 'python') {
+      // one program: the main page's file of that kind, or the start (or first) C++ / Arduino file
+      const join = WEB_ROLE[v.lang] ? PRJ.webTriple(p.sections.filter(s => WEB_ROLE[s.lang]))[WEB_ROLE[v.lang]]
+        : p.sections.find(s => s.lang === v.lang && s.id === p.start) || p.sections.find(s => s.lang === v.lang);
+      if (join) return { sec: join };
+      // the first of a website's files: the names its page links to (index.html, style.css, script.js)
+      // (in the part's own folder, if it has one: static/index.html links static/script.js)
+      const classic = WEB_ROLE[v.lang] && v.file.replace(/[^/]*$/, '') + PRJ.CLASSIC_PATH[WEB_ROLE[v.lang]];
+      if (classic && !p.sections.some(s => s.path.toLowerCase() === classic.toLowerCase())) return { path: classic };
+    }
+    const sep = v.lang === 'python' ? '_' : '-', m = v.file.match(/^(.*?)(\.[^./]+)?$/);
+    for (let n = 1, path = v.file; n < 50; n++, path = `${m[1]}${sep}${n}${m[2] || ''}`) {
+      if (!p.sections.some(s => s.path.toLowerCase() === path.toLowerCase()) && !pathProblem(path, v.lang)) return { path };
+    }
+    return null;
+  }
+  /* The line that marks where a part starts in a file it joins: a note in sentences, a comment in code. */
+  function libBanner(v, title) {
+    if (v.write === 'sentences') return `note: ── Library: ${title} ──`;
+    const l = LANGS.byId(v.lang) || {};
+    if (v.lang === 'markdown') return `## ${title}`;
+    return l.comment ? `${l.comment} Library: ${title}` : '';
+  }
+  /* What "Add" adds: every side of a Coding integration part, a website part's HTML, CSS and JavaScript together
+   * (one feature in three files), or the one language picked. */
+  const libSides = (p, v) => (p.group === 'integration' ? p.variants : WEB_ROLE[v.lang] && v.write === 'sentences' ? p.variants.filter(x => WEB_ROLE[x.lang] && x.write === 'sentences') : [v]);
+  function libWhere(v, p, title) {
+    const at = libPlace(v, p);
+    if (!at) return 'There\'s no free name for it here. Rename a file first.';
+    const banner = libBanner(v, title);
+    if (at.sec && banner && at.sec.text.includes(banner)) return `It's already in ${escHtml(fileName(at.sec))}: adding it again makes a second copy.`;
+    return at.sec ? `Joins ${escHtml(fileName(at.sec))}${at.sec.text.trim() ? ', at the end' : ''}.` : `Adds ${escHtml(at.path)} (${escHtml(v.name)}${v.write === 'sentences' ? ', in sentences' : ''}).`;
+  }
+  function addFromLibrary(part, vs) {
+    activeSec().text = ta.value;
+    const copy = JSON.parse(JSON.stringify(project)), done = [];
+    let open = null;
+    for (const v of vs) {
+      const at = libPlace(v, copy);
+      if (!at) { tLine(`There's no free name for ${v.file} in this project. Rename a file, then add ${part.title} again.`, 't-err'); return; }
+      const banner = libBanner(v, part.title);
+      if (at.sec) {
+        const s = at.sec, before = s.text.replace(/\s+$/, '');
+        s.text = (before ? before + '\n\n' : '') + (banner && !(v.lang === 'markdown' && /^#/.test(v.text)) ? banner + '\n' : '') + v.text + '\n';
+        done.push(`${fileName(s)} (added at the end)`);
+        open = open || s.id;
+      } else {
+        const s = { id: newId(), path: at.path, lang: v.lang, text: v.text + '\n' };
+        copy.sections.push(s);
+        done.push(`${at.path} (new)`);
+        open = open || s.id;
+      }
+    }
+    const made = done.some(d => /\(new\)$/.test(d)) && vs.some(v => v.lang === 'python');
+    codeBase.clear();   // a part added on purpose: the code it changes elsewhere (imports, ids) is meant
+    const err = changeProject(copy, open, `Added ${part.title} from the Library: ${done.join(', ')}.` + (made ? ' The start file can use its tools (it imports every other Python file).' : ''));
+    if (err) { tLine(err, 't-err'); return; }
+    closeLibrary();
+  }
+
+  function renderLibType(box, t) {
+    const c = LIB.catalog(), kits = bldLibrary().kits;
+    const parts = t.parts.map(id => c.partById[id]).filter(Boolean);
+    const byGroup = c.groups.map(g => [g, parts.filter(p => p.group === g.id)]).filter(([, ps]) => ps.length);
+    const fits = t.templates.filter(k => kits[k]);
+    box.innerHTML = `<div class="bp-kind">Kind of project · ${escHtml(t.heading)}</div>
+      <h3 class="bp-title">${escHtml(t.title)}</h3>
+      <p class="bp-lead">${t.platforms.map(libPlat).join('')} ${escHtml(t.about)}</p>
+      ${fits.length ? `<div class="bp-actions">${fits.map(k => `<button type="button" class="btn${fits[0] === k ? ' primary' : ''}" data-lib-template="${escHtml(k)}">Start from the template: ${escHtml(kits[k].title)}</button>`).join('')}</div>` : ''}
+      <div class="lib-sec"><div class="ex-lbl">Languages it's written in</div>
+        <table class="lib-langs"><thead><tr><th>Language</th><th>What it does here</th><th>Usual frameworks and libraries</th></tr></thead><tbody>
+        ${t.languages.map(l => `<tr><td><b>${escHtml(l.lang ? langName(l.lang) : l.said)}</b>${l.lang && (LANGS.byId(l.lang) || {}).write === 'sentences' ? ' <span class="dim">in sentences</span>' : ''}</td><td>${escHtml(l.why)}</td><td>${escHtml(l.uses.join(', ')) || '<span class="dim">none needed</span>'}</td></tr>`).join('')}
+        </tbody></table></div>
+      ${t.learnFrom.length ? `<div class="lib-sec"><div class="ex-lbl">Open-source projects to learn from</div><ul class="lib-learn">
+        ${t.learnFrom.map(l => `<li><b>${escHtml(l.name)}</b> <span class="dim">${escHtml(l.lang ? langName(l.lang) : l.said)} · ${escHtml(l.licence)}</span><span>${escHtml(l.what)}</span><span class="lib-url"><code>${escHtml(l.url)}</code><button type="button" class="btn tiny" data-lib-copy="${escHtml(l.url)}">Copy address</button></span></li>`).join('')}
+        </ul><p class="bp-note">Addresses are shown, not opened: IntuCode never follows links from inside the editor. Copy one into your browser. Read a project's licence before using its code in yours.</p></div>` : ''}
+      <div class="lib-sec"><div class="ex-lbl">Parts it's usually made of</div>
+        ${byGroup.map(([g, ps]) => `<div class="lib-group"><span class="dim">${escHtml(g.title)}</span>${ps.map(p => `<button type="button" class="lib-chip" data-lib-part="${escHtml(p.id)}" title="${escHtml(p.about)}">${escHtml(p.title)}</button>`).join('')}</div>`).join('') || '<p class="bp-none">None listed yet.</p>'}
+      </div>`;
+  }
+  function renderLibPart(box, p) {
+    const c = LIB.catalog(), group = c.groups.find(g => g.id === p.group);
+    const langs = new Set(project.sections.map(s => s.lang));
+    let v = p.variants.find(x => x.lang === libState.lang && x.file === libState.file) || p.variants.find(x => x.lang === activeSec().lang) || p.variants.find(x => langs.has(x.lang)) || p.variants[0];
+    libState.lang = v.lang; libState.file = v.file;
+    const sides = libSides(p, v), both = sides.length > 1;
+    const compiled = v.write === 'sentences' ? libCompiled(v) : null;
+    box.innerHTML = `<div class="bp-kind">Part · ${escHtml(group ? group.title : p.group)}</div>
+      <h3 class="bp-title">${escHtml(p.title)}</h3>
+      <p class="bp-lead">${escHtml(p.about)}</p>
+      <p>${withCode(p.summary)}</p>
+      ${p.learn ? `<p class="bp-note"><b>Learn first:</b> ${withCode(p.learn)}</p>` : ''}
+      <div class="lib-tabs" role="tablist" aria-label="Languages">${p.variants.map(x => `<button type="button" role="tab" class="lib-tab${x === v ? ' on' : ''}" aria-selected="${x === v}" data-lib-lang="${escHtml(x.lang)}" data-lib-file="${escHtml(x.file)}"><b>${escHtml(x.name)}</b> <span class="dim">${escHtml(x.file)}</span></button>`).join('')}</div>
+      <div class="lib-code-h"><span class="ex-lbl">${v.write === 'sentences' ? `Sentences, written as ${escHtml(v.name)}` : v.write === 'code' ? `${escHtml(v.name)} code` : escHtml(v.name)}</span><button type="button" class="btn tiny" id="libCopyText">Copy</button></div>
+      <pre class="lib-code">${libHl(v)}</pre>
+      ${compiled ? `<details class="lib-made"><summary>The ${escHtml(v.name)} it writes${compiled.problems ? ` <span class="ti-badge">${compiled.problems}</span>` : ''}</summary><pre class="lib-code">${compiled.text.replace(/\n$/, '').split('\n').map(l => hlFileLine({ lang: secLang({ lang: v.lang }) }, l)).join('\n')}</pre></details>` : ''}
+      <p class="lib-where">${both ? `${p.group === 'integration' ? 'Adds every side' : 'Adds its page, styling and script together'}: ${sides.map(x => libWhere(x, project, p.title)).join(' ')}` : libWhere(v, project, p.title)}</p>
+      <div class="bp-actions"><button type="button" class="btn primary" id="libAdd">${both ? `Add all ${sides.length} to the project` : 'Add to the project'}</button>${both ? '<button type="button" class="btn" id="libAddOne">Add only this one</button>' : ''}</div>
+      ${p.types.length ? `<div class="lib-sec"><div class="ex-lbl">Used in</div><div class="lib-group">${p.types.map(id => c.typeById[id]).map(t => `<button type="button" class="lib-chip" data-lib-type="${escHtml(t.id)}">${escHtml(t.title)}</button>`).join('')}</div></div>` : ''}
+      ${p.sources.length ? `<div class="lib-sec"><div class="ex-lbl">Where it comes from</div><ul class="lib-learn">${p.sources.map(s => `<li><b>${escHtml(s.name)}</b><span>${escHtml(s.what)}</span>${s.url ? `<span class="lib-url"><code>${escHtml(s.url)}</code><button type="button" class="btn tiny" data-lib-copy="${escHtml(s.url)}">Copy address</button></span>` : ''}</li>`).join('')}</ul></div>` : ''}`;
+  }
+  function renderLibDetail() {
+    const box = $('libDetail'), c = LIB.catalog(), sel = libState.sel;
+    const e = sel && (sel.kind === 'type' ? c.typeById[sel.id] : c.partById[sel.id]);
+    if (!e) { box.innerHTML = '<p class="bp-none">Pick a kind of project or a part on the left.</p>'; return; }
+    if (sel.kind === 'type') renderLibType(box, e); else renderLibPart(box, e);
+    box.scrollTop = 0;
+  }
+  function openLibrary() {
+    activeSec().text = ta.value;
+    const c = LIB.catalog();
+    if (c.errors.length) console.warn('Library:', c.errors);
+    if (!libState.sel && c.types.length) libState.sel = { kind: 'type', id: c.types[0].id };
+    renderLibList(); renderLibDetail();
+    $('libModal').hidden = false;
+    $('libSearch').focus();
+  }
+  function closeLibrary() { $('libModal').hidden = true; }
+  const libPick = (kind, id) => { libState.sel = { kind, id }; if (kind === 'part') { libState.lang = null; libState.file = null; } renderLibList(); renderLibDetail(); };
+
+  $('btnLibrary').hidden = !LIB;
+  if (LIB) {
+    $('btnLibrary').addEventListener('click', openLibrary);
+    $('libClose').addEventListener('click', closeLibrary);
+    $('libModal').addEventListener('click', (e) => { if (e.target.id === 'libModal') closeLibrary(); });
+    $('libSearch').addEventListener('input', (e) => { libState.q = e.target.value; renderLibList(); });
+    $('libList').addEventListener('click', (e) => {
+      const view = e.target.closest('[data-lib-view]');
+      if (view) { libState.view = view.dataset.libView; libState.q = ''; $('libSearch').value = ''; renderLibList(); return; }
+      const t = e.target.closest('[data-lib-type]'), p = e.target.closest('[data-lib-part]');
+      if (t) libPick('type', t.dataset.libType);
+      else if (p) libPick('part', p.dataset.libPart);
+    });
+    $('libDetail').addEventListener('click', (e) => {
+      const t = e.target.closest('[data-lib-type]'), p = e.target.closest('[data-lib-part]'), tab = e.target.closest('[data-lib-lang]');
+      if (t) { libPick('type', t.dataset.libType); return; }
+      if (p) { libPick('part', p.dataset.libPart); return; }
+      if (tab) { libState.lang = tab.dataset.libLang; libState.file = tab.dataset.libFile; renderLibDetail(); return; }
+      const cp = e.target.closest('[data-lib-copy]');
+      if (cp) { copyText(cp.dataset.libCopy, cp, 'Copy address'); return; }
+      const kit = e.target.closest('[data-lib-template]');
+      if (kit) { closeLibrary(); bpSel = { src: 'kit', id: kit.dataset.libTemplate }; openBlueprints(); return; }
+      const part = libState.sel && libState.sel.kind === 'part' && LIB.part(libState.sel.id);
+      if (!part) return;
+      const v = part.variants.find(x => x.lang === libState.lang && x.file === libState.file) || part.variants[0];
+      if (e.target.id === 'libCopyText') copyText(v.text, e.target, 'Copy');
+      if (e.target.id === 'libAdd') addFromLibrary(part, libSides(part, v));
+      if (e.target.id === 'libAddOne') addFromLibrary(part, [v]);
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Unity mode: one pane of code; De-Regex/Translate any part of it     */
+  /* ------------------------------------------------------------------ */
+  /* The text is code; a region is some of its lines said in sentences (lang/unity.js). De-Regex/Translate turns
+   * the selected lines into sentences right where they are; Re-Regex turns a region back into code: exactly
+   * as it was if nobody changed it, or written in the context of the code around it if they did. */
+  const UNITY = window.IntuiUnity;
+  const UNITY_KEY = 'intuicode.unity.v1';
+  const UNITY_START = {
+    python: 'import random\n\ndef roll(sides):\n    n = random.randint(1, sides)\n    if n == sides:\n        print("Top roll!")\n    return n\n\ntotal = 0\nfor i in range(3):\n    total += roll(6)\nprint("Total:", total)\n',
+    js: 'function total(prices) {\n  let sum = 0;\n  for (const p of prices) {\n    sum += p;\n  }\n  return sum;\n}\n\nconsole.log(total([3, 4, 5]));\n',
+    html: '<main>\n  <h1>Hello</h1>\n  <div id="box">\n    <p>Some words.</p>\n    <button id="go">Go</button>\n  </div>\n</main>\n',
+    css: '.card {\n  color: #333333;\n  padding: 12px;\n}\n\n.card:hover {\n  color: red;\n}\n',
+    cpp: '#include <iostream>\n\nint main() {\n    int count = 0;\n    for (int i = 1; i <= 5; i++) {\n        count += i;\n    }\n    std::cout << "Total: " << count << std::endl;\n    return 0;\n}\n',
+    arduino: 'void setup() {\n  pinMode(13, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(13, HIGH);\n  delay(500);\n  digitalWrite(13, LOW);\n  delay(500);\n}\n',
+  };
+  let unity = store.get(UNITY_KEY, null);
+  if (!unity || !UNITY || !UNITY.LANGS.includes(unity.lang) || typeof unity.text !== 'string' || !Array.isArray(unity.regions)) unity = { lang: 'python', text: UNITY_START.python, regions: [] };
+  const unityState = () => unity;
+  const uTa = $('uTa');
+  let uBefore = unity.text.split('\n'), uCaret = -1, uProblems = [], uStripTimer = 0, uSaveTimer = 0, uFrame = 0;
+  const uW = () => ({ LANG, WEB, CPP });
+  const uCodeLang = () => (unity.lang === 'arduino' ? 'cpp' : unity.lang);
+  const uLines = () => uTa.value.split('\n');
+  const uRegionAt = (n) => unity.regions.findIndex(r => n >= r.from && n <= r.to);
+  const uLineOf = (pos) => uTa.value.slice(0, pos).split('\n').length - 1;
+  const uPosOf = (line) => uLines().slice(0, line).reduce((n, l) => n + l.length + 1, 0);
+  const uSave = () => { clearTimeout(uSaveTimer); uSaveTimer = setTimeout(() => store.set(UNITY_KEY, unity), 300); };
+  function uSetText(text) { uTa.value = text; unity.text = text; uBefore = text.split('\n'); uSave(); }
+
+  /* The readers, for De-Regex: Python's (checked exact, in the page's Python), and the web and C++ one. */
+  async function uConvert(kind, source) {
+    if (kind === 'python') {
+      if (!(await ensurePython())) return { ok: false, reason: 'Python couldn\'t start in the page, so Python can\'t be read here' };
+      const R = await Runner.reader((s) => setStatus(s));
+      const out = checkedSentences(R, source);
+      if (!out.ok) return { ok: false, reason: out.error };
+      return { ok: true, text: out.text, exact: !!out.check.same, reason: out.check.same ? null : 'the check found code that comes back different, so it stays as exact code' };
+    }
+    const r = window.IntuiConvert.toSentences(kind, source, await convertEnv());
+    return r.ok ? r : { ok: false, reason: r.error || r.reason };
+  }
+
+  function renderUnity() {
+    if (!UNITY) return;
+    if (uTa.value !== unity.text) uTa.value = unity.text;
+    const lines = unity.text.split('\n'), code = uCodeLang();
+    const bad = new Map(uProblems.map(p => [p.line, p.errs.length ? 'err' : 'warn']));
+    const lineHtml = (l, words) => `<div class="ul">${(words ? hlLine(l) : hlCode(code, l)) || '​'}</div>`;
+    const sorted = unity.regions.slice().sort((a, b) => a.from - b.from);
+    let html = '', n = 0;
+    for (const r of sorted) {
+      while (n < r.from) html += lineHtml(lines[n++], false);
+      html += `<div class="u-region${UNITY.unchanged(r, lines) ? '' : ' changed'}">${lines.slice(r.from, r.to + 1).map(l => lineHtml(l, true)).join('')}</div>`;
+      n = r.to + 1;
+    }
+    while (n < lines.length) html += lineHtml(lines[n++], false);
+    $('uHl').innerHTML = html;
+    $('uGutter').innerHTML = lines.map((_, i) => `<div class="gl${uRegionAt(i) >= 0 ? ' u-in' : ''}${bad.has(i) ? ' ' + bad.get(i) : ''}">${i + 1}</div>`).join('');
+    $('uTitle').textContent = 'Unity · ' + langName(unity.lang);
+    $('uLang').value = unity.lang;
+    $('uCount').textContent = unity.regions.length || '';
+    $('uRegions').innerHTML = sorted.map((r) => {
+      const i = unity.regions.indexOf(r), same = UNITY.unchanged(r, lines);
+      return `<li><button type="button" class="u-reg" data-u-go="${i}" title="Go to it">Lines ${r.from + 1}–${r.to + 1}${same ? '' : ' <span class="dim">changed</span>'}</button><button type="button" class="btn tiny" data-u-re="${i}">Re-Regex</button></li>`;
+    }).join('') || '<li class="side-note">None yet.</li>';
+    uSync(); uTools();
+    if (mode === 'unity') updateChip();
+  }
+  function uSync() {
+    $('uHl').scrollTop = uTa.scrollTop; $('uHl').scrollLeft = uTa.scrollLeft;
+    $('uGutter').style.transform = `translateY(${-uTa.scrollTop}px)`;
+    uFloatPos();
+  }
+  function uSelLines() {
+    const a = uTa.selectionStart, b = uTa.selectionEnd;
+    let to = uLineOf(b);
+    if (b > a && uTa.value[b - 1] === '\n') to--;   // a selection that ends at the start of a line leaves that line out
+    const from = uLineOf(a);
+    return { from, to: Math.max(from, to) };
+  }
+  function uTools() {
+    const sel = uTa.selectionEnd > uTa.selectionStart, at = uRegionAt(uLineOf(uTa.selectionStart));
+    $('uDe').disabled = !sel && at >= 0;
+    $('uRe').disabled = at < 0;
+    $('uReAll').disabled = !unity.regions.length;
+    uFloatPos();
+    clearTimeout(uStripTimer); uStripTimer = setTimeout(uStrip, 120);
+  }
+  /* A De-Regex/Translate button just above a selection of code. */
+  function uFloatPos() {
+    const f = $('uFloat'), a = uTa.selectionStart, b = uTa.selectionEnd;
+    const { from, to } = uSelLines();
+    const inWords = unity.regions.some(r => r.from <= to && r.to >= from);
+    if (mode !== 'unity' || b <= a || inWords || (document.activeElement !== uTa && document.activeElement !== f)) { f.hidden = true; return; }
+    const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22;
+    f.style.top = Math.max(4, 12 + from * lh - uTa.scrollTop - lh - 2) + 'px';
+    f.hidden = false;
+  }
+  /* Under the pane: what the region at the cursor will become, and its problems. */
+  function uStrip() {
+    if (mode !== 'unity') return;
+    const box = $('uStrip'), lines = uLines(), at = uRegionAt(uLineOf(uTa.selectionStart)), code = uCodeLang();
+    if (at < 0) {
+      box.innerHTML = uTa.selectionEnd > uTa.selectionStart ? '<span class="dim">Press <b>De-Regex/Translate</b> to say the selected code in sentences, right where it is.</span>'
+        : '<span class="dim">Select some code to De-Regex/Translate it. The green parts are sentences: put the cursor in one to see the code it makes.</span>';
+      return;
+    }
+    const r = unity.regions[at];
+    if (UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Re-Regex gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
+    let out;
+    try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { box.textContent = 'The writer hit a problem: ' + e.message; return; }
+    const errs = out.problems.flatMap(p => p.errs.map(e => [p.line, e, 'err'])), warns = out.problems.flatMap(p => p.warns.map(w => [p.line, w, 'warn']));
+    box.innerHTML = `<span class="ex-lbl">${errs.length ? 'Can\'t go back to code yet' : 'Re-Regex will write'}</span>`
+      + (errs.length ? '' : `<pre class="u-code">${out.code.map(l => hlCode(code, l)).join('\n')}</pre>`)
+      + [...errs, ...warns].slice(0, 4).map(([n, msg, k]) => `<div class="u-msg ${k}">Line ${n + 1}: ${withCode(msg)}</div>`).join('')
+      + (out.needs.length ? `<div class="u-msg">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</div>` : '');
+  }
+
+  async function uDeRegex() {
+    if (!UNITY) return;
+    const lines = uLines(), sel = uSelLines();
+    const at = UNITY.expand(unity.lang, lines, sel.from, sel.to);
+    if (!at) { tLine('Select some code first: De-Regex/Translate turns it into sentences.', 't-sys'); return; }
+    if (unity.regions.some(r => r.from <= at.to && r.to >= at.from)) { tLine('Part of that is already sentences (in green). Re-Regex it first, or select only code.', 't-err'); return; }
+    $('uDe').disabled = true;
+    let w;
+    try { w = await UNITY.toWords(unity.lang, lines, at.from, at.to, uConvert); }
+    catch (e) { tLine('That part couldn\'t be read: ' + e.message, 't-err'); uTools(); return; }
+    if (!w.words || !w.words.length) { tLine(`That part couldn't be said in sentences: ${w.reason || 'the reader had nothing to say'}.`, 't-err'); uTools(); return; }
+    if (uLines().join('\n') !== lines.join('\n')) { tLine('The code changed while it was being read. Try again.', 't-sys'); uTools(); return; }
+    const delta = w.words.length - (at.to - at.from + 1);
+    unity.regions = unity.regions.map(r => (r.from > at.to ? { ...r, from: r.from + delta, to: r.to + delta } : r));
+    unity.regions.push({ from: at.from, to: at.from + w.words.length - 1, original: w.original, words: w.words, base: w.base });
+    unity.regions.sort((a, b) => a.from - b.from);
+    uSetText(lines.slice(0, at.from).concat(w.words, lines.slice(at.to + 1)).join('\n'));
+    uTa.focus();
+    const pos = uPosOf(at.from) + w.base.length;
+    uTa.setSelectionRange(pos, pos);
+    uProblems = [];
+    renderUnity();
+    const grew = at.from !== sel.from || at.to !== sel.to;
+    tLine(`De-Regexed lines ${at.from + 1}–${at.to + 1}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Re-Regex puts code back.` + (w.exact ? '' : ` Some of it stays as exact code: ${w.reason}.`), w.exact ? 't-sys' : 't-err');
+  }
+  function uReRegex(i, quiet) {
+    const r = UNITY.reRegex(unity.lang, uLines(), unity.regions, i, uW());
+    if (!r.ok) {
+      uProblems = r.problems;
+      renderUnity();
+      const p = r.problems.find(x => x.errs.length);
+      if (!quiet && p) tLine(`Line ${p.line + 1}: ${p.errs[0]} It stays as sentences until that's fixed.`, 't-err');
+      return false;
+    }
+    const caret = uTa.selectionStart;
+    unity.regions = r.regions;
+    uSetText(r.lines.join('\n'));
+    uTa.setSelectionRange(Math.min(caret, uTa.value.length), Math.min(caret, uTa.value.length));
+    uProblems = [];
+    renderUnity();
+    if (r.needs.length) tLine(`Added ${r.needs.map(x => '`' + x + '`').join(', ')} at the top: the new code needs ${r.needs.length === 1 ? 'it' : 'them'}.`, 't-sys');
+    const warn = r.problems.flatMap(p => p.warns.map(w => `line ${p.line + 1}: ${w}`))[0];
+    if (warn && !quiet) tLine('Back to code, with a warning on ' + warn, 't-sys');
+    return true;
+  }
+  function uReRegexAll() {
+    let ok = 0, left = 0;
+    for (let i = unity.regions.length - 1; i >= 0; i--) { if (uReRegex(i, true)) ok++; else left++; }
+    if (left) tLine(`${ok ? ok + ' back to code; ' : ''}${left} stay${left === 1 ? 's' : ''} as sentences until ${left === 1 ? 'its' : 'their'} problems are fixed (the red line numbers).`, 't-err');
+    else if (ok) tLine('Every green part is code again.', 't-sys');
+  }
+
+  if (UNITY) {
+    $('uLang').innerHTML = UNITY.LANGS.map(l => `<option value="${l}">${escHtml(langName(l))}</option>`).join('');
+    uTa.addEventListener('beforeinput', () => { uCaret = uRegionAt(uLineOf(uTa.selectionStart)); });
+    uTa.addEventListener('input', () => {
+      const now = uTa.value.split('\n');
+      unity.regions = UNITY.adjust(unity.regions, uBefore, now, uCaret);
+      uBefore = now; unity.text = uTa.value;
+      uProblems = [];
+      uSave();
+      // drawn at most once a frame, however fast the typing (the regions above are already right); a timer,
+      // not requestAnimationFrame, so it still draws when the window isn't in front
+      if (!uFrame) uFrame = setTimeout(() => { uFrame = 0; renderUnity(); }, 16);
+    });
+    uTa.addEventListener('scroll', uSync);
+    for (const ev of ['select', 'click', 'keyup', 'focus']) uTa.addEventListener(ev, uTools);
+    uTa.addEventListener('blur', () => setTimeout(uFloatPos, 0));
+    uTa.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        const unit = UNITY.unitOf(uLines()), at = uPosOf(uLineOf(uTa.selectionStart));
+        if (e.shiftKey) { const cut = uTa.value.slice(at).match(/^(?:\t| {1,4})/); if (cut) { uTa.setSelectionRange(at, at + cut[0].length); document.execCommand('delete'); } }
+        else document.execCommand('insertText', false, unity.regions.some(r => r.from <= uLineOf(uTa.selectionStart) && r.to >= uLineOf(uTa.selectionStart)) ? '    ' : unit);
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (mode !== 'unity' || !e.ctrlKey || !e.shiftKey || e.altKey) return;
+      if (e.key === 'D' || e.key === 'd') { e.preventDefault(); uDeRegex(); }
+      if (e.key === 'B' || e.key === 'b') { e.preventDefault(); const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); }
+    });
+    $('uDe').addEventListener('click', uDeRegex);
+    $('uFloat').addEventListener('mousedown', (e) => e.preventDefault());   // keeps the selection
+    $('uFloat').addEventListener('click', uDeRegex);
+    $('uRe').addEventListener('click', () => { const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); uTa.focus(); });
+    $('uReAll').addEventListener('click', uReRegexAll);
+    $('uRegions').addEventListener('click', (e) => {
+      const go = e.target.closest('[data-u-go]'), re = e.target.closest('[data-u-re]');
+      if (re) { uReRegex(+re.dataset.uRe); return; }
+      if (go) { const r = unity.regions[+go.dataset.uGo]; if (!r) return; uTa.focus(); const p = uPosOf(r.from) + r.base.length; uTa.setSelectionRange(p, p); const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22; uTa.scrollTop = Math.max(0, r.from * lh - 40); uTools(); }
+    });
+    $('uLang').addEventListener('change', (e) => {
+      const next = e.target.value;
+      if (unity.regions.length) { e.target.value = unity.lang; tLine(`Re-Regex the green parts first: they're sentences for ${langName(unity.lang)}.`, 't-err'); return; }
+      const sample = !unity.text.trim() || Object.values(UNITY_START).includes(unity.text);
+      unity.lang = next;
+      if (sample) uSetText(UNITY_START[next]);
+      uSave(); renderUnity();
+    });
+    $('uOpen').addEventListener('click', () => {
+      if (unity.regions.length) { tLine('Re-Regex the green parts first, so nothing is lost.', 't-err'); return; }
+      $('uFile').click();
+    });
+    $('uFile').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      const l = LANGS.fromPath(f.name);
+      unity.lang = UNITY.LANGS.includes(l) ? l : unity.lang;
+      uSetText((await f.text()).replace(/\r\n?/g, '\n'));
+      unity.regions = [];
+      renderUnity();
+      tLine(`Opened ${f.name} in Unity (${langName(unity.lang)}). Select some of it and De-Regex/Translate.`, 't-sys');
+    });
+    $('uCopy').addEventListener('click', (e) => {
+      let lines = uLines(), regions = unity.regions.slice();
+      for (let i = regions.length - 1; i >= 0; i--) {
+        const r = UNITY.reRegex(unity.lang, lines, regions, i, uW());
+        if (!r.ok) { uProblems = r.problems; renderUnity(); tLine(`Lines ${regions[i].from + 1}–${regions[i].to + 1} can't be code yet, so nothing was copied. Fix the red lines first.`, 't-err'); return; }
+        lines = r.lines; regions = r.regions;
+      }
+      copyText(lines.join('\n'), e.target, 'Copy the code');
+    });
+  } else $('modeUnity').hidden = true;
+
+  /* ------------------------------------------------------------------ */
   /* Read mode: import a file or a whole project, sections, summaries    */
   /* ------------------------------------------------------------------ */
 
@@ -2332,12 +3139,24 @@
   let proj = null;         // the reader's analysis of the whole project
   let readFocus = null;    // {type:'section', id} | {type:'range', summary}
   const KIND_LABEL = { about: 'About', imports: 'Toolkits', settings: 'Settings', steps: 'Steps', tool: 'Tool', route: 'Web route', class: 'Class', start: 'Start',
-    component: 'Component', handler: 'Event', head: 'Page info', part: 'Part', script: 'Script', style: 'Style', media: 'Screens' };
+    component: 'Component', handler: 'Event', head: 'Page info', part: 'Part', script: 'Script', style: 'Style', media: 'Screens',
+    type: 'Type', test: 'Test', data: 'Data', heading: 'Heading' };
   const ROLE_ORDER = ['entry', 'settings', 'models', 'helpers', 'routes', 'script', 'package', 'tests'];
   const SKIP_DIRS = new Set(['venv', '.venv', 'env', '.env', 'node_modules', '__pycache__', '.git', 'site-packages', 'build', 'dist', '.tox', '.mypy_cache', '.pytest_cache', '.idea', '.vscode']);
   const EXTRA_FILE = /(^|\/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile|package\.json)$/i;
-  const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$/i;
-  const langOfPath = (p) => /\.py$/i.test(p) ? 'python' : (window.IntuiWebReader.kindOfPath(p) || 'python');
+  const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$/i;   // what the Python and web readers read
+  /* A file's language in Read mode: the one chosen for it ("Read as"), else the one its name says. The Python
+     and web readers read their own languages (and can turn them into sentences); the code reader
+     (lang/code_read.js) reads everything else, and any file read as another language than its name says. */
+  const OWN_READ = new Set(['python', 'html', 'css', 'js', 'ts', 'tsx', 'cpp', 'arduino']);
+  const extLang = (name) => LANGS.fromPath(name);
+  const readLang = (f) => f.lang || f.auto || extLang(f.name);   // (auto: what the text of a file named .txt or nothing turned out to be)
+  const ownReader = (f) => (!f.lang || f.lang === extLang(f.name)) && CODE_FILE.test(f.name) && OWN_READ.has(extLang(f.name));
+  const codeReader = (f) => !ownReader(f) && readLang(f) !== 'text' && !!window.IntuiCodeReader;
+  const readableFile = (f) => ownReader(f) || codeReader(f);
+  const readFileOf = (p) => reads.files.find(x => x.name === p);
+  /* The highlighter's and the tour's name for a file's language (an Arduino sketch is C++ to them). */
+  const langOfPath = (p) => { const f = readFileOf(p), l = f ? readLang(f) : extLang(p); return l === 'arduino' ? 'cpp' : l; };
 
   function saveReads() {
     try { localStorage.setItem(READ_KEY, JSON.stringify(reads)); }
@@ -2349,6 +3168,10 @@
     hideTip();
     $('modeWrite').setAttribute('aria-selected', String(next === 'write'));
     $('modeRead').setAttribute('aria-selected', String(next === 'read'));
+    $('modeUnity').setAttribute('aria-selected', String(next === 'unity'));
+    $('unityView').hidden = next !== 'unity';
+    $('unitySide').hidden = next !== 'unity';
+    $('work').classList.toggle('unity', next === 'unity');
     $('writeView').hidden = next !== 'write';
     $('explainWrap').hidden = next !== 'write';
     $('writeSide').hidden = next !== 'write';
@@ -2356,18 +3179,20 @@
     $('readSide').hidden = next !== 'read';
     renderImages();
     $('work').classList.toggle('reading', next === 'read');
-    $('work').classList.toggle('web', next === 'write' && project.kind === 'website');
+    $('work').classList.toggle('web', next === 'write' && webOn());
     showBottom(next === 'write' && project.kind === 'website' ? 'preview' : 'terminal');
-    $('tabPreview').hidden = !(next === 'write' && project.kind === 'website');
+    $('tabPreview').hidden = !(next === 'write' && webOn());
     updateChip();
     if (next === 'read') renderRead();
+    else if (next === 'unity') { renderUnity(); $('uTa').focus(); }
     else { measure(); syncScroll(); }
     if (!$('index').hidden) renderIndex();
   }
   $('modeWrite').addEventListener('click', () => setMode('write'));
   $('modeRead').addEventListener('click', () => setMode('read'));
+  $('modeUnity').addEventListener('click', () => setMode('unity'));
 
-  const pyFiles = () => reads.files.filter(f => CODE_FILE.test(f.name));   // every file that can be read
+  const pyFiles = () => reads.files.filter(readableFile);   // every file that can be read
   const curFile = () => (reads.active >= 0 ? pyFiles()[reads.active] : null);
   const fileInfo = (path) => proj && proj.files.find(x => x.path === path);
   const curAnalysis = () => { const f = curFile(); const i = f && fileInfo(f.name); return i ? i.analysis : null; };
@@ -2388,22 +3213,32 @@
   async function analyse() {
     if (!reads.files.length) { proj = null; return; }
     $('rdSum').innerHTML = '<p class="sum-empty">Reading the code… (the first time, this loads Python into the page)</p>';
-    const pySide = reads.files.filter(f => !CODE_FILE.test(f.name) || /\.py$/i.test(f.name));
-    const webSide = reads.files.filter(f => CODE_FILE.test(f.name) && !/\.py$/i.test(f.name));
-    let py = null, web = null;
+    // Python's reader also takes the project's notes (README, requirements…); the others read their own files
+    const pyOwn = (f) => ownReader(f) && extLang(f.name) === 'python';
+    const pySide = reads.files.filter(f => pyOwn(f) || EXTRA_FILE.test(f.name));
+    const webSide = reads.files.filter(f => ownReader(f) && !pyOwn(f));
+    const codeSide = reads.files.filter(codeReader);
+    let py = null, web = null, code = null;
     try {
-      if (pySide.some(f => /\.py$/i.test(f.name))) {
+      if (pySide.some(pyOwn)) {
         if (!(await ensurePython())) { $('rdSum').innerHTML = '<p class="sum-empty">Python couldn\'t start, so the Python files can\'t be read here.</p>'; return; }
         const R = await Runner.reader((s) => setStatus(s));
         py = R.analyzeProject(pySide);
       }
-      if (webSide.length) {
+      if (webSide.length || codeSide.length) {
         const WR = await Runner.webReader((s) => setStatus(s));
-        await WR.loadLangs([...new Set(webSide.map(f => WR.kindOfPath(f.name)).filter(Boolean))]);
-        web = WR.analyzeProject(webSide, py);
-        setStatus(Runner.ready ? $('pyStatus').textContent.replace(/^Loading.*/, 'Readers ready') : 'Web reader ready', 'ready');
+        if (webSide.length) {
+          await WR.loadLangs([...new Set(webSide.map(f => WR.kindOfPath(f.name)).filter(Boolean))]);
+          web = WR.analyzeProject(webSide, py);
+        }
+        if (codeSide.length) {
+          const CR = window.IntuiCodeReader;
+          for (const l of new Set(codeSide.map(readLang))) { try { await CR.load(l); } catch (_) { /* read without its grammar: an outline */ } }
+          code = codeSide.map(f => codeFileEntry(f, CR.analyze(readLang(f), f.name, f.source)));
+        }
+        setStatus(Runner.ready ? $('pyStatus').textContent.replace(/^Loading.*/, 'Readers ready') : 'Readers ready', 'ready');
       }
-      proj = mergeProjects(py, web);
+      proj = withCodeFiles(mergeProjects(py, web), code);
     } catch (e) {
       proj = null;
       $('rdSum').innerHTML = `<p class="sum-empty">The reader hit a problem: ${escHtml(e.message)}</p>`;
@@ -2452,6 +3287,41 @@
     return { ok: true, name, overview, readme, entries, order, files, edges, libs, warnings, secrets: py ? py.secrets : [] };
   }
 
+  /* A file the code reader read, in the shape the project view uses. */
+  function codeFileEntry(f, a) {
+    const lang = readLang(f);
+    a = a || { ok: false, error: 'It couldn\'t be read.', sections: [] };
+    return {
+      path: f.name, module: f.name, lang, role: 'code', role_label: langName(lang), summary: a.overview || '', imports: [], imported_by: [],
+      analysis: { ok: a.ok !== false, error: a.error, overview: a.overview || '', sections: a.sections || [], lines: a.lines }, libs: a.libs || [], lines: a.lines,
+    };
+  }
+  /* The project with the code reader's files in it (or, with only those, a project of them). */
+  function withCodeFiles(p, code) {
+    if (!code || !code.length) return p;
+    const langs = [...new Set(code.map(f => f.role_label))];
+    const said = langs.length > 1 ? langs.slice(0, -1).join(', ') + ' and ' + langs[langs.length - 1] : langs[0];
+    const libs = p ? p.libs.slice() : [];
+    for (const f of code) for (const l of f.libs) { const name = typeof l === 'string' ? l : l.name; if (!name) continue; let e = libs.find(x => x.name === name); if (!e) libs.push(e = { name, what: '', files: [], stdlib: false }); if (!e.files.includes(f.path)) e.files.push(f.path); }
+    if (p) {
+      p.files.push(...code);
+      p.order.push(...code.map(f => f.path));
+      p.libs = libs;
+      p.overview += ` It also has ${code.length} file${code.length === 1 ? '' : 's'} in ${said}.`;
+      return p;
+    }
+    const files = code, firsts = new Set(files.map(f => f.path.split('/')[0]));
+    const name = firsts.size === 1 && files.every(f => f.path.includes('/')) ? [...firsts][0] : 'this project';
+    const readmeFile = reads.files.find(f => /(^|\/)readme(\.\w+)?$/i.test(f.name));
+    const readme = readmeFile ? (readmeFile.source.split(/\n\s*\n/).map(x => x.trim()).find(x => x && !/^(#|!\[|<|```)/.test(x)) || '').replace(/[`*_]/g, '').slice(0, 300) : '';
+    const start = files.find(f => (f.analysis.sections || []).some(s => s.kind === 'start')) || files.find(f => !/^(markdown|json|yaml|toml|csv|text)$/.test(f.lang)) || files[0];
+    return {
+      ok: true, name, readme, files, libs, edges: [], warnings: [], secrets: [],
+      overview: `${name === 'this project' ? 'This project' : name} has ${files.length} file${files.length === 1 ? '' : 's'}, in ${said}.` + (start ? ` Start reading at [[${start.path}]].` : ''),
+      entries: start ? [start.path] : [], order: [start, ...files.filter(f => f !== start)].filter(Boolean).map(f => f.path),
+    };
+  }
+
   function readTreeHtml() {
     const files = pyFiles();
     if (!files.length) return '<p class="side-note">Nothing imported yet.</p>';
@@ -2467,7 +3337,7 @@
       const role = info ? info.role : '';
       html += `<button type="button" class="tree-item file${i === reads.active ? ' active' : ''}${role === 'package' ? ' faint' : ''}${dir ? ' nested' : ''}" data-i="${i}"><span class="ti-title">${escHtml(p.split('/').pop())}</span>${info ? `<span class="role r-${role}">${escHtml(info.role_label)}</span>` : ''}</button>`;
     }
-    const extras = reads.files.filter(f => !CODE_FILE.test(f.name));
+    const extras = reads.files.filter(f => !readableFile(f));
     if (extras.length) html += `<div class="tree-dir">Also found</div>` + extras.map(f => `<div class="tree-extra">${escHtml(shortPath(f.name))}</div>`).join('');
     return html;
   }
@@ -2485,7 +3355,12 @@
     $('rdOutlineWrap').hidden = !file;
     $('btnSummarise').disabled = !a || !a.ok;
     $('btnToSentences').disabled = !a || !a.ok;
-    $('btnTour').disabled = !a || !file || !TOUR_LANGS.has(langOfPath(file.name)) || (langOfPath(file.name) === 'python' && !a.ok);
+    $('btnTour').disabled = !a || !file || !ownReader(file) || !TOUR_LANGS.has(langOfPath(file.name)) || (langOfPath(file.name) === 'python' && !a.ok);
+    $('rdAsWrap').hidden = !file || (files.length > 1 && reads.active === -1);
+    if (file) {
+      const auto = file.auto || extLang(file.name);
+      $('rdLang').innerHTML = `<option value="">Auto (${escHtml(langName(auto))})</option>` + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}"${file.lang === l.id ? ' selected' : ''}>${escHtml(l.name)}</option>`).join('');
+    }
     if (!files.length) {
       $('rdName').textContent = 'No code imported yet';
       $('rdOverview').textContent = 'Import Python, such as a project an AI wrote for you, to see it split into sections and explained in plain English.';
@@ -2499,12 +3374,12 @@
     $('rdName').textContent = shortPath(file.name);
     const fileLinks = (paths) => paths.map(p => `[[${escHtml(p)}]]`).join(', ');
     const links = info && (info.imported_by.length || info.imports.length) ? linkify(`<span class="rd-links">${info.imports.length ? ' Uses ' + fileLinks(info.imports) + '.' : ''}${info.imported_by.length ? ' Used by ' + fileLinks(info.imported_by) + '.' : ''}</span>`) : '';
-    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + links : `<span class="bad-text">This file can't be read as Python. ${escHtml(a.error)}</span>`) : 'Reading…';
+    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + links : `<span class="bad-text">This file can't be read as ${escHtml(langName(readLang(file)))}. ${escHtml(a.error || '')} Try another language in <b>Read as</b>.</span>`) : 'Reading…';
     const secs = a && (a.ok || (a.sections && a.sections.length)) ? a.sections : [];
     const fileLang = langOfPath(file.name);
-    const canSay = /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
+    const canSay = ownReader(file) && /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
     $('btnToSentences').disabled = !a || !a.ok || !canSay;
-    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : 'TypeScript and React files can\'t be opened as sentences yet.';
+    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : !ownReader(file) ? `IntuCode has sentences for Python, HTML, CSS, JavaScript, C++ and Arduino; ${langName(readLang(file))} is read to you instead.` : 'TypeScript and React files can\'t be opened as sentences yet.';
     const startOf = new Map(secs.map(s => [s.start, s]));
     const secOfLine = (ln) => secs.find(s => ln >= s.start && ln <= s.end);
     $('rdCode').innerHTML = file.source.split('\n').map((l, i) => {
@@ -2512,7 +3387,7 @@
       const s = secOfLine(ln);
       const head = startOf.get(ln);
       const label = head ? `<div class="rl-sec" data-sec="${head.id}"><span class="chip k-${head.kind}">${KIND_LABEL[head.kind]}</span>${escHtml(head.title)}${head.warnings.length ? `<span class="warn-dot" title="${head.warnings.length} thing${head.warnings.length > 1 ? 's' : ''} worth checking">!</span>` : ''}</div>` : '';
-      return `${label}<div class="rl${s ? ' in-sec' : ''}${s && s.id % 2 ? ' alt' : ''}" data-line="${ln}" data-sec="${s ? s.id : ''}"><span class="ln">${ln}</span><span class="pc">${hlCode(fileLang, l) || ' '}</span></div>`;
+      return `${label}<div class="rl${s ? ' in-sec' : ''}${s && s.id % 2 ? ' alt' : ''}" data-line="${ln}" data-sec="${s ? s.id : ''}"><span class="ln">${ln}</span><span class="pc">${(ownReader(file) ? hlCode(fileLang, l) : hlFileLine({ lang: readLang(file) }, l)) || ' '}</span></div>`;
     }).join('');
     $('rdOutline').innerHTML = secs.map(s => `<button type="button" class="ol-item" data-sec="${s.id}"><span class="chip k-${s.kind}">${KIND_LABEL[s.kind]}</span><span class="ol-t">${escHtml(s.title)}</span>${s.warnings.length ? '<span class="warn-dot">!</span>' : ''}<span class="ol-l">${s.start}–${s.end}</span></button>`).join('');
     renderFocus();
@@ -2521,7 +3396,7 @@
   /* Project overview: what it is, where to start, how files connect, what to check. */
   function renderProject() {
     $('rdName').textContent = proj ? proj.name : 'Project';
-    const langs = proj ? [...new Set(proj.files.map(f => LANG_NAME[langOfPath(f.path)]))] : [];
+    const langs = proj ? [...new Set(proj.files.map(f => langName(readLang(readFileOf(f.path) || { name: f.path }))))] : [];
     $('rdOverview').textContent = proj ? `${proj.files.length} files · ${langs.join(', ')}` : 'Reading…';
     if (!proj) { $('rdProject').innerHTML = '<p class="sum-empty">Reading the project…</p>'; return; }
     const allWarn = proj.warnings.map(w => ({ w })).concat(proj.files.flatMap(f => (f.analysis.sections || []).flatMap(s => s.warnings.map(w => ({ w, f, s })))));
@@ -2704,15 +3579,16 @@
       return;
     }
     const f = curFile();
-    if (langOfPath(f.name) === 'python') {
+    if (ownReader(f) && langOfPath(f.name) === 'python') {
       const R = await Runner.reader();
       readFocus = { type: 'range', summary: R.summarise(f.source, r.start, r.end, f.name) };
     } else {
-      // web files: read the highlighted lines on their own
+      // web and other files: read the highlighted lines on their own
       const WR = await Runner.webReader();
       const text = f.source.split('\n').slice(r.start - 1, r.end).join('\n');
       const k = WR.kindOfPath(f.name);
-      const a = k === 'html' ? WR.analyzeHtml(f.name, text, { fileOf: () => null, scriptsFor: () => [], stylesFor: () => [] })
+      const a = codeReader(f) ? window.IntuiCodeReader.analyze(readLang(f), f.name, text)
+        : k === 'html' ? WR.analyzeHtml(f.name, text, { fileOf: () => null, scriptsFor: () => [], stylesFor: () => [] })
         : k === 'css' ? WR.analyzeCss(f.name, text, { htmlMatches: () => [], hasHtml: false, scriptMentions: () => false })
         : WR.analyzeJs(f.name, text, k, { path: f.name, xnames: {}, uses: [], fetches: [], htmlTargets: () => null, routeFor: () => null, hasServer: false, fileOf: () => null });
       const secs = a.sections || [];
@@ -2889,6 +3765,7 @@
     if (name.endsWith('.py')) return 'py';
     if (CODE_FILE.test(name)) return 'web';
     if (EXTRA_FILE.test(path)) return 'extra';
+    if (LANGS.fromPath(name) !== 'text') return 'code';   // any other language Read mode knows
     return null;
   }
 
@@ -2907,6 +3784,20 @@
   }
 
   function openImport() { $('impModal').hidden = false; $('impNote').textContent = ''; $('impText').focus(); }
+  // the languages Read mode knows, for pasted code and for choosing files
+  $('impLang').innerHTML = '<option value="">Auto-detect</option>' + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
+  $('impFiles').accept = [...new Set(LANGS.LANGUAGES.flatMap(l => l.exts))].map(e => '.' + e).concat('.pyw', 'text/plain').join(',');
+  $('rdLang').addEventListener('change', async (e) => {
+    const f = curFile();
+    if (!f) return;
+    if (e.target.value) f.lang = e.target.value; else delete f.lang;
+    readFocus = null;
+    saveReads();
+    await analyse();
+    reads.active = Math.max(0, pyFiles().indexOf(f));
+    renderRead();
+    tLine(`Reading ${shortPath(f.name)} as ${langName(readLang(f))}${e.target.value ? '' : ' (from its name and text)'}.`, 't-sys');
+  });
   function closeImport() { $('impModal').hidden = true; $('impCard').classList.remove('dropping'); }
   $('btnImport').addEventListener('click', openImport);
   $('btnImport2').addEventListener('click', openImport);
@@ -2938,6 +3829,7 @@
     { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
     { id: 'cpp', layout: 'cpp', title: 'C++ program', about: 'main.cpp, compiled on this computer (desktop app)' },
     { id: 'arduino', layout: 'arduino', title: 'Arduino sketch', about: 'For a board plugged in by USB (desktop app)' },
+    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with + File' },
   ];
   // What a folder starts with: a website its title, a sketch its two parts. The rest start empty.
   const NEW_START = {
@@ -2960,8 +3852,10 @@
   function createNewProject() {
     const k = NEW_KINDS.find(x => x.id === newKind);
     const name = $('newName').value.trim() || 'My project';
-    const sections = LAYOUTS[k.layout].map(f => ({ id: f, file: f, text: NEW_START[f] ? NEW_START[f](name) : '' }));
-    const next = { version: 1, lang: 'python', kind: KIND_OF_LAYOUT[k.layout] || 'python', name: slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };
+    const sections = k.layout === 'files'
+      ? [{ id: 'readme', path: 'README.md', lang: 'markdown', text: `# ${name}\n\nWhat this project is for, and how its files fit together.\n` }]
+      : LAYOUTS[k.layout].map(f => ({ id: f, file: f, text: NEW_START[f] ? NEW_START[f](name) : '' }));
+    const next = { version: 2, lang: 'python', kind: KIND_OF_LAYOUT[k.layout] || 'python', name: slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };
     const askFolder = desk.on && $('newSave').checked;
     closeNewProject();
     replaceProject(next, `New ${k.title} project "${name}".` + (desk.on && !askFolder ? ' Press Save to keep it as files.' : ''));
@@ -2988,7 +3882,7 @@
   /* ------------------------------------------------------------------ */
 
   const BUILDER = window.IntuiBuilder;
-  const bld = { trail: [], kit: null, ticked: new Set(), edit: null, preview: new Set() };   // trail: the options chosen so far; edit: the library editor
+  const bld = { trail: [], kit: null, ticked: new Set(), edit: null, preview: new Set() };   // trail: the options chosen so far; edit: the templates editor
   const depthChip = (d) => `<span class="depth d-${d}">${BUILDER.DEPTHS[d].label}</span>`;
   // Your own questions, kits and steps, as plain text. They come after the built-in ones, so one with the same id replaces it.
   const MY_KITS_KEY = 'intuicode.kits.v1';
@@ -3021,7 +3915,7 @@
     bld.ticked = new Set(kit ? kit.steps.filter(s => s.ticked).map(s => s.id) : []);
     renderBuilder();
   }
-  /* Straight to one entry in the library editor, in its form (yours if you've changed it, or a copy of the built-in one). */
+  /* Straight to one entry in the templates editor, in its form (yours if you've changed it, or a copy of the built-in one). */
   function openKitEditorAt(kind, id) {
     openBuilder();
     const { built, mine } = kitEntries();
@@ -3046,11 +3940,11 @@
       + '<button type="button" class="bld-crumb bld-edit-lib" id="bldEditLib">Change the kits and steps</button>';
     if (bld.kit) return renderKit(lib.kits[bld.kit]);
     const qid = bld.trail.length ? bld.trail[bld.trail.length - 1].next : 'start', q = lib.questions[qid];
-    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the library. Go back, or add it with "Change the kits and steps".</p>`; return; }
+    if (!q) { $('bldBody').innerHTML = `<p class="sum-empty">There's no question called "${escHtml(qid)}" in the templates. Go back, or add it with "Change the kits and steps".</p>`; return; }
     const tag = (o) => (o.kit && lib.kits[o.kit] ? platTag(lib.kits[o.kit].platform) : '');
     $('bldBody').innerHTML = `<h3 class="bld-ask">${escHtml(q.ask)}</h3>
       <div class="new-kinds bld-options">${q.options.map((o, i) => `<button type="button" class="new-kind" data-opt="${i}"><b>${escHtml(o.label)}</b><span>${tag(o)}${escHtml(o.means.replace(/^(PC|Phone|Web|Board) · /, ''))}</span></button>`).join('')}</div>
-      <p class="bld-alt">Or <button type="button" class="linklike" id="bldToLibrary">browse every kit and blueprint in the Library</button>.</p>`;
+      <p class="bld-alt">Or <button type="button" class="linklike" id="bldToLibrary">browse every kit and blueprint in Project Templates</button>.</p>`;
     const first = $('bldBody').querySelector('.new-kind');
     if (first) first.focus();
   }
@@ -3066,7 +3960,7 @@
   }
   function renderKit(kit) {
     const lib = bldLibrary();
-    if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the library isn\'t written yet. Go back and choose another path.</p>'; return; }
+    if (!kit) { $('bldBody').innerHTML = '<p class="sum-empty">This part of the templates isn\'t written yet. Go back and choose another path.</p>'; return; }
     const chosen = kit.steps.filter(s => lib.components[s.id] && (s.always || bld.ticked.has(s.id)));
     let n = 0;
     const rows = kit.steps.map(s => {
@@ -3151,7 +4045,7 @@
     const built = BUILDER.BUILT_IN.map((s, i) => ({ ...BUILDER.describeEntry(s), src: 'built', i })).map(b => ({ ...b, replaced: yours.has(b.kind + ':' + b.id) }));
     return { built, mine };
   }
-  /* What the whole library says about an entry (a kit listing a step that isn't written yet, say), with this text in its place. */
+  /* What all the templates say about an entry (a kit listing a step that isn't written yet, say), with this text in its place. */
   function kitLinkProblems(text, editing) {
     const d = BUILDER.describeEntry(text);
     if (!d.id) return [];
@@ -3291,14 +4185,14 @@
           <label class="kf-tog" title="Ticked when the planner opens"><input type="checkbox" data-tog="ticked"${s.ticked || s.always ? ' checked' : ''}${s.always ? ' disabled' : ''}> Ticked at first</label>
           <span class="kf-step-btns"><button type="button" class="btn small" data-move="-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button type="button" class="btn small" data-move="1" aria-label="Move down"${i < f.steps.length - 1 ? '' : ' disabled'}>↓</button><button type="button" class="btn small" data-edit-step="${escHtml(s.id)}">Edit</button><button type="button" class="btn small ghost" data-remove aria-label="Remove ${escHtml(c ? c.name : s.id)}">Remove</button></span>
         </li>`; }).join('') || '<li class="dim kf-empty">No steps yet: add one below.</li>'}</ol>
-      <div class="kf-add"><button type="button" class="btn small" id="kfAdd" aria-expanded="${!!ed.picking}">+ Add a step from the library</button><button type="button" class="btn small" id="kfNewStep">+ Write a new step</button></div>
+      <div class="kf-add"><button type="button" class="btn small" id="kfAdd" aria-expanded="${!!ed.picking}">+ Add a step from the templates</button><button type="button" class="btn small" id="kfNewStep">+ Write a new step</button></div>
       ${ed.picking ? pickerHtml(lib, f) : ''}
       ${checkHtml(check, 'The kit')}
       <div class="bp-actions"><button type="button" class="btn primary" id="kfSave">Save${ed.editing && ed.editing.src === 'built' ? ' as yours' : ''}</button><button type="button" class="btn" id="kfCancel">Cancel</button><button type="button" class="btn ghost" id="kfText">Edit as text</button></div>
     </div>`;
     if (ed.picking) { const s = $('kfPickSearch'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   }
-  /* Every step in the library, by kit, to add to this one (those whose sentences fit how it's made first). */
+  /* Every step in the templates, by kit, to add to this one (those whose sentences fit how it's made first). */
   function pickerHtml(lib, f) {
     const q = (bld.edit.pickQuery || '').toLowerCase();
     const folders = new Set(LAYOUT_FOLDERS[f.head.layout || 'structured']);
@@ -3523,8 +4417,11 @@
   /* The project map: the plan's steps, in order. Each opens a window about its role in the whole. */
   function renderPlan() {
     const plan = project.plan;
-    $('planWrap').hidden = !plan;
-    if (!plan) return;
+    if (!plan || !plan.steps.length) {
+      $('planPath').textContent = '';
+      $('plan').innerHTML = '<li class="plan-empty">No map yet. + Step adds a step of your own; Plan builds a project with one.</li>';
+      return;
+    }
     $('planPath').textContent = plan.path.join(' › ');
     $('plan').innerHTML = plan.steps.map(s => `<li><button type="button" class="plan-step" data-plan="${s.n}"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}</button></li>`).join('');
   }
@@ -3549,7 +4446,7 @@
       <h4>Its role in the project</h4><p>${withCode(step.summary)}</p>
       ${step.usual ? `<h4>Usually made with</h4><p>${withCode(step.usual)}</p>` : ''}
       ${step.learn ? `<h4>Learn first</h4><p>${withCode(step.learn)}</p>` : ''}
-      ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(SECTION_META[p.sec.file].title)}</button>`).join('')}</div>` : ''}
+      ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(metaOf(p.sec).title)}</button>`).join('')}</div>` : ''}
       <div class="bp-actions step-nav">
         <button type="button" class="btn small" data-step-to="${step.n - 1}"${step.n > 1 ? '' : ' disabled'}>← Step ${step.n - 1 || ''}</button>
         <button type="button" class="btn small" data-step-to="${step.n + 1}"${step.n < plan.steps.length ? '' : ' disabled'}>Step ${step.n < plan.steps.length ? step.n + 1 : ''} →</button>
@@ -3557,6 +4454,38 @@
     $('stepModal').hidden = false;
   }
   function closeStep() { $('stepModal').hidden = true; }
+
+  /* A step of your own on the map. Its "── Step n ·" note goes at the cursor (in a file of sentences), so
+   * the map can take you there, as it does for a kit's steps. */
+  function openStepAdd() {
+    activeSec().text = ta.value;
+    const sec = activeSec();
+    $('stepAddWhere').textContent = isSentences(sec) ? `Its note goes in ${fileName(sec)}, above line ${caretLine() + 1}.` : `${fileName(sec)} is ${langName(sec.lang)}, which can't hold a step's note, so this step won't link to a place.`;
+    $('stepAddName').value = ''; $('stepAddSum').value = ''; $('stepAddProblem').textContent = '';
+    $('stepAddModal').hidden = false;
+    $('stepAddName').focus();
+  }
+  function closeStepAdd() { $('stepAddModal').hidden = true; }
+  function addStep() {
+    const name = $('stepAddName').value.trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (!name) { $('stepAddProblem').textContent = 'Give the step a name.'; return; }
+    const depth = $('stepAddDepth').value;
+    const plan = project.plan || (project.plan = { title: project.name, path: [], steps: [] });
+    const n = plan.steps.reduce((m, s) => Math.max(m, s.n), 0) + 1;
+    plan.steps.push({ id: 'mine-' + n + '-' + Math.random().toString(36).slice(2, 6), n, name, depth, summary: $('stepAddSum').value.trim().slice(0, 3000), usual: '', learn: '' });
+    closeStepAdd();
+    if (isSentences(activeSec())) {
+      const b = lineBounds(ta.selectionStart), indent = b.text.match(/^\s*/)[0];
+      insertText(`${indent}note: ── Step ${n} · ${name} (${BUILDER.DEPTHS[depth].label}) ──\n`, b.start, b.start);
+    }
+    renderPlan(); save(); autosave();
+    tLine(`Added step ${n}, "${name}", to the project map.`, 't-sys');
+  }
+  $('btnAddStep').addEventListener('click', openStepAdd);
+  $('stepAddClose').addEventListener('click', closeStepAdd);
+  $('stepAddGo').addEventListener('click', addStep);
+  $('stepAddModal').addEventListener('click', (e) => { if (e.target.id === 'stepAddModal') closeStepAdd(); });
+  for (const id of ['stepAddName', 'stepAddSum']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addStep(); } });
   $('plan').addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) openStep(+b.dataset.plan); });
   $('stepClose').addEventListener('click', closeStep);
   $('stepModal').addEventListener('click', (e) => {
@@ -3594,7 +4523,7 @@
     e.target.value = '';
     if (!list.length) return;
     const { files, skipped } = await filesToProject(list);
-    importProject(files, skipped ? `Skipped ${skipped} files that aren't Python or project notes (images, caches, virtual environments…).` : '');
+    importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes (images, caches, virtual environments…).` : '');
   });
   $('impZip').addEventListener('change', async (e) => {
     const f = e.target.files[0];
@@ -3637,34 +4566,52 @@
       return importProject(R.readZip(new Uint8Array(await list[0].file.arrayBuffer())), '');
     }
     const { files, skipped } = await filesToProject(list);
-    if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't Python or project notes.` : '');
+    if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes.` : '');
     else { closeImport(); addFiles(files); }
   });
 
   $('impGo').addEventListener('click', () => {
     const text = $('impText').value;
     if (!text.trim()) { $('impNote').textContent = 'Paste some code first, or choose files or a folder.'; return; }
-    let name = $('impName').value.trim() || 'pasted.py';
-    if (!CODE_FILE.test(name) && !/\.pyw$/i.test(name)) name += '.py';   // (a name like blink.ino or app.js keeps its language)
+    const source = text.replace(/\r\n?/g, '\n'), CR = window.IntuiCodeReader;
+    let name = $('impName').value.trim() || 'pasted';
+    // the language: the one chosen, else the name's ending, else what the text itself is
+    const picked = $('impLang').value;
+    const d = !picked && CR ? CR.detect(LANGS.fromPath(name) !== 'text' ? name : '', source) : null;
+    const lang = picked || (d && d.lang !== 'text' ? d.lang : LANGS.fromPath(name) !== 'text' ? LANGS.fromPath(name) : 'python');
+    if (LANGS.fromPath(name) !== lang && LANGS.byId(lang)) name = name.replace(/\.[A-Za-z0-9]+$/, '') + '.' + LANGS.extOf(lang);   // pasted → pasted.rs
     closeImport();
     $('impText').value = '';
-    addFiles([{ name, source: text.replace(/\r\n?/g, '\n') }]);
+    addFiles([{ name, source, ...(picked ? { lang: picked } : {}) }]);
+    if (!picked && d) tLine(`Reading it as ${langName(lang)}: ${d.why} If that's wrong, choose another language in Read as.`, 't-sys');
   });
 
   /* A folder, zip or example replaces what was imported before; single files are added to it. */
   async function importProject(files, note) {
     closeImport();
-    if (!files.some(f => CODE_FILE.test(f.name))) { tLine('No Python, JavaScript, HTML or CSS files were found there.', 't-err'); return; }
+    autoLangs(files);
+    if (!files.some(readableFile)) { tLine('No code files were found there.', 't-err'); return; }
     reads = { files, active: -1 };
     await afterImport(note);
   }
   async function addFiles(files) {
+    autoLangs(files);
     for (const f of files) {
       const at = reads.files.findIndex(x => x.name === f.name);
       if (at >= 0) reads.files[at] = f; else reads.files.push(f);
     }
     reads.active = pyFiles().findIndex(x => x.name === files[0].name);
     await afterImport('');
+  }
+  /* Files whose name says nothing (no ending, .txt): the language their text is in, if it's clear. */
+  function autoLangs(files) {
+    const CR = window.IntuiCodeReader;
+    if (!CR) return;
+    for (const f of files) {
+      if (f.lang || extLang(f.name) !== 'text') continue;
+      const d = CR.detect(f.name, f.source);
+      if (d && d.lang && d.lang !== 'text' && d.confidence !== 'guess') f.auto = d.lang;
+    }
   }
   async function afterImport(note) {
     readFocus = null;
@@ -3674,7 +4621,7 @@
     if (pyFiles().length === 1) reads.active = 0;
     renderRead();
     const counts = {};
-    for (const f of pyFiles()) { const l = LANG_NAME[langOfPath(f.name)] || 'code'; counts[l] = (counts[l] || 0) + 1; }
+    for (const f of pyFiles()) { const l = langName(readLang(f)); counts[l] = (counts[l] || 0) + 1; }
     const parts = Object.entries(counts).map(([l, c]) => `${c} ${l}`);
     const n = pyFiles().length;
     tLine(`Imported ${n} file${n === 1 ? '' : 's'}${parts.length ? ` (${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]})` : ''}.` + (note ? ' ' + note : ''), 't-sys');
@@ -3691,7 +4638,7 @@
   const imagesWritten = new Set();   // "folder|name|key": already in that folder's images/
   let imageDb = null;
   const images = () => project.images || (project.images = []);
-  const usesImages = () => project.kind === 'website' || project.kind === 'python';
+  const usesImages = () => project.sections.some(s => s.lang === 'python' || WEB_ROLE[s.lang]);
   function idb(mode, act) {
     imageDb = imageDb || new Promise((res, rej) => {
       const rq = indexedDB.open('intuicode', 1);
@@ -3745,10 +4692,10 @@
     if (!added.length) return;
     imagesChanged();
     const say = imageSentence(added[0].name);
-    if (say) tLine(`In ${SECTION_META[activeSec().file].title} it's used like this: ${say}  (Use, beside it on the left, puts that in for you.)`, 't-sys');
+    if (say) tLine(`In ${metaOf(activeSec()).title} it's used like this: ${say}  (Use, beside it on the left, puts that in for you.)`, 't-sys');
     if (project.kind === 'python' && /\.(jpe?g|webp|svg)$/i.test(added[0].name)) tLine('tkinter shows PNG and GIF pictures. Save a copy as PNG to use this one in a window.', 't-sys');
   }
-  function imagesChanged() { save(); autosave(); renderImages(); if (project.kind === 'website') runWebsite(false); }
+  function imagesChanged() { save(); autosave(); renderImages(); if (webOn()) runWebsite(false); }
 
   /* The sentence that uses a picture, for the folder you're in. */
   function imageSentence(name, sec = activeSec()) {
@@ -3805,7 +4752,7 @@
     const want = images().filter(im => !imageUrls.has(im.key));
     for (const im of want) { try { const url = await idb('readonly', s => s.get(im.key)); if (url) imageUrls.set(im.key, url); } catch (_) { /* no store: shown as missing */ } }
     renderImages();
-    if (want.some(im => imageUrls.has(im.key)) && project.kind === 'website') runWebsite(false);
+    if (want.some(im => imageUrls.has(im.key)) && webOn()) runWebsite(false);
   }
   /* Pictures neither the project nor the previous one ("restore") uses are let go. */
   async function pruneImages() {
@@ -3836,7 +4783,7 @@
     const extra = names.filter(n => IMAGE_NAME.test(n) && !images().some(im => im.name === n));
     if (extra.length) tLine(`images/ also has ${extra.join(', ')}, not part of the project yet. File → Add an image adds ${extra.length > 1 ? 'them' : 'it'}.`, 't-sys');
     renderImages();
-    if (project.kind === 'website') runWebsite(false);
+    if (webOn()) runWebsite(false);
   }
 
   /* ------------------------------------------------------------------ */
@@ -3872,7 +4819,7 @@
       const f = await pickFolder('Choose a folder to save this project in');
       if (!f) return;
       // never write over another project's files
-      const names = project.sections.map(s => (s.file === 'sketch' ? baseName(f) + '.ino' : fileName(s))).concat('.intuicode/project.json');
+      const names = project.sections.map(s => (s.file === 'sketch' && s.path === 'sketch.ino' ? baseName(f) + '.ino' : fileName(s))).concat('.intuicode/project.json');
       const taken = [];
       for (const n of names) { try { await invoke('read_text', { path: join(f, n) }); taken.push(n); } catch (_) { /* not there: free */ } }
       if (taken.length) {
@@ -3885,7 +4832,7 @@
     compile();
     // everything to write is taken now: another project may be opened while the files are written
     const folder = desk.folder, names = project.sections.map(fileName);
-    const files = project.sections.map((s, i) => [names[i], secResult(s.id).text]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
+    const files = project.sections.map((s, i) => [names[i], codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
     try {
       for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
       await writeImages(folder);
@@ -3919,16 +4866,17 @@
         const changed = [];
         for (const s of project.sections) {
           const onDisk = await read(fileName(s));
-          if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== secResult(s.id).text.trim()) changed.push(s);
+          if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== codeOf(s).trim()) changed.push([s, onDisk.replace(/\r\n/g, '\n')]);
         }
-        for (const s of changed) {
+        for (const [s, onDisk] of changed) {
+          if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuCode: it's shown as it is now.`, 't-sys'); continue; }
           if (secLang(s) !== 'python') {
             const res = await rebuildSection(folder, s, read);
             if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
             else tLine(`${fileName(s)} was changed outside IntuCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
             continue;
           }
-          const res = await sentencesFor(await read(fileName(s)));
+          const res = await sentencesFor(onDisk);
           if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
         if (changed.length) { ta.value = activeSec().text; refreshAll(); }
@@ -4054,31 +5002,34 @@
   }
   async function runDesktopPython() {
     const dir = desk.folder || await invoke('scratch_folder');
-    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: secResult(s.id).text }); await writeImages(dir); }
+    try { for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: codeOf(s) }); await writeImages(dir); }
     catch (e) { tLine('Could not write the program files: ' + e, 't-err'); return; }
     try { desk.venv = await invoke('find_venv', { cwd: dir }); } catch (_) { desk.venv = null; }
     const id = desk.nextId++;
     desk.proc = { id, kind: 'python', err: '' };
-    tLine(`▶ Running main.py with ${desk.venv ? `the project's own Python (${desk.venv})` : `Python ${desk.python[1]} (installed on this computer)`}${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
+    const start = startSec().lang === 'python' ? startSec().path : 'main.py';
+    tLine(`▶ Running ${start} with ${desk.venv ? `the project's own Python (${desk.venv})` : `Python ${desk.python[1]} (installed on this computer)`}${desk.folder ? '' : ', from a temporary folder: press Save to keep the project'}`, 't-sys');
     setRunning(true);
     termIn.focus({ preventScroll: true });
-    try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', 'main.py'], cwd: dir }); }
+    try { await invoke('run_program', { id, program: desk.python[0], args: ['-u', start], cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
   async function runDesktopCpp() {
     const dir = desk.folder || await invoke('scratch_folder');
     const win = /Win/i.test(navigator.userAgent);
-    try { await invoke('write_text', { path: join(dir, 'main.cpp'), content: secResult('program').text }); }
-    catch (e) { tLine('Could not write main.cpp: ' + e, 't-err'); return; }
+    // every C++ file (headers too), then the start file is compiled
+    const main = startSec().lang === 'cpp' ? startSec() : project.sections.find(s => s.lang === 'cpp');
+    try { for (const s of project.sections.filter(x => x.lang === 'cpp')) await invoke('write_text', { path: join(dir, s.path), content: codeOf(s) }); }
+    catch (e) { tLine('Could not write the C++ files: ' + e, 't-err'); return; }
     // the built program goes in .intuicode/build, not among your files
     const exe = '.intuicode/build/intuicode-program' + (win ? '.exe' : '');
     try { await invoke('write_text', { path: join(dir, '.intuicode/build/.gitignore'), content: '*\n' }); } catch (_) { /* compiling says why */ }
     const id = desk.nextId++;
-    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe };
+    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe, source: main.path, sec: main.id };
     const msvc = desk.cpp[0] === 'msvc';
-    tLine(`▶ Compiling main.cpp with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
+    tLine(`▶ Compiling ${main.path} with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
     setRunning(true, 'compiling…');
-    try { await invoke('compile_cpp', { id, source: 'main.cpp', output: exe, cwd: dir }); }
+    try { await invoke('compile_cpp', { id, source: main.path, output: exe, cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
   /* Compiler complaints that need a word about the board, not the code. */
@@ -4111,7 +5062,12 @@
     let dir = desk.folder;
     if (!dir) dir = join(await invoke('scratch_folder'), slug(project.name) || 'sketch');
     const name = baseName(dir);
-    try { await invoke('write_text', { path: join(dir, name + '.ino'), content: secResult('sketch').text }); }
+    // the sketch is named after its folder; other .ino files are more tabs of the same sketch
+    const sk = startSec().lang === 'arduino' ? startSec() : project.sections.find(s => s.lang === 'arduino');
+    try {
+      await invoke('write_text', { path: join(dir, name + '.ino'), content: codeOf(sk) });
+      for (const s of project.sections.filter(x => x.lang === 'arduino' && x !== sk)) await invoke('write_text', { path: join(dir, s.path), content: codeOf(s) });
+    }
     catch (e) { tLine('Could not write the sketch: ' + e, 't-err'); return; }
     setRunning(true, 'checking…');
     tLine('Looking for a connected board…', 't-sys');
@@ -4134,7 +5090,7 @@
     else if (unnamed) tLine(`There is a board on ${unnamed}, but it doesn't say which kind it is (boards with a USB-serial chip, like many ESP32 boards, don't). Type board esp32 (or uno, nano, mega, or arduino-cli's full name for it) and press Run again to upload to it. For now the sketch is only checked, for ${fqbn}.`, 't-sys');
     else tLine(`No board is plugged in, so the sketch will only be checked (for ${project.board ? fqbn : 'an Arduino Uno'}). Plug one in by USB and press Run again to upload it.`, 't-sys');
     const id = desk.nextId++;
-    desk.proc = { id, kind: 'ino-compile', err: '', out: '', dir, name, port, fqbn };
+    desk.proc = { id, kind: 'ino-compile', err: '', out: '', dir, name, port, fqbn, sec: sk.id };
     tLine(`▶ Checking the sketch (arduino-cli compile, ${fqbn})…`, 't-sys');
     try { await invoke('run_program', { id, program: desk.arduino[0], args: ['compile', '--fqbn', fqbn, dir], cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
@@ -4153,7 +5109,7 @@
           tLine(`  $ ${cli} core install ${core}${extra}`, 't-help');
           return;
         }
-        compilerErrors(all, p.name + '.ino', 'sketch');
+        compilerErrors(all, p.name + '.ino', p.sec);
         tLine('■ The sketch could not be checked.', 't-sys');
         return;
       }
@@ -4174,7 +5130,7 @@
         return;
       }
       tLine('✓ Uploaded: the sketch is running on the board.', 't-ok');
-      const baud = (secResult('sketch').text.match(/Serial\.begin\((\d+)\)/) || [])[1];
+      const baud = (codeOf(project.sections.find(s => s.id === p.sec) || startSec()).match(/Serial\.begin\((\d+)\)/) || [])[1];
       if (!baud) return;
       const id = desk.nextId++;
       desk.proc = { ...p, id, kind: 'monitor', err: '', out: '' };
@@ -4244,7 +5200,7 @@
           invoke('run_program', { id, program: join(p.dir, p.exe), args: [], cwd: p.dir }).catch((e) => { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); });
           return;
         }
-        compilerErrors(p.err + '\n' + (p.out || ''));
+        compilerErrors(p.err + '\n' + (p.out || ''), p.source, p.sec);
         tLine('■ The program could not be compiled.', 't-sys');
         return;
       }
@@ -4290,10 +5246,13 @@
       else if (maxed && tip.hidden && !document.querySelector('.modal:not([hidden])') && ac.hidden) setMax(maxed);
       else if (!tip.hidden) hideTip();
       else if (!$('stepModal').hidden) closeStep();
+      else if (!$('fileModal').hidden) closeFileDialog();
+      else if (!$('stepAddModal').hidden) closeStepAdd();
       else if (!$('builderModal').hidden) closeBuilder();
       else if (!$('newModal').hidden) closeNewProject();
       else if (!$('fileList').hidden) setFileMenu(false);
       else if (!$('bpModal').hidden) closeBlueprints();
+      else if (!$('libModal').hidden) closeLibrary();
       else if (!$('impModal').hidden) closeImport();
       else if (!ac.hidden) closeAc();
       else if (!$('index').hidden) closeIndex();
@@ -4306,10 +5265,10 @@
     ta.value = activeSec().text;
     renderSectionHeader();
     refreshAll();
-    $('work').classList.toggle('web', project.kind === 'website');
+    $('work').classList.toggle('web', webOn());
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
-    if (project.kind === 'website') runWebsite(false);
+    if (webOn()) runWebsite(false);
     loadImages().then(pruneImages);
     tLine('IntuCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();

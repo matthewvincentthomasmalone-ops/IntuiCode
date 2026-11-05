@@ -1,0 +1,7 @@
+{
+  "exported": "2026-11-02",
+  "items": [
+    { "sku": "TEA-01", "count": 40 },
+    { "sku": "MUG-02", "count": 12 }
+  ]
+}

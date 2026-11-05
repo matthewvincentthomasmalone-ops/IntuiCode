@@ -9,7 +9,7 @@
  *   hallway   the structure is laid out and the key parts are named; you fill in the ‹blanks›
  *   horizon   explained and pointed at: what it is, what's usually used for it, what to learn first
  *
- * Everything is plain text, like blueprints, so anyone can edit the library or add to it:
+ * Everything is plain text, like blueprints, so anyone can edit the templates or add to them:
  *
  *   question: app                          a question; the first one is "start"
  *   ask: Where will it run?
@@ -20,7 +20,7 @@
  *   kit: daw                               the components for one kind of project
  *   title: Audio workstation (DAW)
  *   layout: structured                     script | structured | website | arduino
- *   shelf: games                           its kind: where it sits in the Library and in the questions (see SHELVES)
+ *   shelf: games                           its kind: where it sits in Project Templates and in the questions (see SHELVES)
  *   platform: phone                        where it runs: pc, phone, web or board (from the layout if left out)
  *   asks: webpage                          optional: a question of its own, asked before its steps
  *   module: Snake                          optional: kits that are versions of one module are offered together
@@ -54,7 +54,7 @@
     horizon: { label: 'Horizon', means: 'Explained and pointed at: what it is, what\'s usually used for it, and what to learn first. Not something to write in sentences yet.' },
   };
 
-  /* The Library's shelves, by kind of project. The builder's questions are made from them: "What are you
+  /* The shelves of Project Templates, by kind of project. The builder's questions are made from them: "What are you
    * making?" lists the shelves, and each shelf's question lists its kits, so a kit (yours too) appears in
    * planning as soon as it says which shelf it sits on. Kits and blueprints also say where they run. */
   const SHELVES = [
@@ -1338,7 +1338,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     if (kind === 'kit') {
       if (head.layout && !LAYOUT_FILES[head.layout]) problems.push(`"layout: ${head.layout}" isn't one of script, structured, website or arduino.`);
       if (!head.steps) problems.push('Add "steps:" with its components in build order, like "steps: first!, second*, third".');
-      if (head.shelf && !SHELVES.some(x => x.id === head.shelf)) problems.push(`"shelf: ${head.shelf}" isn't a shelf of the Library. Use one of: ${SHELVES.map(x => x.id).join(', ')}.`);
+      if (head.shelf && !SHELVES.some(x => x.id === head.shelf)) problems.push(`"shelf: ${head.shelf}" isn't a shelf of Project Templates. Use one of: ${SHELVES.map(x => x.id).join(', ')}.`);
       if (head.platform && !PLATFORMS[head.platform]) problems.push(`"platform: ${head.platform}" isn't one of ${Object.keys(PLATFORMS).join(', ')}.`);
       if (head.annotated && !/^(yes|no|true|false)$/i.test(head.annotated)) problems.push('"annotated:" is yes or no.');
       if (head.version && !head.module) problems.push('A kit with "version:" also says which "module:" it\'s a version of.');

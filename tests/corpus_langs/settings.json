@@ -1,0 +1,36 @@
+{
+  "name": "garden-planner",
+  "version": "1.4.0",
+  "description": "Plan beds, sowing dates and harvests for an allotment.",
+  "private": true,
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "date-fns": "^3.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^9.9.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.5"
+  },
+  "beds": [
+    { "id": 1, "crop": "potatoes", "sown": "2026-03-21", "rows": 4 },
+    { "id": 2, "crop": "runner beans", "sown": "2026-05-10", "rows": 2 },
+    { "id": 3, "crop": "leeks", "sown": "2026-04-02", "rows": 3 }
+  ],
+  "frostDates": {
+    "last": "2026-04-28",
+    "first": "2026-10-19"
+  },
+  "units": "metric",
+  "reminders": true,
+  "maxBeds": 12,
+  "owner": null
+}
