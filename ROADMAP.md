@@ -1,6 +1,6 @@
-# IntuCode roadmap
+# IntuaCode roadmap
 
-IntuCode translates between plain, structured sentences and real code, in both
+IntuaCode translates between plain, structured sentences and real code, in both
 directions, using rules rather than AI. This file records where it is going and why.
 
 ## Principles
@@ -29,7 +29,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 9 | A toolkit: projects as file trees in many languages (Markdown, data and 30+ languages as code beside the sentence languages), the Library of parts and kinds of project with Coding integration, steps added by hand to the project map, Read mode for every installed grammar, and a writer audit that refuses two-reading English instead of guessing | done (2026-11-04) |
 | 10 | Unity mode: one pane of real code; select a region and **De-Regex/Translate** it into sentences in place (shown dark green), edit it, and **Re-Regex** puts it back into the code | done (first version: the six sentence languages) |
 
-The direction, since step 7: IntuCode is for people who build ambitious things with help (often
+The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
 and learn to think in each language's style as they go. The tutor teaches that style; the project
 builder is a horizon to aim for, and for the hardest parts, a hallway.
@@ -123,7 +123,7 @@ statements that differ are kept as `python:` lines automatically and the check r
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
    libraries AI tools use most, shared by Write and Read modes.
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
-   IntuCode is the verifiable layer. Any AI features must be opt-in and labelled as guesses.
+   IntuaCode is the verifiable layer. Any AI features must be opt-in and labelled as guesses.
 4. **The "new language" trap.** Sentences can become a dialect of their own. Mitigation:
    real code always visible; sentences can be faded out as people learn.
 5. **Language differences.** HTML and CSS fit sentences well; JavaScript in practice means

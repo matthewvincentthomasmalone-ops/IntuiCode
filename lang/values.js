@@ -1,4 +1,4 @@
-/* IntuCode values: the numbers, colours and keyword values in a sentence, and what is usual for each.
+/* IntuaCode values: the numbers, colours and keyword values in a sentence, and what is usual for each.
  * The sentence editor's "Drop down" mode puts a small box under every value: ▾ lists the values people
  * usually choose for that spot, each with a short plain label, and − / + nudge it. This file supplies the
  * knowledge; the app does the drawing.

@@ -1,4 +1,4 @@
-// The IntuCode index: every sentence pattern and word phrase the writers export (TEMPLATES, WORDS, GUIDE…),
+// The IntuaCode index: every sentence pattern and word phrase the writers export (TEMPLATES, WORDS, GUIDE…),
 // by language and topic, with what each becomes. Written into INTUICODE.md (between the index markers) and
 // lang/intuicode_index.json (for the app's Index).
 //   node tools/intuicode_index.mjs           rewrite both
@@ -184,7 +184,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (process.argv.includes('--check')) {
     const stale = outOfDate();
     if (stale.length) { console.error(`Out of date: ${stale.join(', ')}. Run: node tools/intuicode_index.mjs`); process.exit(1); }
-    console.log('The IntuCode index is up to date.');
+    console.log('The IntuaCode index is up to date.');
   } else {
     const want = expectedFiles();
     const crlf = /\r\n/.test(readFileSync(DOC, 'utf8'));   // keep the file's own line endings

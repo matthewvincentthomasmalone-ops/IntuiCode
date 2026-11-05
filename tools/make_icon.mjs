@@ -1,4 +1,4 @@
-// Draws the app icon, a vintage terminal with "IntuCode>" on its screen, as src-tauri/icons/source.svg.
+// Draws the app icon, a vintage terminal with "IntuaCode>" on its screen, as src-tauri/icons/source.svg.
 // The letters are a 5×7 pixel font drawn as squares, so the icon doesn't depend on any installed font.
 // Then: npm run tauri -- icon src-tauri/icons/source.svg   (makes every size, and the .ico and .icns)
 // The Windows build only embeds a new icon.ico when src-tauri/tauri.conf.json has changed since the last
@@ -12,6 +12,7 @@ const FONT = {
   n: ['.....', '.....', '#.##.', '##..#', '#...#', '#...#', '#...#'],
   t: ['.#...', '.#...', '####.', '.#...', '.#...', '.#..#', '..##.'],
   u: ['.....', '.....', '#...#', '#...#', '#...#', '#..##', '.##.#'],
+  a: ['.....', '.....', '.###.', '....#', '.####', '#...#', '.####'],
   i: ['..#..', '.....', '.##..', '..#..', '..#..', '..#..', '.###.'],
   C: ['.###.', '#...#', '#....', '#....', '#....', '#...#', '.###.'],
   o: ['.....', '.....', '.###.', '#...#', '#...#', '#...#', '.###.'],
@@ -20,7 +21,7 @@ const FONT = {
   '>': ['.#...', '..#..', '...#.', '....#', '...#.', '..#..', '.#...'],
   '█': ['#####', '#####', '#####', '#####', '#####', '#####', '#####'],
 };
-const TEXT = 'IntuCode>';
+const TEXT = 'IntuaCode>';
 
 // The screen, and the text centred on it
 const SCREEN = { x: 116, y: 176, w: 792, h: 472, r: 64 };

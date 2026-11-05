@@ -1,15 +1,15 @@
-/* IntuCode — the languages a project's files can be in.
+/* IntuaCode — the languages a project's files can be in.
  *
  * One list for the whole app: the file tree (every file has a language), Read mode (which grammar reads
  * it), the Library (which language a part's code is in) and the Index.
  *
- *   id        the name used everywhere in IntuCode
+ *   id        the name used everywhere in IntuaCode
  *   name      what people call it
  *   exts      file endings, the usual one first
  *   grammar   the tree-sitter grammar that reads it (tree-sitter-<grammar>.wasm), if there is one
  *   write     how a file in it is written:
- *               sentences  you write sentences and IntuCode writes the code (and reads code back into sentences)
- *               code       you write the code itself, and IntuCode reads it to you in plain words
+ *               sentences  you write sentences and IntuaCode writes the code (and reads code back into sentences)
+ *               code       you write the code itself, and IntuaCode reads it to you in plain words
  *               text       notes and data (Markdown, CSV…): written as they are
  *   comment   how a line becomes a note in that language
  *   family    where it's used, for grouping in lists

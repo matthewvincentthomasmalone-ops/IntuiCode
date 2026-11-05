@@ -84,7 +84,7 @@ What a variant holds depends on the language's `write` in `lang/languages.js`:
 
 | write | Languages | The text is |
 |---|---|---|
-| `sentences` | Python, HTML, CSS, JavaScript, C++, Arduino | IntuCode sentences, translated by that language's writer |
+| `sentences` | Python, HTML, CSS, JavaScript, C++, Arduino | IntuaCode sentences, translated by that language's writer |
 | `code` | Rust, C, C#, Swift, Kotlin, TypeScript, Lua, Go, PHP, SQL, Bash… | the exact code |
 | `text` | JSON, YAML, TOML, Markdown, CSV, plain text | the file as it is |
 
@@ -102,13 +102,13 @@ loads what `build.sh` makes from `gain.cpp`; `index.html` loads `dsp.js`, which 
 
 ## Writing guide
 
-- **Prefer sentences.** That is the point of IntuCode. Write `python:`, `js:`, `c++:`, `above main:` or
+- **Prefer sentences.** That is the point of IntuaCode. Write `python:`, `js:`, `c++:`, `above main:` or
   `head:` lines only where no sentence exists yet, and keep the sentence for the parts people should read.
 - **Plain, direct, never patronising.** No "simply", "just", "easy", no exclamation marks. British spelling
   ("colour", "behaviour"). Say what something does and why, in that order.
 - **Be exact about facts.** Formulas come from published sources, credited with `source:`. Standards and
   products are named only as what they are (AES67, SMPTE ST 2110, Dante, NDI, Ember+…).
-- **Licences.** IntuCode is Apache-2.0. Never copy code from GPL, LGPL or AGPL projects (Ardour, Audacity,
+- **Licences.** IntuaCode is Apache-2.0. Never copy code from GPL, LGPL or AGPL projects (Ardour, Audacity,
   LMMS, Surge, OBS…) or from anything whose licence doesn't allow it: write original code from the published
   formula or the documented API. GPL projects can be listed under `learn from:` for reading.
 - **Real-time audio.** C++ that runs in an audio callback must not allocate memory, lock, open files, print or

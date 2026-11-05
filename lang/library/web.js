@@ -1,4 +1,4 @@
-/* IntuCode Library — networking and security parts. */
+/* IntuaCode Library — networking and security parts. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
 `part: fetch-retry

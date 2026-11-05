@@ -1,4 +1,4 @@
-/* IntuCode — web language pack: sentences -> HTML, CSS and JavaScript.
+/* IntuaCode — web language pack: sentences -> HTML, CSS and JavaScript.
  *
  * A website project has three folders:
  *   Structure  (index.html)  what is on the page

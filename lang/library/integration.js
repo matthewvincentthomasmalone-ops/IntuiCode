@@ -1,4 +1,4 @@
-/* IntuCode Library — Coding integration: ready-made code that lets two languages work together in one
+/* IntuaCode Library — Coding integration: ready-made code that lets two languages work together in one
  * project. Every part gives both sides; the file names show how they fit (which file loads, calls or
  * builds which). */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(

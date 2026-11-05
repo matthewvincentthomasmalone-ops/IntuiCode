@@ -10,7 +10,7 @@ const W = { LANG: L, WEB, CPP };
 const plain = (x) => JSON.parse(JSON.stringify(x));   // (objects made in the engine's sandbox)
 const KIND_FILES = { python: ['settings', 'tools', 'main'], website: ['structure', 'styling', 'mechanics'], cpp: ['program'], arduino: ['sketch'] };
 
-test('paths IntuCode will write stay inside the project and out of its own folders', () => {
+test('paths IntuaCode will write stay inside the project and out of its own folders', () => {
   for (const ok of ['main.py', 'docs/plan.md', 'dsp/gain.py', 'a b/notes.md', 'site/index.html', 'native/gain.rs', 'data/scores.csv', 'v1.2/notes.txt'])
     assert.equal(PRJ.pathProblem(ok, LANGS.fromPath(ok)), '', ok);
   for (const bad of ['../x.py', 'a/../../x.md', '/etc/passwd', 'C:/x.md', 'C:\\x.md', '.intuicode/project.json', 'images/a.png', '.hidden', 'a//b.md', 'a/', ' a.md', 'a.md ', 'a /b.md', '', 'a/b/c/d/e/f/g.md'])
@@ -20,7 +20,7 @@ test('paths IntuCode will write stay inside the project and out of its own folde
   assert.equal(PRJ.pathProblem('lib/my_file.py', 'python'), '');
 });
 
-test('a project file from someone else can\'t name a path outside the project, or a language IntuCode doesn\'t know', () => {
+test('a project file from someone else can\'t name a path outside the project, or a language IntuaCode doesn\'t know', () => {
   const file = (path, lang = 'markdown') => ({ version: 2, sections: [{ id: 'a', path, lang, text: '' }] });
   assert.ok(PRJ.checkedSections(file('notes.md'), KIND_FILES));
   assert.equal(PRJ.checkedSections(file('../notes.md'), KIND_FILES), null);

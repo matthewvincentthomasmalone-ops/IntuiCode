@@ -1,4 +1,4 @@
-/* IntuCode kit pack: learning, creative, social and tool apps (flashcards, typing, music, photos, a message wall, weather, passwords, files, the kitchen, countdowns). */
+/* IntuaCode kit pack: learning, creative, social and tool apps (flashcards, typing, music, photos, a message wall, weather, passwords, files, the kitchen, countdowns). */
 (window.IntuiKitPacks = window.IntuiKitPacks || []).push(
 
 // ---------------------------------------------------------------- Leitner Flashcards

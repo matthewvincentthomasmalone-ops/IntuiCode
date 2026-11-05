@@ -1,6 +1,6 @@
-/* IntuCode Library — kinds of project. Each "learn from" project was checked on its own repository or site
+/* IntuaCode Library — kinds of project. Each "learn from" project was checked on its own repository or site
  * for the licence given (2026-11). GPL, LGPL and AGPL projects are listed to read and learn from: their code
- * can't be copied into IntuCode (Apache-2.0) or into code under another licence. See README.md. */
+ * can't be copied into IntuaCode (Apache-2.0) or into code under another licence. See README.md. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
 // ---------------------------------------------------------------- Websites and online
@@ -188,7 +188,7 @@ language: Rust | The app's core in Tauri apps | Tauri
 language: JavaScript | The window of Electron and Tauri apps is a web page | Electron, Tauri
 language: Python | Tools with simple windows | Tkinter, PySide (Qt)
 language: Swift | Mac apps | SwiftUI, AppKit
-learn from: Tauri | Rust | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri | Small desktop apps with a web page for a window (IntuCode's desktop app uses it)
+learn from: Tauri | Rust | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri | Small desktop apps with a web page for a window (IntuaCode's desktop app uses it)
 learn from: Visual Studio Code | TypeScript | MIT | https://github.com/microsoft/vscode | A very large Electron app: extensions, settings, commands
 learn from: Avalonia | C# | MIT | https://github.com/AvaloniaUI/Avalonia | One C# interface for Windows, macOS and Linux
 learn from: Notepad++ | C++ | GPL-3.0 | https://github.com/notepad-plus-plus/notepad-plus-plus | A Windows editor in plain C++ and Win32

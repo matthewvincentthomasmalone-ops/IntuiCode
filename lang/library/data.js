@@ -1,4 +1,4 @@
-/* IntuCode Library — data, files and system, storage and databases. */
+/* IntuaCode Library — data, files and system, storage and databases. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
 `part: csv-files

@@ -1,6 +1,6 @@
-# IntuCode language reference
+# IntuaCode language reference
 
-IntuCode is a set of structured English sentences. Rules, not AI, translate them into Python
+IntuaCode is a set of structured English sentences. Rules, not AI, translate them into Python
 (`lang/python.js`), into HTML, CSS and JavaScript for websites (`lang/web_write.js`), and into C++ and
 Arduino sketches (`lang/cpp_write.js`). Readers turn code back into sentences (`lang/python_reader.py`,
 `lang/convert.js`) and check that the sentences rebuild exactly the same code.
@@ -13,8 +13,8 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 **Is it airtight?** Not completely.
 
 - **Code to sentences is checked.** The sentences are translated back and compared with the original;
-  anything that differs stays as code, and IntuCode says when the result still isn't exact.
-- **Sentences to code is not checked against what you meant**, because only you know that. IntuCode has
+  anything that differs stays as code, and IntuaCode says when the result still isn't exact.
+- **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
   The risk is English with two readings, and context that can't be seen. Where the writer knows a sentence
@@ -33,7 +33,7 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 5. [Grammar: C++ and Arduino](#grammar-c-and-arduino)
 6. [How a value is read: binding and precedence](#how-a-value-is-read-binding-and-precedence)
 7. [Context: what the writers remember](#context-what-the-writers-remember)
-8. [What IntuCode has no words for](#what-intucode-has-no-words-for)
+8. [What IntuaCode has no words for](#what-intuacode-has-no-words-for)
 9. [Guarantees and limits](#guarantees-and-limits)
 10. [Known wrong translations](#known-wrong-translations)
 11. [About the examples](#about-the-examples)
@@ -43,7 +43,7 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 
 A project is a tree of files (`lang/project.js`). Each file has a path and a language from
 `lang/languages.js`, and the language says how it is written: in **sentences** (Python, HTML, CSS, JavaScript,
-C++, Arduino: each sentence file becomes one code file of that name), as **code** that IntuCode reads to you
+C++, Arduino: each sentence file becomes one code file of that name), as **code** that IntuaCode reads to you
 (Rust, Go, C#, Swift… 30+), or as **text** kept as written (Markdown, CSV, JSON, YAML, TOML). A project can mix
 them. Each writer compiles its own files: the Python files together, each seeing the ones before it and the
 start file last; a website's main page with its styling and mechanics, and its other pages, styles and
@@ -112,7 +112,7 @@ check it; the language does, when the program runs or is compiled.
 |---|---|---|
 | `python:`, `raw python:`, `raw:` | Python | as the line, at its indentation. Names it makes (`x = …`, `import`, `def`, `class`) become known; a line ending in `:` opens a block; text in triple quotes carries on over the next `python:` lines, copied exactly. |
 | `html:`, `raw:` | Structure | at that place in `<body>`. Spaces inside `<pre>`, `<textarea>`, `<script>` and `<style>` are kept. |
-| `head:`, `in the head:` | Structure | into `<head>`. A charset, viewport, `style.css` link or `script.js` tag there replaces the one IntuCode writes. |
+| `head:`, `in the head:` | Structure | into `<head>`. A charset, viewport, `style.css` link or `script.js` tag there replaces the one IntuaCode writes. |
 | `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` |
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
@@ -982,7 +982,7 @@ int main() {
 
 ## Context: what the writers remember
 
-IntuCode has one word where a language has several (`add` is `.append()`, `+=` or `.push()`; a name is a
+IntuaCode has one word where a language has several (`add` is `.append()`, `+=` or `.push()`; a name is a
 variable or a page element; `set` declares or assigns). The writers decide from what they have seen.
 
 ### Python context
@@ -1198,7 +1198,7 @@ basket.append("eggs")
 average = round((n * 2 / 4))
 ```
 
-## What IntuCode has no words for
+## What IntuaCode has no words for
 
 The writers don't guess what an unknown sentence means. For each line, one of these happens:
 

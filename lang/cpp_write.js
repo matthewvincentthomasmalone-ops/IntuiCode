@@ -1,4 +1,4 @@
-/* IntuCode — C++ language pack: sentences -> C++ (and Arduino sketches).
+/* IntuaCode — C++ language pack: sentences -> C++ (and Arduino sketches).
  *
  * Same sentences as Python where they make sense. C++ needs a type for every
  * value, so the translator works types out from the values (text -> std::string,
@@ -543,7 +543,7 @@
         const v = m[2] || 'n', a = m[3].trim(), b = m[5].trim(), num = (t) => /^-?\d+$/.test(t);
         const down = /down/i.test(m[1] || '') || !!m[4] || (num(a) && num(b) && +a > +b);
         // which way? only numbers written here say; otherwise ask (never count the wrong way)
-        if (!m[1] && !m[4] && !num(a) && num(b)) inf.errs.push(`IntuCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up ${v} from …" or "count down ${v} from …".`);
+        if (!m[1] && !m[4] && !num(a) && num(b)) inf.errs.push(`IntuaCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up ${v} from …" or "count down ${v} from …".`);
         if (!m[2]) note(inf, 'No name was given for the count, so it is called `n`. Write "count i from …" to choose a name.');
         x.types[v] = 'int';
         const step = m[6] ? E(m[6], inf) : null;

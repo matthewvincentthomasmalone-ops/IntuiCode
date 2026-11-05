@@ -1,4 +1,4 @@
-/* IntuCode — the Library: common parts to add to a project, and the kinds of project they go in.
+/* IntuaCode — the Library: common parts to add to a project, and the kinds of project they go in.
  *
  * Two kinds of entry, in plain text, in the packs in lang/library/ (lang/library/README.md has a writing
  * guide). Each pack file adds its entries with
@@ -41,7 +41,7 @@
  *   …
  *
  * What a variant's text is depends on the language's "write" (lang/languages.js):
- *   sentences  IntuCode sentences in that language's writer: Python (lang/python.js); JavaScript, HTML and
+ *   sentences  IntuaCode sentences in that language's writer: Python (lang/python.js); JavaScript, HTML and
  *              CSS as a website's Mechanics, Structure and Styling (lang/web_write.js); C++ and Arduino
  *              (lang/cpp_write.js). Lines like "python:", "js:" or "c++:" hold exact code where no sentence fits.
  *   code       the exact code

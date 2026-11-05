@@ -1,4 +1,4 @@
-/* IntuCode Library — hardware parts: boards, pins and sensors. */
+/* IntuaCode Library — hardware parts: boards, pins and sensors. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
 `part: button-debounce

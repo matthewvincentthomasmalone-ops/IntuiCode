@@ -1,4 +1,4 @@
-/* IntuCode kit pack: everyday apps (productivity, money, health). To-dos that fade, tagged notes, a focus
+/* IntuaCode kit pack: everyday apps (productivity, money, health). To-dos that fade, tagged notes, a focus
  * timer that grows a garden, a day planner, an envelope budget, a trip-cost splitter, a subscription checker,
  * a habit streak grid, an interval timer and a breathing guide. */
 (window.IntuiKitPacks = window.IntuiKitPacks || []).push(

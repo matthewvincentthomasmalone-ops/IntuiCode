@@ -1,4 +1,4 @@
-/* IntuCode — Python language pack.
+/* IntuaCode — Python language pack.
  *
  * Turns sentences into Python, one sentence line -> one Python line.
  * Everything here is plain rules: ordered regular expressions for sentences,
@@ -961,7 +961,7 @@
     const up = /^count up/i.test(m.input);
     const down = !up && (!!m[3] || /^count down/i.test(m.input) || (isNum(a) && isNum(b) && +a > +b));
     // "count i from n to 1": which way? Only numbers written here say; otherwise ask (never count the wrong way)
-    if (!up && !down && !isNum(a) && isNum(b)) x.err(`IntuCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up from …" or "count down from …".`);
+    if (!up && !down && !isNum(a) && isNum(b)) x.err(`IntuaCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up from …" or "count down from …".`);
     let end, st = step;
     if (down) {
       end = isNum(b) ? String(+b - 1) : `${b} - 1`;
