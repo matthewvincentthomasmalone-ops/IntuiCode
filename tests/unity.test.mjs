@@ -109,6 +109,60 @@ test('Unity: C++ inside main, JavaScript in a file indented with 4 spaces, CSS, 
   assert.deepEqual(a2.lines.slice(5, 7), ['  digitalWrite(13, HIGH);', '  delay(250);']);
 });
 
+/* Every region back to code, from the bottom up, as Re-Regex all does. */
+function reRegexAll(lang, lines, regions) {
+  for (let i = regions.length - 1; i >= 0; i--) {
+    const back = U.reRegex(lang, lines, regions, i, W);
+    assert.ok(back.ok, JSON.stringify(back.problems));
+    ({ lines, regions } = back);
+  }
+  return lines;
+}
+
+test('Unity: De-Regex a selection with sentences in it: the code around them is translated, the green parts stay as they are', async () => {
+  const code = 'x = 1\ny = x + 1\nz = y * 2';
+  const d = await deRegex('python', code, 1, 1);
+  const all = await U.deRegex('python', d.lines, d.regions, 0, 2, convert);
+  assert.deepEqual(plain(all.lines), ['set x to 1', 'set y to x plus 1', 'set z to y times 2']);
+  assert.deepEqual(plain(all.done.map(p => [p.from, p.to, p.absorbed])), [[0, 0, 0], [2, 2, 0]]);
+  assert.deepEqual(plain(all.regions.map(r => [r.from, r.to])), [[0, 0], [1, 1], [2, 2]]);
+  assert.deepEqual(plain(all.regions[1]), plain(d.regions[0]), 'the green part is as it was');
+  assert.equal(reRegexAll('python', all.lines, all.regions).join('\n'), code, 'and all of it goes back exactly');
+
+  const none = await U.deRegex('python', d.lines, d.regions, 1, 1, convert);
+  assert.deepEqual(plain(none), { lines: d.lines, regions: plain(d.regions), done: [], failed: [], blocked: [] }, 'only sentences selected: nothing happens');
+});
+
+test('Unity: a statement that reaches into a green part takes it in if it is unchanged, and stays as code if it was changed', async () => {
+  const code = 'total = 0\nfor i in range(3):\n    total += i\nprint(total)';
+  const d = await deRegex('python', code, 2, 2);
+  assert.equal(d.lines[2], '    increase total by i');
+  const all = await U.deRegex('python', d.lines, d.regions, 0, 3, convert);
+  assert.deepEqual(plain(all.lines), ['set total to 0', '', 'repeat 3 times counting with i', '    increase total by i', 'show total']);
+  assert.deepEqual(plain(all.done.map(p => [p.from, p.to, p.absorbed])), [[0, 3, 1]], 'the parts touch, so they are one');
+  assert.equal(reRegexAll('python', all.lines, all.regions).join('\n'), code);
+
+  const edited = d.lines.slice(); edited[2] = '    increase total by i times 2';
+  const kept = await U.deRegex('python', edited, d.regions, 0, 3, convert);
+  assert.deepEqual(plain(kept.blocked), [{ from: 0, to: 2, changed: [{ from: 2, to: 2 }] }]);
+  assert.deepEqual(plain(kept.lines), ['total = 0', 'for i in range(3):', '    increase total by i times 2', 'show total'], 'edited sentences are never rewritten');
+  assert.deepEqual(plain(kept.regions.map(r => [r.from, r.to])), [[2, 2], [3, 3]]);
+});
+
+test('Unity: De-Regex around green parts in JavaScript braces and inside a C++ main', async () => {
+  const js = 'function f(n) {\n  let t = n * 2;\n  return t;\n}\nf(1);';
+  const j = await deRegex('js', js, 1, 1);
+  const jAll = await U.deRegex('js', j.lines, j.regions, 0, 4, convert);
+  assert.deepEqual(plain(jAll.done.map(p => [p.from, p.to, p.absorbed])), [[0, 4, 1]], 'the tool and its call are one part, with the green line in it');
+  assert.equal(reRegexAll('js', jAll.lines, jAll.regions).join('\n'), js);
+
+  const cpp = '#include <iostream>\n\nint main() {\n    int n = 3;\n    n += 2;\n    std::cout << n << std::endl;\n    return 0;\n}';
+  const c = await deRegex('cpp', cpp, 4, 4);
+  const cAll = await U.deRegex('cpp', c.lines, c.regions, 3, 5, convert);
+  assert.deepEqual(plain(cAll.lines.slice(3, 6)), ['    set n to 3', '    increase n by 2', '    show n'], 'statements inside main are read as inside main');
+  assert.equal(reRegexAll('cpp', cAll.lines, cAll.regions).join('\n'), cpp);
+});
+
 test('Unity: regions move with the text, and lines typed at a region\'s edge join it', () => {
   const r = [{ from: 2, to: 3, original: [], words: [], base: '' }];
   const before = ['a', 'b', 'w1', 'w2', 'c'];
