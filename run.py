@@ -1,4 +1,4 @@
-"""Run IntuCode on your own computer.
+"""Run IntuaCode on your own computer.
 
     python3 run.py          then open http://localhost:8000
 
@@ -49,5 +49,5 @@ class Server(socketserver.ThreadingTCPServer):
 
 if __name__ == "__main__":
     with Server(("127.0.0.1", PORT), Handler) as httpd:
-        print(f"IntuCode is running at http://localhost:{PORT}  (Ctrl+C to stop)")
+        print(f"IntuaCode is running at http://localhost:{PORT}  (Ctrl+C to stop)")
         httpd.serve_forever()

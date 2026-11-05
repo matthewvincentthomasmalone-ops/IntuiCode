@@ -1,4 +1,4 @@
-/* IntuCode tutor: style cards, and how answers are checked.
+/* IntuaCode tutor: style cards, and how answers are checked.
  *
  * A style card explains one of a language's habits the way people who write it think: not just what a
  * line does, but why it is said that way. Every card points at real lines: for Python,

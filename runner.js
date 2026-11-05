@@ -1,4 +1,4 @@
-/* IntuCode — runs real Python in the page with Pyodide.
+/* IntuaCode — runs real Python in the page with Pyodide.
  *
  * input() is handled by replay: when the program asks for something that
  * hasn't been typed yet, it stops, the terminal waits for an answer, and the

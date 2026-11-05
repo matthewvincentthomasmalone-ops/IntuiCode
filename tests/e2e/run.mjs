@@ -1,5 +1,5 @@
 // End-to-end tests of the real desktop app (not the browser page): starts the built
-// IntuCode binary through tauri-driver and drives its window with WebDriver.
+// IntuaCode binary through tauri-driver and drives its window with WebDriver.
 //
 //   1. Build a debug app:   npm run tauri -- build --debug --no-bundle
 //   2. Install the driver:  cargo install tauri-driver --locked

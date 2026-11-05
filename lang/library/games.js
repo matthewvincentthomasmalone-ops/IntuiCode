@@ -1,4 +1,4 @@
-/* IntuCode Library — game parts, and maths and numbers. */
+/* IntuaCode Library — game parts, and maths and numbers. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
 `part: game-loop

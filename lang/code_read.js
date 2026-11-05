@@ -1,4 +1,4 @@
-/* IntuCode — code reader: Read mode for every language in lang/languages.js.
+/* IntuaCode — code reader: Read mode for every language in lang/languages.js.
  *
  * Python, HTML, CSS, JavaScript/TypeScript/React and C++/Arduino have their own readers (python_reader.py
  * and web_read.js), which also turn code into sentences. This reader covers the rest: for each file it
@@ -126,7 +126,7 @@
     phtml: 'php', php3: 'php', php4: 'php', php5: 'php', php7: 'php', php8: 'php', phps: 'php', mll: 'ocaml', mly: 'ocaml', zon: 'zig',
     jsx: 'js', text: 'text', log: 'text',
   };
-  // endings of languages IntuCode can't read yet: shown as plain text, and the reason is given
+  // endings of languages IntuaCode can't read yet: shown as plain text, and the reason is given
   const NOT_YET = {
     pl: 'Perl', pm: 'Perl', r: 'R', jl: 'Julia', hs: 'Haskell', lhs: 'Haskell', fs: 'F#', fsx: 'F#', clj: 'Clojure', cljs: 'ClojureScript', groovy: 'Groovy', gradle: 'Gradle (Groovy)',
     ps1: 'PowerShell', psm1: 'PowerShell', bat: 'Windows batch', cmd: 'Windows batch', vb: 'Visual Basic', f90: 'Fortran', f: 'Fortran', pas: 'Pascal', asm: 'assembly', s: 'assembly',
@@ -315,7 +315,7 @@
     const t = head.trim();
     if (!t) return { res: result('text', 'guess', 'There is no text to go on.'), cands: [] };
     if (/^<\?php/.test(t)) return { res: result('php', 'likely', 'It starts with <?php.'), cands: [] };
-    if (/^<\?xml/.test(t)) return { res: result('text', 'likely', 'It is XML, which IntuCode shows as plain text.'), cands: [] };
+    if (/^<\?xml/.test(t)) return { res: result('text', 'likely', 'It is XML, which IntuaCode shows as plain text.'), cands: [] };
     if (looksLikeJson(head, whole)) return { res: result('json', 'likely', 'It is a JSON ' + (t[0] === '[' ? 'list' : 'object') + '.'), cands: [] };
     if (/^<!DOCTYPE html|^<html[\s>]/i.test(t)) {
       if (/<%[=#-]?\s/.test(head)) return { res: result('erb', 'likely', 'It is a web page with <% %> template tags in it.'), cands: [] };
@@ -390,7 +390,7 @@
     if (ext) {
       if (ext === 'h') return { res: headerKind(head), cands: [{ id: 'c', score: 1 }, { id: 'cpp', score: 1 }, { id: 'objc', score: 1 }] };
       if (ext === 'm' && !/^\s*@(interface|implementation|end)\b|^#import\b|\[\w+ \w+/m.test(head) && /^\s*(function\b|%)|\bend\s*$/m.test(head))
-        return { res: result('text', 'likely', 'The name ends in .m, but it looks like MATLAB, which IntuCode can\'t read yet, rather than Objective-C.'), cands: [] };
+        return { res: result('text', 'likely', 'The name ends in .m, but it looks like MATLAB, which IntuaCode can\'t read yet, rather than Objective-C.'), cands: [] };
       if (ext === 'ts' && /^\s*<\?xml|<TS version/.test(head)) return { res: result('text', 'likely', 'The name ends in .ts, but it is a Qt translation file (XML), not TypeScript.'), cands: [] };
       const known = L && L.LANGUAGES.find(l => l.exts.includes(ext));
       const id = known ? known.id : EXTS[ext];
@@ -398,12 +398,12 @@
         const conflict = shebang && shebang.id && shebang.id !== id && !(id === 'js' && shebang.id === 'ts');
         return { res: result(id, conflict ? 'likely' : 'certain', `The name ends in .${ext}` + (conflict ? `, though its first line asks for ${shebang.prog}.` : '.')), cands: [] };
       }
-      if (NOT_YET[ext]) return { res: result('text', 'certain', `The name ends in .${ext} (${NOT_YET[ext]}), which IntuCode can't read yet, so it is shown as plain text.`), cands: [] };
+      if (NOT_YET[ext]) return { res: result('text', 'certain', `The name ends in .${ext} (${NOT_YET[ext]}), which IntuaCode can't read yet, so it is shown as plain text.`), cands: [] };
     }
     // 3. the first line (#!) and editor settings
     if (shebang) {
       if (shebang.id && L && L.byId(shebang.id)) return { res: result(shebang.id, 'certain', `Its first line runs it with ${shebang.prog}.`), cands: [] };
-      return { res: result('text', 'likely', `Its first line runs it with ${shebang.prog}, which IntuCode can't read yet.`), cands: [] };
+      return { res: result('text', 'likely', `Its first line runs it with ${shebang.prog}, which IntuaCode can't read yet.`), cands: [] };
     }
     if (mode) return { res: result(mode.id, 'certain', `It says so itself, in an editor setting (${mode.mode}).`), cands: [] };
     // 4. the text itself (no ending, an unknown one, or .txt)
@@ -415,7 +415,7 @@
       if (!strong) return { res: result('text', 'likely', `The name ends in .${ext}. The text might be ${nameOf(c.res.lang)}, but not clearly enough to read it as code.`), cands: [] };
       return { res: result(c.res.lang, 'likely', `The name ends in .${ext}, but the text inside is ${nameOf(c.res.lang)} (${c.res.why.replace(/\.$/, '').replace(/^It /, 'it ')}).`), cands: c.cands };
     }
-    if (ext && ext !== 'txt') c.res = { ...c.res, why: `IntuCode doesn't know the ending .${ext}. ` + c.res.why };
+    if (ext && ext !== 'txt') c.res = { ...c.res, why: `IntuaCode doesn't know the ending .${ext}. ` + c.res.why };
     return c;
   }
 

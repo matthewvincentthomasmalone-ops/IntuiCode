@@ -1,4 +1,4 @@
-/* IntuCode — Unity mode: one pane of real code, any part of which can be said in sentences in place.
+/* IntuaCode — Unity mode: one pane of real code, any part of which can be said in sentences in place.
  *
  * You write or paste code in one language. Select some of it and De-Regex/Translate it: those lines become
  * sentences, right there, and are marked as a region. Edit the sentences; Re-Regex turns them back into code

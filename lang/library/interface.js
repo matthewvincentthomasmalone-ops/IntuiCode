@@ -1,4 +1,4 @@
-/* IntuCode Library — interface parts (things on screen) and shapes and colour. */
+/* IntuaCode Library — interface parts (things on screen) and shapes and colour. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
 `part: theme-toggle

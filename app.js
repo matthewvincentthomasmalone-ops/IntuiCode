@@ -1,4 +1,4 @@
-/* IntuCode — the app.
+/* IntuaCode — the app.
  *
  * Write mode:  blueprint (story with blanks) -> sentences in folders -> Python -> terminal
  * Read mode:   imported Python -> sections -> plain-English summaries and sentences
@@ -52,12 +52,12 @@
   const secLang = (sec) => (sec.lang === 'arduino' ? 'cpp' : sec.lang);
   const startSec = () => project.sections.find(s => s.id === project.start) || project.sections[0];
   const webOn = () => project.sections.some(s => WEB_ROLE[s.lang]);
-  /* What a file shows as its title: the sections IntuCode always had keep their names; others show their path. */
+  /* What a file shows as its title: the sections IntuaCode always had keep their names; others show their path. */
   function metaOf(sec) {
     const m = SECTION_META[sec.file];
     if (m && (FILE_NAME[sec.file] === sec.path || (sec.file === 'sketch' && sec.lang === 'arduino'))) return m;
     const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
-    const what = isSentences(sec) ? `${l.name}, written in sentences` : l.write === 'code' ? `${l.name}: you write the code, IntuCode reads it to you` : `${l.name}: notes or data, kept as written`;
+    const what = isSentences(sec) ? `${l.name}, written in sentences` : l.write === 'code' ? `${l.name}: you write the code, IntuaCode reads it to you` : `${l.name}: notes or data, kept as written`;
     return { title: sec.path.split('/').pop(), purpose: what, icon: l.write === 'text' ? 'M4 2.5h6l2 2v9H4zM6 7h4M6 9.5h4' : 'M5 3.5L2 8l3 4.5M11 3.5l3 4.5-3 4.5' };
   }
   /* What the phrase picker, Index and auto-indent use for a folder. */
@@ -67,9 +67,9 @@
   function packFor(sec) {
     if (!isSentences(sec)) {
       const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
-      return { ...NO_PACK, guide: { name: l.name, purpose: l.write === 'code' ? `${l.name} files are written as code here: IntuCode has no sentences for ${l.name} yet. Read mode explains it in plain words, section by section.` : `${l.name} files hold notes or data, kept exactly as written.`, section: metaOf(sec).purpose + '.', rules: [] } };
+      return { ...NO_PACK, guide: { name: l.name, purpose: l.write === 'code' ? `${l.name} files are written as code here: IntuaCode has no sentences for ${l.name} yet. Read mode explains it in plain words, section by section.` : `${l.name} files hold notes or data, kept exactly as written.`, section: metaOf(sec).purpose + '.', rules: [] } };
     }
-    if (sec.lang === 'python' && tplRole(sec) !== sec.file) return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: 'A Python file of your own. The Python files listed before it in the project can use what it defines (IntuCode adds the import); the start file can use them all.' }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes('main') };
+    if (sec.lang === 'python' && tplRole(sec) !== sec.file) return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: 'A Python file of your own. The Python files listed before it in the project can use what it defines (IntuaCode adds the import); the start file can use them all.' }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes('main') };
     if (secLang(sec) === 'cpp') { const ino = sec.file === 'sketch'; return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: ino ? CPP.ARDUINO_WORDS : CPP.WORDS, guide: ino ? CPP.ARDUINO_GUIDE : CPP.GUIDE, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true }; }
     if (secLang(sec) === 'python') return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: LANG.GUIDE.sections[sec.file] }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes(sec.file) };
     const g = WEB.GUIDES[sec.file];
@@ -89,8 +89,8 @@
   }
 
   /* A project read back from the browser or from a folder's .intuicode/project.json keeps only the
-   * parts IntuCode uses, checked, so a project file from someone else can't put markup into the
-   * page or odd values into the commands IntuCode runs. */
+   * parts IntuaCode uses, checked, so a project file from someone else can't put markup into the
+   * page or odd values into the commands IntuaCode runs. */
   const KIND_FILES = { python: ['settings', 'tools', 'main'], website: LAYOUTS.website, cpp: LAYOUTS.cpp, arduino: LAYOUTS.arduino };
   // pictures in a project's images/ folder: a plain file name with a picture's ending, nothing more
   const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
@@ -447,7 +447,7 @@
       $('codeSub').textContent = 'You write the code; this is what it does, in plain words.';
       const a = readOf(sec);
       body = a && a.sections ? `<div class="md-page">${a.overview ? `<p>${rich(a.overview)}</p>` : ''}${a.sections.map(s => `<div class="side-sec" data-line="${(s.start || 1) - 1}"><b>${escHtml(s.title)}</b> <span class="dim">lines ${s.start}–${s.end}</span><p>${rich(s.headline || '')}</p>${(s.facts || []).slice(0, 4).map(f => `<p class="dim">${rich(f)}</p>`).join('')}</div>`).join('')}</div>`
-        : `<p class="sum-empty">${window.IntuiCodeReader || /^(ts|tsx)$/.test(sec.lang) ? 'Reading it…' : `IntuCode keeps ${escHtml(l.name)} exactly as you write it. Read mode can explain it.`}</p>`;
+        : `<p class="sum-empty">${window.IntuiCodeReader || /^(ts|tsx)$/.test(sec.lang) ? 'Reading it…' : `IntuaCode keeps ${escHtml(l.name)} exactly as you write it. Read mode can explain it.`}</p>`;
     } else { $('codeSub').textContent = 'Kept exactly as written.'; body = `<pre class="md-code">${escHtml(sec.text)}</pre>`; }
     pycode.innerHTML = `<div class="side-file">${body}</div>`;
   }
@@ -595,7 +595,7 @@
     $('explain').innerHTML = `${src >= 0 ? planBanner(src) : ''}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} line ${codeIdx + 1}</span><div class="ex-py">${hlCode(lang, o.text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
         <div class="ex-arrow" aria-hidden="true">←</div>
-        <div class="ex-cell"><span class="ex-lbl">${src >= 0 ? `From your sentence · <button type="button" class="linklike" data-go-say="${src}">line ${src + 1}</button>` : 'Added for you'}</span><div class="ex-say">${src >= 0 ? escHtml(sentence) : '<span class="dim">IntuCode adds this so the program is complete: it has no sentence of its own.</span>'}</div></div>
+        <div class="ex-cell"><span class="ex-lbl">${src >= 0 ? `From your sentence · <button type="button" class="linklike" data-go-say="${src}">line ${src + 1}</button>` : 'Added for you'}</span><div class="ex-say">${src >= 0 ? escHtml(sentence) : '<span class="dim">IntuaCode adds this so the program is complete: it has no sentence of its own.</span>'}</div></div>
       </div>
       ${partsHtml(sec, o.text)}
       ${notes.length ? `<div class="ex-why-box"><span class="ex-lbl">Why it's written this way</span><ul class="ex-notes">${notes.map(n => `<li>${withCode(n)}</li>`).join('')}</ul></div>` : ''}
@@ -631,7 +631,7 @@
   }
 
   /* The shape a sentence follows: the template it fits, with your words in its ‹parts›. Lines that fit none
-   * get their words sorted into what IntuCode knows and what you named. */
+   * get their words sorted into what IntuaCode knows and what you named. */
   const shapeCache = new Map();
   function shapesFor(sec) {
     const key = secLang(sec) + ':' + sec.file;
@@ -674,7 +674,7 @@
     }
     const list = (a) => [...new Set(a)].slice(0, 8).map(w => `<code>${escHtml(w)}</code>`).join(' ');
     if (!roles.known.length && !roles.names.length) return '';
-    return `<div class="ex-shape"><span class="ex-lbl">How it's said</span><div class="ex-shape-row ex-roles">${roles.known.length ? `<span>Words IntuCode knows: ${list(roles.known)}</span>` : ''}${roles.names.length ? `<span>Your names: ${list(roles.names)}</span>` : ''}${roles.values.length ? `<span>Values: ${list(roles.values)}</span>` : ''}</div></div>`;
+    return `<div class="ex-shape"><span class="ex-lbl">How it's said</span><div class="ex-shape-row ex-roles">${roles.known.length ? `<span>Words IntuaCode knows: ${list(roles.known)}</span>` : ''}${roles.names.length ? `<span>Your names: ${list(roles.names)}</span>` : ''}${roles.values.length ? `<span>Values: ${list(roles.values)}</span>` : ''}</div></div>`;
   }
 
   function iconSvg(path) {
@@ -730,8 +730,8 @@
   }
   function fileHow(lang) {
     const l = LANGS.byId(lang) || { name: lang, write: 'text' };
-    if (l.write === 'sentences') return `You write sentences; IntuCode writes the ${l.name} and shows it on the right.` + (lang === 'arduino' ? ' A project has one sketch that Run puts on the board; more .ino files are more tabs of it.' : '');
-    if (l.write === 'code') return `You write ${l.name} itself: IntuCode has no sentences for it yet. It reads the code to you in plain words, on the right and in Read mode.`;
+    if (l.write === 'sentences') return `You write sentences; IntuaCode writes the ${l.name} and shows it on the right.` + (lang === 'arduino' ? ' A project has one sketch that Run puts on the board; more .ino files are more tabs of it.' : '');
+    if (l.write === 'code') return `You write ${l.name} itself: IntuaCode has no sentences for it yet. It reads the code to you in plain words, on the right and in Read mode.`;
     return { markdown: 'Notes: headings (#), lists (-), **bold**, `code` and tables, shown as a page on the right.', csv: 'A table: one row per line, cells separated by commas. Python files in the project can open it.', json: 'Data (JSON): checked as you type, and its shape is shown on the right. Python files can open it.' }[lang] || `${l.name}, kept exactly as written.`;
   }
   function openFileDialog(opts) {
@@ -1338,7 +1338,7 @@
     lines[li] = lines[li].match(/^\s*/)[0] + answer.trim();
     copy.sections.find(s => s.id === sec.id).text = lines.join('\n');
     let other;
-    try { other = compileAll(copy); } catch (e) { return { same: false, error: 'IntuCode couldn\'t read that sentence.' }; }
+    try { other = compileAll(copy); } catch (e) { return { same: false, error: 'IntuaCode couldn\'t read that sentence.' }; }
     const mine = other.results[sec.id];
     if (!mine || !mine.info[li] || mine.info[li].errs.length) return { same: false, error: mine && mine.info[li] && mine.info[li].errs[0] };
     return { same: copy.sections.every(s => (other.results[s.id] || {}).text === (compiled.results[s.id] || {}).text) };
@@ -2088,7 +2088,7 @@
     const blocking = (langs) => { typingLine = -1; activeSec().text = ta.value; refreshAll(); closeAc(); renderProblems(); return project.sections.filter(s => langs.includes(s.lang)).reduce((n, s) => n + issues(s, 'errs'), 0); };
     if (WEB_ROLE[st.lang]) return runWebsite(true);
     if (!isSentences(st)) {
-      tLine(`This project starts at ${st.path} (${langName(st.lang)}), which IntuCode doesn't run. To run another file, open its ⋯ menu in the Project list and choose "Start here".` + (writeOf(st) === 'code' && desk.on ? ' Its own tools can run it from the terminal, after $.' : ''), 't-sys');
+      tLine(`This project starts at ${st.path} (${langName(st.lang)}), which IntuaCode doesn't run. To run another file, open its ⋯ menu in the Project list and choose "Start here".` + (writeOf(st) === 'code' && desk.on ? ' Its own tools can run it from the terminal, after $.' : ''), 't-sys');
       return;
     }
     if (st.lang === 'cpp' || st.lang === 'arduino') {
@@ -2097,13 +2097,13 @@
         if (desk.on && desk.arduino) return runDesktopArduino();
         tLine(desk.on
           ? (desk.linux
-            ? 'To check a sketch and put it on a board, IntuCode uses arduino-cli, which wasn\'t found. Install arduino-cli itself (its install script puts it in ~/bin), or unpack the Arduino IDE 2 .zip into your home folder (the IDE\'s AppImage keeps its arduino-cli inside, out of reach), then restart IntuCode. Until then, copy the code on the right into the Arduino IDE.'
-            : 'To check a sketch and put it on a board, IntuCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuCode. Until then, copy the code on the right into the Arduino IDE.')
-          : 'A sketch runs on an Arduino board, not in the browser. In the IntuCode desktop app (with the Arduino IDE or arduino-cli installed), Run checks the sketch and uploads it to a board plugged in by USB. Or copy the code on the right into the Arduino IDE.', 't-sys');
+            ? 'To check a sketch and put it on a board, IntuaCode uses arduino-cli, which wasn\'t found. Install arduino-cli itself (its install script puts it in ~/bin), or unpack the Arduino IDE 2 .zip into your home folder (the IDE\'s AppImage keeps its arduino-cli inside, out of reach), then restart IntuaCode. Until then, copy the code on the right into the Arduino IDE.'
+            : 'To check a sketch and put it on a board, IntuaCode uses arduino-cli, which wasn\'t found. Install the Arduino IDE 2 (it includes arduino-cli) or arduino-cli itself, then restart IntuaCode. Until then, copy the code on the right into the Arduino IDE.')
+          : 'A sketch runs on an Arduino board, not in the browser. In the IntuaCode desktop app (with the Arduino IDE or arduino-cli installed), Run checks the sketch and uploads it to a board plugged in by USB. Or copy the code on the right into the Arduino IDE.', 't-sys');
         return;
       }
       if (desk.on && desk.cpp) return runDesktopCpp();
-      tLine(desk.on ? (desk.linux ? 'No C++ compiler was found on this computer. Install g++: type $ sudo apt install g++ (Ubuntu, Debian, Mint), $ sudo dnf install gcc-c++ (Fedora) or $ sudo pacman -S gcc (Arch). Then restart IntuCode.' : 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuCode.') : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
+      tLine(desk.on ? (desk.linux ? 'No C++ compiler was found on this computer. Install g++: type $ sudo apt install g++ (Ubuntu, Debian, Mint), $ sudo dnf install gcc-c++ (Fedora) or $ sudo pacman -S gcc (Arch). Then restart IntuaCode.' : 'No C++ compiler was found on this computer. On Windows, install Visual Studio Build Tools (free, with "Desktop development with C++"); on a Mac, run xcode-select --install; on Linux, install g++. Then restart IntuaCode.') : 'C++ has to be compiled into a program before it runs, and a browser has no C++ compiler. Use the IntuaCode desktop app (on Windows it uses Visual Studio\'s compiler; elsewhere g++ or clang++), or copy main.cpp into your own C++ setup.', 't-sys');
       return;
     }
     const errs = blocking(['python']);
@@ -2372,7 +2372,7 @@
     const names = Object.keys(BOARD_NAMES).join(', ');
     if (!name) return tLine(`This sketch is for ${project.board || 'a board recognised on its USB port (or an Uno)'}. To choose, type board and one of: ${names}, or arduino-cli's full name for it (list them with $ arduino-cli board listall).`, 't-help');
     const fqbn = BOARD_NAMES[name.toLowerCase()] || name;
-    if (!BOARD_ID.test(fqbn)) return tLine(`"${name}" isn't a board name IntuCode knows. Use one of: ${names}, or arduino-cli's full name, like esp32:esp32:esp32-evb.`, 't-err');
+    if (!BOARD_ID.test(fqbn)) return tLine(`"${name}" isn't a board name IntuaCode knows. Use one of: ${names}, or arduino-cli's full name, like esp32:esp32:esp32-evb.`, 't-err');
     project.board = fqbn;
     save(); autosave();
     tLine(`This sketch is now for ${fqbn}. Press Run to check it and upload it.`, 't-sys');
@@ -2811,7 +2811,7 @@
         </tbody></table></div>
       ${t.learnFrom.length ? `<div class="lib-sec"><div class="ex-lbl">Open-source projects to learn from</div><ul class="lib-learn">
         ${t.learnFrom.map(l => `<li><b>${escHtml(l.name)}</b> <span class="dim">${escHtml(l.lang ? langName(l.lang) : l.said)} · ${escHtml(l.licence)}</span><span>${escHtml(l.what)}</span><span class="lib-url"><code>${escHtml(l.url)}</code><button type="button" class="btn tiny" data-lib-copy="${escHtml(l.url)}">Copy address</button></span></li>`).join('')}
-        </ul><p class="bp-note">Addresses are shown, not opened: IntuCode never follows links from inside the editor. Copy one into your browser. Read a project's licence before using its code in yours.</p></div>` : ''}
+        </ul><p class="bp-note">Addresses are shown, not opened: IntuaCode never follows links from inside the editor. Copy one into your browser. Read a project's licence before using its code in yours.</p></div>` : ''}
       <div class="lib-sec"><div class="ex-lbl">Parts it's usually made of</div>
         ${byGroup.map(([g, ps]) => `<div class="lib-group"><span class="dim">${escHtml(g.title)}</span>${ps.map(p => `<button type="button" class="lib-chip" data-lib-part="${escHtml(p.id)}" title="${escHtml(p.about)}">${escHtml(p.title)}</button>`).join('')}</div>`).join('') || '<p class="bp-none">None listed yet.</p>'}
       </div>`;
@@ -3393,7 +3393,7 @@
     const fileLang = langOfPath(file.name);
     const canSay = ownReader(file) && /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
     $('btnToSentences').disabled = !a || !a.ok || !canSay;
-    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : !ownReader(file) ? `IntuCode has sentences for Python, HTML, CSS, JavaScript, C++ and Arduino; ${langName(readLang(file))} is read to you instead.` : 'TypeScript and React files can\'t be opened as sentences yet.';
+    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : !ownReader(file) ? `IntuaCode has sentences for Python, HTML, CSS, JavaScript, C++ and Arduino; ${langName(readLang(file))} is read to you instead.` : 'TypeScript and React files can\'t be opened as sentences yet.';
     const startOf = new Map(secs.map(s => [s.start, s]));
     const secOfLine = (ln) => secs.find(s => ln >= s.start && ln <= s.end);
     $('rdCode').innerHTML = file.source.split('\n').map((l, i) => {
@@ -4697,7 +4697,7 @@
     const added = [];
     for (const f of files) {
       const name = f.name.replace(/[^\w.-]+/g, '-').replace(/^[-.]+/, '').slice(-80);
-      if (!IMAGE_NAME.test(name)) { tLine(`${f.name} isn't a picture IntuCode can use: PNG, JPEG, GIF, WebP or SVG.`, 't-err'); continue; }
+      if (!IMAGE_NAME.test(name)) { tLine(`${f.name} isn't a picture IntuaCode can use: PNG, JPEG, GIF, WebP or SVG.`, 't-err'); continue; }
       if (f.size > IMAGE_MAX) { tLine(`${f.name} is ${kb(f.size)}; pictures can be up to 8 MB. (A copy exported "for the web" is usually far smaller, and loads faster.)`, 't-err'); continue; }
       const { entry, replaced } = await keepImage(name, new Uint8Array(await f.arrayBuffer()));
       added.push(entry);
@@ -4821,7 +4821,7 @@
     el.textContent = desk.folder ? baseName(desk.folder) + '/' : 'not saved yet';
     el.title = desk.folder || 'This project is not saved to a folder yet. Press Save.';
     el.classList.toggle('unsaved', desk.dirty);
-    document.title = desk.folder ? `IntuCode — ${baseName(desk.folder)}` : 'IntuCode';
+    document.title = desk.folder ? `IntuaCode — ${baseName(desk.folder)}` : 'IntuaCode';
   }
 
   /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
@@ -4875,7 +4875,7 @@
       if (saved) {
         replaceProject(saved, `Opened ${baseName(folder)}.`, folder);
         if (images().length) await readImages(folder);
-        // did anyone change the code outside IntuCode?
+        // did anyone change the code outside IntuaCode?
         compile();
         const changed = [];
         for (const s of project.sections) {
@@ -4883,15 +4883,15 @@
           if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== codeOf(s).trim()) changed.push([s, onDisk.replace(/\r\n/g, '\n')]);
         }
         for (const [s, onDisk] of changed) {
-          if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuCode: it's shown as it is now.`, 't-sys'); continue; }
+          if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuaCode: it's shown as it is now.`, 't-sys'); continue; }
           if (secLang(s) !== 'python') {
             const res = await rebuildSection(folder, s, read);
-            if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
-            else tLine(`${fileName(s)} was changed outside IntuCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
+            if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
+            else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
             continue;
           }
           const res = await sentencesFor(onDisk);
-          if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
+          if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
         if (changed.length) { ta.value = activeSec().text; refreshAll(); }
         showFolder();
@@ -4932,7 +4932,7 @@
     }
     const files = await invoke('read_folder', { path: folder });
     if (files.some(f => /\.(py|jsx?|tsx?|html?|css|cpp|cc|h|hpp|ino)$/i.test(f.name))) {
-      tLine(`${baseName(folder)} isn't an IntuCode project, so it opens in Read mode.`, 't-sys');
+      tLine(`${baseName(folder)} isn't an IntuaCode project, so it opens in Read mode.`, 't-sys');
       desk.readFolder = folder;
       return importProject(files, '');
     }
@@ -4980,7 +4980,7 @@
       try { files.push({ name, source: (await invoke('read_text', { path })).replace(/\r\n?/g, '\n') }); } catch (_) { skipped++; }
     }
     closeImport();
-    if (!files.length) { tLine(`Nothing to read there: IntuCode reads code files (Python, JavaScript, HTML, CSS, C++ and Arduino sketches), folders of them, and .zip files.`, 't-err'); return; }
+    if (!files.length) { tLine(`Nothing to read there: IntuaCode reads code files (Python, JavaScript, HTML, CSS, C++ and Arduino sketches), folders of them, and .zip files.`, 't-err'); return; }
     const note = skipped ? `Skipped ${skipped} file${skipped > 1 ? 's' : ''} that ${skipped > 1 ? 'aren\'t' : 'isn\'t'} code.` : '';
     if (folders) importProject(files, note); else { addFiles(files); if (note) tLine(note, 't-sys'); }
   }
@@ -5284,7 +5284,7 @@
     updateChip();
     if (webOn()) runWebsite(false);
     loadImages().then(pruneImages);
-    tLine('IntuCode terminal. Press Run to run your program, or type help.', 't-sys');
+    tLine('IntuaCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
     $('btnTutor').setAttribute('aria-pressed', String(tutor.on));
     setTimeout(async () => {

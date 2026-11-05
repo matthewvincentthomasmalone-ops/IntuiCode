@@ -1,7 +1,7 @@
-/* IntuCode — a project: a tree of files, each in its own language.
+/* IntuaCode — a project: a tree of files, each in its own language.
  *
  * Each file (a "section") has an id, a path, a language id (lang/languages.js) and its text. The language
- * says how it's written: in sentences (Python, HTML, CSS, JavaScript, C++, Arduino), as code that IntuCode
+ * says how it's written: in sentences (Python, HTML, CSS, JavaScript, C++, Arduino), as code that IntuaCode
  * reads to you, or as notes and data kept as written.
  *
  * The writers work by role: Python by module name (settings, tools, main…), a website by structure /
@@ -33,13 +33,13 @@
     return writeOf(sec);
   }
 
-  /* A path IntuCode will write: folders and a name, never outside the project or into its own folders.
+  /* A path IntuaCode will write: folders and a name, never outside the project or into its own folders.
      '' when it's fine, or why not. */
   const SAFE_PATH = /^(?:[A-Za-z0-9_][\w+ .-]{0,63}\/){0,5}[A-Za-z0-9_][\w+ .-]{0,63}$/;
   function pathProblem(path, lang) {
     path = String(path);
     if (!SAFE_PATH.test(path) || /(^|\/)\.\.?(\/|$)|\s\/|\/\s|\s$/.test(path)) return 'A file name uses letters, numbers, spaces, dots, dashes and underscores, and folders are separated with /.';
-    if (/^(?:\.intuicode|images)\//i.test(path)) return `${path.split('/')[0]}/ is kept for IntuCode itself. Choose another folder.`;
+    if (/^(?:\.intuicode|images)\//i.test(path)) return `${path.split('/')[0]}/ is kept for IntuaCode itself. Choose another folder.`;
     if (lang === 'python' && !/^(?:[A-Za-z_]\w*\/)*[A-Za-z_]\w*\.py$/.test(path)) return 'A Python file\'s name and folders must be Python names (letters, numbers and _, not starting with a number), because other files import it by that name.';
     return '';
   }

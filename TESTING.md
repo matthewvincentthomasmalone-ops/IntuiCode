@@ -1,4 +1,4 @@
-# Trying IntuCode on another computer
+# Trying IntuaCode on another computer
 
 A 15-minute hands-on check of the desktop app. Automated tests already drive the real app on
 Linux and Windows (see **Actions → Desktop app tests**); this list is for what they can't judge:
@@ -8,17 +8,17 @@ how it feels, and your own machine.
 
 From the repository's **Releases** page, take the newest `v0.x` pre-release:
 
-- **Windows:** `IntuCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
+- **Windows:** `IntuaCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
   isn't signed yet: **More info → Run anyway**.
 - **macOS:** the `.dmg`. First launch: right-click the app → **Open** → **Open**.
-- **Linux:** the `.deb` (`sudo apt install ./IntuCode*.deb`), the `.rpm` (`sudo dnf install ./IntuCode*.rpm`),
+- **Linux:** the `.deb` (`sudo apt install ./IntuaCode*.deb`), the `.rpm` (`sudo dnf install ./IntuaCode*.rpm`),
   or the `.AppImage` (`chmod +x`, then run it).
 
 Optional, for the C++ and Arduino checks:
 
 - **Windows C++:** [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/),
   with the **Desktop development with C++** workload. (If Visual Studio with C++ is installed, that works too.)
-- **Arduino:** the [Arduino IDE 2](https://www.arduino.cc/en/software) (IntuCode uses the
+- **Arduino:** the [Arduino IDE 2](https://www.arduino.cc/en/software) (IntuaCode uses the
   arduino-cli inside it). A board is optional.
 
 ## 2. Checklist
@@ -119,13 +119,13 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Project Templates → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
 - [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
-- [ ] Edit `main.py` in that editor (change a message), save it, then **Open folder** on that folder in IntuCode: the sentence shows your change.
+- [ ] Edit `main.py` in that editor (change a message), save it, then **Open folder** on that folder in IntuaCode: the sentence shows your change.
 - [ ] Type `$ python --version` (Windows) or `$ python3 --version` in the terminal: it answers.
 - [ ] Linux: in a saved project, type `$ python3 -m venv .venv`, then `$ pip install requests`. Add the
       sentence `python: import requests` and Run: the terminal says it runs with "the project's own Python (.venv)".
 - [ ] Linux: type `$ sudo true`: a window asks for your password (or, without a password helper, the
       terminal says to use your own terminal).
-- [ ] Run `$ python3 -m http.server 8765`, then close IntuCode: http://localhost:8765 no longer answers.
+- [ ] Run `$ python3 -m http.server 8765`, then close IntuaCode: http://localhost:8765 no longer answers.
 
 **Website**
 - [ ] Project Templates → **To-do list page** → Build. The preview shows the page; add a task.

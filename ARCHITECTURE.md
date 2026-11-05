@@ -43,7 +43,7 @@ Files on disk hold real code. Sentences are an editable **view** of that code:
 - the sentences a person typed, including filler words, are kept as long as the code they
   produced hasn't changed underneath them.
 
-This keeps IntuCode compatible with Git, other editors and people who don't use it.
+This keeps IntuaCode compatible with Git, other editors and people who don't use it.
 The web version stores projects in the browser; the desktop app works on real folders.
 
 Pictures live in the project's `images/` folder and are named in sentences by that path. The
@@ -59,7 +59,7 @@ can't reach files, so each `images/…` name in the page becomes the picture's d
 
 A project's files (`project.sections`) each have a `path` and a language id from `lang/languages.js`.
 The language says how the file is written: in **sentences** (Python, HTML, CSS, JavaScript, C++,
-Arduino), as **code** that IntuCode reads to you, or as **text** (Markdown, CSV, JSON…), kept as
+Arduino), as **code** that IntuaCode reads to you, or as **text** (Markdown, CSV, JSON…), kept as
 written. The engines still work by role (Python by module name; a website by structure, styling and
 mechanics; C++ by program; Arduino by sketch), and the shell works a file's role out from its path and
 language (`roleOf` in `app.js`). Each engine compiles its own files (`compileAll`): Python together with
@@ -110,7 +110,7 @@ must not turn into a command:
   `.intuicode/project.json` (which is checked first) are escaped; reader summaries go through
   `rich()`, which escapes and then adds links.
 - **The desktop commands are limited** (`Access` in `lib.rs`): files only in folders picked in
-  the app's own dialog, files and folders dropped on the window, and IntuCode's folder for
+  the app's own dialog, files and folders dropped on the window, and IntuaCode's folder for
   unsaved projects; programs only the Python and arduino-cli found on the computer (or the
   Python of a project's virtual environment), or ones built in those folders. Shell commands
   typed after `$` run in those folders. A drop is allowed from the window's own drop event in

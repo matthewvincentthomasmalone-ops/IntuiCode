@@ -1,9 +1,9 @@
-# IntuCode
+# IntuaCode
 
 Write Python, websites, C++ and Arduino sketches by filling in ideas and sentences, and read
 existing Python, JavaScript, HTML, CSS and C++ in plain English, or turn it into sentences.
 
-IntuCode is a rules-based translator, not an AI. Every sentence becomes a specific
+IntuaCode is a rules-based translator, not an AI. Every sentence becomes a specific
 line of Python, every summary points at real lines, and the same input always gives
 the same result. The aim is to let intuition and plain language lead, while you stay
 directly connected to every part of the code.
@@ -152,7 +152,7 @@ every sentence translates cleanly, and the audio and maths parts give the right 
 **Plan** (in the menu bar, or from a kit in Project Templates) asks what you're making, by the same kinds as
 Project Templates, then lists the steps that kind of project usually has, in the order you'd build them. Start from
 the smallest that works, the usual, or everything; preview any step's sentences; and watch **Your plan**
-fill in beside them before you name it and build. IntuCode lays the steps out in your folders as
+fill in beside them before you name it and build. IntuaCode lays the steps out in your folders as
 sentences, with a **Project map** beside the folders. Each step says how much is done for you:
 
 - **Walk**: written out in full, to read, run and change.
@@ -187,7 +187,7 @@ work area; the same button, or Esc, brings the others back.
 **More room:** **Hide help** (top right of the help under the windows) folds it into a slim bar, and the
 chevron in the terminal's header folds the terminal down to that header. Drag the terminal's top edge to
 make it taller or shorter (double-click it for the usual size). Run, and a program asking for input, bring
-the terminal back; while it's folded, a dot on its tab says there's something new. IntuCode remembers how
+the terminal back; while it's folded, a dot on its tab says there's something new. IntuaCode remembers how
 you left them.
 
 **Drop down:** the **Drop down** button on the sentences puts a small box under every value: numbers (with
@@ -264,7 +264,7 @@ the sentences, and **Re-Regex** (Ctrl+Shift+B) turns them back into code in the 
 
 The code takes the top three quarters of the window, the terminal the rest; fold the terminal away and the
 code takes its room too, or press the corner button for full screen (Esc comes back). **Copy the code** copies
-the whole file with every green part turned back into code. It's what IntuCode
+the whole file with every green part turned back into code. It's what IntuaCode
 does everywhere, a piece at a time: the symbols of a language said as words, and back.
 
 **Read: existing code → sections → plain English**
@@ -277,7 +277,7 @@ Objective-C, PHP, Ruby, Bash, Elixir, Lua, Dart, Elm, OCaml, Solidity, SQL, Vue,
 (JSON, YAML, TOML, CSV, Markdown), each split into its parts (tools, types, tests, starting points…)
 and said in plain English (`lang/code_read.js`). The language comes from the file's name; pasted code
 and files whose name doesn't say are **auto-detected** from their text (with the reason shown), and
-**Read as** above the code picks another language for a file. For a project, IntuCode shows:
+**Read as** above the code picks another language for a file. For a project, IntuaCode shows:
 
 - what kind of app it looks like, and which file to start reading;
 - a reading order, and a map of which files use which;
@@ -289,7 +289,7 @@ and files whose name doesn't say are **auto-detected** from their text (with the
 Summaries link across files and languages: "uses `get_db` from db.py", "the page's
 script uses `#task-list` in index.html", "styled by `.card` in style.css", and
 "`fetch('/api/tasks')` is answered by `list_tasks` in routes/tasks.py".
-Inside each file, IntuCode will:
+Inside each file, IntuaCode will:
 
 - split it into sections (toolkits, settings, tools, web routes, classes, main steps);
 - summarise each section: what it takes, what it gives back, what it touches (files,
@@ -308,15 +308,15 @@ Inside each file, IntuCode will:
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
 
 - **Real folders.** File → New project (Ctrl+N), Open folder (Ctrl+O) and Save (Ctrl+S). A new
-  project can go straight into a folder you choose; IntuCode won't save over another project's
+  project can go straight into a folder you choose; IntuaCode won't save over another project's
   files. Your code files are the project;
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
-  program or an Arduino sketch that wasn't made with IntuCode opens as sentences; anything
+  program or an Arduino sketch that wasn't made with IntuaCode opens as sentences; anything
   else opens in Read mode. Files, folders and `.zip` files dropped on the window open in Read mode.
 - **Real Python.** Programs run with the Python installed on the computer, with live
   output, typed input and a Stop button, so web servers and packages work. Without Python
-  installed, the built-in one is used. Stop, or closing IntuCode, ends a program and anything it
+  installed, the built-in one is used. Stop, or closing IntuaCode, ends a program and anything it
   started. If the project folder has a virtual environment (`.venv` or `venv`), Run and `$`
   commands use its Python and pip. On Linux that is how packages are installed, because the
   system's Python keeps its packages for the system: type `$ python3 -m venv .venv`, then
@@ -350,8 +350,8 @@ Installers are built by GitHub for Windows, macOS and Linux: go to
 the files are on the repository's **Releases** page.
 
 To try a branch or pull request before it is released, open its **Desktop app tests** run:
-under **Artifacts**, `IntuCode-windows-exe` is the app as a single `intuicode.exe` that runs
-without installing (`gh run download <run-id> -n IntuCode-windows-exe` fetches it). It is a debug
+under **Artifacts**, `IntuaCode-windows-exe` is the app as a single `intuicode.exe` that runs
+without installing (`gh run download <run-id> -n IntuaCode-windows-exe` fetches it). It is a debug
 build, so it starts a little slower than a released one.
 
 These builds aren't code-signed yet, so the first time you open the app:
@@ -359,9 +359,9 @@ These builds aren't code-signed yet, so the first time you open the app:
 - **Windows:** if SmartScreen says "Windows protected your PC", choose **More info → Run anyway**.
 - **macOS:** right-click the app and choose **Open**, then **Open** again (or System Settings →
   Privacy & Security → **Open Anyway**).
-- **Linux:** install the `.deb` with `sudo apt install ./IntuCode*.deb` (Ubuntu, Debian, Mint;
-  it also brings Python's venv support and g++), or the `.rpm` with `sudo dnf install ./IntuCode*.rpm`
-  (Fedora). Or make the `.AppImage` executable (`chmod +x IntuCode*.AppImage`) and run it.
+- **Linux:** install the `.deb` with `sudo apt install ./IntuaCode*.deb` (Ubuntu, Debian, Mint;
+  it also brings Python's venv support and g++), or the `.rpm` with `sudo dnf install ./IntuaCode*.rpm`
+  (Fedora). Or make the `.AppImage` executable (`chmod +x IntuaCode*.AppImage`) and run it.
 
 ### Building it yourself
 
@@ -400,6 +400,11 @@ xvfb-run node tests/e2e/run.mjs
 ```
 
 ## Run it
+
+The browser version is at **https://intuacode.com**. Every push to `main` publishes it
+(`.github/workflows/pages.yml`, GitHub Pages), with Python and the parsers bundled.
+
+To run it on your own computer:
 
 ```
 python3 run.py
@@ -460,4 +465,4 @@ every sentence pattern) is described in [INTUICODE.md](INTUICODE.md). Its exampl
 
 ## License
 
-IntuCode is licensed under the [Apache License 2.0](LICENSE).
+IntuaCode is licensed under the [Apache License 2.0](LICENSE).

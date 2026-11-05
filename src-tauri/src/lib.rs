@@ -1,4 +1,4 @@
-//! IntuCode desktop: the web app plus what a browser can't do.
+//! IntuaCode desktop: the web app plus what a browser can't do.
 //!
 //! - read and write real project folders
 //! - run programs (Python, shell commands) with live output and typed input
@@ -25,7 +25,7 @@ use tauri_plugin_dialog::DialogExt;
 /* ------------------------------------------------------------------ */
 
 /// Folders the window may read, write and run things in: ones the person picked in the app's
-/// own folder dialog (so a page can't make one up), and IntuCode's folder for unsaved projects.
+/// own folder dialog (so a page can't make one up), and IntuaCode's folder for unsaved projects.
 /// Programs it may start: the Python and arduino-cli found on this computer, and programs built
 /// inside those folders. (Shell commands typed after `$` run in an allowed folder.)
 #[derive(Default)]
@@ -79,7 +79,7 @@ impl Access {
         if found || (Path::new(program).is_absolute() && self.path(program).is_ok()) {
             Ok(())
         } else {
-            Err(format!("IntuCode only starts Python, arduino-cli and programs it built, not {program}."))
+            Err(format!("IntuaCode only starts Python, arduino-cli and programs it built, not {program}."))
         }
     }
 }
@@ -230,7 +230,7 @@ fn list_files(access: State<Access>, path: String) -> Result<Vec<String>, String
     Ok(names)
 }
 
-/// A folder IntuCode can use when a project hasn't been saved anywhere yet.
+/// A folder IntuaCode can use when a project hasn't been saved anywhere yet.
 #[tauri::command]
 fn scratch_folder(app: AppHandle, access: State<Access>) -> Result<String, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("unsaved-project");
@@ -458,7 +458,7 @@ fn end(child: &Mutex<Child>) {
     let _ = child.kill();
 }
 
-/// Ending IntuCode with a signal (Ctrl+C in the terminal it was started from, `kill`, the terminal
+/// Ending IntuaCode with a signal (Ctrl+C in the terminal it was started from, `kill`, the terminal
 /// closing) ends it the way closing its window does, so the programs it started end too: each
 /// runs in a group of its own, which those signals don't reach. A second one ends it at once.
 #[cfg(unix)]
@@ -522,8 +522,8 @@ enum CppTool {
 #[derive(Default)]
 struct Compiler(Mutex<Option<CppTool>>);
 
-/// Every program IntuCode starts goes through here: no console window on Windows, and on Linux
-/// none of the settings the AppImage made for IntuCode's own window.
+/// Every program IntuaCode starts goes through here: no console window on Windows, and on Linux
+/// none of the settings the AppImage made for IntuaCode's own window.
 fn quiet(cmd: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {
@@ -542,7 +542,7 @@ fn quiet(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-/// The AppImage starts IntuCode with GTK and GLib settings that point inside itself. Other
+/// The AppImage starts IntuaCode with GTK and GLib settings that point inside itself. Other
 /// programs given them can't find their own parts (a browser or editor opened with `$`, a
 /// Tkinter window, another AppImage), so they get the settings from before the AppImage, as far
 /// as that can be told: each setting's parts inside the AppImage are taken out, and a setting with
@@ -864,7 +864,7 @@ pub fn run() {
             compile_cpp, find_arduino, run_capture, find_venv
         ])
         .build(tauri::generate_context!())
-        .expect("IntuCode could not start")
+        .expect("IntuaCode could not start")
         .run(|app, event| {
             // a program still running (a web server, say) ends with the app, rather than carrying
             // on unseen and keeping its port
@@ -922,7 +922,7 @@ mod tests {
         let appdir = "/tmp/.mount_IntuCoAbc123";
         let vars = [
             ("APPDIR", appdir.to_string()),
-            ("APPIMAGE", "/home/sam/IntuCode.AppImage".into()),
+            ("APPIMAGE", "/home/sam/IntuaCode.AppImage".into()),
             ("GTK_THEME", "Adwaita:dark".into()),
             ("GTK_PATH", format!("{appdir}//usr/lib/gtk-3.0")),
             ("XDG_DATA_DIRS", format!("{appdir}/usr/share:/usr/share:/usr/local/share")),

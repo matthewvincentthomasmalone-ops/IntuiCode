@@ -1,4 +1,4 @@
-/* IntuCode Library — audio and DSP parts. Written from the published formulas credited in each part's
+/* IntuaCode Library — audio and DSP parts. Written from the published formulas credited in each part's
  * "source:" lines; no code is taken from GPL projects (Ardour, Audacity, LMMS, Surge). See README.md. */
 (window.IntuiLibraryPacks = window.IntuiLibraryPacks || []).push(
 
