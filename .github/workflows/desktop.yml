@@ -26,6 +26,18 @@ jobs:
           - platform: ubuntu-22.04
             args: ""
     runs-on: ${{ matrix.platform }}
+    env:
+      RELEASE_BODY: |
+        Installers for IntuaCode (also at https://intuacode.com).
+        - Windows: the -setup.exe file (or the .msi for managed PCs)
+        - Linux: the .AppImage (run it directly), the .deb (Ubuntu, Debian, Mint) or the .rpm (Fedora, openSUSE)
+        - macOS: the .dmg file (works on Apple Silicon and Intel)
+
+        **Check a download:** SHA256SUMS.txt lists every file's SHA-256 (`sha256sum -c SHA256SUMS.txt --ignore-missing`, or `Get-FileHash` in PowerShell). Each installer also has a signed record of the GitHub build that made it from this source: `gh attestation verify <file> --repo ${{ github.repository }}`.
+
+        Code signing policy: https://intuacode.com/code-signing.html. Windows installers are signed through SignPath Foundation once the project is set up there; until then, and on macOS, the first run shows a warning. See the README for how to open them.
+        A 15-minute checklist for trying it out is in TESTING.md.
+        C++ on Windows uses Visual Studio's compiler (the free Build Tools are enough); Arduino uses the arduino-cli inside the Arduino IDE 2.
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -55,23 +67,34 @@ jobs:
           npm run vendor
           python tools/fetch_pyodide.py
 
+      # Bundling downloads its tools from GitHub (NSIS and WiX on Windows, AppImage's helpers on Linux), which
+      # now and then answers 504: if this fails, the step below tries once more, a minute later.
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        id: bundle
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
           releaseName: "IntuaCode v__VERSION__"
-          releaseBody: |
-            Installers for IntuaCode (also at https://intuacode.com).
-            - Windows: the -setup.exe file (or the .msi for managed PCs)
-            - Linux: the .AppImage (run it directly), the .deb (Ubuntu, Debian, Mint) or the .rpm (Fedora, openSUSE)
-            - macOS: the .dmg file (works on Apple Silicon and Intel)
+          releaseBody: ${{ env.RELEASE_BODY }}
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}
 
-            **Check a download:** SHA256SUMS.txt lists every file's SHA-256 (`sha256sum -c SHA256SUMS.txt --ignore-missing`, or `Get-FileHash` in PowerShell). Each installer also has a signed record of the GitHub build that made it from this source: `gh attestation verify <file> --repo ${{ github.repository }}`.
+      - name: Wait a minute before trying again
+        if: steps.bundle.outcome == 'failure'
+        shell: bash
+        run: sleep 60
 
-            Code signing policy: https://intuacode.com/code-signing.html. Windows installers are signed through SignPath Foundation once the project is set up there; until then, and on macOS, the first run shows a warning. See the README for how to open them.
-            A 15-minute checklist for trying it out is in TESTING.md.
-            C++ on Windows uses Visual Studio's compiler (the free Build Tools are enough); Arduino uses the arduino-cli inside the Arduino IDE 2.
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        if: steps.bundle.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "IntuaCode v__VERSION__"
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
