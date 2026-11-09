@@ -325,7 +325,7 @@
       <div class="modal-h">
         <div>
           <h2 id="handTitle">Hand to my AI</h2>
-          <p>The project map as an OpenSpec change: <b>proposal.md</b> (why, what each step is for, which files) and <b>tasks.md</b> (the steps to tick, each with its check). Your AI assistant works from these; nothing is sent anywhere.</p>
+          <p>The project map as an OpenSpec change: <b>proposal.md</b> (why, what each step is for, which files) and <b>tasks.md</b> (the steps to tick, each with its check). Your AI assistant works from these, and the tasks it ticks can come back to the map. Nothing is sent anywhere.</p>
         </div>
         <button type="button" class="btn small" id="handClose">Close</button>
       </div>
@@ -337,7 +337,11 @@
       <pre class="hand-pre" id="handPre" tabindex="0" aria-label="The file's text"></pre>
       <p class="hand-ask" id="handAsk"></p>
       <p class="hand-note" id="handNote" role="status"></p>
-      <div class="bp-actions hand-actions"><button type="button" class="btn primary" id="handGo">Download .zip</button></div>
+      <div class="bp-actions hand-actions">
+        <button type="button" class="btn hand-take" id="handTake" hidden title="Tick the steps on the map that the folder's tasks.md has ticked">Take its ticks</button>
+        <label class="btn file-btn hand-take" id="handTakeFile" hidden title="Choose a tasks.md your AI has ticked: those steps are ticked on the map">Take ticks from a tasks.md…<input type="file" id="handTicksFile" accept=".md,.markdown,.txt,text/markdown,text/plain"></label>
+        <button type="button" class="btn primary" id="handGo">Download .zip</button>
+      </div>
     </div>
   </div>
 

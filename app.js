@@ -4640,8 +4640,30 @@
   /* Hand to my AI: the map as an OpenSpec change (lang/openspec.js), for an AI assistant of your own to work
    * from. The desktop app writes it into the saved project's folder, at openspec/changes/<name>/; the browser
    * offers it as a .zip to unzip there. The AI stays outside IntuaCode: it gets these files and nothing else. */
-  const hand = { files: [], dir: '', show: 'tasks.md', taken: [], note: '' };
+  const hand = { files: [], dir: '', show: 'tasks.md', taken: [], note: '', tasksText: '', newTicks: [] };
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const stepList = (ns) => (ns.length === 1 ? `step ${ns[0]}` : `steps ${ns.slice(0, -1).join(', ')} and ${ns[ns.length - 1]}`);
+
+  /* Ticks your AI made in a tasks.md come back to the map (lang/openspec.js finds which steps they're about).
+   * Only ticks: a step ticked here stays ticked. -> what happened, in a sentence ('' when quiet and nothing did). */
+  function takeTicks(text, from, quiet) {
+    const plan = project.plan;
+    if (!plan || !plan.steps.length) return '';
+    const r = OPENSPEC.ticksFrom(text, plan.steps);
+    let said;
+    if (!r.tasks) said = `${from} has no tasks to read (lines like "- [x] 1.1 …").`;
+    else if (!r.ticked.length) said = `${from} has no ticks the map doesn't have already.`;
+    else {
+      for (const n of r.ticked) plan.steps.find(s => s.n === n).done = true;
+      planToNext = true;   // the map shows the next step still to do
+      renderPlan(); save(); autosave();
+      said = `Took ${r.ticked.length} tick${r.ticked.length > 1 ? 's' : ''} from ${from}: ${stepList(r.ticked)}. ${OPENSPEC.progress(plan.steps).done} of ${plan.steps.length} done; untick any that aren't.`;
+    }
+    if (r.tasks && r.unknown.length) said += ` No task there is about ${stepList(r.unknown)} (renamed, perhaps).`;
+    if (quiet && !r.ticked.length) return '';
+    tLine(said, r.tasks ? 't-sys' : 't-err');
+    return said;
+  }
   function handFiles() {
     const plan = project.plan;
     if (!plan || !plan.steps.length) return [];
@@ -4650,17 +4672,26 @@
   async function openHand() {
     hand.files = handFiles();
     hand.dir = hand.files.length ? hand.files[0].path.replace(/[^/]+$/, '') : '';
-    hand.taken = []; hand.note = '';
+    hand.taken = []; hand.note = ''; hand.tasksText = ''; hand.newTicks = [];
     $('handModal').hidden = false;
     renderHand();
     $(hand.files.length ? 'handGo' : 'handClose').focus();
     // in a saved project's folder: are these files there already, and changed since (ticked by the AI, say)?
     if (!desk.on || !desk.folder || !hand.files.length) return;
     const folder = desk.folder, taken = [];
+    let tasksText = '';
     for (const f of hand.files.filter(x => /\.md$/.test(x.path))) {
-      try { if ((await invoke('read_text', { path: join(folder, f.path) })).replace(/\r\n?/g, '\n') !== f.content) taken.push(f.path.split('/').pop()); } catch (_) { /* not there yet */ }
+      try {
+        const there = (await invoke('read_text', { path: join(folder, f.path) })).replace(/\r\n?/g, '\n');
+        if (there !== f.content) taken.push(f.path.split('/').pop());
+        if (/\/tasks\.md$/.test(f.path)) tasksText = there;
+      } catch (_) { /* not there yet */ }
     }
-    if (desk.folder === folder && !$('handModal').hidden) { hand.taken = taken; renderHand(); }
+    if (desk.folder !== folder || $('handModal').hidden) return;
+    hand.taken = taken;
+    hand.tasksText = tasksText;
+    hand.newTicks = tasksText && project.plan ? OPENSPEC.ticksFrom(tasksText, project.plan.steps).ticked : [];
+    renderHand();
   }
   function closeHand() { $('handModal').hidden = true; }
   function renderHand() {
@@ -4672,8 +4703,11 @@
     $('handCopy').disabled = !has;
     $('handAsk').hidden = !has;
     $('handAsk').innerHTML = has ? `Then ask your AI: <q>Read ${escHtml(hand.dir)}proposal.md, then work through tasks.md in order. Tick each task once its check passes.</q> With OpenSpec set up: <code>/opsx:apply ${escHtml(name)}</code>` : '';
-    const go = $('handGo');
+    const go = $('handGo'), take = hand.newTicks.length;
     go.disabled = !has;
+    $('handTake').hidden = !(desk.on && desk.folder && take);
+    $('handTake').textContent = `Take its tick${take > 1 ? 's' : ''} (${stepList(hand.newTicks)})`;
+    $('handTakeFile').hidden = desk.on || !has;
     if (!desk.on) {
       go.textContent = 'Download .zip';
       $('handNote').textContent = hand.note || (has ? `Unzip it in the project's own folder: it makes ${hand.dir}.` : '');
@@ -4682,8 +4716,9 @@
       $('handNote').textContent = has ? 'Save the project first: the files go in its folder, next to its code.' : '';
     } else {
       go.textContent = hand.taken.length ? 'Write over them' : 'Write to the project folder';
-      $('handNote').textContent = hand.note || (`Writes ${hand.dir} in ${baseName(desk.folder)}.` + (hand.taken.length
-        ? ` ${hand.taken.join(' and ')} ${hand.taken.length > 1 ? 'are' : 'is'} there already, and different (ticked by your AI, perhaps): writing replaces ${hand.taken.length > 1 ? 'them' : 'it'}.` : ''));
+      const there = take ? `tasks.md there ticks ${stepList(hand.newTicks)}, which the map hasn't: take its ticks first, or writing replaces them.`
+        : hand.taken.length ? `${hand.taken.join(' and ')} there ${hand.taken.length > 1 ? 'differ' : 'differs'} from the map now (your AI may have changed ${hand.taken.length > 1 ? 'them' : 'it'}): writing replaces ${hand.taken.length > 1 ? 'them' : 'it'}.` : '';
+      $('handNote').textContent = (hand.note || `Writes ${hand.dir} in ${baseName(desk.folder)}.`) + (there ? ' ' + there : '');
     }
   }
   async function handGo() {
@@ -4716,6 +4751,22 @@
   $('handClose').addEventListener('click', closeHand);
   $('handGo').addEventListener('click', handGo);
   $('handCopy').addEventListener('click', () => { const f = hand.files.find(x => x.path.endsWith('/' + hand.show)); if (f) copyText(f.content, $('handCopy'), 'Copy'); });
+  // the folder's tasks.md (desktop), or one chosen from this computer (browser): its ticks come back to the map
+  $('handTake').addEventListener('click', async () => {
+    const said = takeTicks(hand.tasksText, hand.dir + 'tasks.md');
+    await openHand();   // the files now say the same as the map
+    hand.note = said; renderHand();
+  });
+  $('handTicksFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    let text;
+    try { text = await f.text(); } catch (err) { hand.note = `${f.name} could not be read: ${err.message || err}`; return renderHand(); }
+    const said = takeTicks(text, f.name);
+    hand.files = handFiles();   // tasks.md, shown, ticks them too
+    hand.note = said; renderHand();
+  });
   $('handModal').addEventListener('click', (e) => {
     if (e.target.id === 'handModal') return closeHand();
     const t = e.target.closest('[data-hand-file]');
@@ -5136,6 +5187,9 @@
       if (saved) {
         replaceProject(saved, `Opened ${baseName(folder)}.`, folder);
         if (images().length) await readImages(folder);
+        // ticks your AI made in Hand to my AI's tasks.md come back to the map
+        const tasksMd = project.plan && project.plan.steps.length ? await read(`openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`) : null;
+        if (tasksMd) takeTicks(tasksMd, `openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`, true);
         // did anyone change the code outside IntuaCode?
         compile();
         const changed = [];

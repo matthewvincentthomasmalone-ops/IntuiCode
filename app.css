@@ -846,6 +846,8 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .hand-ask q { color: var(--ink); }
 .hand-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); min-height: 1.2em; }
 .hand-actions { margin-top: 8px; justify-content: flex-end; }
+.hand-actions .hand-take { margin-right: auto; }
+.hand-actions .hand-take[hidden] { display: none; }
 .hand-actions .btn:disabled, .hand-bar .btn:disabled { opacity: .45; cursor: default; }
 .plan-step { width: 100%; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 6px; align-items: center; text-align: left; border: 0; background: none; padding: 5px 8px; border-radius: 2px; cursor: pointer; color: var(--ink); font-size: 12.5px; }
 .plan-step:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }

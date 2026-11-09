@@ -64,10 +64,15 @@ Tick each one. If something is off, note what you did and what the terminal said
       file shown.
 - [ ] Desktop, unsaved project: the button says **Save the project…** and saves first. Saved: **Write to the project
       folder** writes `openspec/changes/<name>/proposal.md`, `tasks.md` and `.openspec.yaml` next to the code.
-- [ ] Tick a task in that `tasks.md` by hand, then Hand to my AI again: it says tasks.md is there and different, and the
+- [ ] Tick a task in that `tasks.md` by hand (as your AI would), then Hand to my AI again: it names the step the file
+      ticks and offers **Take its tick (step n)**. Take it: the step is ticked on the map, and the count moves on.
+- [ ] Add a task of your own to that `tasks.md`, then Hand to my AI: it says tasks.md differs from the map, and the
       button says **Write over them**. `.openspec.yaml` keeps its first `created:` date.
+- [ ] Tick another task in `tasks.md`, close the project and open the folder again: the terminal says it took that
+      tick, and the map shows it.
 - [ ] Browser: **Download .zip** gives `<name>-openspec.zip`; unzipped, it makes `openspec/changes/<name>/`. With
-      OpenSpec installed, `openspec list` in that folder shows the change.
+      OpenSpec installed, `openspec list` in that folder shows the change. Tick a task in the unzipped `tasks.md`, then
+      **Take ticks from a tasks.md…** and choose it: that step is ticked on the map.
 - [ ] A project with no map (Import → Try the example project): File → Hand to my AI… says there's no map yet.
 
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click

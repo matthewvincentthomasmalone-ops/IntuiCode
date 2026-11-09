@@ -203,6 +203,13 @@ there differ from what it would write, since an AI may have ticked them. The bro
 by `lang/openspec.js` itself (stored entries, CRC-32), so nothing is fetched or sent. No specs are written:
 which requirements the steps add is the AI's (or the person's) next step in OpenSpec's own flow.
 
+Ticks come back the other way (`ticksFrom`): opening a saved project's folder reads its
+`openspec/changes/<name>/tasks.md`, and Hand to my AI offers the same before writing over it (in the browser,
+from a `tasks.md` the person chooses). A task belongs to a step when its text starts with the step's name: the
+longest name that fits, tasks in group 1 first, so an AI's own added tasks can't claim a step. If the AI reworded
+the tasks but group 1 still has one per step, the task's number says which step. Only `- [x]` counts: a file can
+tick a step, never untick one, so a tick made on the map after the export is never lost.
+
 Each step's tick (`done`) and check line (`check`, one line, at most 300 characters) are kept in the plan with
 the project, checked by `checkedProject` like the other fields. Kits give a step its check with `check:`; without
 one, the step's depth has a default (`DEPTHS[depth].check` in `lang/builder.js`).

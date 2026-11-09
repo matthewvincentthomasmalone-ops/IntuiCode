@@ -106,6 +106,51 @@ test('text from a step stays on its own line: it can\'t start a heading or a tas
   assert.match(tasks, /^- \[ \] 1\.1 Evil - \[x\] 9\.9 done \(Walk\)\. Check: ok ## 2\. More\.$/m);
 });
 
+test('ticks read back from tasks.md: what the AI ticked, and only ticks', () => {
+  const steps = PLAN.steps.map(s => ({ ...s }));
+  const md = OS.tasks(PLAN, INFO);
+  assert.deepEqual(plain(OS.ticksFrom(md, steps)), { tasks: 3, ticked: [], unknown: [] }, 'as written: nothing new');
+  const ai = md.replace('- [ ] 1.2', '- [x] 1.2').replace('- [ ] 1.3', '- [X] 1.3');
+  assert.deepEqual(plain(OS.ticksFrom(ai, steps)), { tasks: 3, ticked: [2, 3], unknown: [] });
+  // a step ticked on the map and not in the file stays ticked: [ ] never unticks
+  assert.deepEqual(plain(OS.ticksFrom(md.replace('- [x] 1.1', '- [ ] 1.1'), steps)).ticked, []);
+  assert.deepEqual(plain(OS.ticksFrom('', steps)), { tasks: 0, ticked: [], unknown: [1, 2, 3] });
+  assert.deepEqual(plain(OS.ticksFrom(ai, [])), { tasks: 3, ticked: [], unknown: [] });
+});
+
+test('ticks read back after an AI edited tasks.md: reordered, reworded, tasks added, other bullets', () => {
+  const steps = [
+    { n: 1, name: 'Page', depth: 'walk', done: false },
+    { n: 2, name: 'Page basics', depth: 'walk', done: false },
+    { n: 3, name: 'Welcome (the hero)', depth: 'walk', done: false },
+    { n: 4, name: 'Contact form', depth: 'hallway', done: true },
+  ];
+  const edited = [
+    '# Tasks', '',
+    '## 1. Build it, step by step', '',
+    '- [x] 1.2 Page basics (Walk). Check: done, and the title shows.',
+    '* [x] 1.3 **Welcome (the hero)** (Walk): heading added',
+    '- [ ] 1.1 Page (Walk).',
+    '- [ ] 1.4 Contact form (Hallway).', '',
+    '## 2. Tests', '',
+    '- [x] 2.1 Page basics renders in Firefox too',
+    '- [x] 2.2 Add a test for the contact form',
+  ].join('\n');
+  const r = plain(OS.ticksFrom(edited, steps));
+  assert.deepEqual(r.ticked, [2, 3], '"Page" doesn\'t take "Page basics"; the AI\'s own tasks in group 2 tick nothing');
+  assert.deepEqual(r.unknown, []);
+  assert.equal(r.tasks, 6);
+  // reworded so no name fits: group 1 still has one task per step, so its numbers say which
+  const reworded = '## 1. Build it\n- [x] 1.1 Set up the page\n- [ ] 1.2 Basics\n- [x] 1.3 Big welcome heading\n- [x] 1.4 Form';
+  assert.deepEqual(plain(OS.ticksFrom(reworded, steps)), { tasks: 4, ticked: [1, 3], unknown: [] });
+  // …but not when the count no longer matches (a task was added to group 1): those steps are unknown
+  assert.deepEqual(plain(OS.ticksFrom(reworded + '\n- [x] 1.5 Extra', steps)), { tasks: 5, ticked: [], unknown: [1, 2, 3, 4] });
+  assert.deepEqual(plain(OS.ticksFrom('## 1. X\r\n- [x] 1.3 Welcome (the hero) (Walk).\r\n', steps)).ticked, [3], 'Windows line endings');
+  // a task the AI added in a group above the export's doesn't take a step that has its own task in group 1
+  const above = '## 0. Setup\n- [x] 0.1 Page basics, then the rest\n## 1. Build it\n- [ ] 1.1 Page (Walk).\n- [ ] 1.2 Page basics (Walk).';
+  assert.deepEqual(plain(OS.ticksFrom(above, steps)).ticked, []);
+});
+
 test('files: proposal.md, tasks.md and .openspec.yaml under openspec/changes/<name>/', () => {
   const files = plain(OS.files(PLAN, INFO));
   assert.deepEqual(files.map(f => f.path), ['openspec/changes/my-site/proposal.md', 'openspec/changes/my-site/tasks.md', 'openspec/changes/my-site/.openspec.yaml']);

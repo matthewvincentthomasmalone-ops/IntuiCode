@@ -178,6 +178,11 @@ ticked ones as `- [x]`. The desktop app writes them into the saved project's fol
 `openspec/changes/<name>/`; the browser gives them as a `.zip` to unzip there. Nothing is sent anywhere: the AI
 stays outside IntuaCode.
 
+The tasks your AI ticks come back to the map. On the desktop, opening the project's folder takes the new ticks
+from its `tasks.md` (the terminal says which), and Hand to my AI offers **Take its ticks** before writing over
+them. In the browser, **Take ticks from a tasks.md…** reads one you choose. Only ticks come back: a task left
+unticked there never unticks a step, and tasks the AI added of its own are left alone.
+
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the help under the windows says what kind of thing to write
 (a number, a calculation, a test that's true or false…), how to work it out from the names the program
