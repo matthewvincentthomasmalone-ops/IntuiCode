@@ -206,3 +206,21 @@ test('styling: plainer words for common CSS, both ways', () => {
   both('body {\n  font-family: "Inter", system-ui;\n  background: var(--x);\n}\n', 'style the page: font-family: "Inter", system-ui, background the colour x', {});
   assert.equal(WEB.compileCss({ id: 'x', file: 'x', text: 'style the page: font-family: "Inter", system-ui, background var(--x)' }, shared()).text, 'body {\n  font-family: "Inter", system-ui;\n  background: var(--x);\n}\n');
 });
+
+test('mechanics: listeners on names that hold elements, the event by its own name, short listeners, and not waiting', () => {
+  const page = { ids: { region: 'select', save: 'button' } };
+  const js = (text) => { const r = WEB.compileJs({ id: 'x', file: 'x', text }, { ids: Object.fromEntries(Object.entries(page.ids).map(([k, t]) => [k, { tag: t }])), groups: {}, cssGroups: {}, addGroups: {} }); return { text: r.text, errs: plain(r.info.flatMap(i => i.errs)) }; };
+  const both = (said, code) => { const w = js(said); assert.deepEqual(w.errs, [], said); assert.equal(w.text, code); reads('js', code, said, page); };
+  both('when region is changed, with the event as e\n    show e.target.value',
+    'document.getElementById("region").addEventListener("change", (e) => {\n  console.log(e.target.value);\n});\n');
+  both('define load\n    wait for fetch("/api/items")\ndefine pick using id\n    run load without waiting\nconstant list is the element matching "#tasks ul"\nwhen list is clicked\n    run pick with 1\n    put list in group busy',
+    'async function load() {\n  await fetch("/api/items");\n}\nfunction pick(id) {\n  load();\n}\nconst list = document.querySelector("#tasks ul");\nlist.addEventListener("click", () => {\n  pick(1);\n  list.classList.add("busy");\n});\n');
+  // a listener written as one expression reads as one with a block: nothing reads what it gives back
+  const r = reads('js', 'const b = document.querySelector(".go");\nb.addEventListener("click", () => alert("hi"));\n', 'constant b is the element matching ".go"\nwhen b is clicked\n    show a message "hi"', page);
+  assert.equal(C.check('js', 'x.addEventListener("click", () => f());', 'x.addEventListener("click", () => { f(); });', { parse: W.parse }).same, true);
+  assert.equal(C.check('js', 'const g = () => f();', 'const g = () => { f(); };', { parse: W.parse }).same, false);   // anywhere else what it gives back counts
+  // exact code that waits makes the block wait too
+  assert.match(js('define refresh\n    js: const { rows } = await fetchSales();\n    show rows').text, /^async function refresh\(\) \{/);
+  // a listener inside a tool is a function of its own: what it waits for doesn't make the tool wait
+  assert.match(js('define setup\n    when save is clicked\n        wait for fetch("/x")').text, /^function setup\(\) \{\n  document\.getElementById\("save"\)\.addEventListener\("click", async \(\) => \{/);
+});

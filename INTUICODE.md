@@ -667,7 +667,8 @@ screen      = "when" [ "the" ] ( "screen" | "page" | "mouse" | "pointer" | "fing
 moves       = "when" [ "the" ] ( "pointer" | "mouse" | "finger" ) ( "moves" | "is moved" )
               [ ( "over" | "on" | "across" | "in" | "inside" ) element ] ;           (* → pointermove *)
 tapped      = "when" element "is" ( "tapped" | "touched" | "released" | "let go" | "lifted" ) ;
-event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" ) ;
+event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" )
+              [ [ "," ] "with the event as" name ] ;   (* the event under its own name: (e) => … *)
                          (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault) *)
 frame       = "every frame" ;                                                       (* → requestAnimationFrame loop *)
 keys        = "keep track of" [ "the" ] "keys" ;                                    (* → keysDown, a Set *)
@@ -731,7 +732,8 @@ set-item    = ( "set" | "let" | "make" ) [ "the" ] ( ( "first" | "last" ) "item"
 set-path    = ( "set" | "let" | "make" ) path ( "to" | "be" ) value ;    (* a.b, a[i], meter-fill.style.width *)
 set-field   = ( "set" | "let" | "make" ) [ "the" ] ( name | text ) "of" owner ( "to" | "be" ) value ;  (* → owner.name = value *)
 set         = ( "set" | "let" | "make" ) name ( "to" | "be" ) value ;               (* → let name = value, or name = value *)
-run         = "run" path [ "with" items ] [ "and store" [ "it" | "the result" ] "in" name ] ; (* → [await] path(items) *)
+run         = "run" path [ "with" items ] [ "without waiting" ] [ "and store" [ "it" | "the result" ] "in" name ] ;
+                                    (* → [await] path(items); "without waiting": no await, even for a tool that waits *)
 show        = "show" items ;                                                        (* → console.log(items) *)
 ```
 
@@ -757,6 +759,19 @@ when name is typed in
 document.getElementById("name").addEventListener("input", () => {
   document.getElementById("greeting").textContent = `Hi ${document.getElementById("name").value}`;
 });
+```
+
+```intuicode js
+when name is typed in, with the event as e
+    set the text of greeting to e.target.value
+constant first is the element matching "p"
+```
+
+```js
+document.getElementById("name").addEventListener("input", (e) => {
+  document.getElementById("greeting").textContent = e.target.value;
+});
+const first = document.querySelector("p");
 ```
 
 ## Grammar: C++ and Arduino
@@ -998,28 +1013,29 @@ not an operand, so `length of (a plus b)` isn't read.
 |---|---|---|
 | 1 | `[key] "K" is held`, `is held down`, `is down` | `keysDown.has("K")` (needs `keep track of the keys`) |
 | 2 | `tap x`, `click x`, `pointer x` (and `y`) | `event.offsetX` / `event.offsetY` |
-| 3 | `width of E`, `height of E`; `text of E` (page elements) | `….width`, `….height`; `….value` for a box, `….textContent` otherwise |
-| 4 | `file in E` (`first file`; `in`, `of`, `from`, `picked in`), `files in E` | `….files[0]`, `….files` |
-| 5 | `first item of X`, `last item of X`, `item K of X`, innermost first | `X[0]`, `X[X.length - 1]`, `X[K]` |
-| 6 | `length of X`, `size of X`, `how many [items] in X` | `X.length` |
-| 7 | `random [whole] number from A to B` | `(Math.floor(Math.random() * (B - A + 1)) + A)`; an error when B is followed by maths |
-| 8 | `random item from X` (`of`, `in`) | `X[Math.floor(Math.random() * X.length)]` |
-| 9 | `X as [a] number` / `X as text` | `Number(X)` / `String(X)` |
-| 10 | `X in capitals`, `X in uppercase` / `X in lowercase` | `X.toUpperCase()` / `X.toLowerCase()` |
-| 11 | `X is not ticked` (`checked`) / `X is ticked` | `!X.checked` / `X.checked` |
-| 12 | `X is not in group G` / `X is in group G` | `!X.classList.contains("g")` / `X.classList.contains("g")` |
-| 13 | `X contains Y` | `X.includes(Y)` |
-| 14 | `X is not in Y` (`one of`) / `X is in Y` | `!Y.includes(X)` / `Y.includes(X)` |
-| 15 | `[an] empty list` / `empty text` | `[]` / `""` |
-| 16 | `is not nothing` / `is nothing` | `!= null` / `== null` |
-| 17 | `is not`, `isn't`, `is not equal to`, `is not the same as` | `!==` |
-| 18 | `is at least`, `is … than or equal to`; `is at most`, `is … than or equal to` | `>=`; `<=` |
-| 19 | `is greater than` (`more`, `bigger`, `higher`), `is over`; `is less than` (`smaller`, `lower`, `fewer`), `is under` | `>`; `<` |
-| 20 | `is empty` | `.length === 0` |
-| 21 | `is`, `equals`, `is equal to`, `is the same as` | `===` |
-| 22 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
-| 23 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
-| 24 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
+| 3 | `the element matching "S"`, `every element matching "S"` | `document.querySelector("S")`, `document.querySelectorAll("S")` |
+| 4 | `width of E`, `height of E`; `text of E` (page elements) | `….width`, `….height`; `….value` for a box, `….textContent` otherwise |
+| 5 | `file in E` (`first file`; `in`, `of`, `from`, `picked in`), `files in E` | `….files[0]`, `….files` |
+| 6 | `first item of X`, `last item of X`, `item K of X`, innermost first | `X[0]`, `X[X.length - 1]`, `X[K]` |
+| 7 | `length of X`, `size of X`, `how many [items] in X` | `X.length` |
+| 8 | `random [whole] number from A to B` | `(Math.floor(Math.random() * (B - A + 1)) + A)`; an error when B is followed by maths |
+| 9 | `random item from X` (`of`, `in`) | `X[Math.floor(Math.random() * X.length)]` |
+| 10 | `X as [a] number` / `X as text` | `Number(X)` / `String(X)` |
+| 11 | `X in capitals`, `X in uppercase` / `X in lowercase` | `X.toUpperCase()` / `X.toLowerCase()` |
+| 12 | `X is not ticked` (`checked`) / `X is ticked` | `!X.checked` / `X.checked` |
+| 13 | `X is not in group G` / `X is in group G` | `!X.classList.contains("g")` / `X.classList.contains("g")` |
+| 14 | `X contains Y` | `X.includes(Y)` |
+| 15 | `X is not in Y` (`one of`) / `X is in Y` | `!Y.includes(X)` / `Y.includes(X)` |
+| 16 | `[an] empty list` / `empty text` | `[]` / `""` |
+| 17 | `is not nothing` / `is nothing` | `!= null` / `== null` |
+| 18 | `is not`, `isn't`, `is not equal to`, `is not the same as` | `!==` |
+| 19 | `is at least`, `is … than or equal to`; `is at most`, `is … than or equal to` | `>=`; `<=` |
+| 20 | `is greater than` (`more`, `bigger`, `higher`), `is over`; `is less than` (`smaller`, `lower`, `fewer`), `is under` | `>`; `<` |
+| 21 | `is empty` | `.length === 0` |
+| 22 | `is`, `equals`, `is equal to`, `is the same as` | `===` |
+| 23 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
+| 24 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
+| 25 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
 
 JavaScript's precedence then applies, tightest first: `!` (on the operand right after it); `*` `/` `%`;
 `+` `-`; `<` `<=` `>` `>=`; `===` `!==` `==` `!=`; `&&`; `||`. Unlike Python, `not` binds to one
@@ -1884,7 +1900,10 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | **Events** | `when ‹name› is clicked` | `name.addEventListener("click", …)` | Indent what should happen. |
 |  | `when ‹form› is sent` | `form.addEventListener("submit", …)` | The page won't reload. |
 |  | `when the page has loaded` | `DOMContentLoaded` |  |
-|  | `every ‹2› seconds` | `setInterval(…, 2000)` | The time can be a name too: "every gap seconds". |
+|  | `when ‹name› is clicked, with the event as ‹e›` | `name.addEventListener("click", (e) => …)` | Names what happened, for the indented lines: e.target is the element it happened to. |
+| **Page** | `constant ‹box› is the element matching "‹#list li›"` | `document.querySelector(…)` | The first element the CSS selector picks; "every element matching …" gives them all. |
+| **Logic** | `run ‹tool› without waiting` | `tool();` | Starts a tool that waits for something (a fetch) and goes straight on to the next line, without await. |
+| **Events** | `every ‹2› seconds` | `setInterval(…, 2000)` | The time can be a name too: "every gap seconds". |
 |  | `every ‹1› second as ‹ticker›` | `ticker = setInterval(…)` | Named, so "stop ‹ticker›" can stop it (clearInterval). Also "after 3 seconds as ‹reminder›". |
 | **Errors** | `try` | `try { … }` | Indent the lines that might fail; then "if it fails" at the same indent, with what to do instead. |
 |  | `if it fails` | `} catch { … }` | "if it fails as problem" keeps the error: problem.message says what went wrong. "in any case" runs either way. |

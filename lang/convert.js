@@ -204,6 +204,8 @@
     const tree = env.parse('js', src);
     const o = Out();
     const ids = env.ids || {};
+    const fileFns = new Set(tree.descendantsOfType('function_declaration').map(f => (F(f, 'name') || {}).text).filter(Boolean));   // this file's own tools
+    const asyncFns = new Set(tree.descendantsOfType('function_declaration').filter(f => kids(f).some(k => k.type === 'async')).map(f => (F(f, 'name') || {}).text));   // the ones that wait
     const elId = (n) => {   // document.getElementById("x") -> x (a name from the page)
       if (!n || n.type !== 'call_expression' || F(n, 'function').text !== 'document.getElementById') return null;
       const a = named(F(n, 'arguments')).filter(x => !isComment(x));
@@ -212,6 +214,8 @@
       return ids[id] && simpleName(id) ? id : null;
     };
     const isField = (id) => /^(input|textarea|select)$/.test(ids[id]);
+    // a page element by its name, or a name in Mechanics that may hold one (const form = …; the writer checks it does)
+    const holder = (n) => elId(n) || (n && n.type === 'identifier' && !ids[n.text] && !/^(?:document|window|event|this)$/.test(n.text) ? n.text : null);
     function ex(n) {
       if (!n) return null;
       switch (n.type) {
@@ -255,6 +259,8 @@
           const args = named(F(n, 'arguments') || { namedChildCount: 0 }).filter(x => !isComment(x)).map(ex);
           if (args.some(a => a == null)) return null;
           if (elId(n)) return elId(n);
+          const qs = fn.text.match(/^document\.querySelector(All)?$/), qa = named(F(n, 'arguments')).filter(x => !isComment(x));
+          if (qs && qa.length === 1 && qa[0].type === 'string' && args[0] === qa[0].text) return `${qs[1] ? 'every' : 'the'} element matching ${args[0]}`;
           if (!isChain(fn)) return n.text;
           if (fn.text === 'Number' && args.length === 1 && isChain(named(F(n, 'arguments'))[0])) return `${args[0]} as number`;
           if (fn.text === 'String' && args.length === 1 && isChain(named(F(n, 'arguments'))[0])) return `${args[0]} as text`;
@@ -269,19 +275,40 @@
     const bodyOf = (n) => (n.type === 'statement_block' ? named(n) : [n]);
     const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, 'js:', src, one);
 
-    function handler(fnNode, allowEvent) {  // () => { … } or (event) => { … }
+    /* () => { … }, (event) => { … }, or one expression, () => f(x), which counts as { f(x); } where nothing reads
+       what it gives back (a listener or a timer). name: the event's name when it isn't "event". */
+    function handler(fnNode, allowEvent) {
       if (!fnNode || fnNode.type !== 'arrow_function') return null;
       const params = F(fnNode, 'parameters') || F(fnNode, 'parameter');
       const p = params ? (params.type === 'identifier' ? [params] : named(params)) : [];
-      if (p.length > 1 || (p.length === 1 && (!allowEvent || p[0].text !== 'event'))) return null;
+      if (p.length > 1 || (p.length === 1 && (!allowEvent || p[0].type !== 'identifier'))) return null;
       const body = F(fnNode, 'body');
-      if (!body || body.type !== 'statement_block') return null;
-      return { body: named(body), usesEvent: p.length === 1 };
+      if (!body) return null;
+      const name = p.length ? p[0].text : null;
+      if (body.type === 'statement_block') return { body: named(body), usesEvent: p.length === 1, name };
+      if (body.type === 'update_expression' || /^(?:object|sequence_expression|parenthesized_expression)$/.test(body.type)) return null;
+      const stmt = { type: 'expression_statement', startIndex: body.startIndex, endIndex: body.endIndex, startPosition: body.startPosition, endPosition: body.endPosition,
+        text: body.text, namedChildCount: 1, childCount: 1, namedChild: () => body, child: () => body, nextSibling: null, parent: fnNode, descendantsOfType: (t) => body.descendantsOfType(t) };
+      return { body: [stmt], usesEvent: p.length === 1, name };
     }
 
-    function exprStmt(e, depth) {
+    function exprStmt(e, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
-      if (e.type === 'await_expression') { const c = named(e)[0]; if (c && c.type === 'call_expression' && isChain(F(c, 'function'))) { const a = args(c).map(ex); if (a.some(x => x == null)) return false; return say(`run ${F(c, 'function').text}${a.length ? ' with ' + a.join(', ') : ''}`); } return false; }
+      if (e.type === 'await_expression') {
+        const c = named(e)[0];
+        if (!c || c.type !== 'call_expression' || !isChain(F(c, 'function'))) return false;
+        const a = args(c).map(ex);
+        if (a.some(x => x == null)) return false;
+        // a tool of this file is waited for by "run"; anything else (fetch, a browser call), or the careful way, by "wait for"
+        if (fileFns.has(F(c, 'function').text) && !lvl) return say(`run ${F(c, 'function').text}${a.length ? ' with ' + a.join(', ') : ''}`);
+        return say(`wait for ${F(c, 'function').text}(${a.join(', ')})`);
+      }
+      // a tool of this file that waits, run without waiting for it (no await): said so, or the writer would wait
+      if (lvl || (e.type === 'call_expression' && F(e, 'function').type === 'identifier' && asyncFns.has(F(e, 'function').text))) {
+        if (e.type !== 'call_expression' || F(e, 'function').type !== 'identifier' || !fileFns.has(F(e, 'function').text)) return false;
+        const v = args(e).map(ex);
+        return !v.some(x => x == null) && say(`run ${F(e, 'function').text}${v.length ? ' with ' + v.join(', ') : ''} without waiting`);
+      }
       if (e.type === 'call_expression') {
         const fn = F(e, 'function'), a = args(e);
         const fnText = fn.text;
@@ -299,21 +326,25 @@
           if (prop === 'addEventListener' && a.length === 2 && a[0].type === 'string') {
             const ev = a[0].text.slice(1, -1);
             if (obj.text === 'document' && ev === 'DOMContentLoaded') { const h = handler(a[1], false); if (!h) return false; say('when the page has loaded'); block(h.body, depth + 1, e.startIndex); return true; }
-            const id = elId(obj);
+            const id = holder(obj);
             if (!id || !EVENTS[ev]) return false;
             const h = handler(a[1], true);
             if (!h) return false;
             let body = h.body;
+            const evName = h.name || 'event';
             if (ev === 'submit') {
-              if (!h.usesEvent || !body.length || body[0].text.replace(/\s+/g, '') !== 'event.preventDefault();') return false;
+              if (!h.usesEvent || !body.length || body[0].text.replace(/\s+/g, '') !== `${evName}.preventDefault();`) return false;
               body = body.slice(1);
             }
-            say(`when ${id} is ${EVENTS[ev]}`);
+            // the writer calls the event "event", and only names it when the lines use it; say so otherwise
+            const usesName = h.name && body.some(s => new RegExp(`\\b${h.name.replace(/\$/g, '\\$')}\\b`).test(s.text.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')));
+            const named_ = h.name && (h.name !== 'event' || (ev !== 'submit' && !usesName)) ? `, with the event as ${h.name}` : '';
+            say(`when ${id} is ${EVENTS[ev]}${named_}`);
             block(body, depth + 1, e.startIndex);
             return true;
           }
           if (F(obj, 'property') && F(obj, 'property').text === 'classList' && a.length === 1 && a[0].type === 'string') {
-            const id = elId(F(obj, 'object')), g = a[0].text.slice(1, -1);
+            const id = holder(F(obj, 'object')), g = a[0].text.slice(1, -1);
             if (!id || !simpleName(g)) return false;
             if (prop === 'add') return say(`put ${id} in group ${g}`);
             if (prop === 'remove') return say(`take ${id} out of group ${g}`);
@@ -340,7 +371,7 @@
             if (prop === 'value' && right.text === '""') return say(`clear ${id}`);
             const v = ex(right); return v != null && say(`set the text of ${id} to ${v}`);
           }
-          if (id && prop === 'hidden' && /^(true|false)$/.test(right.text)) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${id}`);
+          if (prop === 'hidden' && /^(true|false)$/.test(right.text) && holder(F(left, 'object'))) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${holder(F(left, 'object'))}`);
           if (left.text === 'window.location.href') { const v = ex(right); return v != null && say(`go to ${v}`); }
           if (isChain(left) && !id) { const v = ex(right); return v != null && say(`set ${left.text} to ${v}`); }
           return false;
@@ -365,9 +396,14 @@
 
     function one(n, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
-      if (lvl && n.type !== 'lexical_declaration') return false;
+      if (lvl && n.type !== 'lexical_declaration' && n.type !== 'expression_statement') return false;
       switch (n.type) {
-        case 'expression_statement': return exprStmt(named(n)[0], depth);
+        case 'expression_statement': {
+          const e = named(n)[0], c = e && e.type === 'await_expression' ? named(e)[0] : e;
+          // running a tool of this file: the writer may wait for it (await) where the code doesn't, or the other way round
+          if (c && c.type === 'call_expression' && fileFns.has(F(c, 'function').text)) o.careful.add(n.startIndex);
+          return exprStmt(e, depth, lvl);
+        }
         case 'lexical_declaration': {
           const d = named(n).filter(x => x.type === 'variable_declarator');
           if (d.length !== 1 || F(d[0], 'name').type !== 'identifier' || !F(d[0], 'value')) return false;
@@ -473,6 +509,14 @@
     },
     block: (n) => n.type === 'program' || n.type === 'statement_block',
     after: (o, n) => {
+      // () => f(x) as a listener or a timer is () => { f(x); }: nothing reads what a listener or a timer gives back
+      if (n.type === 'arrow_function' && F(n, 'body') && F(n, 'body').type !== 'statement_block' && F(n, 'body').type !== 'update_expression' && n.parent && n.parent.type === 'arguments') {
+        const call = n.parent.parent, fn = call && F(call, 'function'), list = named(n.parent).filter(x => !isComment(x));
+        const listener = fn && fn.type === 'member_expression' && F(fn, 'property').text === 'addEventListener' && list[1] && list[1].startIndex === n.startIndex;
+        const timer = fn && /^(?:setTimeout|setInterval)$/.test(fn.text) && list[0] && list[0].startIndex === n.startIndex;
+        const body = F(n, 'body'), i = o.c.findIndex(x => x.k === body.startIndex && x.t === body.type);
+        if ((listener || timer) && i >= 0) o.c[i] = { t: 'statement_block', k: body.startIndex, block: true, c: [{ t: 'expression_statement', k: body.startIndex, c: [o.c[i]] }] };
+      }
       if (/^(if_statement|for_statement|for_in_statement|while_statement|do_statement)$/.test(n.type)) wrapBodies(o, n, ['consequence', 'body'], 'statement_block');
       if (n.type === 'else_clause') { const c = named(n).find(x => !isComment(x)); if (c && c.type !== 'statement_block' && c.type !== 'if_statement') { const i = o.c.findIndex(x => x.k === c.startIndex); if (i >= 0) o.c[i] = { t: 'statement_block', k: c.startIndex, block: true, c: [o.c[i]] }; } }
     },

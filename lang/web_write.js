@@ -1214,6 +1214,8 @@
     q = q.replace(/\b(?:tap|click|pointer)(?:'s)?\s+(x|y)\b/gi, (m, a) => ` event.offset${a.toUpperCase()} `);
     // (an element's id goes in as quoted text, so the names below leave it alone)
     const byId = (id) => { strs.push(`"${toId(id)}"`); return `document.getElementById(⟦${strs.length - 1}⟧)`; };
+    // "the element matching "#sales tbody"", "every element matching ".card"": the page's elements by a CSS selector
+    q = q.replace(/\b(every\s+)?element matching\s+⟦(\d+)⟧/gi, (m, every, n) => { note(inf, `${code(every ? 'querySelectorAll' : 'querySelector')} finds ${every ? 'every element' : 'the first element'} that the CSS selector ${code(strs[+n])} picks.`); return `document.querySelector${every ? 'All' : ''}(⟦${n}⟧)`; });
     q = q.replace(R(String.raw`\b(width|height) of ([\w-]+)`), (m, wh, id) => (x.shared.ids[toId(id)] ? `${byId(id)}.${wh.toLowerCase()}` : m));
     q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `${byId(id)}.${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : m; });
     // what was picked in a file picker
@@ -1353,6 +1355,7 @@
       if ((m = s.match(/\band store (?:it |the reply )?in\s+([A-Za-z_$][\w$]*)$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^for each\s+([A-Za-z_$][\w$]*)\s+in\s/i))) x.vars.add(m[1]);
       if (/^keep track of (?:the )?keys$/i.test(s)) x.vars.add('keysDown');
+      if ((m = s.match(/^when\s+.+?,?\s+with the event as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^load (?:the |a )?(?:picture|image)\s+.+?\s+(?:as|called)\s+([A-Za-z_$][\w$]*)$/i))) { x.vars.add(m[1]); x.pictures = (x.pictures || new Set()).add(m[1]); }
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }   // (greeting = "hi": the name is greeting)
       if ((m = s.match(MAKE_NEW)) && (m = m[2].match(/\band store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) x.made.set(m[1], MADE[s.match(MAKE_NEW)[1].toLowerCase().replace(/\s+/g, ' ')]);
@@ -1413,14 +1416,31 @@
        that does)? Then it has to be async. */
     const needsAsync = (fromIdx, seen = new Set()) => {
       const baseInd = lines[fromIdx].match(/^ */)[0].length;
+      let inner = null;   // a block inside this one that is a function of its own (when …, every …, define …): its waiting is its own
       for (let j = fromIdx + 1; j < lines.length; j++) {
         if (!lines[j].trim()) continue;
-        if (lines[j].match(/^ */)[0].length <= baseInd) break;
+        const jInd = lines[j].match(/^ */)[0].length;
+        if (jInd <= baseInd) break;
+        if (inner != null && jInd > inner) continue;
+        inner = /^\s*(?:when |every |after |define )/i.test(lines[j]) ? jInd : null;
+        if (inner != null) continue;
         if (/\b(fetch|send .+ to)\b/i.test(lines[j])) return true;
         if (/^\s*(?:note|comment)\s*:/i.test(lines[j])) continue;
         if (/\bwait for\b/i.test(lines[j].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'))) return true;
         const r = lines[j].trim().replace(FILLER, '').match(/^run\s+([A-Za-z_$][\w$]*)(?=\s|$)/i);
-        if (r && x.fns.has(r[1]) && fnIsAsync(r[1], seen)) return true;
+        if (r && x.fns.has(r[1]) && !/\swithout waiting(?:\s|$)/i.test(lines[j]) && fnIsAsync(r[1], seen)) return true;
+        // exact code that waits (await) needs it too, unless it makes a function of its own there
+        const c = lines[j].match(/^\s*(?:js|javascript|raw)\s*:(.*)$/i), code = c && c[1].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""');
+        if (code && /\bawait\b/.test(code) && !rawAsyncIn(fromIdx)) return true;
+      }
+      return false;
+    };
+    const rawAsyncIn = (fromIdx) => {   // an async function written in exact code inside this block
+      const baseInd = lines[fromIdx].match(/^ */)[0].length;
+      for (let j = fromIdx + 1; j < lines.length; j++) {
+        if (!lines[j].trim()) continue;
+        if (lines[j].match(/^ */)[0].length <= baseInd) break;
+        if (/^\s*(?:js|javascript|raw)\s*:.*\basync\b/i.test(lines[j])) return true;
       }
       return false;
     };
@@ -1508,13 +1528,15 @@
         note(inf, up ? `\`pointerup\` on ${code(el.id)}: a finger lifting, or a mouse button let go, over it. "tap x" and "tap y" are measured from its top left corner.` : `\`pointerdown\` on ${code(el.id)}: a finger or a mouse. "tap x" and "tap y" are measured from its top left corner.`);
         return open(handler(el.js, up ? 'pointerup' : 'pointerdown'), '});', 'fn');
       }
-      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)$/i))) {
+      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
         const ev = { clicked: 'click', pressed: 'click', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit' }[m[2].toLowerCase()];
         const el = elementRef(m[1], x, inf);
-        const isForm = ev === 'submit';
+        const isForm = ev === 'submit', evName = m[3] || 'event';
         note(inf, `${code('addEventListener("' + ev + '", …)')} runs the indented lines every time ${code(el.id)} ${ev === 'click' ? 'is clicked' : ev === 'submit' ? 'is sent' : 'changes'}.` + (isForm ? ' `preventDefault()` stops the browser from reloading the page when the form is sent.' : '') + (el.made ? ` ${code(el.id)} is an element made in Mechanics, so the listener is added to it here, as it is made.` : ''));
-        open(handler(el.js, ev, isForm || usesEvent(i) ? '(event)' : '()'), '});', 'fn');
-        if (isForm) push('  '.repeat(stack.length) + 'event.preventDefault();', i);
+        if (m[3]) note(inf, `The event (what happened: ${code(m[3] + '.target')} is the element, for one) is called ${code(m[3])} in the indented lines.`);
+        open(handler(el.js, ev, m[3] ? `(${m[3]})` : isForm || usesEvent(i) ? '(event)' : '()'), '});', 'fn');
+        if (m[3]) declare(m[3]);
+        if (isForm) push('  '.repeat(stack.length) + `${evName}.preventDefault();`, i);
         return;
       }
       if (/^every frame$/i.test(s)) {
@@ -1819,9 +1841,12 @@
         if (kw) note(inf, '`let` creates a name that can change later.');
         return say(`${kw}${m[1]} = ${value};`);
       }
-      if ((m = M(new RegExp(String.raw`^run\s+(${nameSource(x)}(?:\.[A-Za-z_$][\w$]*|\[[^\]]+\])*)(?:\s+with\s+(.+?))?(?:\s+and store (?:it |the result )?in\s+([A-Za-z_$][\w$]*))?$`, 'i')))) {
-        const waits = x.fns.has(m[1]) && fnIsAsync(m[1]) && insideFn();
+      if ((m = M(new RegExp(String.raw`^run\s+(${nameSource(x)}(?:\.[A-Za-z_$][\w$]*|\[[^\]]+\])*)(?:\s+with\s+(.+?))?(\s+without waiting)?(?:\s+and store (?:it |the result )?in\s+([A-Za-z_$][\w$]*))?$`, 'i')))) {
+        const later = !!m[3];
+        m = [m[0], m[1], m[2], m[4]];
+        const waits = !later && x.fns.has(m[1]) && fnIsAsync(m[1]) && insideFn();
         if (waits) note(inf, `${code(m[1])} waits for something, so \`await\` waits for it to finish before the next line.`);
+        if (later) note(inf, `"without waiting" starts ${code(m[1])} and goes straight on to the next line, without \`await\`.`);
         // a tool nobody made: a typo, most likely (the browser's own and a js: line's are known)
         if (/^[A-Za-z_$][\w$]*$/.test(m[1]) && !x.fns.has(m[1]) && !x.vars.has(m[1]) && !BROWSER_NAMES.test(m[1]) && !/^(?:alert|confirm|prompt|setTimeout|setInterval|clearTimeout|clearInterval|fetch|requestAnimationFrame)$/.test(m[1])) {
           inf.warns.push(`There's no tool called ${code(m[1])} here. Make one with "define ${m[1]} using …", or check the spelling.`);
@@ -1945,6 +1970,9 @@
     T('Events', 'when ‹name› is clicked', 'name.addEventListener("click", …)', 'Indent what should happen.', ['mechanics']),
     T('Events', 'when ‹form› is sent', 'form.addEventListener("submit", …)', 'The page won\'t reload.', ['mechanics']),
     T('Events', 'when the page has loaded', 'DOMContentLoaded', '', ['mechanics']),
+    T('Events', 'when ‹name› is clicked, with the event as ‹e›', 'name.addEventListener("click", (e) => …)', 'Names what happened, for the indented lines: e.target is the element it happened to.', ['mechanics']),
+    T('Page', 'constant ‹box› is the element matching "‹#list li›"', 'document.querySelector(…)', 'The first element the CSS selector picks; "every element matching …" gives them all.', ['mechanics']),
+    T('Logic', 'run ‹tool› without waiting', 'tool();', 'Starts a tool that waits for something (a fetch) and goes straight on to the next line, without await.', ['mechanics']),
     T('Events', 'every ‹2› seconds', 'setInterval(…, 2000)', 'The time can be a name too: "every gap seconds".', ['mechanics']),
     T('Events', 'every ‹1› second as ‹ticker›', 'ticker = setInterval(…)', 'Named, so "stop ‹ticker›" can stop it (clearInterval). Also "after 3 seconds as ‹reminder›".', ['mechanics']),
     T('Errors', 'try', 'try { … }', 'Indent the lines that might fail; then "if it fails" at the same indent, with what to do instead.', ['mechanics']),
