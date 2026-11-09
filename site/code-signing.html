@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="no-referrer">
+<title>Code signing policy · IntuaCode</title>
+<meta name="description" content="How IntuaCode's installers are built and signed, who approves each release, and what the app does with your data.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="./" aria-label="IntuaCode, home">
+    <svg viewBox="0 0 24 24" aria-hidden="true" class="logo"><rect x="2" y="3" width="20" height="15" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="4.6" y="5.6" width="14.8" height="9.8" rx="1.6" class="logo-glass"/><path d="M7 9l2.2 1.6L7 12.2" class="logo-glow" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.6 12.2h3.2" class="logo-glow" stroke-width="1.4" stroke-linecap="round"/><path d="M9 21h6M12 18v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    <span class="brand-name">IntuaCode</span>
+  </a>
+  <nav class="nav" aria-label="Site">
+    <a href="./#download">Download</a>
+    <a href="./#trust">Security</a>
+    <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode" rel="noopener">Source</a>
+  </nav>
+</header>
+
+<main class="doc">
+  <h1 class="plate">Code signing policy</h1>
+
+  <p class="credit">Free code signing provided by <a href="https://about.signpath.io" rel="noopener">SignPath.io</a>, certificate by <a href="https://signpath.org" rel="noopener">SignPath Foundation</a>.</p>
+  <p>IntuaCode is applying to SignPath Foundation for Windows code signing. Releases published once the project is accepted have signed Windows installers; earlier releases are unsigned, and every release, signed or not, can be checked as described below.</p>
+
+  <h2>What is signed</h2>
+  <ul>
+    <li><b>Windows:</b> the installers (<code>IntuaCode_…_x64-setup.exe</code> and <code>IntuaCode_…_x64_en-US.msi</code>), with the product name IntuaCode and that release's version.</li>
+    <li>Only binaries built from this project's own source, in <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode" rel="noopener">its public repository</a>, by its GitHub Actions workflow (<code>.github/workflows/desktop.yml</code>). Nothing is built or signed on anyone's own computer.</li>
+    <li>Every signing request is approved by hand, one release at a time.</li>
+    <li><b>macOS and Linux</b> installers aren't code-signed. Like the Windows ones, each has a SHA-256 in <code>SHA256SUMS.txt</code> and a signed build-provenance record: <code>gh attestation verify &lt;file&gt; --repo matthewvincentthomasmalone-ops/IntuiCode</code>.</li>
+  </ul>
+
+  <h2>Team roles</h2>
+  <table>
+    <thead><tr><th>Role</th><th>Who</th></tr></thead>
+    <tbody>
+      <tr><td>Authors (commit without further review)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
+      <tr><td>Reviewers (review every change from anyone else, such as pull requests)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
+      <tr><td>Approvers (approve each signing request)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
+    </tbody>
+  </table>
+  <p>Everyone in these roles uses multi-factor authentication for GitHub and SignPath.</p>
+
+  <h2>Privacy policy</h2>
+  <p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.</p>
+  <ul>
+    <li>No accounts, telemetry, analytics or advertising. The fonts, the Python engine and the code parsers are bundled.</li>
+    <li>Projects are kept on your computer: in folders you choose (desktop app) or in your browser's storage (browser version).</li>
+    <li>Programs you write and run, and commands you type in its terminal, use the network only as you write them to.</li>
+    <li>On Windows, the app's window is drawn by Microsoft Edge WebView2, part of Windows, which follows <a href="https://privacy.microsoft.com/privacystatement" rel="noopener">Microsoft's privacy statement</a>.</li>
+  </ul>
+  <p>More in the <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/blob/main/SECURITY.md" rel="noopener">security policy</a>, which also says how to report a problem privately.</p>
+
+  <h2>Uninstalling</h2>
+  <ul>
+    <li><b>Windows:</b> Settings → Apps → Installed apps → IntuaCode → Uninstall (or <code>uninstall.exe</code> in its folder). Your projects' folders are left as they are.</li>
+    <li><b>Linux:</b> delete the AppImage, or remove the .deb or .rpm package with your package manager.</li>
+    <li><b>macOS:</b> move IntuaCode from Applications to the Bin.</li>
+  </ul>
+</main>
+
+<footer class="foot">
+  <span>IntuaCode · <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/blob/main/LICENSE" rel="noopener">Apache 2.0</a></span>
+  <span><a href="./">Home</a> · <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/blob/main/SECURITY.md" rel="noopener">Security policy</a></span>
+</footer>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration for IntuaCode's Windows installers: paste it into the project's artifact
+  configuration in SignPath (see SECURITY.md, "Code signing: setting it up"). SignPath checks it when it's saved.
+  The GitHub artifact "windows-unsigned" (.github/workflows/desktop.yml) is a zip of the NSIS installer and the MSI.
+  Metadata restrictions: SignPath Foundation requires the product name to be the project's name.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="IntuaCode_*_x64-setup.exe" product-name="IntuaCode">
+      <authenticode-sign />
+    </pe-file>
+    <msi-file path="IntuaCode_*_x64_en-US.msi">
+      <authenticode-sign />
+    </msi-file>
+  </zip-file>
+</artifact-configuration>

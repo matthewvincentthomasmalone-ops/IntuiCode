@@ -33,8 +33,29 @@ Each release has:
 - a signed provenance attestation for each installer, recording the workflow run and commit that built it:
   `gh attestation verify <file> --repo matthewvincentthomasmalone-ops/IntuiCode`.
 
-The installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn the first time they're
-opened. Check the checksum or the attestation first.
+Windows installers are code-signed through [SignPath Foundation](https://signpath.org) from the first release after
+the project is accepted there ([code signing policy](https://intuacode.com/code-signing.html)). Until then, and on
+macOS, Windows SmartScreen and macOS Gatekeeper warn the first time they're opened: check the checksum or the
+attestation first.
+
+## Code signing: setting it up (for the maintainer)
+
+The release workflow already has the signing step (`sign-windows` in `.github/workflows/desktop.yml`); it stays off
+until SignPath is set up:
+
+1. Turn on multi-factor authentication for GitHub (and, later, SignPath): SignPath Foundation requires it.
+2. Apply at <https://signpath.org> for free open-source signing, with the repository
+   (`matthewvincentthomasmalone-ops/IntuiCode`), the licence (Apache-2.0), the home page (https://intuacode.com) and
+   the code signing policy page (https://intuacode.com/code-signing.html).
+3. Once accepted, in SignPath: a project with the slug `intuacode` linked to this GitHub repository, a signing
+   policy `release-signing` (manual approval, the approver from the policy page), and an artifact configuration
+   from `.signpath/artifact-configuration.xml`. Create a CI user and an API token for it.
+4. In this repository's settings (Secrets and variables → Actions): the variable `SIGNPATH_ORGANIZATION_ID` and the
+   secret `SIGNPATH_API_TOKEN` (and `SIGNPATH_PROJECT_SLUG` / `SIGNPATH_POLICY_SLUG` if you chose other names).
+
+From then on each release (Actions → Desktop app → Run workflow) sends the Windows installers to SignPath and waits
+up to four hours for the approver to approve the request there; the signed installers then replace the unsigned
+ones on the release before the checksums and attestations are made.
 
 ## How the project keeps itself safe
 
