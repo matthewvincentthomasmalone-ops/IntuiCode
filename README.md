@@ -167,7 +167,25 @@ sentences, with a **Project map** beside the folders. Each step says how much is
 
 Click a step for its role in the project and a jump to its sentences; the explanation panel says
 which step your cursor is in. **+ Step** (beside Project map) adds a step of your own to any project: a
-name, how far along it is, and what it's for. Its note goes at the cursor, so the map takes you there.
+name, how far along it is, what it's for, and how to check it's done. Its note goes at the cursor, so the map
+takes you there.
+
+**Ticking steps off.** Each step on the map has a checkbox and one line on how to check it's done (kits supply
+their own; otherwise the step's depth says). The map counts them (**3 of 9 done**), the ticks are saved with the
+project, and opening a project scrolls the map to the first step not done. A step's window lets you change its
+check line.
+
+**Hand to my AI.** For an AI assistant of your own to build from: **Hand to my AI** (under the map's count, or
+in the File menu) writes the map as an [OpenSpec](https://openspec.dev) change. `proposal.md` says why, what each
+step is for and which files it touches; `tasks.md` lists the steps as `- [ ] 1.1 …` tasks, each with its check,
+ticked ones as `- [x]`. The desktop app writes them into the saved project's folder, at
+`openspec/changes/<name>/`; the browser gives them as a `.zip` to unzip there. Nothing is sent anywhere: the AI
+stays outside IntuaCode.
+
+The tasks your AI ticks come back to the map. On the desktop, opening the project's folder takes the new ticks
+from its `tasks.md` (the terminal says which), and Hand to my AI offers **Take its ticks** before writing over
+them. In the browser, **Take ticks from a tasks.md…** reads one you choose. Only ticks come back: a task left
+unticked there never unticks a step, and tasks the AI added of its own are left alone.
 
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the help under the windows says what kind of thing to write
@@ -473,6 +491,7 @@ npm install && npm run vendor
 | `lang/languages.js` | Every language a project's file can be in: its endings, its tree-sitter grammar, and whether it's written in sentences, as code or as text |
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
 | `lang/library.js`, `lang/library/` | The Library: kinds of project and the parts they're made of, in plain-text packs |
+| `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
 | `samples/` | Example code to import, including a small multi-file project (`samples/taskboard`) |

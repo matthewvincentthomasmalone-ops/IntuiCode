@@ -110,7 +110,8 @@
       out.images = p.images.slice(0, 60).filter(im => im && typeof im.name === 'string' && IMAGE_NAME.test(im.name) && typeof im.key === 'string' && /^[0-9a-f]{16,64}$/.test(im.key))
         .map(im => ({ name: im.name, type: IMAGE_TYPES[im.name.split('.').pop().toLowerCase()], key: im.key, w: Math.max(0, +im.w || 0), h: Math.max(0, +im.h || 0), size: Math.max(0, +im.size || 0) }));
     }
-    // the project builder's map: steps in order, each a name, a depth and plain-language notes
+    // the project builder's map: steps in order, each a name, a depth, plain-language notes, how to check
+    // it's done (one line) and whether it's ticked
     if (p.plan && typeof p.plan === 'object' && Array.isArray(p.plan.steps)) {
       const str = (v, n = 3000) => (typeof v === 'string' ? v.slice(0, n) : '');
       out.plan = {
@@ -119,6 +120,7 @@
         steps: p.plan.steps.slice(0, 60).filter(s => s && /^[\w-]{1,40}$/.test(s.id) && Number.isInteger(s.n)).map(s => ({
           id: s.id, n: s.n, name: str(s.name, 120), depth: ['walk', 'hallway', 'horizon'].includes(s.depth) ? s.depth : 'horizon',
           summary: str(s.summary), usual: str(s.usual), learn: str(s.learn),
+          check: str(s.check, 300).replace(/\s+/g, ' ').trim(), done: s.done === true,
         })),
       };
     }
@@ -161,6 +163,7 @@
     }
     store.set(PREVIOUS_KEY, project);
     project = normalized(next);
+    planToNext = true;   // its map opens at the first step not done
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
     ta.value = activeSec().text;
@@ -4117,7 +4120,7 @@
   /* ------------------------------------------------------------------ */
   const ENTRY_GROUP = { kit: 'Kits', component: 'Steps', question: 'Questions' };
   const NEW_ENTRY = {
-    component: 'component: my-step\nname: My step\ndepth: walk\nsummary: Its role in the whole project, in plain words.\nusual: What people usually make it with.\nlearn: What to learn first.\n== main\nshow "Hello from my step"',
+    component: 'component: my-step\nname: My step\ndepth: walk\nsummary: Its role in the whole project, in plain words.\nusual: What people usually make it with.\nlearn: What to learn first.\ncheck: How to check it\'s done, in one line.\n== main\nshow "Hello from my step"',
     kit: 'kit: my-kit\ntitle: My kind of project\nlayout: website\nshelf: tools\nplatform: web\nabout: One line shown above its list of steps.\nsteps: ',
     question: 'question: my-question\nask: What should it do?\noption: Something | What that means | kit my-kit',
   };
@@ -4152,7 +4155,7 @@
   const oneLine = (v) => String(v || '').replace(/\s*\n\s*/g, ' ').trim();
   function formText(f) {
     const lines = [`${f.kind}: ${f.id}`];
-    const order = f.kind === 'kit' ? ['title', 'layout', 'shelf', 'platform', 'asks', 'about'] : ['name', 'depth', 'summary', 'usual', 'learn'];
+    const order = f.kind === 'kit' ? ['title', 'layout', 'shelf', 'platform', 'asks', 'about'] : ['name', 'depth', 'summary', 'usual', 'learn', 'check'];
     for (const k of order) if (oneLine(f.head[k])) lines.push(`${k}: ${oneLine(f.head[k])}`);
     for (const [k, v] of Object.entries(f.head)) if (k !== f.kind && k !== 'steps' && !order.includes(k) && oneLine(v)) lines.push(`${k}: ${oneLine(v)}`);
     if (f.kind === 'component') for (const l of String(f.blanks || '').split('\n')) if (l.trim()) lines.push('blank: ' + l.trim().replace(/^blank:\s*/i, ''));
@@ -4209,7 +4212,7 @@
         <details class="bp-help"><summary>How the text works</summary>
           <ul>
             <li><code>kit: id</code>, <code>title:</code>, <code>layout:</code> <code>script</code>, <code>structured</code>, <code>website</code> or <code>arduino</code>, <code>shelf:</code> its kind (${BUILDER.SHELVES.filter(s => s.ask).map(s => `<code>${s.id}</code>`).join(', ')}), <code>platform:</code> pc, phone, web or board, <code>about:</code>, and <code>steps:</code> in build order: <code>!</code> after a step means always included, <code>*</code> ticked at first.</li>
-            <li><code>component: id</code> (a step), <code>name:</code>, <code>depth:</code> <code>walk</code>, <code>hallway</code> or <code>horizon</code>, <code>summary:</code> its role, <code>usual:</code> what it's usually made with, <code>learn:</code> what to learn first, then its sentences under a folder: <code>== settings</code>, <code>== tools</code>, <code>== main</code> (Python); <code>== structure</code>, <code>== styling</code>, <code>== mechanics</code> (website); <code>== settings</code>, <code>== start</code>, <code>== loop</code> (Arduino).</li>
+            <li><code>component: id</code> (a step), <code>name:</code>, <code>depth:</code> <code>walk</code>, <code>hallway</code> or <code>horizon</code>, <code>summary:</code> its role, <code>usual:</code> what it's usually made with, <code>learn:</code> what to learn first, <code>check:</code> how to check it's done (one line), then its sentences under a folder: <code>== settings</code>, <code>== tools</code>, <code>== main</code> (Python); <code>== structure</code>, <code>== styling</code>, <code>== mechanics</code> (website); <code>== settings</code>, <code>== start</code>, <code>== loop</code> (Arduino).</li>
             <li>A hallway step has one <code>blank: ‹the blank› | what kind | how to work it out | an answer that works</code> per ‹blank›, before its folders. The ‹blank› says what goes there in a few words, never the answer; the help shows the rest when the cursor is on it, and the answer only when asked for.</li>
             <li><code>question: id</code>, <code>ask:</code>, then <code>option: label | what it means | where it leads</code>. The builder makes its own questions from the kinds; a question of your own is for a kit that asks something first (<code>asks: id</code> on the kit).</li>
           </ul>
@@ -4312,6 +4315,7 @@
         <label class="kf-wide">Its role in the whole project<textarea data-f="summary" rows="3">${escHtml(f.head.summary || '')}</textarea></label>
         <label class="kf-wide">Usually made with<input data-f="usual" value="${escHtml(f.head.usual || '')}"></label>
         <label class="kf-wide">Learn first<input data-f="learn" value="${escHtml(f.head.learn || '')}"></label>
+        <label class="kf-wide">How to check it's done<input data-f="check" value="${escHtml(f.head.check || '')}" placeholder="${escHtml(BUILDER.DEPTHS[f.head.depth] ? BUILDER.DEPTHS[f.head.depth].check : '')}" maxlength="300"></label>
       </div>
       ${f.head.depth === 'horizon' ? '<p class="dim">A horizon step has no sentences: its summary, what it\'s usually made with and what to learn first are the step.</p>' : `<h4 class="kf-h">Its sentences${f.head.depth === 'hallway' ? ', with ‹blanks› for the parts to fill in' : ''}</h4>
       ${folders.map(fo => `<label class="kf-sec"><span class="ex-lbl">${escHtml(FOLDER_LABEL[fo] || fo)}</span><textarea data-sec="${fo}" rows="${Math.min(14, Math.max(3, String((f.sections || {})[fo] || '').split('\n').length + 1))}" spellcheck="false">${escHtml((f.sections || {})[fo] || '')}</textarea></label>`).join('')}
@@ -4496,17 +4500,47 @@
   $('btnBuilder').addEventListener('click', openBuilder);
   $('newToBuilder').addEventListener('click', openBuilder);
 
-  /* The project map: the plan's steps, in order. Each opens a window about its role in the whole. */
+  /* The project map: the plan's steps, in order, each with a tick and how to check it's done. Each opens a
+   * window about its role in the whole. Ticks are saved with the project. */
+  const OPENSPEC = window.IntuiOpenSpec;
+  const stepCheck = (s) => s.check || BUILDER.DEPTHS[s.depth].check;
+  let planToNext = true;   // the next time the map is drawn, scroll it to the first step not done (a project was opened)
   function renderPlan() {
-    const plan = project.plan;
-    if (!plan || !plan.steps.length) {
+    const plan = project.plan, steps = plan ? plan.steps : [];
+    if (!steps.length) {
       $('planPath').textContent = '';
+      $('planDone').hidden = true;
       $('plan').innerHTML = '<li class="plan-empty">No map yet. + Step adds a step of your own; Plan builds a project with one.</li>';
+      planToNext = false;
       return;
     }
+    const p = OPENSPEC.progress(steps);
     $('planPath').textContent = plan.path.join(' › ');
-    $('plan').innerHTML = plan.steps.map(s => `<li><button type="button" class="plan-step" data-plan="${s.n}"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}</button></li>`).join('');
+    $('planDone').hidden = false;
+    $('planCount').textContent = `${p.done} of ${p.total} done`;
+    $('planBar').style.width = Math.round(100 * p.done / p.total) + '%';
+    $('plan').innerHTML = steps.map(s => `<li class="plan-item${s.done ? ' plan-ticked' : ''}${s.n === p.next ? ' plan-next' : ''}" data-step-n="${s.n}">
+      <input type="checkbox" class="plan-tick" data-tick="${s.n}"${s.done ? ' checked' : ''} aria-label="Step ${s.n} done: ${escHtml(s.name)}" title="${s.done ? 'Done. Untick if it isn\'t any more.' : 'Tick when it\'s done: ' + escHtml(stepCheck(s))}">
+      <button type="button" class="plan-step" data-plan="${s.n}" title="${escHtml(s.name)}: what it's for, how to check it's done"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}</button>
+      ${s.done ? '' : `<span class="plan-check" title="How to check it's done: ${escHtml(stepCheck(s))}">${escHtml(stepCheck(s))}</span>`}</li>`).join('');
+    if (planToNext) {
+      planToNext = false;
+      const li = p.next != null && $('plan').querySelector(`[data-step-n="${p.next}"]`);
+      $('plan').scrollTop = li ? Math.max(0, li.offsetTop - 4) : 0;   // (.plan is the offset parent: position: relative)
+    }
   }
+  function tickStep(n, done) {
+    const s = project.plan && project.plan.steps.find(x => x.n === n);
+    if (!s || s.done === done) return;
+    s.done = done;
+    const focused = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.tick;
+    renderPlan(); save(); autosave();
+    if (focused) { const box = $('plan').querySelector(`[data-tick="${n}"]`); if (box) box.focus(); }
+    if (!$('stepModal').hidden) openStep(n);
+    const p = OPENSPEC.progress(project.plan.steps);
+    tLine(done ? `Step ${n}, "${s.name}", is done: ${p.done} of ${p.total}.${p.next != null ? ` Next: step ${p.next}.` : ' Every step is done.'}` : `Step ${n}, "${s.name}", is to do again.`, 't-sys');
+  }
+  $('plan').addEventListener('change', (e) => { const t = e.target.closest('[data-tick]'); if (t) tickStep(+t.dataset.tick, t.checked); });
   const stepText = (sec) => (sec.id === project.active ? ta.value : sec.text);
   /* The step the cursor is in: the last "── Step n ·" note at or above it, in this folder. */
   function planBanner(li) {
@@ -4524,10 +4558,13 @@
     if (!step) return;
     const places = project.sections.map(sec => ({ sec, line: BUILDER.stepLine(stepText(sec), step) })).filter(p => p.line >= 0);
     $('stepTitle').textContent = `Step ${step.n} of ${plan.steps.length} · ${step.name}`;
+    $('stepTitle').dataset.n = step.n;
     $('stepBody').innerHTML = `<p class="step-depth">${depthChip(step.depth)} ${withCode(BUILDER.DEPTHS[step.depth].means)}</p>
       <h4>Its role in the project</h4><p>${withCode(step.summary)}</p>
       ${step.usual ? `<h4>Usually made with</h4><p>${withCode(step.usual)}</p>` : ''}
       ${step.learn ? `<h4>Learn first</h4><p>${withCode(step.learn)}</p>` : ''}
+      <h4>How to check it's done</h4>
+      <div class="plan-check-edit"><label class="plan-done-tog"><input type="checkbox" data-step-done="${step.n}"${step.done ? ' checked' : ''}> Done</label><input data-step-check="${step.n}" value="${escHtml(step.check || '')}" placeholder="${escHtml(BUILDER.DEPTHS[step.depth].check)}" maxlength="300" spellcheck="true" aria-label="How to check it's done"></div>
       ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(metaOf(p.sec).title)}</button>`).join('')}</div>` : ''}
       <div class="bp-actions step-nav">
         <button type="button" class="btn small" data-step-to="${step.n - 1}"${step.n > 1 ? '' : ' disabled'}>← Step ${step.n - 1 || ''}</button>
@@ -4535,7 +4572,7 @@
       </div>`;
     $('stepModal').hidden = false;
   }
-  function closeStep() { $('stepModal').hidden = true; }
+  function closeStep() { $('stepModal').hidden = true; renderPlan(); }
 
   /* A step of your own on the map. Its "── Step n ·" note goes at the cursor (in a file of sentences), so
    * the map can take you there, as it does for a kit's steps. */
@@ -4543,7 +4580,7 @@
     activeSec().text = ta.value;
     const sec = activeSec();
     $('stepAddWhere').textContent = isSentences(sec) ? `Its note goes in ${fileName(sec)}, above line ${caretLine() + 1}.` : `${fileName(sec)} is ${langName(sec.lang)}, which can't hold a step's note, so this step won't link to a place.`;
-    $('stepAddName').value = ''; $('stepAddSum').value = ''; $('stepAddProblem').textContent = '';
+    $('stepAddName').value = ''; $('stepAddSum').value = ''; $('stepAddCheck').value = ''; $('stepAddProblem').textContent = '';
     $('stepAddModal').hidden = false;
     $('stepAddName').focus();
   }
@@ -4554,7 +4591,8 @@
     const depth = $('stepAddDepth').value;
     const plan = project.plan || (project.plan = { title: project.name, path: [], steps: [] });
     const n = plan.steps.reduce((m, s) => Math.max(m, s.n), 0) + 1;
-    plan.steps.push({ id: 'mine-' + n + '-' + Math.random().toString(36).slice(2, 6), n, name, depth, summary: $('stepAddSum').value.trim().slice(0, 3000), usual: '', learn: '' });
+    plan.steps.push({ id: 'mine-' + n + '-' + Math.random().toString(36).slice(2, 6), n, name, depth, summary: $('stepAddSum').value.trim().slice(0, 3000), usual: '', learn: '',
+      check: $('stepAddCheck').value.replace(/\s+/g, ' ').trim().slice(0, 300), done: false });
     closeStepAdd();
     if (isSentences(activeSec())) {
       const b = lineBounds(ta.selectionStart), indent = b.text.match(/^\s*/)[0];
@@ -4567,7 +4605,7 @@
   $('stepAddClose').addEventListener('click', closeStepAdd);
   $('stepAddGo').addEventListener('click', addStep);
   $('stepAddModal').addEventListener('click', (e) => { if (e.target.id === 'stepAddModal') closeStepAdd(); });
-  for (const id of ['stepAddName', 'stepAddSum']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addStep(); } });
+  for (const id of ['stepAddName', 'stepAddSum', 'stepAddCheck']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addStep(); } });
   $('plan').addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) openStep(+b.dataset.plan); });
   $('stepClose').addEventListener('click', closeStep);
   $('stepModal').addEventListener('click', (e) => {
@@ -4575,7 +4613,164 @@
     const to = e.target.closest('[data-step-to]');
     if (to) return openStep(+to.dataset.stepTo);
     const go = e.target.closest('[data-go-sec]');
-    if (go) { closeStep(); openSection(go.dataset.goSec, +go.dataset.goLine); }
+    if (go) {
+      closeStep();
+      if (mode !== 'unity') return openSection(go.dataset.goSec, +go.dataset.goLine);
+      // Unity shows the file's code with its sentences in place: the step's note is found in that text
+      const n = +$('stepTitle').dataset.n, step = project.plan && project.plan.steps.find(s => s.n === n);
+      openSection(go.dataset.goSec);
+      const at = step ? BUILDER.stepLine($('uTa').value, step) : -1;
+      if (at >= 0) uGoTo(at);
+    }
+  });
+  // a step's check line, as it's typed (kept even if the window is closed with Esc), and drawn on the map once left
+  const checkInput = (e) => {
+    const c = e.target.closest('[data-step-check]');
+    const s = c && project.plan && project.plan.steps.find(x => x.n === +c.dataset.stepCheck);
+    if (s) { s.check = c.value.replace(/\s+/g, ' ').trim().slice(0, 300); save(); autosave(); }
+    return s;
+  };
+  $('stepModal').addEventListener('input', checkInput);
+  $('stepModal').addEventListener('change', (e) => {
+    const d = e.target.closest('[data-step-done]');
+    if (d) return tickStep(+d.dataset.stepDone, d.checked);
+    if (checkInput(e)) renderPlan();
+  });
+
+  /* Hand to my AI: the map as an OpenSpec change (lang/openspec.js), for an AI assistant of your own to work
+   * from. The desktop app writes it into the saved project's folder, at openspec/changes/<name>/; the browser
+   * offers it as a .zip to unzip there. The AI stays outside IntuaCode: it gets these files and nothing else. */
+  const hand = { files: [], dir: '', show: 'tasks.md', taken: [], note: '', tasksText: '', newTicks: [] };
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const stepList = (ns) => (ns.length === 1 ? `step ${ns[0]}` : `steps ${ns.slice(0, -1).join(', ')} and ${ns[ns.length - 1]}`);
+
+  /* Ticks your AI made in a tasks.md come back to the map (lang/openspec.js finds which steps they're about).
+   * Only ticks: a step ticked here stays ticked. -> what happened, in a sentence ('' when quiet and nothing did). */
+  function takeTicks(text, from, quiet) {
+    const plan = project.plan;
+    if (!plan || !plan.steps.length) return '';
+    const r = OPENSPEC.ticksFrom(text, plan.steps);
+    let said;
+    if (!r.tasks) said = `${from} has no tasks to read (lines like "- [x] 1.1 …").`;
+    else if (!r.ticked.length) said = `${from} has no ticks the map doesn't have already.`;
+    else {
+      for (const n of r.ticked) plan.steps.find(s => s.n === n).done = true;
+      planToNext = true;   // the map shows the next step still to do
+      renderPlan(); save(); autosave();
+      said = `Took ${r.ticked.length} tick${r.ticked.length > 1 ? 's' : ''} from ${from}: ${stepList(r.ticked)}. ${OPENSPEC.progress(plan.steps).done} of ${plan.steps.length} done; untick any that aren't.`;
+    }
+    if (r.tasks && r.unknown.length) said += ` No task there is about ${stepList(r.unknown)} (renamed, perhaps).`;
+    if (quiet && !r.ticked.length) return '';
+    tLine(said, r.tasks ? 't-sys' : 't-err');
+    return said;
+  }
+  function handFiles() {
+    const plan = project.plan;
+    if (!plan || !plan.steps.length) return [];
+    return OPENSPEC.files({ ...plan, steps: plan.steps.map(s => ({ ...s, check: stepCheck(s) })) }, { name: project.name, files: project.sections.map(fileName), date: today() });
+  }
+  async function openHand() {
+    hand.files = handFiles();
+    hand.dir = hand.files.length ? hand.files[0].path.replace(/[^/]+$/, '') : '';
+    hand.taken = []; hand.note = ''; hand.tasksText = ''; hand.newTicks = [];
+    $('handModal').hidden = false;
+    renderHand();
+    $(hand.files.length ? 'handGo' : 'handClose').focus();
+    // in a saved project's folder: are these files there already, and changed since (ticked by the AI, say)?
+    if (!desk.on || !desk.folder || !hand.files.length) return;
+    const folder = desk.folder, taken = [];
+    let tasksText = '';
+    for (const f of hand.files.filter(x => /\.md$/.test(x.path))) {
+      try {
+        const there = (await invoke('read_text', { path: join(folder, f.path) })).replace(/\r\n?/g, '\n');
+        if (there !== f.content) taken.push(f.path.split('/').pop());
+        if (/\/tasks\.md$/.test(f.path)) tasksText = there;
+      } catch (_) { /* not there yet */ }
+    }
+    if (desk.folder !== folder || $('handModal').hidden) return;
+    hand.taken = taken;
+    hand.tasksText = tasksText;
+    hand.newTicks = tasksText && project.plan ? OPENSPEC.ticksFrom(tasksText, project.plan.steps).ticked : [];
+    renderHand();
+  }
+  function closeHand() { $('handModal').hidden = true; }
+  function renderHand() {
+    const has = hand.files.length > 0, name = hand.dir.split('/').slice(-2, -1)[0] || '';
+    for (const b of document.querySelectorAll('[data-hand-file]')) b.setAttribute('aria-selected', String(b.dataset.handFile === hand.show));
+    const f = hand.files.find(x => x.path.endsWith('/' + hand.show));
+    $('handPre').textContent = f ? f.content : 'No map yet. File → Plan a project… builds a project with one; + Step adds a step of your own.';
+    $('handWhere').textContent = has ? hand.dir + hand.show : '';
+    $('handCopy').disabled = !has;
+    $('handAsk').hidden = !has;
+    $('handAsk').innerHTML = has ? `Then ask your AI: <q>Read ${escHtml(hand.dir)}proposal.md, then work through tasks.md in order. Tick each task once its check passes.</q> With OpenSpec set up: <code>/opsx:apply ${escHtml(name)}</code>` : '';
+    const go = $('handGo'), take = hand.newTicks.length;
+    go.disabled = !has;
+    $('handTake').hidden = !(desk.on && desk.folder && take);
+    $('handTake').textContent = `Take its tick${take > 1 ? 's' : ''} (${stepList(hand.newTicks)})`;
+    $('handTakeFile').hidden = desk.on || !has;
+    if (!desk.on) {
+      go.textContent = 'Download .zip';
+      $('handNote').textContent = hand.note || (has ? `Unzip it in the project's own folder: it makes ${hand.dir}.` : '');
+    } else if (!desk.folder) {
+      go.textContent = 'Save the project…';
+      $('handNote').textContent = has ? 'Save the project first: the files go in its folder, next to its code.' : '';
+    } else {
+      go.textContent = hand.taken.length ? 'Write over them' : 'Write to the project folder';
+      const there = take ? `tasks.md there ticks ${stepList(hand.newTicks)}, which the map hasn't: take its ticks first, or writing replaces them.`
+        : hand.taken.length ? `${hand.taken.join(' and ')} there ${hand.taken.length > 1 ? 'differ' : 'differs'} from the map now (your AI may have changed ${hand.taken.length > 1 ? 'them' : 'it'}): writing replaces ${hand.taken.length > 1 ? 'them' : 'it'}.` : '';
+      $('handNote').textContent = (hand.note || `Writes ${hand.dir} in ${baseName(desk.folder)}.`) + (there ? ' ' + there : '');
+    }
+  }
+  async function handGo() {
+    if (!hand.files.length) return;
+    if (!desk.on) {
+      const name = hand.dir.split('/').slice(-2, -1)[0] + '-openspec.zip';
+      const url = URL.createObjectURL(new Blob([OPENSPEC.zip(hand.files)], { type: 'application/zip' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      hand.note = `Downloaded ${name}. Unzip it in the project's own folder: it makes ${hand.dir}.`;
+      tLine(`Handed the map to your AI as ${name}: ${hand.dir}proposal.md and tasks.md.`, 't-sys');
+      return renderHand();
+    }
+    if (!desk.folder) { await saveProject(); if (desk.folder) openHand(); return; }
+    const folder = desk.folder;
+    try {
+      for (const f of hand.files) {
+        // .openspec.yaml says when the change was made: one there already is kept
+        if (/\/\.openspec\.yaml$/.test(f.path)) { try { await invoke('read_text', { path: join(folder, f.path) }); continue; } catch (_) { /* not there yet */ } }
+        await invoke('write_text', { path: join(folder, f.path), content: f.content });
+      }
+      closeHand();
+      tLine(`Handed the map to your AI: ${hand.dir}proposal.md and tasks.md are in ${folder}.`, 't-sys');
+    } catch (e) { hand.note = 'Could not write the files: ' + e; renderHand(); }
+  }
+  $('btnHandAI').addEventListener('click', openHand);
+  $('btnHandAI2').addEventListener('click', openHand);
+  $('handClose').addEventListener('click', closeHand);
+  $('handGo').addEventListener('click', handGo);
+  $('handCopy').addEventListener('click', () => { const f = hand.files.find(x => x.path.endsWith('/' + hand.show)); if (f) copyText(f.content, $('handCopy'), 'Copy'); });
+  // the folder's tasks.md (desktop), or one chosen from this computer (browser): its ticks come back to the map
+  $('handTake').addEventListener('click', async () => {
+    const said = takeTicks(hand.tasksText, hand.dir + 'tasks.md');
+    await openHand();   // the files now say the same as the map
+    hand.note = said; renderHand();
+  });
+  $('handTicksFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    let text;
+    try { text = await f.text(); } catch (err) { hand.note = `${f.name} could not be read: ${err.message || err}`; return renderHand(); }
+    const said = takeTicks(text, f.name);
+    hand.files = handFiles();   // tasks.md, shown, ticks them too
+    hand.note = said; renderHand();
+  });
+  $('handModal').addEventListener('click', (e) => {
+    if (e.target.id === 'handModal') return closeHand();
+    const t = e.target.closest('[data-hand-file]');
+    if (t) { hand.show = t.dataset.handFile; renderHand(); }
   });
 
   async function loadExampleProject() {
@@ -4992,6 +5187,9 @@
       if (saved) {
         replaceProject(saved, `Opened ${baseName(folder)}.`, folder);
         if (images().length) await readImages(folder);
+        // ticks your AI made in Hand to my AI's tasks.md come back to the map
+        const tasksMd = project.plan && project.plan.steps.length ? await read(`openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`) : null;
+        if (tasksMd) takeTicks(tasksMd, `openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`, true);
         // did anyone change the code outside IntuaCode?
         compile();
         const changed = [];
@@ -5378,6 +5576,7 @@
       else if (maxed && tip.hidden && !document.querySelector('.modal:not([hidden])') && ac.hidden) setMax(maxed);
       else if (!tip.hidden) hideTip();
       else if (!$('stepModal').hidden) closeStep();
+      else if (!$('handModal').hidden) closeHand();
       else if (!$('fileModal').hidden) closeFileDialog();
       else if (!$('stepAddModal').hidden) closeStepAdd();
       else if (!$('builderModal').hidden) closeBuilder();
