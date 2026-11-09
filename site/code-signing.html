@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
 <meta name="referrer" content="no-referrer">
 <title>Code signing policy · IntuaCode</title>
-<meta name="description" content="How IntuaCode's installers are built and signed, who approves each release, and what the app does with your data.">
+<meta name="description" content="How IntuaCode's installers are built, how to check them, who publishes them, and what the app does with your data.">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="fonts/fonts.css">
@@ -29,27 +29,35 @@
 <main class="doc">
   <h1 class="plate">Code signing policy</h1>
 
-  <p class="credit">Free code signing provided by <a href="https://about.signpath.io" rel="noopener">SignPath.io</a>, certificate by <a href="https://signpath.org" rel="noopener">SignPath Foundation</a>.</p>
-  <p>IntuaCode is applying to SignPath Foundation for Windows code signing. Releases published once the project is accepted have signed Windows installers; earlier releases are unsigned, and every release, signed or not, can be checked as described below.</p>
+  <p class="credit">IntuaCode's installers aren't code-signed yet. Each one can be checked instead: it has a published SHA-256, and a record signed by GitHub of the build that made it.</p>
+  <p>Because they're unsigned, Windows may say it protected your PC, and macOS may not open the app the first time. Check the download first (below); then, on Windows, choose <b>More info → Run anyway</b>.</p>
 
-  <h2>What is signed</h2>
+  <h2>How the installers are made</h2>
   <ul>
-    <li><b>Windows:</b> the installers (<code>IntuaCode_…_x64-setup.exe</code> and <code>IntuaCode_…_x64_en-US.msi</code>), with the product name IntuaCode and that release's version.</li>
-    <li>Only binaries built from this project's own source, in <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode" rel="noopener">its public repository</a>, by its GitHub Actions workflow (<code>.github/workflows/desktop.yml</code>). Nothing is built or signed on anyone's own computer.</li>
-    <li>Every signing request is approved by hand, one release at a time.</li>
-    <li><b>macOS and Linux</b> installers aren't code-signed. Like the Windows ones, each has a SHA-256 in <code>SHA256SUMS.txt</code> and a signed build-provenance record: <code>gh attestation verify &lt;file&gt; --repo matthewvincentthomasmalone-ops/IntuiCode</code>.</li>
+    <li>Only from this project's own source, in <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode" rel="noopener">its public repository</a>, by its GitHub Actions workflow (<code>.github/workflows/desktop.yml</code>). Nothing is built on anyone's own computer.</li>
+    <li>Each release lists every file's SHA-256 in <code>SHA256SUMS.txt</code>; the <a href="./#download">download section</a> shows them too.</li>
+    <li>Each installer has a build-provenance record signed by GitHub, naming the workflow run and the commit that built it.</li>
   </ul>
 
-  <h2>Team roles</h2>
+  <h2>Checking a download</h2>
+  <ul>
+    <li><b>Windows</b> (PowerShell): <code>Get-FileHash .\IntuaCode_0.4.0_x64-setup.exe -Algorithm SHA256</code>, then compare it with <code>SHA256SUMS.txt</code> or the download section.</li>
+    <li><b>Linux and macOS:</b> <code>sha256sum -c SHA256SUMS.txt --ignore-missing</code> (macOS: <code>shasum -a 256 -c</code>).</li>
+    <li><b>Any system</b>, with the <a href="https://cli.github.com" rel="noopener">GitHub CLI</a>: <code>gh attestation verify &lt;file&gt; --repo matthewvincentthomasmalone-ops/IntuiCode</code>.</li>
+  </ul>
+
+  <h2>Code signing later</h2>
+  <p>Windows code signing is planned once the project is established; the release workflow already has the step, switched off. When releases are signed, this page will say who signs them and with which certificate.</p>
+
+  <h2>Who looks after it</h2>
   <table>
     <thead><tr><th>Role</th><th>Who</th></tr></thead>
     <tbody>
-      <tr><td>Authors (commit without further review)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
-      <tr><td>Reviewers (review every change from anyone else, such as pull requests)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
-      <tr><td>Approvers (approve each signing request)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
+      <tr><td>Maintainer: writes and merges changes</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
+      <tr><td>Reviews changes from anyone else (pull requests)</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
+      <tr><td>Publishes releases</td><td><a href="https://github.com/matthewvincentthomasmalone-ops" rel="noopener">matthewvincentthomasmalone-ops</a></td></tr>
     </tbody>
   </table>
-  <p>Everyone in these roles uses multi-factor authentication for GitHub and SignPath.</p>
 
   <h2>Privacy policy</h2>
   <p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.</p>
