@@ -87,8 +87,9 @@ class Sentences(unittest.TestCase):
     def test_add_and_remove_say_to_and_from_once(self):
         text = R.to_sentences('import random\nnames = []\nnames.append("Walk to the shop")\nnames.append(random.randint(1, 6))\nnames.remove(random.choice(names))\n')
         self.assertIn('add "Walk to the shop" to names', text)
-        self.assertIn("python: names.append(random.randint(1, 6))", text)
-        self.assertIn("python: names.remove(random.choice(names))", text)
+        # a value that says "to" or "from" can't go in "add … to …" or "remove … from …": said another way
+        self.assertIn("run names.append with random number from 1 to 6", text)
+        self.assertIn("take random item from names out of names", text)
 
     def test_command_line_reads_and_writes_utf8(self):
         with tempfile.TemporaryDirectory() as d:
@@ -108,7 +109,8 @@ class Sentences(unittest.TestCase):
     def test_classes_errors_files(self):
         text = R.to_sentences(read("tests/corpus/bank_account.py"))
         for phrase in ("define class Account", "set self.balance to balance", "fail with ValueError:",
-                       "if it fails with InsufficientFunds as e", "make a new Account with"):
+                       "if it fails with InsufficientFunds as e", "set alice to a new Account with",
+                       "when a new Account is made with owner and balance=0"):
             self.assertIn(phrase, text)
         self.assertIn("open the file DATA_FILE for writing as f", R.to_sentences(read("tests/corpus/inventory_cli.py")))
 
