@@ -225,3 +225,23 @@ test('C++: one item of a list is set by position; a decimal as a whole number is
   const ino = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 'sketch', file: 'sketch', text: 'over and over\n    wait 10 microseconds' }] }).results.sketch;
   assert.match(ino.text, /delayMicroseconds\(10\);/);
 });
+
+test('C++: a shown piece with an operator weaker than << goes in brackets; names, calls, sums and text don\'t', () => {
+  const r = cpp('define class Item\n    field name: text\n    when made using text name\n        set self.name to name\n    define describe\n        show self.name\nmake a new Item with "pen" and store in pen\nrun pen.describe\nset n to 1\nset m to 2\nshow n is at least 1\nshow (n + 1) is (n + 2)\nshow n & 1 and n | 2\nshow n ^ 3\nshow n > 0 ? 1 : 2\nshow n << 2\nshow n and m plus 1 and "n: {n}"\nshow "a > b" followed by \'<\' followed by static_cast<double>(n)\nask n is 1 and store in reply');
+  assert.deepEqual(plain(r.info.flatMap(i => [...i.errs, ...i.warns])), []);
+  assert.match(r.text, /std::cout << this->name << std::endl;/);
+  assert.match(r.text, /std::cout << \(n >= 1\) << std::endl;/);
+  assert.match(r.text, /std::cout << \(\(n \+ 1\) == \(n \+ 2\)\) << std::endl;/);
+  assert.match(r.text, /std::cout << \(n & 1\) << " " << \(n \| 2\) << std::endl;/);
+  assert.match(r.text, /std::cout << \(n \^ 3\) << std::endl;/);
+  assert.match(r.text, /std::cout << \(n > 0 \? 1 : 2\) << std::endl;/);
+  // a shift is as strong as <<, so unbracketed it would show 1 then 2 (12), not 4
+  assert.match(r.text, /std::cout << \(n << 2\) << std::endl;/);
+  assert.match(r.text, /std::cout << n << " " << m \+ 1 << " " << text\("n: ", n\) << std::endl;/);
+  assert.match(r.text, /std::cout << "a > b" << '<' << static_cast<double>\(n\) << std::endl;/);
+  assert.match(r.text, /std::cout << \(n == 1\);/);
+  assertValidCpp(r.text, 'pieces after <<');
+  // Serial.print(…) is a call: its brackets are enough
+  const ino = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 'sketch', file: 'sketch', text: 'when the board starts\n    start the serial monitor at 9600\nover and over\n    show time since start is at least 1000' }] }).results.sketch;
+  assert.match(ino.text, /Serial\.println\(millis\(\) >= 1000\);/);
+});

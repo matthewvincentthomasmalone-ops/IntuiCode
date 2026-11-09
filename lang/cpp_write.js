@@ -320,6 +320,25 @@
     return q;
   }
 
+  /* A piece written after std::cout << goes in brackets when it holds an operator that binds no tighter
+     than <<, outside brackets and quotes: std::cout << n >= 1 is (std::cout << n) >= 1 and doesn't build.
+     Those are the comparisons, & ^ |, && ||, ?:, = and +=, a shift (it would print two things) and a
+     comma. Names, calls, a + b and text(…) stay as they are. Serial.print(…) is a call, so needs none. */
+  function afterShift(p) {
+    let s = p.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/'(?:[^'\\]|\\.)+'/g, "''").replace(/(?<!-)->/g, '.');
+    // the < > of static_cast<int> or std::vector<std::string> aren't comparisons (inner ones first)
+    for (let t; (t = s.replace(/\b(?:(?:static|dynamic|reinterpret|const)_cast|std(?:::\w+)+)\s*<[\w:\s*&,]*>/g, 'T')) !== s;) s = t;
+    let depth = 0, prev = '';
+    for (const c of s) {
+      if ('([{'.includes(c)) depth++;
+      else if (')]}'.includes(c)) depth--;
+      // & after a value is "and" for bits; at the start (&x) it is the address of x
+      else if (!depth && (/[<>=^|?,]/.test(c) || (c === '&' && /[\w)\]}"']/.test(prev)))) return `(${p})`;
+      if (c.trim()) prev = c;
+    }
+    return p;
+  }
+
   /* Does the block under line i give back a value? (Arduino tools need a result type.) */
   function blockGivesBack(lines, i) {
     const base = lines[i].match(/^ */)[0].length;
@@ -616,10 +635,7 @@
         // "show a is 1 and b is 2" is one test: "and" only separates plain values
         const items = splitItems(m[1]);
         const plainOnly = items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')));
-        // a comparison shown goes in brackets: std::cout << n == 3 doesn't build (<< comes first)
-        // (a comparison needs brackets after <<; the < > of static_cast<int> or std::vector<int> aren't one)
-        const shown = (p) => (/[=!<>]=|&&|\|\||(?<!<)[<>](?![<>])/.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/\b(?:static_cast|reinterpret_cast|const_cast|std::\w+)\s*<[\w:\s*&,]*>/g, 'T')) && !/^\(.*\)$/.test(p) ? `(${p})` : p);
-        const pieces = (joined.length > 1 ? joined.map(v => E(v, inf)) : (plainOnly ? items : splitItems(m[1], false)).map(v => E(v, inf))).map(shown);
+        const pieces = joined.length > 1 ? joined.map(v => E(v, inf)) : (plainOnly ? items : splitItems(m[1], false)).map(v => E(v, inf));
         const gap = joined.length > 1 ? '' : ' ';
         if (A) {
           if (!serialStarted) inf.warns.push('Start the serial monitor first ("start the serial monitor at 9600", in "when the board starts"), or nothing will show.');
@@ -629,14 +645,15 @@
           return say(calls.join(' '));
         }
         note(inf, '`std::cout <<` writes to the terminal' + (pieces.length > 1 ? (gap ? ', with a space between the pieces' : ', one piece straight after another') : '') + (m[2] ? '.' : '; `std::endl` ends the line.'));
-        return say('std::cout << ' + pieces.join(gap ? ' << " " << ' : ' << ') + (m[2] ? ' << " ";' : ' << std::endl;'));
+        // a comparison shown goes in brackets: std::cout << n == 3 doesn't build (<< comes first)
+        return say('std::cout << ' + pieces.map(afterShift).join(gap ? ' << " " << ' : ' << ') + (m[2] ? ' << " ";' : ' << std::endl;'));
       }
       if ((m = M(/^ask(?:\s+for\s+(?:an?\s+)?(whole number|number|decimal))?\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_]\w*)$/i))) {
         const kind = (m[1] || '').toLowerCase();
         const type = /decimal/.test(kind) ? 'double' : /number/.test(kind) ? 'int' : 'std::string';
         const decl = isDeclared(m[3]) ? '' : `${type} ${m[3]}; `;
         scopes[scopes.length - 1].add(m[3]); x.types[m[3]] = type;
-        say(`${decl}std::cout << ${E(m[2], inf)};`);
+        say(`${decl}std::cout << ${afterShift(E(m[2], inf))};`);
         note(inf, type === 'std::string' ? '`std::getline` reads a whole line of typed text. `std::cin >> std::ws` first skips the end of any line left by an earlier number, which would otherwise read as an empty answer.' : '`std::cin >>` reads a number typed by the person.');
         return say(type === 'std::string' ? `std::getline(std::cin >> std::ws, ${m[3]});` : `std::cin >> ${m[3]};`);
       }
