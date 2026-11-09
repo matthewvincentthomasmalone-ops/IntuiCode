@@ -259,11 +259,12 @@
     { re: /\ban empty dictionary\b|\bempty dictionary\b/gi, to: '{}' },
     { re: /\ban empty set\b|\bempty set\b/gi, to: 'set()', note: '`set()` is an empty set: a collection that keeps each value once, in no order. (`{}` would be an empty dictionary.)' },
     { re: /\bempty text\b/gi, to: '""' },
-    { re: /\b(?:yes|true)\b/gi, to: 'True' },
-    { re: /\b(?:no|false)\b/gi, to: 'False' },
-    { re: /\b(?:nothing|none)\b/gi, to: 'None' },
+    // (never a .name: ast.Not and obj.none are names of their own)
+    { re: /(?<!\.)\b(?:yes|true)\b/gi, to: 'True' },
+    { re: /(?<!\.)\b(?:no|false)\b/gi, to: 'False' },
+    { re: /(?<!\.)\b(?:nothing|none)\b/gi, to: 'None' },
     { re: /\botherwise\b/gi, to: ' else ', note: '`a if condition else b` picks one of two values in a single line.' },
-    { re: /\b(and|or|not)\b/gi, to: (m) => m.toLowerCase() },
+    { re: /(?<!\.)\b(and|or|not)\b/gi, to: (m) => m.toLowerCase() },
   ];
   // Rules ending in an operand, like "length of x": what follows it must not belong to it (see tExpr).
   for (const r of EXPR_RULES) r.endsInOperand = r.re.source.endsWith(`(${OPD})`);
@@ -343,7 +344,7 @@
     if (slot) { x.err(`Fill in the ${slot[0]} slot.`); return '_'; }
     // Sentence-style names with spaces become snake_case; single words keep their case (API_KEY stays API_KEY).
     let py = /\s/.test(t) ? t.toLowerCase().replace(/[\s\-]+/g, '_') : t.replace(/-/g, '_');
-    const same = x.syms.get(py);
+    const same = (BUILTINS.has(py) || ALWAYS_KNOWN.has(py)) && !x.syms.map.has(py) ? undefined : x.syms.get(py);
     if (same && same.py !== py) {
       if (!opts.define) py = same.py;
       else if (same.kind !== 'class' && same.kind !== 'function') x.warn(`${code(py)} and ${code(same.py)} are different names in Python, because capital letters matter.`);
@@ -372,7 +373,14 @@
 
   /* Where a name is set: a tool ("fn:file/name"), or the top of a file ("mod:file"). What a name holds is
      kept per place, so a list in Main and some text in a tool, both called result, stay what they are. */
-  const scopeKey = (x) => (x.fn ? `fn:${x.file}/${x.fn.name}` : `mod:${x.file}`);
+  const scopeKey = (x) => {
+    // the innermost tool (a define, or a python: def), else the class (its tools and shared values aren't values
+    // at the top of the file), else the top of the file
+    const e = (x.stack || []).slice().reverse().find(e => e.fn || e.pyfn || e.type === 'class');
+    if (!e) return x.fn ? `fn:${x.file}/${x.fn.name}` : `mod:${x.file}`;
+    if (e.fn || e.pyfn) return `fn:${x.file}/${e.fn ? e.fn.name : e.pyfn}`;
+    return `cls:${x.file}/${e.cls || e.head}`;
+  };
   function declare(x, py, display, kind, extra = {}) {
     const env = x.env;
     const where = extra.where || scopeKey(x);
@@ -635,7 +643,8 @@
       if (id === '_' && x.info.errs.some(e => e.startsWith('Fill in the'))) return id; // an unfilled ‹slot›, already reported
       if (/^\s*=(?!=)/.test(whole.slice(off + m.length))) return id; // keyword argument, e.g. end=""
       const low = id.toLowerCase();
-      const s = x.syms.get(id);
+      // Python's own tools are found by their exact spelling only: max is never MAX = 10
+      const s = (BUILTINS.has(id) || ALWAYS_KNOWN.has(id)) && !x.syms.map.has(id) ? undefined : x.syms.get(id);
       if (s && !(s.kind === 'class' && s.py !== id)) {   // (a class isn't found by another spelling: point is not Point)
         if (x.pass === 2 && s.scope === 'module' && FILE_ORDER[s.file] > FILE_ORDER[x.file]) {
           x.warn(`${code(s.py)} is set in ${sectionTitle(s.file)}, which this section can't see. Set it here, or pass it into the tool as an input.`);
@@ -839,8 +848,8 @@
       // inputs with a value to use when none is given (h=1) can be left out when the tool is run
       // (*args takes any number, so then the inputs aren't counted)
       declare(x, d[1], d[1], 'function', ps.some(p => p.startsWith('*')) ? {} : { params: ps.map(p => p.replace(/[:=].*$/, '').trim()), required: ps.filter(p => !/=/.test(p)).length });
-      // its inputs are names inside it, for the sentences under it
-      for (const p of ps) { const nm = p.replace(/^\*{1,2}/, '').replace(/[:=].*$/, '').trim(); if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, 'value'); }
+      // its inputs are names inside it, for the sentences under it (the tool's own: not values at the top of the file)
+      for (const p of ps) { const nm = p.replace(/^\*{1,2}/, '').replace(/[:=].*$/, '').trim(); if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, 'value', { scope: 'local', where: `fn:${x.file}/${d[1]}` }); }
     }
     // names a block line makes: for x in …, with … as f, except E as e
     const made = py.match(/^\s*(?:async\s+)?for\s+(.+?)\s+in\s/) || py.match(/\bas\s+([A-Za-z_]\w*)\s*:\s*(?:#.*)?$/);
@@ -850,7 +859,7 @@
     const opens = !strOpen && /:\s*(#.*)?$/.test(py);
     const kw = (py.match(/^\s*(if|elif|else|for|while|def|async def|class|try|except|finally|with)\b/) || [])[1];
     const tag = { if: 'if', elif: 'elif', else: 'rawelse', try: 'try', except: 'except', finally: 'finally' }[kw];
-    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag, strOpen, comment: /^\s*(#|$)/.test(py) };
+    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag, strOpen, comment: /^\s*(#|$)/.test(py), pyfn: d && opens ? d[1] : undefined, cls: cls && opens ? cls[1] : undefined };
   });
 
   rule(/^(?:note|comment)\s*:\s*(.*)$|^#\s?(.*)$/i, (m, x) => {
@@ -1644,7 +1653,7 @@
       let top = stack[stack.length - 1];
       let pushed = false, popped = false, badIndent = false;
       if (pending) {
-        if (ind > top.ind) { stack.push({ ind, type: pending.type, fn: pending.fn, cls: pending.cls, empty: true, head: pending.line, level: stack.length }); pushed = true; }
+        if (ind > top.ind) { stack.push({ ind, type: pending.type, fn: pending.fn, cls: pending.cls, pyfn: pending.pyfn, empty: true, head: pending.line, level: stack.length }); pushed = true; }
         else {
           info[pending.line].errs.push('Nothing is indented under this line. The lines that belong to it need to move right: press Tab at the start of the next line.');
           out.splice(pending.outIdx + 1, 0, { text: ' '.repeat((pending.level + 1) * 4) + 'pass', src: pending.line, extra: true });
@@ -1695,7 +1704,7 @@
       if (res.open) {
         const fn = res.fn ? { ...res.fn, outIdx: out.length - 1, level, line: i, locals: new Set(res.fn.params), globals: new Set() } : null;
         if (fn) fnRecords.push(fn);
-        pending = { line: i, type: res.open, level, outIdx: out.length - 1, fn, cls: res.cls };
+        pending = { line: i, type: res.open, level, outIdx: out.length - 1, fn, cls: res.cls, pyfn: res.pyfn };
       }
     }
     if (strOpen) info[strOpen.line].errs.push(`The text in triple quotes that starts here isn't closed: end it with ${strOpen.delim}.`);

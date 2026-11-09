@@ -122,6 +122,9 @@ def safe_code(e):
             return False
         if isinstance(n, ast.Compare) and any(isinstance(o, (ast.Is, ast.IsNot)) for o in n.ops):
             return False
+        # x == 1 or 2: the translator reads "… or 2" after a comparison as x == 2 (what was almost always meant)
+        if isinstance(n, ast.BoolOp) and any(isinstance(b, ast.Constant) and isinstance(a, ast.Compare) for a, b in zip(n.values, n.values[1:])):
+            return False
     text = ast.unparse(e)
     if "\n" in text or ";" in text:
         return False
@@ -386,6 +389,9 @@ class Words:
             if not word:
                 return self.raw(e)
             left = self.w(e.left, False) if self._chain(e.left, e.op) else self.wrap(e.left)
+            # "random number from 1 to 6 plus 1" is asked about (up to 6, or up to 7?), so that one stays code
+            if re.search(r"\brandom (?:whole )?number from .* to [^ ]+$", left) and isinstance(e.left, ast.Call):
+                left = self.raw(e.left)
             return f"{left} {word} {self.right(e.right)}"
         if isinstance(e, ast.UnaryOp):
             if isinstance(e.op, ast.Not):
@@ -416,9 +422,22 @@ class Words:
                 if isinstance(right, ast.Constant) and right.value is None:
                     return f"{self.wrap(e.left)} {'is' if op is ast.Is else 'is not'} nothing"
                 raise Unwordable()
+            # n % 2 == 0 -> n is even; n % 3 == 0 -> n is divisible by 3
+            left = e.left
+            if self.strict and op in (ast.Eq, ast.NotEq) and isinstance(left, ast.BinOp) and isinstance(left.op, ast.Mod) \
+                    and isinstance(right, ast.Constant) and type(right.value) is int:
+                x, by = self.opd(left.left), left.right
+                # (as the writer reads them: is even % 2 == 0, is odd % 2 == 1, is not even % 2 != 0)
+                said = {(ast.Eq, 0): "even", (ast.Eq, 1): "odd", (ast.NotEq, 0): "not even"}.get((op, right.value))
+                if isinstance(by, ast.Constant) and by.value == 2 and said and not x.startswith("("):
+                    return f"{x} is {said}"
+                if op is ast.Eq and right.value == 0 and not x.startswith("("):
+                    return f"{x} is divisible by {self.opd(by)}"
             words = {ast.Eq: "is", ast.NotEq: "is not", ast.Lt: "is less than", ast.Gt: "is more than",
                      ast.LtE: "is at most", ast.GtE: "is at least", ast.In: "is in", ast.NotIn: "is not in"}
-            return f"{self.wrap(e.left)} {words[op]} {self.wrap(right)}"
+            # "(item "a" of d or 0 if there isn't one) is 1" reads as one thing compared
+            side = lambda x: (lambda t: f"({t})" if self.strict and isinstance(x, ast.Call) and " if there " in t else t)(self.wrap(x))
+            return f"{side(e.left)} {words[op]} {side(right)}"
         if isinstance(e, ast.IfExp):
             # comparisons, not, and, or all bind tighter than … if … else …, so they need no brackets there
             loose = lambda x: self.sub(x) if self.strict and isinstance(x, (ast.Compare, ast.BoolOp, ast.UnaryOp)) and not isinstance(x, ast.IfExp) else self.wrap(x)
@@ -439,7 +458,7 @@ class Words:
             return self.raw(e)
         # lists, tuples and dictionaries written out: their values said the sentence way ("text", yes, nothing)
         if self.strict and isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
-            def item(x):
+            def part(x):
                 if x is None or isinstance(x, ast.Starred):
                     raise Unwordable()
                 try:
@@ -454,8 +473,8 @@ class Words:
                 return text
             try:
                 if isinstance(e, ast.Dict):
-                    return "{" + ", ".join(f"{item(k)}: {item(v)}" for k, v in zip(e.keys, e.values)) + "}"
-                parts = [item(x) for x in e.elts]
+                    return "{" + ", ".join(f"{part(k)}: {part(v)}" for k, v in zip(e.keys, e.values)) + "}"
+                parts = [part(x) for x in e.elts]
                 if isinstance(e, ast.Set) and parts:
                     return "{" + ", ".join(parts) + "}"
                 if isinstance(e, ast.Tuple) and len(parts) > 1:
@@ -565,17 +584,17 @@ class Words:
         if e.keywords:
             return self.raw(e)
         if fname == "len" and one:
-            return f"length of {self.simple(args[0])}"
+            return f"length of {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname in ("int", "float", "str") and one and (isinstance(args[0], ast.Name) or self.strict):
             word = {"int": "number", "float": "decimal", "str": "text"}[fname]
             what = self.w(args[0]) if isinstance(args[0], ast.Name) else self.opd(args[0])
             return f"{what} as {word}"
         if fname == "sum" and one:
-            return f"sum of {self.simple(args[0])}"
+            return f"sum of {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname == "max" and one:
-            return f"biggest in {self.simple(args[0])}"
+            return f"biggest in {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname == "min" and one:
-            return f"smallest in {self.simple(args[0])}"
+            return f"smallest in {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname == "random.randint" and len(args) == 2 and all(isinstance(a, (ast.Constant, ast.Name)) for a in args):
             return f"random number from {self.w(args[0])} to {self.w(args[1])}"
         if fname == "random.randint" and len(args) == 2 and self.strict:
@@ -605,7 +624,7 @@ class Words:
         if fname == "set" and n == 0:
             return "an empty set"
         if fname == "random.random" and n == 0 and "random" in self.modules:
-            return "a random decimal"
+            return "random decimal"
         if fname in ("all", "any") and n == 1 and isinstance(args[0], ast.GeneratorExp):
             return self.comprehension(args[0], top, "", "every" if fname == "all" else "any")
         if fname == "os.getenv" and n in (1, 2) and "os" in self.modules:
@@ -628,13 +647,17 @@ class Words:
             return self.raw(e)   # session.get(url) fetches a page; only a dictionary's get looks an item up
         if m == "join" and not ((isinstance(what, ast.Constant) and isinstance(what.value, str)) or dotted_name(what) in self.texts):
             return self.raw(e)   # thread.join(5) waits for a thread; text.join(items) joins
+        # "item (a, b) of d": a tool called item would take the brackets as its own, so a key in brackets stays code
+        key = self.opd(args[0]) if m in ("get", "pop") and n else ""
+        if key.startswith("("):
+            return self.raw(e)
         if m == "get" and n in (1, 2):
-            text = f"item {self.opd(args[0])} of {self.opd(what)}"
+            text = f"item {key} of {self.opd(what)}"
             return text + (f" or {self.opd(args[1])} if there isn't one" if n == 2 else " if there is one")
         if m == "pop" and n == 0:
             return f"the last item taken out of {self.opd(what)}"
         if m == "pop" and n == 1:
-            return f"item {self.opd(args[0])} taken out of {self.opd(what)}"
+            return f"item {key} taken out of {self.opd(what)}"
         if m == "get_json" and n == 0:
             obj = self.opd(what)
             return f"the JSON sent with {'the request' if obj == 'request' else obj}"
