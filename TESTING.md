@@ -49,6 +49,27 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
 
+**Project map: ticks, and Hand to my AI** (in Unity, then again in Split Mode)
+- [ ] File → Plan a project… → Websites → Showing my work → Build. The Project map shows each step with a checkbox and,
+      under it, how to check it's done; above the steps, **0 of 9 done**.
+- [ ] Tick steps 1 to 3: the count and the bar move on, each ticked step drops its check line, and the terminal names the
+      next step. Untick one: it's back.
+- [ ] Click step 6: its window has **How to check it's done**, with **Done** and the line itself. Change the line, press
+      Esc: the map shows the new line. **Go to its sentences in Mechanics**: the cursor is on its `── Step 6 ·` note (in
+      Unity too).
+- [ ] **+ Step** with **Check it's done** filled in: the new step shows that line. Left empty: the depth's own line shows.
+- [ ] Save, close the app, open the folder again: the same ticks, and the map is scrolled to the first step not done.
+- [ ] **Hand to my AI** (under the map's count, or File → Hand to my AI…): tasks.md lists `- [x] 1.1 …` for ticked steps
+      and `- [ ] …` for the rest, each with `Check: …`; proposal.md has Why, What Changes and Impact. **Copy** copies the
+      file shown.
+- [ ] Desktop, unsaved project: the button says **Save the project…** and saves first. Saved: **Write to the project
+      folder** writes `openspec/changes/<name>/proposal.md`, `tasks.md` and `.openspec.yaml` next to the code.
+- [ ] Tick a task in that `tasks.md` by hand, then Hand to my AI again: it says tasks.md is there and different, and the
+      button says **Write over them**. `.openspec.yaml` keeps its first `created:` date.
+- [ ] Browser: **Download .zip** gives `<name>-openspec.zip`; unzipped, it makes `openspec/changes/<name>/`. With
+      OpenSpec installed, `openspec list` in that folder shows the change.
+- [ ] A project with no map (Import → Try the example project): File → Hand to my AI… says there's no map yet.
+
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
       of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.

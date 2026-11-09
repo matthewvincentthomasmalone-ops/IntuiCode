@@ -35,6 +35,7 @@
  *   summary: Its role in the whole project, in plain words.
  *   usual: What people usually use for it (mostly for horizon steps).
  *   learn: What to learn first.
+ *   check: How to check it's done, in one line. Without one, the step's depth says (DEPTHS[depth].check).
  *   blank: ‹ticks to wait› | a calculation | How to work it out, in words. | 1 + MARCH_EVERY * left // total
  *                                          one per ‹blank› of a hallway step: what goes there (the ‹label›,
  *                                          a few words, never the answer), what kind of thing it is, how to
@@ -49,9 +50,9 @@
   'use strict';
 
   const DEPTHS = {
-    walk: { label: 'Walk', means: 'You can write it in sentences now, and run it.' },
-    hallway: { label: 'Hallway', means: 'The structure is laid out and the key parts are named: you fill in the ‹blanks›, with the notes to guide you.' },
-    horizon: { label: 'Horizon', means: 'Explained and pointed at: what it is, what\'s usually used for it, and what to learn first. Not something to write in sentences yet.' },
+    walk: { label: 'Walk', means: 'You can write it in sentences now, and run it.', check: 'It runs with no problems listed, and does what its role says.' },
+    hallway: { label: 'Hallway', means: 'The structure is laid out and the key parts are named: you fill in the ‹blanks›, with the notes to guide you.', check: 'Every ‹blank› is filled in, and it runs with no problems listed.' },
+    horizon: { label: 'Horizon', means: 'Explained and pointed at: what it is, what\'s usually used for it, and what to learn first. Not something to write in sentences yet.', check: 'It\'s made, and it does what its role says.' },
   };
 
   /* The shelves of Project Templates, by kind of project. The builder's questions are made from them: "What are you
@@ -99,6 +100,7 @@ name: Sound in and out
 depth: walk
 summary: Every audio program starts here. A sound, to a computer, is a long list of numbers (samples), each saying where the speaker should be at that moment, 44,100 of them a second. This step makes a test tone (or reads a WAV file you put next to the program) and can save samples back to a WAV file any player can open. Every other step works on that same list.
 learn: What a sample and a sample rate are; lists; reading and writing files.
+check: It runs with no problems listed, and makes the test tone (or reads your WAV file).
 == settings
 note: How many samples make one second of sound (CD quality).
 set sample rate to 44100
@@ -138,6 +140,7 @@ name: Fader module
 depth: walk
 summary: A fader sets how loud a sound is: it multiplies every sample by the same number (the gain). DAWs measure it in decibels because that's how we hear: -6 dB is about half as loud, +6 about twice. Each track, and the final mix, has one.
 learn: Multiplying a list of numbers; decibels (dB = 20 × log10 of the gain).
+check: Changing the gain in decibels makes the sound louder or quieter: -6 dB is about half as loud.
 == settings
 note: The fader's position, in decibels: 0 leaves the sound as it is.
 set fader decibels to -6
@@ -158,6 +161,7 @@ depth: hallway
 summary: An EQ turns some frequencies up or down: here, a low-pass filter that keeps the low end and softens the highs. It's a "biquad", the building block of nearly every EQ: each output sample mixes the current input with the last two inputs and the last two outputs. Those five mixing numbers are its transfer function, H(z) = (b0 + b1·z⁻¹ + b2·z⁻²) / (a0 + a1·z⁻¹ + a2·z⁻²). The structure is here; you fill in the cutoff and two of the numbers.
 usual: Real-time EQs run this same maths in C++, often with JUCE's dsp module; in Python, scipy.signal does it for whole arrays at once.
 learn: What frequency and cutoff mean; the Audio EQ Cookbook by Robert Bristow-Johnson (the standard formulas for these filters); how a filter remembers past samples.
+check: Every ‹blank› is filled in, and a lower cutoff makes the sound duller.
 blank: ‹the cutoff frequency, in Hz› | a number | Frequencies above the cutoff get quieter. Hearing runs from about 20 to 20000 Hz: a cutoff around a thousand makes the softening clear to hear, and a lower one sounds more muffled. | 1000
 blank: ‹b1 for a low-pass filter› | a calculation | The Audio EQ Cookbook's low-pass gives b0 and b2 as (1 - cos w0) / 2, and b1 as 1 - cos w0. So b1 can be worked out from \`b0\`. | b0 * 2
 blank: ‹a1 for a low-pass filter› | a calculation | In the Cookbook, a1 is -2 times the cosine of \`w0\`. \`math.cos( )\` gives a cosine in Python, and \`math\` is already imported. | -2 * math.cos(w0)
@@ -195,6 +199,7 @@ name: Mixer: several tracks into one
 depth: hallway
 summary: A mixer adds tracks together, sample by sample, each through its own fader, into one sound: the heart of any DAW's mixing desk. Here the second track is the same tone an octave up. The structure is laid out; you write the line that adds each track's sample at its level.
 learn: Loops inside loops; lists of lists; why tracks need the same length (shorter ones count as silence).
+check: Every ‹blank› is filled in, and both tracks are heard in the mix, each at its own level.
 blank: ‹this track's sample, at its level› | a calculation | \`tracks[t]\` is track t's samples, and \`[i]\` after it picks the one at position i. \`gains[t]\` is that track's level as a multiplier: multiply the two. | tracks[t][i] * gains[t]
 == tools
 define mix tracks using tracks, levels
@@ -221,6 +226,7 @@ name: Level meters
 depth: walk
 summary: Meters show how loud a sound is, so you can mix with your eyes as well as your ears. The peak is the loudest single moment (keep it below 0 dB or it distorts); the RMS is the average power, closer to how loud we hear it.
 learn: Absolute values, squares and square roots; decibels.
+check: The peak and the RMS are shown in dB, and the peak stays below 0 dB.
 == tools
 define measure level using samples
     description: Shows the peak and RMS level of a sound, in decibels.
@@ -242,6 +248,7 @@ name: Transport: save and play
 depth: walk
 summary: The transport is a DAW's play and stop buttons. Here it saves the finished sound as output.wav and plays it (straight away on Windows; elsewhere it tells you where the file is).
 learn: Files and paths; how a program can do different things on different computers.
+check: output.wav is saved and plays (on Windows), or the terminal says where it is.
 == tools
 define play sound using path
     description: Plays a WAV file on Windows, or says where to find it elsewhere.
@@ -261,28 +268,32 @@ name: Live monitoring
 depth: horizon
 summary: Monitoring means hearing a sound through your effects as it happens: a microphone in, your EQ and faders, speakers out, with no noticeable delay. The program has to process small blocks of samples (a few milliseconds each) the moment the sound card asks for them, every time, without fail.
 usual: PortAudio, through the sounddevice package in Python for experiments; C++ with JUCE for real products, because Python is often too slow to be on time every few milliseconds.
-learn: Audio buffers and latency; callbacks (code the sound card calls); why real-time code must never wait for anything.`,
+learn: Audio buffers and latency; callbacks (code the sound card calls); why real-time code must never wait for anything.
+check: You hear the microphone through your effects, with no delay you can notice.`,
 
 `component: recording
 name: Recording
 depth: horizon
 summary: Recording captures sound from a microphone or an interface into samples, then into a file: the other direction of playback.
 usual: sounddevice.rec in Python for simple recordings; a real-time input stream (PortAudio, JUCE) in a DAW.
-learn: Input devices and channels; buffers; writing files while sound is still arriving.`,
+learn: Input devices and channels; buffers; writing files while sound is still arriving.
+check: A recording from the microphone is saved as a file that plays back.`,
 
 `component: plugins
 name: Plugins (VST3, AU)
 depth: horizon
 summary: Plugins are effects and instruments that load inside any DAW: your EQ could become one. A plugin is a small program the DAW calls for every block of audio, with its knobs saved in the DAW's project.
 usual: C++ with JUCE, which makes VST3, AU and standalone versions from one project; Cycling '74's RNBO if you design in Max.
-learn: C++ classes; real-time safety; how a plugin exposes its parameters to the DAW.`,
+learn: C++ classes; real-time safety; how a plugin exposes its parameters to the DAW.
+check: Your effect loads as a plugin in a DAW, and its knobs are saved with the DAW's project.`,
 
 `component: timeline
 name: Timeline and arrangement
 depth: horizon
 summary: The timeline is where clips sit on tracks over time, and where you cut, move and loop them: the part of a DAW you look at most.
 usual: A window toolkit with fast drawing (Qt, JUCE, or a web canvas), and a data model of tracks and clips.
-learn: Classes for tracks and clips; drawing on a canvas; turning a mouse position into a time.`,
+learn: Classes for tracks and clips; drawing on a canvas; turning a mouse position into a time.
+check: Clips sit on tracks over time, and can be moved, cut and looped.`,
 
 // ---------------------------------------------------------------- Webpage
 
@@ -300,6 +311,7 @@ name: Page basics
 depth: walk
 summary: The foundation every other part sits on. A website has three layers: Structure (HTML: what's on the page), Styling (CSS: how it looks) and Mechanics (JavaScript: what it does). This step sets the page's title, which shows in the browser tab and in search results, a readable font, and a small palette of shared colours with names like "paper" and "accent". Every later step uses those names instead of colour codes, so changing one line here recolours the whole site.
 learn: What HTML, CSS and JavaScript each do; the box model (space inside, a border, space around); colour codes like #c2410c.
+check: The page's title shows in the browser tab, and the text uses the shared colours.
 == structure
 note: The name in the browser tab: yours, or your project's.
 page title is "Your Name"
@@ -325,6 +337,7 @@ name: Header and menu
 depth: walk
 summary: The strip across the top: your name on the left and a menu on the right, staying in view as the page scrolls. Each menu link jumps to a part of the page by its name: "#about" finds the section called about. If you leave a part out of the kit, delete its link here too, or it will lead nowhere.
 learn: Links and #names (anchors); lining things up in a row (flexbox); a header that stays in place (sticky).
+check: Each menu link jumps to its part of the page, and the header stays in view as you scroll.
 == structure
 add a header
     add a link to "#" saying "Your Name" in group brand
@@ -345,6 +358,7 @@ name: Welcome (the hero)
 depth: walk
 summary: The first thing visitors see, big and bold: who you are or what this is, in one sentence, and one clear thing to do next (here, a button to the contact form; without that step, point it somewhere else). Designers call it the hero. Keep it short: people decide in a few seconds whether to scroll on, and the one big heading on the page also tells search engines what the page is about.
 learn: Headings (one big heading per page); a link styled to look like a button.
+check: The big heading says who you are or what this is, and its button leads somewhere real.
 == structure
 add a section called welcome
     add a big heading "Hello, I'm Your Name."
@@ -360,6 +374,7 @@ name: About
 depth: walk
 summary: A few honest sentences about you or the project: who, what, and what's in it for the visitor. Write it the way you'd say it to someone you just met. Search engines read this text too, so it's also a big part of how people find you.
 learn: Headings and paragraphs; writing for the web (the important thing first, short paragraphs).
+check: The About text reads the way you'd say it to someone you just met.
 == structure
 add a section called about
     add a heading "About"
@@ -373,6 +388,7 @@ name: Gallery
 depth: walk
 summary: A grid of your work, each picture in a card with a short caption: three across on a computer, one on a phone (with the phone step). Every picture has a description, its alt text, which screen readers read aloud to people who can't see it and which shows if the picture can't load. Put your pictures next to the page with these names (work-1.jpg and so on) or change the names to yours; pictures under about 300 KB keep the page quick.
 learn: Pictures and alt text; CSS grids; making pictures smaller before they go online.
+check: Every picture shows with its caption, and each has a description (alt text).
 == structure
 add a section called work
     add a heading "Work"
@@ -397,6 +413,7 @@ depth: hallway
 summary: A form for visitors to write to you: their name, their email and a message. Here the page checks that nothing is missing and thanks the person by name. The form is built; you write the check that nothing is missing (the part every form needs) and put their name in the thank-you. The honest limit: a web page on its own can't deliver a message anywhere; that takes a computer that is always on. To receive the messages, connect the form to a form service, or to your own server (the Online service path builds one). Until then, the email link in the footer works with no server at all.
 usual: Formspree, Netlify Forms or Basin: they give you an address to send the form to, and email you each message.
 learn: Forms, labels and boxes; the "sent" event; why delivering a message needs a server.
+check: Every ‹blank› is filled in: an empty box gets a message, and a full form thanks the person by name.
 blank: ‹one of the three boxes is empty› | a test (true or false) | \`name\`, \`email\` and \`message\` hold what was typed in the three boxes. Ask whether each one is \`empty text\`, and join the three tests with \`or\`. | name is empty text or email is empty text or message is empty text
 blank: ‹who to thank› | a name | Earlier in this event, the text of \`name-box\` was stored under a name of its own: that name goes in the braces. | name
 == structure
@@ -435,6 +452,7 @@ name: Footer
 depth: walk
 summary: The strip at the very bottom, where visitors look for who made this and how to reach them: a copyright line whose year updates itself, and an email link. An email link (mailto:) opens the visitor's own email app, so it works with no server at all.
 learn: mailto: links; a first line of JavaScript that changes the page.
+check: The year is this year, and the email link opens your email app.
 == structure
 add a footer
     add a paragraph called copyright "© Your Name"
@@ -450,6 +468,7 @@ name: Phone-friendly layout
 depth: walk
 summary: Most visits to a small site come from phones. On narrow screens this step stacks the header, shrinks the big heading, turns the gallery into two pictures per row on tablets and one on phones, and tightens the spacing. It styles kinds of things (every section, every header, the group grid) rather than names, so it works with whichever parts you picked. Try it by making the preview narrow, then on your own phone.
 learn: Media queries ("on screens narrower than 600:"); designing for small screens first; testing on a real phone.
+check: In a narrow preview (or on your phone) the header stacks, and nothing runs off the side.
 == styling
 on screens narrower than 900:
     style group grid: grid-template-columns: repeat(2, 1fr)
@@ -466,6 +485,7 @@ name: Light and dark
 depth: walk
 summary: Phones and computers have a light or dark setting, and this step makes the page follow it. In dark mode the shared colours from Page basics get darker values, and because every part of the page uses those colours by name, the whole site changes at once, with no extra work in each step. Check that text stays easy to read in both.
 learn: CSS variables (the shared colours); the dark-mode setting (prefers-color-scheme); colour contrast.
+check: With the computer set to dark, the page turns dark and its text is still easy to read.
 == styling
 note: Lets the browser draw its own parts (boxes, scroll bars) dark too.
 style html: color-scheme: light dark
@@ -478,21 +498,24 @@ name: Putting it online
 depth: horizon
 summary: Right now the page lives on your computer. Publishing copies its files (index.html, style.css, script.js and any pictures) to a server that's always on, so anyone with the address can open it, on any phone or computer. For a page like this, with no server code of its own, hosting is free and takes minutes. A domain of your own (yourname.com) is optional and costs a little each year.
 usual: GitHub Pages, Netlify or Cloudflare Pages (free for pages like this); a domain from a registrar such as Namecheap, Porkbun or Cloudflare.
-learn: What hosting and a domain are; uploading files, or connecting a Git repository so every change goes online; HTTPS (the padlock), which these hosts switch on for you.`,
+learn: What hosting and a domain are; uploading files, or connecting a Git repository so every change goes online; HTTPS (the padlock), which these hosts switch on for you.
+check: The site opens at its address on someone else's phone, with the padlock (HTTPS).`,
 
 `component: analytics
 name: Visitor numbers
 depth: horizon
 summary: Analytics count how many people visit, which pages they read and where they came from, so you can see what's working. Most tools are one line added to the page. The privacy-friendly ones count visits without following people around the web, which in many places also means no cookie banner.
 usual: Plausible, GoatCounter, Fathom or Umami (simple and privacy-friendly); Cloudflare Web Analytics (free); Google Analytics (powerful, heavier, and needs consent in Europe).
-learn: Page views and referrers (where visitors came from); privacy rules like the GDPR, in brief; adding a script to the page's head (a head: line in Structure).`,
+learn: Page views and referrers (where visitors came from); privacy rules like the GDPR, in brief; adding a script to the page's head (a head: line in Structure).
+check: Your own visit shows in the visitor numbers, and the page says what is counted.`,
 
 `component: seo
 name: Being found in search
 depth: horizon
 summary: Search engines send people to pages that say clearly what they're about. Much of that is already in this kit: a real page title, one big heading, honest text in About, and a description on every picture. The rest is a short summary for search results, a page that loads fast, and telling Google and Bing that the site exists. Nobody can promise a top place; being clear and useful is what works.
 usual: Google Search Console and Bing Webmaster Tools (free, and they show what people searched to find you); a meta description; PageSpeed Insights to check speed.
-learn: The title and description in search results; alt text; why speed and phones matter to search engines.`,
+learn: The title and description in search results; alt text; why speed and phones matter to search engines.
+check: A search for the site's name finds it, with its title and a description.`,
 
 // ---------------------------------------------------------------- Terminal tool
 
@@ -509,6 +532,7 @@ name: Records: the list at the heart
 depth: walk
 summary: Everything this tool does is about one list: the records. Each record is a small dictionary holding a name and an amount, like {"name": "Coffee", "amount": 3.5}. Every other step reads or changes this same list: saving writes it to a file, adding puts a record on the end, the report adds the amounts up. Change what the amount means (pages, minutes, kilometres) and it's a different tool.
 learn: Lists and dictionaries; why one shared list keeps a program simple.
+check: It runs with no problems listed, and the records list holds names and amounts.
 == settings
 note: The records, while the program runs: a list of small dictionaries.
 create list records
@@ -525,6 +549,7 @@ name: Saving to a file
 depth: walk
 summary: A program forgets everything when it closes, unless it writes things down. This step keeps the records in records.json, next to the program: they're loaded when the tool starts and saved after every command, so nothing is lost even if the window is closed. JSON is plain text that almost every language can read; open the file in any text editor to see your records.
 learn: Reading and writing files; JSON; checking that a file exists before reading it.
+check: Records added before closing are still there when it runs again (in records.json).
 == settings
 note: Where the records are kept, next to the program.
 set data file to "records.json"
@@ -549,6 +574,7 @@ name: Checking what's typed
 depth: walk
 summary: People make typos, press Enter by accident and type "ten" where a number should go. Without checks, one slip stops the whole program with an error. These tools ask again, kindly, until the answer makes sense: some text, an amount that's a number, a choice from a list. Every command uses them, so the whole tool is careful in one place.
 learn: try and "if it fails" (catching errors); loops that repeat until the answer is right; strip, which trims stray spaces.
+check: Typing ten where a number goes asks again, instead of stopping with an error.
 == tools
 define get text using question
     description: Asks until something is typed (spaces alone don't count).
@@ -588,6 +614,7 @@ name: The menu
 depth: walk
 summary: The front desk. It loads the saved records, then asks "> " again and again and runs the command that was typed. Commands live in a dictionary: the word people type, next to the tool it runs. In Python a tool is a value like any other, so it can be stored and looked up, which is why each later step only has to add itself to the dictionary to appear here. After every command it saves; "quit" ends the program.
 learn: Loops that run until told to stop; dictionaries as lookup tables; tools (functions) as values.
+check: It asks "> " again after each command and saves, and quit ends it.
 == settings
 note: Every command people can type, and the tool it runs. Each later step adds its own.
 create dictionary commands
@@ -622,6 +649,7 @@ name: Adding a record
 depth: walk
 summary: The first command: type add, then a name and an amount, and a new record goes on the end of the list. It's the pattern every command follows: one small tool that does one job, asking with the checking tools, and one line that puts it in the menu's dictionary under the word people type.
 learn: Tools that use other tools; adding to the end of a list.
+check: add, then a name and an amount, puts a new record on the end of the list.
 == tools
 define add record
     description: Asks for a name and an amount, and adds the new record to the list.
@@ -639,6 +667,7 @@ name: Showing the records
 depth: walk
 summary: The list command prints every record as a numbered table with lined-up columns, so you can check what's there and see each record's number. Lining up is a job for f-strings: {name:<20} pads text to 20 characters, and {amount:>10.2f} shows a number with two decimals, lined up on the right. enumerate numbers the records from 1 for people, though Python itself counts positions from 0.
 learn: f-strings and their format codes; enumerate.
+check: list shows every record, numbered, in lined-up columns.
 == tools
 define list records
     description: Shows every record, numbered, in lined-up columns.
@@ -656,6 +685,7 @@ name: Removing a record
 depth: walk
 summary: Mistakes happen. This command shows the numbered list, asks which one to remove, and takes it out. People count from 1 but Python counts positions from 0, so record 1 is at position 0: forgetting that is the classic "off by one" bug, and here it's handled in one place (number - 1).
 learn: Positions (indexes) starting at 0; pop, which takes an item out and gives it back.
+check: Removing record 1 takes out the first record, not the second.
 == tools
 define remove record
     description: Asks which record to remove, by its number, and removes it.
@@ -675,6 +705,7 @@ name: A simple report
 depth: walk
 summary: The reward for keeping records: a summary in numbers. How many there are, the total, the average and the biggest. Each is about one line, because Python comes with tools for exactly this: len counts, sum adds up, and max finds the biggest by whatever you tell it to compare.
 learn: sum, len and max; making a new list from an old one (a list comprehension); lambda, a tiny tool written in one line.
+check: The report's count, total, average and biggest match the records.
 == tools
 define show report
     description: Shows how many records there are, their total, their average and the biggest.
@@ -696,7 +727,8 @@ name: Sharing it with people who don't have Python
 depth: horizon
 summary: Right now the program runs wherever Python is installed. To hand it to someone without Python, it's bundled with a copy of Python into one program: an .exe on Windows, an app on a Mac. Bundles are bigger than you'd expect (tens of megabytes), have to be built separately on each kind of computer, and unsigned ones get a warning the first time they're opened. Other programmers can instead install it as a package, with one command.
 usual: PyInstaller (pyinstaller --onefile main.py, with --windowed for a window app); Briefcase, from BeeWare, for proper installers; pipx and a pyproject.toml file for people who already have Python.
-learn: What bundling does; building on Windows, macOS and Linux separately; code signing, and why Windows SmartScreen and macOS warn about unsigned apps.`,
+learn: What bundling does; building on Windows, macOS and Linux separately; code signing, and why Windows SmartScreen and macOS warn about unsigned apps.
+check: The bundled program runs on a computer that has no Python.`,
 
 // ---------------------------------------------------------------- Desktop window app
 
@@ -713,6 +745,7 @@ name: The main window
 depth: walk
 summary: Every desktop app starts with a window. tkinter makes one in a line; this step gives it a title and a starting size, and a frame with a little space around the edge for the other parts to go in. The parts of a window are called widgets (labels, buttons, boxes, lists), and pack places them one after another. One thing to know from the start: a window app doesn't run top to bottom and stop. It builds its window, then waits for clicks and keys (the last step).
 learn: What tkinter is; widgets; pack (and later grid) for placing them.
+check: The window opens with its title and starting size.
 == main
 python: import tkinter as tk
 note: Settings in capitals, so they're easy to find and change.
@@ -731,6 +764,7 @@ name: The list
 depth: walk
 summary: The heart of this app: a list box showing the items, with a scroll bar for when there are more than fit. Every other step works through this one widget: adding inserts into it, removing deletes from it, saving reads everything in it. It keeps the items in order and knows which one is selected.
 learn: The Listbox widget (insert, delete, get, curselection); connecting a scroll bar to a list.
+check: The items show in the list, with a scroll bar once there are more than fit.
 == main
 set panel to tk.Frame(frame)
 run panel.pack with fill="both", expand=True
@@ -748,6 +782,7 @@ name: Typing in new items
 depth: walk
 summary: A box to type in and an Add button, under the list; pressing Enter works too, because people expect it. The add tool shows the pattern of every window app: something happens (a click, a key), tkinter runs your tool, and the tool reads what it needs from the widgets and changes them. Empty text is ignored.
 learn: Entry and Button widgets; command= (the tool a button runs); bind (the tool a key runs) and the event it passes in.
+check: Typing an item and pressing Add (or Enter) puts it in the list.
 == main
 set add_row to tk.Frame(frame)
 run add_row.pack with fill="x", pady=(8, 0)
@@ -771,6 +806,7 @@ name: Removing the selected item
 depth: walk
 summary: A Remove button deletes whichever item is selected, and so does the Delete key. If nothing is selected, a small message box says so instead of silently doing nothing: people should always know what happened after they click.
 learn: Asking a Listbox what's selected (curselection gives positions); message boxes for short notices.
+check: Remove (or the Delete key) takes out the selected item; with none selected, a message says so.
 == main
 define remove selected using event=None
     description: Removes the selected item, or explains that nothing is selected.
@@ -790,6 +826,7 @@ name: Editing an item
 depth: hallway
 summary: Double-click an item to change it: a small dialog asks for the new text, starting from the old. The structure is here; you fill in the two parts that show how a list box thinks: which position was double-clicked, and where the new text goes (the same place, once the old text is deleted).
 learn: Events (a double-click is "<Double-Button-1>"); simpledialog for quick questions; delete, then insert at the same position.
+check: Every ‹blank› is filled in, and double-clicking an item lets you change its text.
 blank: ‹the position that was double-clicked› | a number | \`chosen\` is the list of selected positions that \`curselection()\` gave back, with only one in it here. Take its first item, as the Remove step does. | first item of chosen
 blank: ‹where the new text goes› | a name | Insert it where the old text was, so the item keeps its place in the list. That place is stored a few lines up, under a name of its own. | position
 == main
@@ -814,6 +851,7 @@ name: Opening and saving
 depth: walk
 summary: Open… and Save… buttons that use your computer's own file windows to choose where the list is kept. The list is saved as plain text, one item per line, so any text editor can read it; encoding="utf-8" makes sure accents and emoji survive on every computer. If someone presses Cancel, the tool simply stops.
 learn: filedialog (the system's open and save windows); reading and writing text files; what an encoding is.
+check: A saved list opens again, and the file reads fine in any text editor.
 == main
 define save list
     description: Asks where to save, then writes every item on its own line.
@@ -850,6 +888,7 @@ name: A menu bar
 depth: walk
 summary: The familiar menus along the top of the window (at the top of the screen on a Mac): File, with Quit, and Help, with About. Menus are where people look for everything that isn't a button, so as the app grows its commands can go here too; add_command is all it takes. Ctrl+Q quits from the keyboard.
 learn: Menus and cascades (a menu inside the menu bar); keyboard shortcuts with bind; lambda for a one-line tool.
+check: File › Quit closes the app, and Help › About shows its message.
 == main
 define show about
     description: A small message box saying what this app is.
@@ -871,6 +910,7 @@ name: Start: hand over to tkinter
 depth: walk
 summary: The last line of every tkinter app. mainloop shows the window and hands control to tkinter, which waits for clicks, typing and key presses and runs your tools when they happen, until the window is closed. This is event-driven programming: instead of one list of steps, the program is a set of reactions. It's also why a slow tool freezes the window: while it runs, tkinter can't react to anything else.
 learn: Event loops; after(), for things that happen later or again and again; threads for long jobs.
+check: The window stays open and answers clicks and typing.
 == main
 run window.mainloop`,
 
@@ -879,7 +919,8 @@ name: Bigger apps and a modern look
 depth: horizon
 summary: tkinter comes with Python and is fine for tools, but it looks plain and big apps outgrow it. Its themed widgets (ttk, also built in) look more at home on each system; for polished, complex apps people move to Qt, which has everything from tables to charts, or build the window with web technology inside a desktop app.
 usual: tkinter.ttk or CustomTkinter for a fresher look; PySide6 (Qt for Python) for large apps; Tauri or Electron for web technology in a desktop window (IntuaCode's own desktop app is made with Tauri).
-learn: grid, for layouts in rows and columns; keeping the data separate from the window, so the same logic could have a different face; classes to organise a bigger app.`,
+learn: grid, for layouts in rows and columns; keeping the data separate from the window, so the same logic could have a different face; classes to organise a bigger app.
+check: The app looks at home on each system, made with the toolkit you chose.`,
 
 // ---------------------------------------------------------------- Online service (SaaS)
 
@@ -896,6 +937,7 @@ name: The database
 depth: walk
 summary: An online service is mostly a memory: what people create is kept in a database, so it's still there tomorrow, on any device. This one uses SQLite, which comes with Python and keeps the whole database in one file. The tools here are the only part of the program that talks to it (set up the table, add a note, get them all), so the web server just calls them.
 learn: Tables, rows and columns; a little SQL (CREATE TABLE, INSERT, SELECT); why the ? placeholders matter: they keep what people type from being run as SQL (an attack called SQL injection).
+check: Notes are still there after the server is stopped and started again.
 == settings
 note: The database file, next to the program. Delete it to start again.
 set database file to "notes.db"
@@ -937,6 +979,7 @@ name: Checking what people send
 depth: walk
 summary: Anything can arrive from the internet: an empty note, a novel pasted by accident, or something made on purpose to break your service. So every online service checks what comes in before storing it. This tool gives back a short explanation of what's wrong, or nothing when all is well, so the server can answer "that's not right, and here's why" instead of crashing or saving junk. The self-tests below run at every start and stay silent while the checks work.
 learn: Validating input; limits that protect your database; assert (check that), the start of automatic testing.
+check: An empty note, or one far too long, is refused with a message saying why.
 == settings
 note: The longest note allowed, in characters.
 set longest note to 1000
@@ -962,6 +1005,7 @@ depth: hallway
 summary: The web server is what the internet talks to. Each route is an address and a tool: when a browser or an app asks for /api/notes, the server runs the tool under it and sends back what it gives, here as JSON, the format apps and scripts read. It uses Flask, which isn't built into Python: type $ pip install flask in the terminal once. Fill in the three blanks, press Run and open http://127.0.0.1:5000 in your browser. A page for your users can be made on the Webpage path: its Mechanics can "fetch from" these routes.
 usual: Flask (small and clear, used here); FastAPI (fast, and checks data for you); Django (everything included: admin, accounts, database tools).
 learn: URLs, requests and responses; GET (read) and POST (send); JSON; status codes (200 fine, 201 made, 400 your mistake, 500 ours); installing a package with pip.
+check: Every ‹blank› is filled in, and http://127.0.0.1:5000/api/notes shows the notes as JSON.
 blank: ‹the front page, as HTML in quotes› | text in quotes | Any HTML works, as one line of text in quotes: a heading, say, and a link to \`/api/notes\` so visitors can find the notes. Inside it, use single quotes for the link's address. | "<h1>My notes</h1><p>They're at <a href='/api/notes'>/api/notes</a></p>"
 blank: ‹the notes, as JSON› | a calculation | Flask's \`jsonify( )\`, imported at the top, turns a list or a dictionary into a JSON answer. \`notes\` holds every note. | jsonify(notes)
 blank: ‹the status code for a bad request› | a number | Status codes in the 400s mean the sender made a mistake, and the 500s that the server did. The first of the 400s is the general one, "bad request". | 400
@@ -1002,6 +1046,7 @@ depth: hallway
 summary: A page only you can open, to see how the service is doing: how many notes there are, and the latest ones. It's locked with a secret key kept outside the code, in an environment variable, so it never ends up in a file you share or publish. It's a route on the web server, so it needs that step too. Real services put admin pages behind proper logins (the Accounts step), but the idea is the same: check who's asking before showing anything.
 usual: Flask-Admin, or Django's built-in admin, for full admin sites; logins from the Accounts step instead of a shared key.
 learn: Environment variables (set ADMIN_KEY before starting the server); why secrets never go in code; escaping, so text people send can't turn into HTML or scripts on your page.
+check: Every ‹blank› is filled in; the admin page opens with the secret key, and is refused without it.
 blank: ‹the expected key, as bytes› | a calculation | \`compare_digest\` compares bytes with bytes, and the given key is turned into bytes with \`.encode()\`. Do the same to \`expected\`. | expected.encode()
 blank: ‹the status code for a refused key› | a number | Status codes in the 400s say what's wrong with a request: 400 bad request, 403 forbidden, 404 not found. Here the request is fine, but whoever sent it isn't allowed to see the page. | 403
 == tools
@@ -1028,28 +1073,32 @@ name: Sign-up and login
 depth: horizon
 summary: Accounts let each person see only their own notes. It looks simple (a form and a password), but it's the part attackers aim for: passwords must be stored scrambled (hashed) so a stolen database doesn't reveal them, logins need protection from guessing, and "forgot my password" needs email. This is exactly the place to use a well-tested library or service rather than code of your own.
 usual: Flask-Login with a password hasher (werkzeug.security, argon2); Django's built-in accounts; hosted services such as Auth0, Clerk or Supabase Auth, which also offer "sign in with Google".
-learn: Password hashing; sessions and cookies; HTTPS; CSRF protection; then a users table, and an owner for each note.`,
+learn: Password hashing; sessions and cookies; HTTPS; CSRF protection; then a users table, and an owner for each note.
+check: Each person sees only their own notes, and passwords are stored hashed.`,
 
 `component: payments
 name: Payments and plans
 depth: horizon
 summary: Charging for the service. Never handle card numbers yourself: a payment provider shows its own checkout page, keeps the card details, sends receipts, and tells your server when someone has paid (a webhook), so you can switch their plan on. Test mode lets you try everything with pretend cards first.
 usual: Stripe (Checkout, and Billing for subscriptions); Paddle or Lemon Squeezy, which also handle sales tax and VAT for you.
-learn: Plans and subscriptions; webhooks (the provider calling your server); test mode; keeping each customer's plan in your database.`,
+learn: Plans and subscriptions; webhooks (the provider calling your server); test mode; keeping each customer's plan in your database.
+check: A test payment goes through the provider's checkout, and your server hears about it.`,
 
 `component: email
 name: Sending email
 depth: horizon
 summary: Services send email for welcomes, receipts and "reset your password" links. Sending is easy; getting into inboxes rather than spam is the hard part. So services send through an email provider that inboxes trust, and set up their domain to prove the mail really comes from them.
 usual: Postmark, Resend, SendGrid, Mailgun or Amazon SES, through their Python libraries or plain SMTP (smtplib comes with Python).
-learn: SMTP; SPF, DKIM and DMARC (records that prove mail is yours); sending in the background, so a page doesn't wait for it.`,
+learn: SMTP; SPF, DKIM and DMARC (records that prove mail is yours); sending in the background, so a page doesn't wait for it.
+check: A test email from the service arrives in the inbox, not in spam.`,
 
 `component: hosting
 name: Hosting: putting it online
 depth: horizon
 summary: So far the server runs on your own computer at 127.0.0.1, an address only you can reach. Hosting runs it on a computer that's always on and reachable, with a proper server program in front (Flask's built-in one is for trying things out), HTTPS, your secrets set as environment variables, and a database that's backed up.
 usual: Render, Railway, Fly.io or PythonAnywhere (the easiest for Flask); gunicorn to run it; PostgreSQL once you outgrow SQLite; a domain, with HTTPS from the host.
-learn: Environment variables; development and production servers; reading logs; backups; what it costs each month.`,
+learn: Environment variables; development and production servers; reading logs; backups; what it costs each month.
+check: The service answers at its own address, from a computer that isn't yours.`,
 
 // ---------------------------------------------------------------- Gadget (Arduino)
 
@@ -1066,6 +1115,7 @@ name: The board and its messages
 depth: walk
 summary: The sketch's backbone. A board runs two parts: "when the board starts" runs once at power-on, then "over and over" repeats forever, thousands of times a second. The serial monitor is how the board talks back: every "show" line appears on your computer, which is how you see what the gadget is doing (and why it isn't doing what you expected).
 learn: setup and loop; the serial monitor and its speed (9600); uploading a sketch.
+check: The sketch builds and uploads, and the serial monitor shows the board's messages.
 == start
 start the serial monitor at 9600
 show "Gadget ready."`,
@@ -1075,6 +1125,7 @@ name: A heartbeat light
 depth: walk
 summary: The built-in light blinks to show the sketch is alive. The first sketch everyone writes uses "wait 500 milliseconds", but waiting freezes the whole board: no button presses, no sensor readings. So this light checks the clock instead ("time since start", Arduino's millis) and only switches when enough time has passed. Every part of this gadget keeps time that way, which is how they all run at once.
 learn: millis and "doing several things at once"; why delay blocks; unsigned long, for times.
+check: The built-in light blinks steadily, and nothing else waits for it.
 == settings
 note: How long the light stays on, and off, in milliseconds.
 constant BLINK_EVERY is 500
@@ -1097,6 +1148,7 @@ name: A button
 depth: hallway
 summary: A push button between pin 2 and ground (GND). The board's built-in pull-up keeps the pin HIGH until the button connects it to ground, so pressed reads LOW, the opposite of what you'd guess. The sketch counts presses and reports each one. It reacts to the moment of pressing, not to holding, and ignores the tiny flickers a real button makes as its contacts close (called bounce) by trusting a reading only once it has held still for a moment. The structure is here; you fill in how long that moment is, and what a pressed button reads.
 learn: Digital inputs and pull-up resistors; noticing a change (was up, now down); debouncing.
+check: Every ‹blank› is filled in, and each press is counted once on the serial monitor, however long it's held.
 blank: ‹how long a reading must hold still, in ms› | a number | A button's contacts flicker for a few milliseconds as they close. A few tens of milliseconds is long enough to wait that out, and too short for anyone to notice. | 50
 blank: ‹what the button's pin reads when pressed› | a name | The pull-up keeps the pin \`HIGH\` until something connects it to ground, and pressing the button does that. | LOW
 == settings
@@ -1124,6 +1176,7 @@ name: Reading a sensor
 depth: walk
 summary: Many sensors (light, temperature, a knob) turn what they measure into a voltage. An analog pin measures that voltage as a number from 0 to 1023; the sketch turns it into a percentage and reports it four times a second, in the "name:value" form the Arduino IDE's Serial Plotter draws as a live graph. It expects a light sensor (a photoresistor, with a 10 kΩ resistor) or a knob (a potentiometer) on pin A0; with nothing connected, the numbers wander at random.
 learn: Analog inputs and voltage dividers; map, to change a range; the Serial Plotter.
+check: The reading on the serial monitor changes when you cover the sensor or turn the knob.
 == settings
 constant SENSOR is A0
 constant REPORT_EVERY is 250
@@ -1140,6 +1193,7 @@ name: A buzzer
 depth: walk
 summary: A small piezo buzzer on pin 8 (and ground) plays a two-note chime when the board starts, so you hear that the gadget is on. A tone has a pitch in hertz (440 is the note A) and, given a length, carries on by itself, so a beep in "over and over" doesn't freeze the board; here at the start, a short wait between the two notes is fine. To beep when the button is pressed, copy a tone line into the Button step.
 learn: tone and frequencies; passive buzzers (need a tone) and active ones (only need power).
+check: The two-note chime plays when the board starts.
 == settings
 constant BUZZER is 8
 == start
@@ -1152,28 +1206,32 @@ name: A small screen
 depth: horizon
 summary: A tiny display shows readings on the gadget itself, with no computer needed. Many small screens talk to the board over just two wires (called I2C) and need a library that knows how to draw text and shapes on them.
 usual: 0.96 inch OLED screens (SSD1306) with the Adafruit SSD1306 and GFX libraries, or U8g2; 16x2 character LCDs with a LiquidCrystal I2C library.
-learn: Installing libraries ($ arduino-cli lib install); I2C wiring (SDA and SCL); drawing, then refreshing, the screen.`,
+learn: Installing libraries ($ arduino-cli lib install); I2C wiring (SDA and SCL); drawing, then refreshing, the screen.
+check: Readings show on the small screen with no computer connected.`,
 
 `component: wifi
 name: WiFi and the internet
 depth: horizon
 summary: An Uno has no WiFi. Boards with an ESP32 (or an Arduino Uno R4 WiFi, or a Nano ESP32) do, so the gadget can send readings to a phone or a web page, or be controlled from one. The sketch gains a network name and password (kept in a separate file, out of shared code), a connection that can drop and must be retried, and a way to talk: a tiny web server on the board, or messages to a service.
 usual: ESP32 boards with the WiFi library; MQTT, a messaging system made for gadgets; ready-made platforms such as Arduino Cloud, Blynk, or ESPHome with Home Assistant.
-learn: Choosing a board with WiFi (type "board esp32" in the terminal to upload to one); connecting and reconnecting; HTTP or MQTT.`,
+learn: Choosing a board with WiFi (type "board esp32" in the terminal to upload to one); connecting and reconnecting; HTTP or MQTT.
+check: A reading from the board shows on a phone or a web page, over WiFi.`,
 
 `component: battery
 name: Running on batteries
 depth: horizon
 summary: Unplugged from USB, the gadget needs power of its own. An Uno uses power even while doing nothing, so a small battery lasts hours or days rather than months. Long battery life comes from boards and sketches that sleep between readings, and from getting the voltages right: too little and the board keeps restarting, too much and parts burn out.
 usual: A USB power bank (the easiest start, though some switch off when little power is drawn); AA battery packs; LiPo cells with a charger board for small builds; low-power boards such as an ESP32 with deep sleep.
-learn: Volts, milliamps and milliamp-hours (how long a battery lasts); sleep modes; voltage regulators.`,
+learn: Volts, milliamps and milliamp-hours (how long a battery lasts); sleep modes; voltage regulators.
+check: On batteries alone, the gadget keeps working for as long as you need it to.`,
 
 `component: enclosure
 name: A case
 depth: horizon
 summary: A case turns a tangle of wires into a thing you can hand to someone: it protects the board, holds the button and sensor where fingers and light can reach them, and hides the rest. Before that, the wiring usually moves from a breadboard to something soldered, so nothing falls out.
 usual: Ready-made project boxes; 3D-printed cases (designed in Tinkercad, Fusion or OpenSCAD, or printed by a service); laser-cut wood or acrylic; perfboard, or a circuit board of your own designed in KiCad and made by a PCB maker.
-learn: Soldering; measuring parts and leaving room for cables; basic 3D design.`,
+learn: Soldering; measuring parts and leaving room for cables; basic 3D design.
+check: The board is in its case, with the button and sensor still in reach.`,
 
 // ---------------------------------------------------------------- Phone app
 
@@ -1190,6 +1248,7 @@ name: Start with a phone-friendly web app
 depth: walk
 summary: Before learning Swift or Flutter, build the idea as a web page shaped like an app: one screen, big buttons for thumbs, text sized for phones, and memory in the browser so it keeps its data. This one is a tap counter (for glasses of water, laps, pages…); open it on your phone and see whether the idea works in real life. What you learn here (layout, events, keeping data) carries over to real apps, and the Webpage path goes further.
 learn: Designing for thumbs (buttons at least 44 pixels tall); the viewport (added for you); saving in the browser (localStorage).
+check: On a phone it fits the screen, its buttons are easy to press, and what you saved is still there after a reload.
 == structure
 page title is "Tally"
 add a main area called app
@@ -1245,42 +1304,48 @@ name: Installable, like an app
 depth: horizon
 summary: The next step for the web app: two small additions let people install it from the browser, with its own icon on the home screen, opening full screen like any app. A manifest file gives its name, icon and colours; a service worker (a script that runs in the background) lets it open without internet. No app store needed, though iPhones allow web apps fewer features than Android phones do.
 usual: A web app manifest and a service worker (Workbox helps with the second); an HTTPS address (see Putting it online); PWABuilder to wrap it for the app stores later.
-learn: The manifest; service workers and offline caching; what iPhone and Android each let web apps do.`,
+learn: The manifest; service workers and offline caching; what iPhone and Android each let web apps do.
+check: The browser offers to install it, and it opens full screen from its home-screen icon.`,
 
 `component: toolkit
 name: Choosing how to build it
 depth: horizon
 summary: Real phone apps are written with a toolkit. Either one set of code for both iPhone and Android (Flutter, React Native), or each phone's own language (Swift for iPhone, Kotlin for Android), which gets new phone features first. Python is rarely used for phone apps (Kivy and BeeWare exist, but few apps are made with them), so choosing a toolkit also means choosing your next language.
 usual: Flutter (Dart; one codebase, its own look); React Native with Expo (JavaScript or TypeScript, so it builds on web skills); Swift with SwiftUI (iPhone, needs a Mac); Kotlin with Jetpack Compose (Android).
-learn: One language well first: JavaScript if you've made web pages, otherwise Dart or Swift; running an app in a simulator, then on your own phone.`,
+learn: One language well first: JavaScript if you've made web pages, otherwise Dart or Swift; running an app in a simulator, then on your own phone.
+check: You've chosen a toolkit, and its starter app runs on your phone.`,
 
 `component: screens
 name: Screens and moving between them
 depth: horizon
 summary: An app is a set of screens (a list, a detail, settings) and the ways between them: tabs along the bottom, a back button, swiping. Sketching them on paper first saves weeks, and each toolkit has a standard way of moving between screens that people already know how to use.
 usual: go_router in Flutter; Expo Router or React Navigation in React Native; NavigationStack and TabView in SwiftUI; Navigation for Jetpack Compose.
-learn: Sketching screens (on paper, then in Figma); state (what each screen knows) and passing information from one screen to the next.`,
+learn: Sketching screens (on paper, then in Figma); state (what each screen knows) and passing information from one screen to the next.
+check: Each screen is sketched, with the ways to and from it.`,
 
 `component: phone-storage
 name: Storing data on the phone
 depth: horizon
 summary: Apps keep data on the phone so they work without internet and open instantly: small settings in a simple key-and-value store, bigger things in a database, and, if people use more than one device, a copy on a server kept in sync (the Online service path builds one).
 usual: SQLite, underneath almost everything; shared_preferences or Drift in Flutter; AsyncStorage or expo-sqlite in React Native; SwiftData on iPhone; Room and DataStore on Android.
-learn: Key-value storage and databases; saving as things change; syncing, and what happens when two devices disagree.`,
+learn: Key-value storage and databases; saving as things change; syncing, and what happens when two devices disagree.
+check: What you saved is still there after the app is closed and opened again, offline.`,
 
 `component: notifications
 name: Notifications
 depth: horizon
 summary: Notifications reach people when the app is closed. Local ones are scheduled by the app itself (a daily reminder); push notifications are sent from a server, through Apple's and Google's own services. Phones ask people's permission first, and people switch them off quickly if there are too many.
 usual: Firebase Cloud Messaging (Android and iPhone); Apple Push Notification service; Expo Notifications; flutter_local_notifications for reminders.
-learn: Local and push notifications; asking permission at the right moment; device tokens, and a server to send from.`,
+learn: Local and push notifications; asking permission at the right moment; device tokens, and a server to send from.
+check: A test notification arrives while the app is closed.`,
 
 `component: app-stores
 name: The app stores
 depth: horizon
 summary: To be in the App Store and Google Play, an app needs a developer account, screenshots, a description and a privacy policy, and it must pass a review, which can take a day or more and may ask for changes. Apple's account costs a yearly fee and building for iPhone needs a Mac (or a cloud build service); Google Play's is a one-off fee.
 usual: The Apple Developer Program with Xcode, or Expo's EAS Build; the Google Play Console; TestFlight and Play's testing tracks to try it with friends first.
-learn: Each store's guidelines; icons and screenshots; a privacy policy; version numbers and updates.`,
+learn: Each store's guidelines; icons and screenshots; a privacy policy; version numbers and updates.
+check: The app has passed review and installs from the store.`,
   ];
 
   /* ------------------------------------------------------------------ */
@@ -1419,7 +1484,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
       } else if (head.component) {
         lib.components[head.component] = {
           id: head.component, name: head.name || head.component, depth: DEPTHS[head.depth] ? head.depth : 'horizon',
-          summary: head.summary || '', usual: head.usual || '', learn: head.learn || '', sections, blanks,
+          summary: head.summary || '', usual: head.usual || '', learn: head.learn || '', check: head.check || '', sections, blanks,
         };
       } else lib.problems.push('An entry needs "question:", "kit:" or "component:" on its first line.');
     }
@@ -1472,7 +1537,7 @@ learn: Each store's guidelines; icons and screenshots; a privacy policy; version
     const active = kit.layout === 'website' ? 'structure' : sections[sections.length - 1].id;
     const plan = {
       title: kit.title, path: path || [],
-      steps: steps.map((c, i) => ({ id: c.id, n: i + 1, name: c.name, depth: c.depth, summary: c.summary, usual: c.usual, learn: c.learn })),
+      steps: steps.map((c, i) => ({ id: c.id, n: i + 1, name: c.name, depth: c.depth, summary: c.summary, usual: c.usual, learn: c.learn, check: c.check, done: false })),
     };
     return { project: { version: 1, lang: 'python', kind: KIND[kit.layout] || 'python', name, sections, active, plan }, plan };
   }

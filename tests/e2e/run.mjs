@@ -232,6 +232,22 @@ try {
     if (r.open || r.steps.length < 4 || !/^1\s*Sound in and out/.test(r.steps[0]) || !r.steps.some(s => /Mixer/.test(s) && /Hallway/i.test(s)) || r.blanks < 1 || !/^Step 4 of/.test(r.title)) throw new Error(JSON.stringify(r));
   });
 
+  await check('the map\'s steps tick off, and Hand to my AI shows them as OpenSpec tasks', async () => {
+    const r = await js(() => {
+      const box = document.querySelector('#plan [data-tick="1"]');
+      box.click();
+      const count = document.getElementById('planCount').textContent;
+      const checks = document.querySelectorAll('#plan .plan-check').length;
+      document.getElementById('btnHandAI').click();
+      const tasks = document.getElementById('handPre').textContent;
+      const go = document.getElementById('handGo').textContent;
+      document.getElementById('handClose').click();
+      document.querySelector('#plan [data-tick="1"]').click();   // as it was
+      return { count, checks, ticked: /^- \[x\] 1\.1 Sound in and out \(Walk\)\. Check: /m.test(tasks), open: /^- \[ \] 1\.2 /m.test(tasks), go };
+    });
+    if (!/^1 of \d+ done$/.test(r.count) || r.checks < 3 || !r.ticked || !r.open || !/Save the project|Write to the project folder/.test(r.go)) throw new Error(JSON.stringify(r));
+  });
+
   await check('planning has stages, presets and a kit editor; each window can go full screen', async () => {
     const r = await js(() => {
       const vis = (sel) => { const el = document.querySelector(sel); return !!el && el.offsetWidth > 0; };

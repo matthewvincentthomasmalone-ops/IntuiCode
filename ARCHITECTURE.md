@@ -25,6 +25,7 @@ the desktop app.
 | `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
+| `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
 | `lang/library.js` | The Library: kinds of project (the languages they use, open-source projects to learn from) and the parts they're made of, each in one or more languages, from the plain-text packs in `lang/library/`; Coding integration parts give both sides of a link between two languages |
 | `lang/ts_patch.js` | Fixes to the tree-sitter runtime: C library functions some grammars' scanners need (HTML with SVG or custom elements, Ruby, PHP, Bash, Vue, YAML) |
@@ -186,6 +187,25 @@ selector, in the compiled CSS), the script lines that name the element, and the 
 in the compiled script). Pointing never scrolls; a click or a handler brings the code into view. Predictive Mode
 and Project Link take turns (turning one on turns the other off), so a running page can be clicked through without
 predictions popping up.
+
+## Decision: the AI stays outside; the map is handed over as OpenSpec files
+
+*Decided 2026-11-09.*
+
+IntuaCode has no AI in it and gets none. People who build with an AI assistant get the project map in a format
+those assistants already work from: an [OpenSpec](https://openspec.dev) change (`lang/openspec.js`, no DOM).
+`proposal.md` has the sections `openspec validate` asks for (Why, 50 to 1000 characters; What Changes; Impact),
+and `tasks.md` has one `## 1.` group with a `- [ ] 1.n` task per step, in build order, each with its check line;
+ticked steps are `- [x]`. Text from a step is kept to one line, so a step's name or summary can't start a heading
+or a task. The desktop app writes the files only inside the saved project's folder (`write_text` refuses anything
+else), keeps an existing `.openspec.yaml` (its `created:` date), and says first when `proposal.md` or `tasks.md`
+there differ from what it would write, since an AI may have ticked them. The browser offers a `.zip`, written
+by `lang/openspec.js` itself (stored entries, CRC-32), so nothing is fetched or sent. No specs are written:
+which requirements the steps add is the AI's (or the person's) next step in OpenSpec's own flow.
+
+Each step's tick (`done`) and check line (`check`, one line, at most 300 characters) are kept in the plan with
+the project, checked by `checkedProject` like the other fields. Kits give a step its check with `check:`; without
+one, the step's depth has a default (`DEPTHS[depth].check` in `lang/builder.js`).
 
 ## Testing
 

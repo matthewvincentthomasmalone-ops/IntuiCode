@@ -817,6 +817,36 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .new-alt { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
 .plan-path { margin: 0; padding: 0 16px 4px; font-size: 11.5px; color: var(--ink-3); }
 .plan { list-style: none; margin: 0; padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
+/* Ticks: each step a checkbox, its button, and (until it's done) how to check it. The list scrolls on its own,
+   so opening a project can show the first step not done without moving the files above it. */
+.plan { position: relative; max-height: min(46vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
+.plan-item { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; column-gap: 2px; }
+.plan-tick { width: 14px; height: 14px; margin: 0 0 0 2px; accent-color: var(--good); cursor: pointer; }
+.plan-item .plan-step { grid-column: 2; padding-left: 4px; }
+.plan-check { grid-column: 2; padding: 0 8px 4px 30px; margin-top: -3px; font-size: 11.5px; line-height: 1.35; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-ticked .plan-name, .plan-ticked .plan-n { color: var(--ink-3); }
+.plan-ticked .depth { opacity: .55; }
+.plan-next .plan-check { color: var(--ink-2); }
+.plan-done { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 16px 6px; font-size: 11.5px; color: var(--ink-2); }
+.plan-done[hidden] { display: none; }
+.plan-done b { font-weight: 600; white-space: nowrap; }
+.plan-bar { flex: 1; min-width: 24px; height: 3px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
+.plan-bar span { display: block; height: 100%; background: var(--good); }
+.plan-done .btn.tiny { white-space: nowrap; padding: 2px 6px; }
+.plan-check-edit { display: flex; align-items: center; gap: 10px; }
+.plan-check-edit input[data-step-check] { flex: 1; min-width: 0; padding: 5px 8px; border: 0; border-radius: 3px; background: var(--field); color: var(--ink); font: 13px var(--f-ui); box-shadow: var(--sunken); }
+.plan-done-tog { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.plan-done-tog input { accent-color: var(--good); }
+/* Hand to my AI: the files, one at a time, and where they go */
+.hand-card { width: min(820px, 100%); }
+.hand-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hand-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-3); }
+.hand-pre { margin: 8px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--field); box-shadow: var(--sunken); font: 12.5px/1.55 var(--f-py); white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 46vh; min-height: 120px; }
+.hand-ask { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); max-width: 90ch; }
+.hand-ask q { color: var(--ink); }
+.hand-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); min-height: 1.2em; }
+.hand-actions { margin-top: 8px; justify-content: flex-end; }
+.hand-actions .btn:disabled, .hand-bar .btn:disabled { opacity: .45; cursor: default; }
 .plan-step { width: 100%; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 6px; align-items: center; text-align: left; border: 0; background: none; padding: 5px 8px; border-radius: 2px; cursor: pointer; color: var(--ink); font-size: 12.5px; }
 .plan-step:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .plan-n { font: 700 12px var(--f-py); color: var(--rose); text-align: right; }
@@ -1224,8 +1254,8 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .u-msg { margin-top: 4px; }
 .u-msg.err { color: var(--bad); }
 .u-msg.warn { color: var(--warn); }
-/* Unity shows the project's files, its parts and Problems; the images and the project map stay in Split Mode */
-#writeSide.in-unity #imgWrap, #writeSide.in-unity #planWrap { display: none; }
+/* Unity shows the project's files, its parts, the project map and Problems; the images stay in Split Mode */
+#writeSide.in-unity #imgWrap { display: none; }
 
 /* Read mode: the language a file is read as */
 .rd-as { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--metal-ink-2); }

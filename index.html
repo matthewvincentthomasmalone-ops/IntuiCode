@@ -27,6 +27,7 @@
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
           <button type="button" role="menuitem" id="btnBuilder" title="Plan a project step by step: what you're making, its steps, then build">Plan a project…</button>
+          <button type="button" role="menuitem" id="btnHandAI2" title="The project map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
           <div class="menu-sep" role="separator"></div>
@@ -60,6 +61,7 @@
         <div id="planWrap">
           <div class="side-h">Project map <span class="side-acts"><button type="button" class="btn tiny" id="btnAddStep" title="Add a step of your own to the map">+ Step</button></span></div>
           <p class="plan-path" id="planPath"></p>
+          <div class="plan-done" id="planDone" hidden><b id="planCount" aria-live="polite"></b><span class="plan-bar" aria-hidden="true"><span id="planBar"></span></span><button type="button" class="btn tiny" id="btnHandAI" title="The map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI</button></div>
           <ol id="plan" class="plan"></ol>
         </div>
         <div class="side-h">Problems <span id="probCount" class="count"></span></div>
@@ -264,6 +266,7 @@
       <div class="imp-row file-row"><label for="stepAddName">Name</label><input id="stepAddName" spellcheck="true" autocomplete="off" placeholder="Save and load settings"></div>
       <div class="imp-row file-row"><label for="stepAddDepth">Depth</label><select id="stepAddDepth"><option value="walk">Walk: written in full</option><option value="hallway">Hallway: laid out, with parts to fill in</option><option value="horizon" selected>Horizon: a goal, explained</option></select></div>
       <div class="imp-row file-row"><label for="stepAddSum">What it's for</label><input id="stepAddSum" spellcheck="true" autocomplete="off" placeholder="Remembers the volume between runs."></div>
+      <div class="imp-row file-row"><label for="stepAddCheck">Check it's done</label><input id="stepAddCheck" spellcheck="true" autocomplete="off" maxlength="300" placeholder="The volume is the same after a restart."></div>
       <p class="bp-errors" id="stepAddProblem" role="alert"></p>
       <div class="imp-actions"><span class="imp-note" id="stepAddWhere"></span><button type="button" class="btn primary" id="stepAddGo">Add step</button></div>
     </div>
@@ -314,6 +317,27 @@
         <button type="button" class="btn small" id="stepClose">Close</button>
       </div>
       <div id="stepBody"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="handModal" hidden>
+    <div class="modal-card hand-card" role="dialog" aria-modal="true" aria-labelledby="handTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="handTitle">Hand to my AI</h2>
+          <p>The project map as an OpenSpec change: <b>proposal.md</b> (why, what each step is for, which files) and <b>tasks.md</b> (the steps to tick, each with its check). Your AI assistant works from these; nothing is sent anywhere.</p>
+        </div>
+        <button type="button" class="btn small" id="handClose">Close</button>
+      </div>
+      <div class="hand-bar">
+        <span class="seg" role="tablist" aria-label="File"><button type="button" role="tab" id="handTabTasks" data-hand-file="tasks.md" aria-selected="true">tasks.md</button><button type="button" role="tab" id="handTabProposal" data-hand-file="proposal.md" aria-selected="false">proposal.md</button></span>
+        <code class="hand-where" id="handWhere"></code>
+        <button type="button" class="btn small" id="handCopy">Copy</button>
+      </div>
+      <pre class="hand-pre" id="handPre" tabindex="0" aria-label="The file's text"></pre>
+      <p class="hand-ask" id="handAsk"></p>
+      <p class="hand-note" id="handNote" role="status"></p>
+      <div class="bp-actions hand-actions"><button type="button" class="btn primary" id="handGo">Download .zip</button></div>
     </div>
   </div>
 
@@ -383,5 +407,6 @@
 <script src="lang/library.js"></script>
 <script src="lang/predict.js"></script>
 <script src="lang/parts.js"></script>
+<script src="lang/openspec.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>
