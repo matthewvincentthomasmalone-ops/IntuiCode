@@ -30,20 +30,23 @@ function pageNames(html) {
 
 const CASES = [
   // [file, kind, page it belongs to, pulled files, least share of lines that read as sentences]
-  ['tests/corpus_web/landing.html', 'html', null, ['styles.css', 'app.js'], 0.8],
-  ['tests/corpus_web/styles.css', 'css', 'tests/corpus_web/landing.html', null, 0.7],
+  ['tests/corpus_web/landing.html', 'html', null, ['styles.css', 'app.js'], 0.95],
+  ['tests/corpus_web/styles.css', 'css', 'tests/corpus_web/landing.html', null, 0.95],
   ['tests/corpus_web/app.js', 'js', 'tests/corpus_web/landing.html', null, 0.95],
   ['tests/corpus_web/scores.cpp', 'cpp', null, null, 0.95],
   ['tests/corpus_web/button_led.ino', 'arduino', null, null, 0.95],
-  ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.6],
+  // pages laid out the way Prettier writes them: attributes on lines of their own, ARIA, SVG, text with tags in it
+  ['tests/corpus_web/instrument.html', 'html', null, ['style.css', 'script.js'], 0.95],
+  ['tests/corpus_web/order.html', 'html', null, ['style.css', 'script.js'], 0.95],
+  ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.95],
   ['samples/taskboard/static/style.css', 'css', 'samples/taskboard/static/index.html', null, 0.8],
-  ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.5],
+  ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.75],
   ['samples/cpp/blink/blink.ino', 'arduino', null, null, 0.95],
   ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.3],
   // held out: written after the converter, in other styles (classes, switch, templates, SVG, tables)
-  ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.2],
-  ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.3],
-  ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.25],
+  ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.85],
+  ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.6],
+  ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.35],
   ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.3],
   ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 0.8],
 ];

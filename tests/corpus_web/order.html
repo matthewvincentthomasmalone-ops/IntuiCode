@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Corner Shop &mdash; Order</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="theme-light">
+    <!-- Site header -->
+    <header class="site-header">
+      <a href="/" class="logo" aria-label="Corner Shop home"
+        ><img src="/img/logo.svg" alt="" width="40" height="40"
+      /></a>
+      <nav aria-label="Main">
+        <ul class="menu">
+          <li><a href="/shop">Shop</a></li>
+          <li><a href="/about" aria-current="page">About&nbsp;us</a></li>
+          <li>
+            <a href="https://example.com/blog" target="_blank" rel="noopener"
+              >Blog <span class="sr-only">(opens in a new tab)</span></a
+            >
+          </li>
+        </ul>
+      </nav>
+    </header>
+    <main id="content">
+      <h1>Order <em>fresh</em> bread</h1>
+      <p class="lead">
+        Pick a loaf, choose a time, and we&rsquo;ll have it ready. Questions?
+        <a href="mailto:hi@example.com">Email us</a>.
+      </p>
+      <form id="order" class="card" novalidate>
+        <fieldset>
+          <legend>Your loaf</legend>
+          <label for="loaf">Loaf</label>
+          <select id="loaf" name="loaf" required>
+            <option value="">Choose…</option>
+            <option value="sour">Sourdough</option>
+            <option value="rye" selected>Rye</option>
+          </select>
+          <label
+            >How many
+            <input
+              id="qty"
+              name="qty"
+              type="number"
+              min="1"
+              max="12"
+              value="1"
+              inputmode="numeric"
+          /></label>
+          <input type="hidden" name="source" value="web" />
+        </fieldset>
+        <button type="submit" class="btn btn-primary" disabled>Place order</button>
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+      <table class="hours">
+        <caption>
+          Opening hours
+        </caption>
+        <tr>
+          <th scope="row">Mon&ndash;Fri</th>
+          <td>7&ndash;15</td>
+        </tr>
+      </table>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M5 12h14" />
+        <polyline points="12 5 19 12 12 19" />
+      </svg>
+    </main>
+    <footer>
+      <p>&copy; 2026 Corner Shop &middot; <a href="/privacy">Privacy</a></p>
+    </footer>
+    <script src="script.js"></script>
+  </body>
+</html>

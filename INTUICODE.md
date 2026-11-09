@@ -113,7 +113,7 @@ check it; the language does, when the program runs or is compiled.
 | `python:`, `raw python:`, `raw:` | Python | as the line, at its indentation. Names it makes (`x = …`, `import`, `def`, `class`) become known; a line ending in `:` opens a block; text in triple quotes carries on over the next `python:` lines, copied exactly. |
 | `html:`, `raw:` | Structure | at that place in `<body>`. Spaces inside `<pre>`, `<textarea>`, `<script>` and `<style>` are kept. |
 | `head:`, `in the head:` | Structure | into `<head>`. A charset, viewport, `style.css` link or `script.js` tag there replaces the one IntuaCode writes. |
-| `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` |
+| `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` (the page's groups are said `the page is in group dark`: `<body class="dark">`) |
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
 | `css:`, `raw:` | Styling | as a line, inside the current `on screens …` block if any |

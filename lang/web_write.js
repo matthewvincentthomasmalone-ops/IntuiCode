@@ -291,7 +291,9 @@
     }
     const FLAG_SAY = { hidden: 'hidden', disabled: 'disabled', required: 'required', readonly: 'read-only', checked: 'ticked', selected: 'selected', autofocus: 'focused at the start', multiple: 'allowing several', controls: 'with controls', autoplay: 'playing by itself', loop: 'on a loop', muted: 'muted', open: 'open at the start' };
     if (v === '' && FLAG_SAY[low]) tries.push(FLAG_SAY[low]);
-    tries.push(v === '' ? `with ${n}` : `with ${n} ${val(v)}`, v === '' ? `with attribute ${n}` : `with attribute ${n} ${val(v)}`);
+    // (an attribute written with ="" is said with "", one written alone is said alone: the same to the browser)
+    const bare = value == null || (v === '' && FLAG_SAY[low]);
+    tries.push(bare ? `with ${n}` : `with ${n} ${val(v)}`, bare ? `with attribute ${n}` : `with attribute ${n} ${val(v)}`);
     for (const t of tries) {
       const r = readAttr(t, ctx);
       if (Array.isArray(r) && r.length === 1 && r[0][0].toLowerCase() === low && (r[0][1] ?? '') === v) return t;
@@ -554,7 +556,8 @@
     let groupPart = '';
     const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
     if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groupPart = g[0]; s = s.slice(0, g.index); }
-    const { rest, attrs, glued } = takePhrases(s, ctx);
+    // a drawing's own settings are drawing settings (filled with, outlined in), as are those of everything in it
+    const { rest, attrs, glued } = takePhrases(s, /^add\s+(?:a\s+)?drawing(?!\s+area)(?=[\s,]|$)/i.test(s) ? { ...ctx, svg: true } : ctx);
     let el = null;
     if (/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/.test(rest) && !groupPart) el = { textNode: strOf(rest) };
     else {
@@ -619,7 +622,7 @@
     const info = makeInfo(lines);
     const rootEl = { tag: 'body', children: [], container: true };
     const stack = [{ ind: -1, el: rootEl }];
-    let title = 'My page', lang = 'en', bodyAttrs = '', htmlAttrs = '', doctype = '<!DOCTYPE html>', noCharset = false, noViewport = false;
+    let title = 'My page', lang = 'en', bodyAttrs = '', htmlAttrs = '', doctype = '<!DOCTYPE html>', noCharset = false, noViewport = false, pageGroups = [];
     const head = [];
     const all = [];
     const at = {};   // the sentence line behind each part of the page outside <body>
@@ -639,6 +642,12 @@
         return;
       }
       if ((hm = t.match(/^(?:the )?(?:page )?body (?:attributes|has)\s*:\s?(.*)$/i))) { bodyAttrs = hm[1].trim(); note(inf, 'Attributes copied exactly onto the page\'s <body> tag.'); inf.target = 'body'; return; }
+      if ((hm = t.match(/^the (?:whole )?page is in groups?\s+([\w\s,-]+)$/i))) {
+        pageGroups = hm[1].split(/\s*,\s*|\s+and\s+/).map(toId).filter(Boolean);
+        for (const g of pageGroups) shared.groups[g] = true;
+        note(inf, `The page's <body> is in ${pageGroups.length > 1 ? 'these groups' : 'this group'} (a class), so styles for ${pageGroups.length > 1 ? 'them' : 'it'} apply to the whole page.`);
+        inf.target = 'body'; return;
+      }
       if ((hm = t.match(/^(?:the )?html (?:tag )?attributes\s*:\s?(.*)$/i))) { htmlAttrs = hm[1].trim(); at.html = i; note(inf, 'Attributes copied exactly onto the page\'s <html> tag, which holds the whole page.'); return; }
       if (/^(?:no title|the page has no title)$/i.test(t)) { title = null; return; }
       if (/^(?:no page language|the page has no language)$/i.test(t)) { lang = null; at.html = at.html ?? i; note(inf, 'Leaves out `lang` on the <html> tag. With it, screen readers pronounce the page correctly and browsers can offer to translate it.'); return; }
@@ -702,7 +711,7 @@
     for (const h of head) { push(open ? h.text : '  ' + h.text, h.src); open = rawOpen(h.text, open); }
     if (!raws.some(r => STYLE_LINK.test(r))) push('  <link rel="stylesheet" href="style.css">', -1);   // unless a head: or html: line places it
     push('</head>', -1);
-    push(`<body${bodyAttrs ? ' ' + bodyAttrs : ''}>`, info.findIndex(x => x.target === 'body'));
+    push(`<body${pageGroups.length ? ` class="${pageGroups.join(' ')}"` : ''}${bodyAttrs ? ' ' + bodyAttrs : ''}>`, info.findIndex(x => x.target === 'body'));
     const attrs = (e) => {
       let a = '';
       if (e.id) a += ` id="${e.id}"`;
@@ -2032,7 +2041,7 @@
     styling: [['background navy', 'background: navy'], ['background #000 40% see-through', 'background: rgba(0,0,0,0.6)'], ['50% see-through', 'opacity: 0.5'], ['text colour white', 'color: white'], ['text size 20', 'font-size: 20px'], ['space inside 12', 'padding: 12px'], ['space around 8', 'margin: 8px'], ['rounded corners 8', 'border-radius: 8px'], ['shadow', 'box-shadow: …'], ['in a row', 'display: flex'], ['in a grid of 3 columns', 'display: grid'], ['hand cursor', 'cursor: pointer'], ['centred', 'margin: 0 auto'], ['hidden', 'display: none'], ['border 2 dashed navy', 'border: 2px dashed navy'], ['underlined', 'text-decoration: underline'], ['line height 1.5', 'line-height: 1.5'], ['text weight 600', 'font-weight: 600'], ['background gradient from #fff to #000', 'background: linear-gradient(#fff, #000)'], ['the colour main', 'var(--main)']],
     mechanics: [['a is b', 'a === b'], ['a is not b', 'a !== b'], ['a and b', 'a && b'], ['not a', '!a'], ['length of x', 'x.length'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'Math.floor(Math.random()*6)+1'], ['text of name', 'name.value / .textContent'], ['"Hi {name}"', '`Hi ${name}`'], ['box is ticked', 'box.checked'], ['card is in group done', 'card.classList.contains("done")'], ['the file in picker', 'picker.files[0]'], ['wait for x', 'await x']],
   };
-  const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog)\b|on screens |in dark mode)/i;
+  const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
     readAttr, sayAttr, elementWord,

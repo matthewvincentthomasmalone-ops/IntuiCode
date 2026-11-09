@@ -809,7 +809,13 @@
     }
     if (!p.headItems.some(h => metaKind(h) === 'charset')) o.say(0, 'leave out the character set');
     if (!p.headItems.some(h => metaKind(h) === 'viewport')) o.say(0, 'leave out the viewport setting');
-    const bodyAttrs = p.body ? attrsOf(p.body) : [];
+    let bodyAttrs = p.body ? attrsOf(p.body) : [];
+    const bodyClass = bodyAttrs.filter(x => x.name === 'class');   // the page's groups, said as such
+    if (bodyClass.length === 1 && bodyClass[0].value && bodyClass[0].value.split(' ').every(c => simpleName(c))) {
+      const gs = bodyClass[0].value.split(' ');
+      o.say(0, `the page is in group${gs.length > 1 ? 's' : ''} ${gs.join(', ')}`);
+      bodyAttrs = bodyAttrs.filter(x => x.name !== 'class');
+    }
     if (bodyAttrs.length) o.say(0, `body attributes: ${bodyAttrs.map(x => x.text).join(' ')}`);
 
     const insideForm = (n) => { for (let q = n.parent; q; q = q.parent) if (isEl(q) && tagOf(q) === 'form') return true; return false; };

@@ -224,3 +224,13 @@ test('mechanics: listeners on names that hold elements, the event by its own nam
   // a listener inside a tool is a function of its own: what it waits for doesn't make the tool wait
   assert.match(js('define setup\n    when save is clicked\n        wait for fetch("/x")').text, /^function setup\(\) \{\n  document\.getElementById\("save"\)\.addEventListener\("click", async \(\) => \{/);
 });
+test('structure: the page in a group, a drawing\'s own settings, and an attribute written with ""', () => {
+  const r = convert('html', '<!DOCTYPE html>\n<html lang="en">\n<head>\n<title>T</title>\n</head>\n<body class="dark wide">\n<p>x</p>\n</body>\n</html>\n');
+  assert.equal(r.exact, true, r.reason);
+  assert.match(r.text, /^the page is in groups dark, wide$/m);
+  assert.match(WEB.compileHtml({ id: 'x', file: 'x', text: 'the page is in group dark' }, shared()).text, /<body class="dark">/);
+  both('add a drawing sized 24 by 24, not filled, outlined in currentColor, outline 2 wide, with stroke-linecap round\n    add a polyline through "12 5 19 12 12 19"',
+    '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">\n  <polyline points="12 5 19 12 12 19" />\n</svg>');
+  both('add a drop-down called loaf, required\n    add an option "Choose…", with value\n    add an option "Rye", with value rye, selected', '<select id="loaf" required>\n  <option value>Choose…</option>\n  <option value="rye" selected>Rye</option>\n</select>');
+  reads('html', '<select><option value="">Choose…</option></select>', 'add a drop-down\n    add an option "Choose…", with value ""');
+});
