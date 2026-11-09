@@ -1824,6 +1824,42 @@
           "tip": "Also \"divide ‹name› by ‹amount›\" (/=)."
         },
         {
+          "topic": "Values",
+          "say": "make a ‹whole number› called ‹count›",
+          "becomes": "int count;",
+          "folders": [
+            "program"
+          ],
+          "tip": "A name with no value yet. Also \"make empty text called name\", \"make a yes/no value called done\"."
+        },
+        {
+          "topic": "Values",
+          "say": "make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›",
+          "becomes": "LiquidCrystal lcd(12, 11, 5, 4, 3, 2);",
+          "folders": [
+            "program"
+          ],
+          "tip": "An object of a class or a library, given what it needs to start. Leave off \"with …\" if it needs nothing: \"make a Servo called arm\"."
+        },
+        {
+          "topic": "Values",
+          "say": "keep ‹level› between ‹0› and ‹255›",
+          "becomes": "level = std::clamp(level, 0, 255);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Stops it going below the first number or above the second."
+        },
+        {
+          "topic": "Values",
+          "say": "let ‹LED› stand for ‹13›",
+          "becomes": "#define LED 13",
+          "folders": [
+            "program"
+          ],
+          "tip": "A name swapped for its value before compiling. \"constant LED is 13\" does the same, with a type."
+        },
+        {
           "topic": "Show & ask",
           "say": "show ‹value›",
           "becomes": "std::cout << value << std::endl;",
@@ -1834,12 +1870,57 @@
         },
         {
           "topic": "Show & ask",
+          "say": "show ‹value› without ending the line",
+          "becomes": "std::cout << value;",
+          "folders": [
+            "program"
+          ],
+          "tip": "What is shown next carries on the same line. \"end the line\" ends it."
+        },
+        {
+          "topic": "Show & ask",
+          "say": "end the line",
+          "becomes": "std::cout << std::endl;",
+          "folders": [
+            "program"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Show & ask",
+          "say": "show \"‹%d tries›\" filled in with ‹tries›",
+          "becomes": "printf(\"%d tries\", tries);",
+          "folders": [
+            "program"
+          ],
+          "tip": "The % codes are filled in, in order: %d a whole number, %f a decimal, %s text."
+        },
+        {
+          "topic": "Show & ask",
           "say": "ask for a number \"‹question›\" and store in ‹name›",
           "becomes": "std::cin >> name;",
           "folders": [
             "program"
           ],
           "tip": "Or \"ask … and store in …\" for text."
+        },
+        {
+          "topic": "Show & ask",
+          "say": "read ‹age› from the keyboard",
+          "becomes": "std::cin >> age;",
+          "folders": [
+            "program"
+          ],
+          "tip": "What the person types, up to a space. \"read a line from the keyboard into ‹name›\" reads a whole line."
+        },
+        {
+          "topic": "Show & ask",
+          "say": "read a line from the keyboard into ‹name›",
+          "becomes": "std::getline(std::cin, name);",
+          "folders": [
+            "program"
+          ],
+          "tip": "A whole line of typed text, spaces and all."
         },
         {
           "topic": "Decisions",
@@ -1860,6 +1941,24 @@
           "tip": ""
         },
         {
+          "topic": "Decisions",
+          "say": "depending on ‹value›",
+          "becomes": "switch (value) {",
+          "folders": [
+            "program"
+          ],
+          "tip": "Under it, one step in: \"when it is 1\", \"when it is 2 or 3\", \"otherwise\"."
+        },
+        {
+          "topic": "Decisions",
+          "say": "when it is ‹1›",
+          "becomes": "case 1:",
+          "folders": [
+            "program"
+          ],
+          "tip": "Inside \"depending on\". Each case ends by itself (break); \"go on into the next case\" carries on instead."
+        },
+        {
           "topic": "Loops",
           "say": "repeat ‹number› times",
           "becomes": "for (int i = 0; i < number; i++) {",
@@ -1870,8 +1969,26 @@
         },
         {
           "topic": "Loops",
+          "say": "repeat ‹10› times, counting with ‹i›",
+          "becomes": "for (int i = 0; i < 10; i++) {",
+          "folders": [
+            "program"
+          ],
+          "tip": "i goes from 0 to 9. A name made before is used as the count."
+        },
+        {
+          "topic": "Loops",
           "say": "count ‹i› from ‹1› to ‹10›",
           "becomes": "for (int i = 1; i <= 10; i++) {",
+          "folders": [
+            "program"
+          ],
+          "tip": "Add \"in steps of 2\" to skip. \"count down i from 10 to 1\" counts down."
+        },
+        {
+          "topic": "Loops",
+          "say": "count ‹i› from ‹0› up to but not including ‹n›",
+          "becomes": "for (int i = 0; i < n; i++) {",
           "folders": [
             "program"
           ],
@@ -1884,7 +2001,16 @@
           "folders": [
             "program"
           ],
-          "tip": ""
+          "tip": "Add \", so it can be changed\" to change the items themselves."
+        },
+        {
+          "topic": "Loops",
+          "say": "for each ‹whole number› ‹v› in ‹list›",
+          "becomes": "for (int v : list) {",
+          "folders": [
+            "program"
+          ],
+          "tip": "Each item copied into a name of that type."
         },
         {
           "topic": "Loops",
@@ -1897,6 +2023,15 @@
         },
         {
           "topic": "Loops",
+          "say": "do this, then repeat while ‹condition›",
+          "becomes": "do { … } while (condition);",
+          "folders": [
+            "program"
+          ],
+          "tip": "The steps run once before the test."
+        },
+        {
+          "topic": "Loops",
           "say": "repeat forever",
           "becomes": "while (true) {",
           "folders": [
@@ -1906,12 +2041,21 @@
         },
         {
           "topic": "Lists",
-          "say": "create list of ‹numbers› called ‹name› with ‹1, 2, 3›",
+          "say": "make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›",
           "becomes": "std::vector<int> name = {1, 2, 3};",
           "folders": [
             "program"
           ],
-          "tip": "Also \"list of text\", \"list of decimals\"."
+          "tip": "Also \"list of text\", \"list of decimals\". Leave off \"with …\" for an empty list."
+        },
+        {
+          "topic": "Lists",
+          "say": "make a list of ‹4› ‹whole numbers› called ‹readings›",
+          "becomes": "int readings[4];",
+          "folders": [
+            "program"
+          ],
+          "tip": "A fixed number of items. Add \"with 0, 0, 0, 0\" to give them."
         },
         {
           "topic": "Lists",
@@ -1942,12 +2086,21 @@
         },
         {
           "topic": "Tools",
-          "say": "define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›",
+          "say": "define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›",
           "becomes": "double name(double w, double h) {",
           "folders": [
             "program"
           ],
           "tip": "Name the kinds: whole number, decimal, text, yes/no, nothing."
+        },
+        {
+          "topic": "Tools",
+          "say": "define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›",
+          "becomes": "double average(const std::vector<int>& values) {",
+          "folders": [
+            "program"
+          ],
+          "tip": "\"read-only\" looks at the caller's value without copying it; \"the caller's\" lets the tool change it."
         },
         {
           "topic": "Tools",
@@ -1957,6 +2110,15 @@
             "program"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Tools",
+          "say": "leave the tool now",
+          "becomes": "return;",
+          "folders": [
+            "program"
+          ],
+          "tip": "Leaves a tool that gives nothing back."
         },
         {
           "topic": "Tools",
@@ -1975,6 +2137,15 @@
             "program"
           ],
           "tip": "A blueprint for objects. Indent its fields and tools under it."
+        },
+        {
+          "topic": "Classes",
+          "say": "define structure ‹Point›",
+          "becomes": "struct Point { … };",
+          "folders": [
+            "program"
+          ],
+          "tip": "Named values bundled together, all public. Fields go under it."
         },
         {
           "topic": "Classes",
@@ -2001,7 +2172,7 @@
           "folders": [
             "program"
           ],
-          "tip": "Creates an object from a class."
+          "tip": "Creates an object from a class. Also \"make a ‹Class› called ‹name› with ‹inputs›\"."
         },
         {
           "topic": "Program",
@@ -2087,6 +2258,10 @@
         {
           "say": "a followed by b",
           "becomes": "a << b"
+        },
+        {
+          "say": "x limited to 0–255",
+          "becomes": "std::clamp(x, 0, 255)"
         }
       ]
     },
@@ -2149,6 +2324,42 @@
           "tip": "Also \"divide ‹name› by ‹amount›\" (/=)."
         },
         {
+          "topic": "Values",
+          "say": "make a ‹whole number› called ‹count›",
+          "becomes": "int count;",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "A name with no value yet. Also \"make empty text called name\", \"make a yes/no value called done\"."
+        },
+        {
+          "topic": "Values",
+          "say": "make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›",
+          "becomes": "LiquidCrystal lcd(12, 11, 5, 4, 3, 2);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "An object of a class or a library, given what it needs to start. Leave off \"with …\" if it needs nothing: \"make a Servo called arm\"."
+        },
+        {
+          "topic": "Values",
+          "say": "keep ‹level› between ‹0› and ‹255›",
+          "becomes": "level = constrain(level, 0, 255);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Stops it going below the first number or above the second."
+        },
+        {
+          "topic": "Values",
+          "say": "let ‹LED› stand for ‹13›",
+          "becomes": "#define LED 13",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "A name swapped for its value before compiling. \"constant LED is 13\" does the same, with a type."
+        },
+        {
           "topic": "Decisions",
           "say": "if ‹condition›",
           "becomes": "if (condition) {",
@@ -2167,6 +2378,24 @@
           "tip": ""
         },
         {
+          "topic": "Decisions",
+          "say": "depending on ‹value›",
+          "becomes": "switch (value) {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Under it, one step in: \"when it is 1\", \"when it is 2 or 3\", \"otherwise\"."
+        },
+        {
+          "topic": "Decisions",
+          "say": "when it is ‹1›",
+          "becomes": "case 1:",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Inside \"depending on\". Each case ends by itself (break); \"go on into the next case\" carries on instead."
+        },
+        {
           "topic": "Loops",
           "say": "repeat ‹number› times",
           "becomes": "for (int i = 0; i < number; i++) {",
@@ -2177,8 +2406,26 @@
         },
         {
           "topic": "Loops",
+          "say": "repeat ‹10› times, counting with ‹i›",
+          "becomes": "for (int i = 0; i < 10; i++) {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "i goes from 0 to 9. A name made before is used as the count."
+        },
+        {
+          "topic": "Loops",
           "say": "count ‹i› from ‹1› to ‹10›",
           "becomes": "for (int i = 1; i <= 10; i++) {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Add \"in steps of 2\" to skip. \"count down i from 10 to 1\" counts down."
+        },
+        {
+          "topic": "Loops",
+          "say": "count ‹i› from ‹0› up to but not including ‹n›",
+          "becomes": "for (int i = 0; i < n; i++) {",
           "folders": [
             "sketch"
           ],
@@ -2191,7 +2438,16 @@
           "folders": [
             "sketch"
           ],
-          "tip": ""
+          "tip": "Add \", so it can be changed\" to change the items themselves."
+        },
+        {
+          "topic": "Loops",
+          "say": "for each ‹whole number› ‹v› in ‹list›",
+          "becomes": "for (int v : list) {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Each item copied into a name of that type."
         },
         {
           "topic": "Loops",
@@ -2203,13 +2459,31 @@
           "tip": ""
         },
         {
+          "topic": "Loops",
+          "say": "do this, then repeat while ‹condition›",
+          "becomes": "do { … } while (condition);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "The steps run once before the test."
+        },
+        {
           "topic": "Lists",
-          "say": "create list of ‹numbers› called ‹name› with ‹1, 2, 3›",
-          "becomes": "std::vector<int> name = {1, 2, 3};",
+          "say": "make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›",
+          "becomes": "int name[] = {1, 2, 3};",
           "folders": [
             "sketch"
           ],
           "tip": "Also \"list of text\", \"list of decimals\"."
+        },
+        {
+          "topic": "Lists",
+          "say": "make a list of ‹4› ‹whole numbers› called ‹readings›",
+          "becomes": "int readings[4];",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "A fixed number of items. Add \"with 0, 0, 0, 0\" to give them."
         },
         {
           "topic": "Lists",
@@ -2231,7 +2505,7 @@
         },
         {
           "topic": "Tools",
-          "say": "define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›",
+          "say": "define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›",
           "becomes": "double name(double w, double h) {",
           "folders": [
             "sketch"
@@ -2246,6 +2520,15 @@
             "sketch"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Tools",
+          "say": "leave the tool now",
+          "becomes": "return;",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Leaves a tool that gives nothing back."
         },
         {
           "topic": "Tools",
@@ -2264,6 +2547,15 @@
             "sketch"
           ],
           "tip": "A blueprint for objects. Indent its fields and tools under it."
+        },
+        {
+          "topic": "Classes",
+          "say": "define structure ‹Point›",
+          "becomes": "struct Point { … };",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Named values bundled together, all public. Fields go under it."
         },
         {
           "topic": "Classes",
@@ -2290,7 +2582,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "Creates an object from a class."
+          "tip": "Creates an object from a class. Also \"make a ‹Class› called ‹name› with ‹inputs›\"."
         },
         {
           "topic": "Program",
@@ -2329,6 +2621,15 @@
           "tip": "Runs again and again, forever."
         },
         {
+          "topic": "Board",
+          "say": "skip the rest of this round",
+          "becomes": "return;",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "In \"over and over\": the board starts the next round from the top."
+        },
+        {
           "topic": "Pins",
           "say": "make pin ‹13› an output",
           "becomes": "pinMode(13, OUTPUT);",
@@ -2348,6 +2649,24 @@
         },
         {
           "topic": "Pins",
+          "say": "set pin ‹led› to ‹state›",
+          "becomes": "digitalWrite(led, state);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "On or off by a value (HIGH or LOW)."
+        },
+        {
+          "topic": "Pins",
+          "say": "turn pin ‹led› on if ‹lit›, otherwise off",
+          "becomes": "digitalWrite(led, lit ? HIGH : LOW);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Pins",
           "say": "set the brightness of pin ‹9› to ‹128›",
           "becomes": "analogWrite(9, 128);",
           "folders": [
@@ -2357,12 +2676,30 @@
         },
         {
           "topic": "Pins",
-          "say": "read pin ‹2› and store in ‹pressed›",
-          "becomes": "int pressed = digitalRead(2);",
+          "say": "read pin ‹A0› and call it ‹level› (a whole number)",
+          "becomes": "int level = analogRead(A0);",
           "folders": [
             "sketch"
           ],
-          "tip": "Or \"read analog pin A0 …\" for 0 to 1023."
+          "tip": "A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). \"read analog pin SENSOR\" for a named analog pin; \"… and store it in level\" changes a name made before."
+        },
+        {
+          "topic": "Pins",
+          "say": "scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›",
+          "becomes": "level = map(reading, 0, 1023, 0, 255);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Moves a value from one range to another. Also \"… and call it level (a whole number)\"."
+        },
+        {
+          "topic": "Pins",
+          "say": "set ‹duration› to how long pin ‹echo› stays on",
+          "becomes": "duration = pulseIn(echo, HIGH);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "In microseconds: for distance sensors."
         },
         {
           "topic": "Time",
@@ -2383,6 +2720,15 @@
           "tip": "Millionths of a second, for timing a sensor's pulse."
         },
         {
+          "topic": "Time",
+          "say": "if at least ‹500› milliseconds have passed since ‹last›",
+          "becomes": "if (millis() - last >= 500) {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "On time without stopping the board. Also \"more than\", \"less than\", \"at most\"."
+        },
+        {
           "topic": "Serial",
           "say": "start the serial monitor at ‹9600›",
           "becomes": "Serial.begin(9600);",
@@ -2398,7 +2744,79 @@
           "folders": [
             "sketch"
           ],
-          "tip": "Shows in the serial monitor."
+          "tip": "Shows in the serial monitor. \"show a followed by b\" shows them on one line."
+        },
+        {
+          "topic": "Serial",
+          "say": "show ‹value› on the same line",
+          "becomes": "Serial.print(value);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "What is shown next carries on the line. \"end the line\" ends it."
+        },
+        {
+          "topic": "Serial",
+          "say": "end the line",
+          "becomes": "Serial.println();",
+          "folders": [
+            "sketch"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Screens",
+          "say": "start ‹lcd› with ‹16, 2›",
+          "becomes": "lcd.begin(16, 2);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "A library's start-up, in \"when the board starts\". \"start pixels\" if it needs nothing."
+        },
+        {
+          "topic": "Screens",
+          "say": "show ‹value› on ‹lcd›",
+          "becomes": "lcd.print(value);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Add \", then start a new line\" to move down a line (println)."
+        },
+        {
+          "topic": "Screens",
+          "say": "move ‹lcd›'s cursor to ‹0, 1›",
+          "becomes": "lcd.setCursor(0, 1);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Where the next thing shown goes: column and row on a text screen."
+        },
+        {
+          "topic": "Screens",
+          "say": "clear ‹lcd›",
+          "becomes": "lcd.clear();",
+          "folders": [
+            "sketch"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Motors",
+          "say": "attach ‹arm› to pin ‹9›",
+          "becomes": "arm.attach(9);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Make the servo first: \"make a Servo called arm\"."
+        },
+        {
+          "topic": "Motors",
+          "say": "turn servo ‹arm› to ‹90› degrees",
+          "becomes": "arm.write(90);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "0 to 180."
         },
         {
           "topic": "Sound",
@@ -2422,6 +2840,22 @@
         {
           "say": "time since start",
           "becomes": "millis()"
+        },
+        {
+          "say": "at least 500 milliseconds have passed since last",
+          "becomes": "millis() - last >= 500"
+        },
+        {
+          "say": "x scaled from 0–1023 to 0–255",
+          "becomes": "map(x, 0, 1023, 0, 255)"
+        },
+        {
+          "say": "x limited to 0–255",
+          "becomes": "constrain(x, 0, 255)"
+        },
+        {
+          "say": "how long pin 7 stays on",
+          "becomes": "pulseIn(7, HIGH)"
         },
         {
           "say": "the built-in light",

@@ -35,17 +35,20 @@ const CASES = [
   ['tests/corpus_web/app.js', 'js', 'tests/corpus_web/landing.html', null, 0.95],
   ['tests/corpus_web/scores.cpp', 'cpp', null, null, 0.95],
   ['tests/corpus_web/button_led.ino', 'arduino', null, null, 0.95],
+  // sensors, a button, millis() timing, switch, a servo, a screen, Serial.print runs; vectors, cin, switch, do-while
+  ['tests/corpus_web/gadget.ino', 'arduino', null, null, 1],
+  ['tests/corpus_web/grades.cpp', 'cpp', null, null, 0.95],
   ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.6],
   ['samples/taskboard/static/style.css', 'css', 'samples/taskboard/static/index.html', null, 0.8],
   ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.5],
   ['samples/cpp/blink/blink.ino', 'arduino', null, null, 0.95],
-  ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.3],
+  ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.65],
   // held out: written after the converter, in other styles (classes, switch, templates, SVG, tables)
   ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.2],
   ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.3],
   ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.25],
-  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.3],
-  ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 0.8],
+  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.55],
+  ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 1],
 ];
 
 for (const [file, kind, page, pulled, least] of CASES) {
@@ -192,6 +195,91 @@ test('code -> sentences: exact where the checker used to look away', () => {
   // inline things with nothing between them stay on one line (a line break would show as a space)
   exact('html', page('', '<h1>Hi</h1>\n<img src="a.png" alt="A"><img src="b.png" alt="B">\n<section>\n  <b>x</b><i>y</i>\n</section>'), null,
     /^add a big heading "Hi"\nhtml: <img src="a\.png" alt="A"><img src="b\.png" alt="B">\nadd a section\n    html: <b>x<\/b><i>y<\/i>$/m);
+});
+
+/* C++ and Arduino said for what the code does, in sentences the writer reads back exactly (2026-11-09). */
+test('code -> sentences: an Arduino sketch reads as plain sentences, with no c++: lines', () => {
+  const r = convert('arduino', read('tests/corpus_web/gadget.ino'));
+  assert.equal(r.exact, true, r.reason);
+  assert.equal(r.kept, 0, r.text);
+  for (const re of [
+    /^let BUZZER stand for 8$/m,
+    /^define structure Reading\n    field level: whole number\n    field distance: long$/m,
+    /^make a Servo called arm\nmake a LiquidCrystal called lcd with 12, 11, 5, 4, 3, 2$/m,
+    /^make a whole number called buttonState$/m,
+    /^make a list of 4 whole numbers called history with 0, 0, 0, 0$/m,
+    /^make a long called duration$/m,
+    /^define measureDistance giving back a long\n    turn pin TRIG off\n    wait 2 microseconds$/m,
+    /^    set duration to how long pin ECHO stays on$/m,
+    /^    turn the built-in light on if on, otherwise off$/m,
+    /^    make the built-in light an output$/m,
+    /^    attach arm to pin 10\n    start lcd with 16, 2\n    show "Starting" on lcd$/m,
+    /^    read analog pin KNOB and call it reading \(a whole number\)\n    scale reading from 0–1023 to 0–255 and call it level \(a whole number\)\n    keep level between 10 and 250$/m,
+    /^    read pin BUTTON and call it pressed \(a whole number\)$/m,
+    /^    if more than 50 milliseconds have passed since lastChange and pressed is not buttonState$/m,
+    /^    depending on mode\n        when it is 0\n            turn servo arm to reading scaled from 0–1023 to 0–180 degrees\n        when it is 1 or 2\n            count angle from 0 to 180 in steps of 30\n/m,
+    /^        otherwise\n            run setAlarm with true$/m,
+    /^    if less than 500 milliseconds have passed since lastReport\n        skip the rest of this round$/m,
+    /^    set item slot of history to level$/m,
+    /^    show "Level: " followed by level followed by " Distance: " followed by cm$/m,
+    /^    clear lcd\n    move lcd's cursor to 0, 0\n    show level on lcd$/m,
+    /^    repeat 4 times, counting with i\n        show history\[i\] followed by " " on the same line\n    end the line$/m,
+  ]) assert.match(r.text, re);
+});
+
+test('code -> sentences: a C++ program with lists, the keyboard, switch and do-while reads as plain sentences', () => {
+  const r = convert('cpp', read('tests/corpus_web/grades.cpp'));
+  assert.equal(r.exact, true, r.reason);
+  for (const re of [
+    /^define add using whole number a, whole number b giving back a whole number$/m,
+    /^define average using read-only list of whole numbers values giving back a decimal\n    set total to 0\n    for each whole number v in values$/m,
+    /^make an empty list of whole numbers called scores\nmake empty text called name\nshow "Your name: " without ending the line\nread a line from the keyboard into name$/m,
+    /^make a whole number called count\nshow "How many scores\? " without ending the line\nread count from the keyboard$/m,
+    /^repeat 10 times, counting with i$/m,
+    /^count i from 1 to 5\n    show i on the same line\nend the line$/m,
+    /^do this, then repeat while n is less than 5\n    increase n$/m,
+    /^depending on n\n    when it is 1\n        show "one"\n    when it is 2\n        show "two"\n    otherwise\n        show "many"$/m,
+    /^make a list of text called names with "Ada", "Bo"$/m,
+  ]) assert.match(r.text, re);
+});
+
+test('code -> sentences: more C++ and Arduino shapes come back exactly, said in words', () => {
+  const exact = (kind, src, ...res) => {
+    const r = convert(kind, src);
+    assert.equal(r.exact, true, `${r.reason}\n${r.text}`);
+    for (const re of res) assert.match(r.text, re);
+    const back = CPP.compileCppProject({ kind: kind === 'arduino' ? 'arduino' : 'cpp', sections: [{ id: 'x', file: 'x', text: r.text }] }).results.x;
+    assert.deepEqual(JSON.parse(JSON.stringify(back.info.flatMap(i => i.errs))), [], r.text);
+    return r;
+  };
+  const main = (body, before = '') => `#include <iostream>\n#include <vector>\n#include <string>\n#include <algorithm>\n#include <cstdio>\n${before}int main() {\n${body}\n    return 0;\n}\n`;
+  // loops: an existing counter, down, up to but not including, ++i, typed and changeable range-for
+  let r = exact('cpp', main('    int n = 5;\n    std::vector<int> xs = {1, 2};\n    for (int i = n - 1; i >= 0; i--) {\n        std::cout << i << std::endl;\n    }\n    for (int i = 1; i < n; i++) {\n        std::cout << i << std::endl;\n    }\n    for (int i = 0; i < n; ++i) {\n        std::cout << i << std::endl;\n    }\n    for (auto& x : xs) {\n        x *= 2;\n    }\n    for (auto x : xs) {\n        x /= 2;\n    }\n    for (int x : xs) {\n        std::cout << x << std::endl;\n    }'),
+    /^count down i from n minus 1 to 0$/m, /^count i from 1 up to but not including n$/m, /^repeat n times, counting with i$/m,
+    /^for each x in xs, so it can be changed\n    multiply x by 2$/m, /^for each x in xs, as a copy\n    divide x by 2$/m, /^for each whole number x in xs$/m);
+  assert.equal(r.kept, 0, r.text);
+  // switch: falling through, a case in braces, a break that isn't at the end stays exact code
+  r = exact('cpp', main('    int n = 2;\n    while (n < 9) {\n        switch (n) {\n            case 1: {\n                int twice = n * 2;\n                std::cout << twice << std::endl;\n                break;\n            }\n            case 2:\n                n += 1;\n            case 3:\n                if (n > 7) break;\n                n += 2;\n                break;\n        }\n        n++;\n    }'),
+    /^        when it is 1\n            set twice to n times 2\n/m, /^        when it is 2\n            increase n by 1\n            go on into the next case\n        when it is 3\n            if n is greater than 7\n                c\+\+: break;$/m);
+  // printf, std::clamp, the keyboard, a structure, a class that starts private
+  r = exact('cpp', main('    int a = 0;\n    int b = 0;\n    std::cin >> a >> b;\n    a = std::clamp(a, 0, 10);\n    b = std::clamp(a, 1, 5);\n    printf("%d and %d\\n", a, b);\n    Point p;\n    p.x = 1.5;\n    Counter c;\n    c.add();', 'struct Point {\n    double x;\n    double y;\n};\nclass Counter {\nprivate:\n    int count = 0;\npublic:\n    void add() {\n        count++;\n    }\n};\n'),
+    /^define structure Point\n    field x: decimal$/m, /^define class Counter\n    the rest is private\n    field count: whole number = 0\n    the rest is public$/m,
+    /^read a and b from the keyboard\nkeep a between 0 and 10\nset b to a limited to 1–5\nshow "%d and %d\\n" filled in with a, b$/m, /^make a Point called p$/m, /^make a Counter called c$/m);
+  assert.equal(r.kept, 0, r.text);
+  // Arduino: a pin set to a value, random, Serial.println(), not … have passed, a write that isn't a servo's
+  r = exact('arduino', 'int state = LOW;\nunsigned long last = 0;\nvoid setup() {\n  Serial.begin(9600);\n}\nvoid loop() {\n  digitalWrite(13, state);\n  int roll = random(1, 7);\n  int more = random(0, 256) + 1;\n  if (!(millis() - last >= 1000)) {\n    Serial.println();\n  }\n  Serial1.write(roll);\n  Serial.print(more);\n}\n',
+    /^    set pin 13 to state$/m, /^    set roll to random number from 1 to 6$/m, /^    set whole number more to \(random number from 0 to 255\) plus 1$/m,
+    /^    if not \(at least 1000 milliseconds have passed since last\)\n        end the line$/m, /^    run Serial1\.write with roll$/m, /^    show more on the same line$/m);
+  assert.equal(r.kept, 0, r.text);
+});
+
+test('checker: a break that ends a switch\'s last case, and ++i as an int count\'s step, change nothing', () => {
+  assert.equal(same('cpp', 'int main() { switch (n) { case 1: f(); break; default: g(); break; } }', 'int main() { switch (n) { case 1: f(); break; default: g(); } }'), true);
+  assert.equal(same('cpp', 'int main() { for (int i = 0; i < 3; ++i) f(i); }', 'int main() { for (int i = 0; i < 3; i++) f(i); }'), true);
+  // but a break anywhere else, or ++ on something that isn't an int the loop makes, still counts
+  assert.equal(same('cpp', 'int main() { switch (n) { case 1: f(); break; default: g(); } }', 'int main() { switch (n) { case 1: f(); default: g(); } }'), false);
+  assert.equal(same('cpp', 'int main() { for (auto it = v.begin(); it != v.end(); ++it) f(); }', 'int main() { for (auto it = v.begin(); it != v.end(); it++) f(); }'), false);
+  assert.equal(same('cpp', 'int main() { for (i = 0; i < 3; ++i) f(i); }', 'int main() { for (i = 0; i < 3; i++) f(i); }'), false);
 });
 
 test('code -> sentences: C++ main with inputs is reported, not guessed', () => {

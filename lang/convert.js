@@ -1013,6 +1013,12 @@
         case 'field_expression': {
           const arg = F(n, 'argument');
           if (arg.type === 'this' && n.text.includes('->')) return `self.${F(n, 'field').text}`;
+          // tree-sitter reads item.count < LIMIT (with no > after it) as the start of a template: it is a comparison
+          const fld = F(n, 'field');
+          if (fld && fld.type === 'template_method' && cchain(arg) && !n.text.includes('>')) {
+            const m = n.text.match(/^([A-Za-z_][\w.]*)\s*<\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)$/);
+            if (m) return `${m[1]} is less than ${m[2]}`;
+          }
           if (cchain(n)) return n.text;
           // lights[i].pin
           return arg.type === 'subscript_expression' && /^[A-Za-z_]\w*\[[\w.]+\](?:\.[A-Za-z_]\w*)+$/.test(n.text) ? n.text : null;
