@@ -266,12 +266,19 @@
   const FILLER = new Set(LANG.FILLER.words);
   const STEP_WORDS = new Set(LANG.FILLER.steps);
 
+  const EXACT_LINE = /^(\s*)((?:raw python|python|html|head|css|js|javascript|c\+\+|cpp|above main|raw)\s*:\s?)(.*)$/i;
   function hlLine(line, mark, names) {
     names = names || NO_NAMES;
     if (/^\s*(?:note\s*:|comment\s*:|#)/i.test(line)) return `<span class="s-com">${escHtml(line)}</span>`;
-    const m = line.match(/^(\s*)((?:raw python|python|raw)\s*:)(.*)$/i);
+    // a line kept as code (python: …, html: …, c++: …): coloured as that language, and the language's name, which
+    // the file needs, drawn as a plain </> mark of the same width, so the code reads as code, not as a label
+    const m = line.match(EXACT_LINE);
     let body;
-    if (m) body = escHtml(m[1]) + `<span class="s-kw">${escHtml(m[2])}</span><span class="s-raw">${hlPy(m[3])}</span>`;
+    if (m) {
+      const tag = m[2], lang = RAW_LANG[tag.replace(/\s*:\s?$/, '').toLowerCase()] || 'python';
+      const mark = tag.length >= 3 ? '</>' + ' '.repeat(tag.length - 3) : ' '.repeat(tag.length);
+      body = escHtml(m[1]) + `<span class="s-rawtag">${escHtml(mark)}</span><span class="s-raw">${lang === 'python' ? hlPy(m[3]) : hlCode(lang, m[3])}</span>`;
+    }
     else {
       const ind = line.match(/^\s*/)[0];
       let rest = line.slice(ind.length);
@@ -537,8 +544,18 @@
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.map(i => i + 1).join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
       </div>
       ${shapeHtml(sec, text)}
-      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${sayTutorHtml(sec, li)}
+      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${inf.errs.some(e => UNKNOWN_LINE.test(e)) ? closeMatchesHtml(sec, text, li) : ''}${sayTutorHtml(sec, li)}
       <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
+  }
+  /* A line the writer doesn't recognise: the known sentences closest to what it says, each one click away. */
+  const UNKNOWN_LINE = /don't recognise|don't understand|isn't a sentence|no sentence/i;
+  function closeMatchesHtml(sec, text, li, where = 'say') {
+    const found = closeMatches(sec, text, 4);
+    if (!found.length) return '';
+    return `<div class="ex-close"><span class="ex-lbl">Closest sentences IntuaCode knows</span><ul>${found.map(x => {
+      const role = x.other ? (x.t.role || (x.t.sections || [])[0]) : '';
+      return `<li><button type="button" class="btn small" data-use-sentence="${escHtml(x.pattern)}" data-use-role="${escHtml(role || '')}" data-use-line="${li}" data-use-where="${where}">${x.other ? `Add to ${escHtml(x.other.replace(/ \(.*\)$/, ''))}` : 'Use'}</button><span class="ex-say">${escHtml(x.pattern).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>')}</span></li>`;
+    }).join('')}</ul></div>`;
   }
 
   /* ‹Blanks›: what goes in one, from its step's "blank:" line in the templates (your own kits' too): what
@@ -1205,15 +1222,94 @@
     store.set(PREDICT_KEY, predictMem);
   }
 
+  /* Sentences by meaning (lang/intent.js): what a line probably means when it doesn't start like a known
+     sentence ("add a data graph", "add a border"), from the file's language pack and, for a website, the other
+     files' sentences (a border is Styling). Each: { pattern, other: where it goes, or null }. */
+  const INTENT = window.IntuiIntent, COMPLETE = window.IntuiComplete;
+  const CLASSIC_ROLE = { structure: 'html', styling: 'css', mechanics: 'js' };
+  function intentExtras(sec) {
+    if (WEB_ROLE[sec.lang]) {
+      return WEB.WORDS.styling.map(([p]) => ({ pattern: `style ‹name›: ${p}`, group: 'Styles', role: 'styling' }))
+        .concat([{ pattern: 'style ‹name›: border ‹2› ‹navy›', group: 'Styles', role: 'styling' }, { pattern: 'style ‹name›: no border', group: 'Styles', role: 'styling' }]);
+    }
+    if (sec.lang === 'python') {
+      return [{ pattern: 'set ‹roll› to a random number from ‹1› to ‹6›', group: 'Numbers', role: null }, { pattern: 'set ‹pick› to a random item from ‹list›', group: 'Lists', role: null },
+        { pattern: 'set ‹total› to the length of ‹list›', group: 'Lists', role: null }, { pattern: 'set ‹biggest› to the biggest of ‹list›', group: 'Lists', role: null }];
+    }
+    return [];
+  }
+  function closeMatches(sec, typed, limit = 4) {
+    if (!INTENT || !isSentences(sec)) return [];
+    const pk = packFor(sec), role = WEB_ROLE[sec.lang] ? tplRole(sec) : null;
+    const templates = pk.webOnly ? WEB.TEMPLATES : pk.templates.filter(t => !/^(?:python|c\+\+|above main|note|description)\s*:/.test(t.pattern));
+    return INTENT.match(typed, templates, { role, extra: intentExtras(sec), limit });
+  }
+  /* The file a sentence from elsewhere goes in: a website's file for that role (index.html, style.css…). */
+  function fileForRole(role) {
+    const lang = CLASSIC_ROLE[role];
+    return lang && (PRJ.webTriple(project.sections.filter(s => WEB_ROLE[s.lang]))[role] || project.sections.find(s => s.lang === lang));
+  }
+  /* Put a suggested sentence where it belongs: on this line (replacing it), or at the end of its own file. */
+  function useSentence(pattern, role, li) {
+    const target = role ? fileForRole(role) : null;
+    if (role && !target) { tLine(`That sentence goes in a ${role} file, and this project has none. Add one with + File.`, 't-sys'); return; }
+    if (target && target.id !== activeSec().id) {
+      // the line typed here asked for it: it moves to its own file, so it goes from this one
+      const here = ta.value.split('\n');
+      if (li >= 0 && li < here.length) {
+        here.splice(li, 1);
+        ta.value = here.join('\n');
+        onEdit();
+      }
+      openSection(target.id);
+      const text = ta.value.replace(/\s+$/, '');
+      ta.value = (text ? text + '\n' : '') + pattern + '\n';
+      onEdit();
+      const at = ta.value.length - pattern.length - 1;
+      ta.focus(); ta.setSelectionRange(at, at);
+      selectNextSlot(true);
+      tLine(`Added to ${fileName(target)}: ${pattern.replace(/[‹›]/g, '')}. Fill in its ‹blanks›.`, 't-sys');
+      return;
+    }
+    const start = lineStartOf(li), line = ta.value.split('\n')[li] || '', indent = line.match(/^\s*/)[0];
+    insertText(indent + pattern, start, start + line.length);
+    ta.setSelectionRange(start, start);
+    selectNextSlot(true);
+  }
+  /* Code being typed: in a code file, or after an exact line's python: / html: / js: … The language and the line
+     up to the cursor, as the code completer wants them. */
+  const RAW_LANG = { python: 'python', 'raw python': 'python', html: 'html', head: 'html', css: 'css', js: 'js', javascript: 'js', 'c++': 'cpp', cpp: 'cpp', 'above main': 'cpp', raw: null };
+  function codeContext(sec, lineBefore) {
+    if (!COMPLETE) return null;
+    const l = LANGS.byId(sec.lang) || {};
+    if (!isSentences(sec)) return l.write === 'text' && !['json', 'yaml', 'toml', 'markdown', 'csv', 'sql'].includes(sec.lang) ? null : { lang: sec.lang, before: lineBefore };
+    const m = lineBefore.match(/^\s*(raw python|python|html|head|css|js|javascript|c\+\+|cpp|above main|raw)\s*:\s?(.*)$/i);
+    if (!m) return null;
+    const lang = RAW_LANG[m[1].toLowerCase()] || secLang(sec);
+    return { lang: sec.lang === 'arduino' && lang === 'cpp' ? 'arduino' : lang, before: m[2] };
+  }
+  let codeRest = '';   // the dim rest of the code word being typed (Split Mode), '' when none
+
   let acItems = [], acIndex = 0;
   function closeAc() { ac.hidden = true; acItems = []; updateGhost(); }
 
   function updateAc() {
+    codeRest = '';
     if (!predictOn()) return closeAc();
     const pos = ta.selectionStart;
     if (pos !== ta.selectionEnd) return closeAc();
     const b = lineBounds(pos);
     const before = b.text.slice(0, pos - b.start);
+    // code (a code file, or an exact line): the rest of the word, from the language and the file's own names
+    const code = codeContext(activeSec(), before);
+    if (code) {
+      closeAc();
+      if (!b.text.slice(pos - b.start).trim()) {
+        const c = COMPLETE.complete(code.lang, code.before, ta.value, { glossary: window.IntuiGlossaryTerms });
+        if (c) { codeRest = c.rest; updateGhost(); }
+      }
+      return;
+    }
     let indent = before.match(/^\s*/)[0];
     const lead = before.slice(indent.length).match(LANG.FILLER.lead);
     if (lead) indent += lead[0];   // "please set…" still suggests "set ‹name› to ‹value›"
@@ -1233,6 +1329,15 @@
         return (lead.startsWith(lower) || (lower.startsWith(lead.trim()) && lower.length <= lead.length + 1 && lead.trim().length)) && t.pattern.toLowerCase() !== lower;
       })()).sort((a, b2) => (b2.sections.includes(file) - a.sections.includes(file)))
         .map(t => ({ kind: 'template', label: t.pattern, py: t.py, tag: t.group, t, ...whole }))).slice(0, 7);
+      // by meaning: "add a data graph" -> the drawing area; "add a border" -> a style, in Styling
+      if (items.length < 4 && (/\s/.test(typed.trim()) || typed.trim().length >= 5)) {
+        const have2 = new Set(items.map(it => it.label.toLowerCase()));
+        const lineEnd = b.start + b.text.length;
+        for (const x of closeMatches(activeSec(), typed, 6)) {
+          if (items.length >= 7 || have2.has(x.pattern.toLowerCase())) continue;
+          items.push({ kind: 'meaning', label: x.pattern, py: x.t.py || '', tag: x.other ? `goes in ${x.other}` : 'close match', role: x.other ? (x.t.role || (x.t.sections || [])[0]) : null, from: b.start + indent.length, to: lineEnd, li: caretLine() });
+        }
+      }
     }
 
     if (!items.length && /\s/.test(typed) && compiled) {
@@ -1270,6 +1375,17 @@
   function updateGhost() {
     const g = $('ghost');
     const hide = () => { ghostRest = ''; if (g && !g.hidden) g.hidden = true; };
+    if (g && predictOn() && codeRest && ac.hidden) {   // the rest of a code word
+      const pos = ta.selectionStart, b = lineBounds(pos);
+      ghostRest = codeRest;
+      g.textContent = codeRest;
+      g.classList.add('code-ghost');
+      g.style.top = (PAD_T + caretLine() * LH - ta.scrollTop) + 'px';
+      g.style.left = (PAD_L + (pos - b.start) * CW - ta.scrollLeft) + 'px';
+      g.hidden = false;
+      return;
+    }
+    if (g) g.classList.remove('code-ghost');
     if (!g || !predictOn() || ac.hidden || !acItems.length) return hide();
     const pos = ta.selectionStart, it = acItems[acIndex];
     if (pos !== ta.selectionEnd || !it || pos !== it.to) return hide();
@@ -1318,6 +1434,7 @@
     const it = acItems[i];
     if (!it) return;
     closeAc();
+    if (it.kind === 'meaning') { useSentence(it.label, it.role, it.li); return; }
     insertText(it.label, it.from, it.to);
     if (it.kind === 'template') {
       const b = lineBounds(it.from);
@@ -1363,6 +1480,15 @@
   ta.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); return; }
     if (e.altKey && e.key === 'ArrowDown' && ddOn()) { if (openDdAtCaret()) { e.preventDefault(); return; } }
+    if (codeRest && ghostRest && ac.hidden && (e.key === 'ArrowRight' || e.key === 'Tab') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const rest = codeRest; codeRest = '';
+      insertText(rest);
+      const m = rest.match(/=""$/);   // an HTML attribute: the cursor between its quotes
+      if (m) { const p = ta.selectionStart - 1; ta.setSelectionRange(p, p); }
+      return;
+    }
+    if (codeRest && e.key === 'Escape') { e.preventDefault(); codeRest = ''; updateGhost(); return; }
     if (!ac.hidden) {
       if (ghostRest && e.key === 'ArrowRight' && !e.shiftKey && !e.altKey) { e.preventDefault(); return e.ctrlKey || e.metaKey ? acceptWord() : acceptAc(); }
       if (e.key === 'ArrowDown') { e.preventDefault(); return moveAc(1); }
@@ -1626,6 +1752,12 @@
   $('explain').addEventListener('click', (e) => {
     const t = (sel) => e.target.closest(sel);
     let b;
+    if ((b = t('[data-use-sentence]'))) {
+      const { useSentence: pattern, useRole: role, useLine: line, useWhere: where } = b.dataset;
+      if (where === 'unity' && !role) return uUseSentence(pattern, +line);
+      if (where === 'unity') { uCommit(); setMode('write'); }
+      return useSentence(pattern, role || null, +line);
+    }
     if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
     if ((b = t('[data-keep-code]'))) return keepNewCode(project.active, +b.dataset.keepCode);
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
@@ -3484,7 +3616,7 @@
     const bad = new Map(uProblems.map(p => [p.line, p.errs.length ? 'err' : 'warn']));
     const looks = lineLooks(sec, lines.length), linked = linkedLines(sec.id);
     let at = 0;
-    const lineHtml = (l, words) => { const i = at++; return `<div class="ul${looks[i] ? ' ' + looks[i] : ''}${linked.has(i) ? ' lk' : ''}">${(words ? hlLine(l) : unity.lang ? hlCode(code, l) : hlFileLine(sec, l)) || '​'}</div>`; };
+    const lineHtml = (l, words) => { const i = at++; return `<div class="ul${looks[i] ? ' ' + looks[i] : ''}${linked.has(i) ? ' lk' : ''}${words && EXACT_LINE.test(l) ? ' kept' : ''}">${(words ? hlLine(l) : unity.lang ? hlCode(code, l) : hlFileLine(sec, l)) || '​'}</div>`; };
     const sorted = unity.regions.slice().sort((a, b) => a.from - b.from);
     let html = '', n = 0;
     for (const r of sorted) {
@@ -3564,6 +3696,7 @@
         </div>
         ${text.trim() ? shapeHtml(sec, text) : ''}
         ${items.length ? `<ul class="ex-notes">${items.slice(0, 5).join('')}</ul>` : ''}
+        ${out && out.problems.some(p => p.line === li && p.errs.some(e => UNKNOWN_LINE.test(e))) ? closeMatchesHtml(sec, text, li, 'unity') : ''}
         ${out && out.needs.length ? `<p class="ex-guide">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</p>` : ''}
         <p class="ex-foot"><span>Green part · lines ${r.from + 1}–${r.to + 1}${part ? ` · ${escHtml(PARTS.typeOf(part.type).name)}` : ''}</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> Original Code</span></p>`;
       return;
@@ -3606,14 +3739,25 @@
   function uUpdateGhost() {
     const g = $('uGhost');
     const hide = () => { uGhostRest = ''; if (!g.hidden) g.hidden = true; };
-    if (!predictOn() || mode !== 'unity' || !unity.lang || document.activeElement !== uTa) return hide();
+    if (!predictOn() || mode !== 'unity' || document.activeElement !== uTa) return hide();
     const a = uTa.selectionStart;
     if (a !== uTa.selectionEnd) return hide();
     const li = uLineOf(a), line = uLines()[li] || '';
-    if (uRegionAt(li) < 0 || a - uPosOf(li) !== line.length) return hide();   // in a green part, at the end of its line
-    const typed = line.trim();
-    if (typed.length < 2) return hide();
-    const rest = PRED.rest(typed, uPredictFor(typed, li));
+    if (a - uPosOf(li) !== line.length) return hide();   // at the end of its line
+    const sec = uSec() || activeSec();
+    let rest = '';
+    const inRegion = unity.lang && uRegionAt(li) >= 0;
+    const raw = inRegion && codeContext(sec, line);   // an exact line in a green part: html: …, python: …
+    if (inRegion && !raw) {
+      const typed = line.trim();
+      if (typed.length < 2) return hide();
+      rest = PRED.rest(typed, uPredictFor(typed, li));
+    } else if (COMPLETE) {
+      // code: Unity shows a file's code lines as code, so the line is the code itself
+      const lang = raw ? raw.lang : unity.lang ? (sec.lang === 'arduino' ? 'arduino' : unity.lang) : sec.lang;
+      const c = COMPLETE.complete(lang, raw ? raw.before : line, uTa.value, { glossary: window.IntuiGlossaryTerms });
+      rest = c ? c.rest : '';
+    }
     if (!rest) return hide();
     const cs = getComputedStyle(uTa);
     if (!uCharW) {
@@ -3628,6 +3772,18 @@
     g.style.top = ((parseFloat(cs.paddingTop) || 12) + li * (parseFloat(cs.lineHeight) || 22) - uTa.scrollTop) + 'px';
     g.style.left = ((parseFloat(cs.paddingLeft) || 14) + line.replace(/\t/g, '    ').length * uCharW - uTa.scrollLeft) + 'px';
     g.hidden = false;
+  }
+
+  /* A close match, used in Unity: the line becomes that sentence (keeping its indentation), its first ‹blank› selected. */
+  function uUseSentence(pattern, li) {
+    const start = uPosOf(li), line = uLines()[li] || '', indent = line.match(/^\s*/)[0];
+    uTa.focus();
+    uTa.setSelectionRange(start, start + line.length);
+    document.execCommand('insertText', false, indent + pattern);
+    const at = uTa.value.indexOf('‹', start);
+    const end = at >= 0 ? uTa.value.indexOf('›', at) : -1;
+    if (at >= 0 && end > at && at < start + indent.length + pattern.length) uTa.setSelectionRange(at, end + 1);
+    uTools();
   }
 
   /* The code in the selection into sentences. The green parts in it are sentences already and stay as they are,
