@@ -20,8 +20,8 @@ const DOCSTRINGS = [
   ['a module docstring', '"""Usage:\n    tool.py <file>\n"""\nimport sys\n', /^description: Usage:\ndescription:     tool\.py <file>\ndescription:$/m],
   ['a tool kept as python: lines, with a docstring', 'def f(item):\n    """Doc with Args:\n\n    Args:\n        item: the thing\n    """\n    return item\n', /^    python:         item: the thing$/m],
   ['a docstring the sentences can\'t hold', 'def g():\n    r"""Raw \\d and\ttab """\n    return 1\n', /^    python: 'Raw \\\\d and\\ttab '$/m],
-  // "add … to …" / "remove … from …" with those words in the value: kept as python:
-  ['a value that says "to" or "from"', 'import random\nnums = []\nnums.append(random.randint(1, 6))\nnums.remove(random.choice(nums))\nnames = []\nnames.append("Walk to the shop")\n', /^python: nums\.append\(random\.randint\(1, 6\)\)\npython: nums\.remove\(random\.choice\(nums\)\)$/m],
+  // "add … to …" / "remove … from …" with those words in the value: said another way
+  ['a value that says "to" or "from"', 'import random\nnums = []\nnums.append(random.randint(1, 6))\nnums.remove(random.choice(nums))\nnames = []\nnames.append("Walk to the shop")\n', /^run nums\.append with random number from 1 to 6\ntake random item from nums out of nums$/m],
   ['a docstring above a global', 'score = 0\ndef bump():\n    """Adds one."""\n    global score\n    score += 1\n', /^    description: Adds one\.\n    use the shared score$/m],
 ];
 test('docstrings and tricky values come back exactly', () => {

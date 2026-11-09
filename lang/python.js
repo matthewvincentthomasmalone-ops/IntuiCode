@@ -14,7 +14,7 @@
 
   const PY_KEYWORDS = new Set(['False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield']);
   const BUILTINS = new Set(['print', 'input', 'len', 'int', 'float', 'str', 'bool', 'list', 'dict', 'range', 'sum', 'min', 'max', 'abs', 'round', 'sorted', 'reversed', 'enumerate', 'zip', 'type', 'isinstance', 'any', 'all', 'set', 'tuple', 'map', 'filter', 'chr', 'ord', 'pow', 'divmod']);
-  const MODULES = new Set(['random', 'math', 'time', 'sys', 'string', 'datetime']);
+  const MODULES = new Set(['random', 'math', 'time', 'sys', 'string', 'datetime', 'os', 'json']);
   const WORD_NUMBERS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 };
   // "twenty one", "forty-two": one number, not two
   const TENS_UNITS = /\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/gi;
@@ -156,9 +156,10 @@
 
   // Brackets with brackets inside, up to 4 deep (a regular expression can't count further).
   const nest = (o, c) => { let s = `[^${o}${c}]*`; for (let i = 0; i < 3; i++) s = `(?:[^${o}${c}]|${o}${s}${c})*`; return o + s + c; };
-  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]');
-  // An operand: a protected string, a number, a name or a bracketed group, then any .names, calls and indexes.
-  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|${PAREN}|${SQUARE})(?:\.[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
+  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]'), CURLY = nest('\\{', '\\}');
+  // An operand: a protected string, a number, a name or a bracketed group ({…} too: a dictionary or set), then any
+  // .names, calls and indexes.
+  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|${PAREN}|${SQUARE}|${CURLY})(?:\.[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
   // "\b" can't sit before quoted text (⟦0⟧), so operands use a look-behind instead.
   const R = (src) => new RegExp(src.replace(/\\b\(OPD\)/g, '(?<![\\w.])(OPD)').replace(/OPD/g, OPD), 'gi');
 
@@ -166,6 +167,15 @@
     // Looking things up
     { re: R(String.raw`\bfirst (?:item|one|thing) (?:of|in|from) (OPD)`), to: '$1[0]', note: 'Python counts positions from 0, so the first item is `[0]`.' },
     { re: R(String.raw`\blast (?:item|one|thing) (?:of|in|from) (OPD)`), to: '$1[-1]', note: '`[-1]` counts from the end: it is always the last item.' },
+    // an item that may not be there: .get gives the value to use instead (or None) rather than stopping with an error
+    { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) (?:of|in|from) (OPD) or (OPD) if there (?:isn't|is not) one\b`), to: '$2.get($1, $3)', note: '`.get(key, other)` gives the item under that key, or `other` when there is none (square brackets would stop with an error).' },
+    { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) (?:of|in|from) (OPD) if there is one\b`), to: '$2.get($1)', note: '`.get(key)` gives the item under that key, or `None` when there is none.' },
+    { re: R(String.raw`\blast item taken out of (OPD)`), to: '$1.pop()', note: '`.pop()` takes the last item out of the list and gives it back.' },
+    { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) taken out of (OPD)`), to: '$2.pop($1)', note: '`.pop(n)` takes that item out and gives it back.' },
+    { re: R(String.raw`\benvironment variable (OPD) or (OPD) if there (?:isn't|is not) one\b`), to: 'os.getenv($1, $2)', use: 'os', note: '`os.getenv(name, other)` reads a setting from the computer\'s environment, or gives `other` when it isn\'t set.' },
+    { re: R(String.raw`\benvironment variable (OPD)`), to: 'os.getenv($1)', use: 'os', note: '`os.getenv(name)` reads a setting from the computer\'s environment (`None` when it isn\'t set).' },
+    { re: R(String.raw`\bthere is no file or folder at (OPD)`), to: 'not os.path.exists($1)', use: 'os', note: '`os.path.exists` checks whether a file or folder is there.' },
+    { re: R(String.raw`\bthere is a file or folder at (OPD)`), to: 'os.path.exists($1)', use: 'os', note: '`os.path.exists` checks whether a file or folder is there.' },
     { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) (?:of|in|from) (OPD)`), to: '$2[$1]', note: 'Square brackets pick one item. For lists, Python counts from 0: item 0 is the first one.' },
     // Functions written as words, e.g. "length of x"
     { re: R(String.raw`\b(?:length|size) of (OPD)`), to: 'len($1)', repeat: true },
@@ -178,13 +188,38 @@
     // (postfix: these follow their value, so after a sum they could mean the last value or the whole sum)
     { re: R(String.raw`\b(OPD) rounded to (OPD) (?:decimal )?places?`), to: 'round($1, $2)', postfix: true },
     { re: R(String.raw`\b(OPD) rounded\b`), to: 'round($1)', postfix: true },
+    { re: R(String.raw`\b(OPD) sorted by (OPD) biggest first\b`), to: 'sorted($1, key=$2, reverse=True)', note: '`sorted(…, key=…)` orders the items by what the key tool gives for each; `reverse=True` puts the biggest first.', postfix: true },
+    { re: R(String.raw`\b(OPD) sorted by (OPD)`), to: 'sorted($1, key=$2)', note: '`sorted(…, key=…)` orders the items by what the key tool gives for each one.', postfix: true },
+    { re: R(String.raw`\b(OPD) sorted biggest first\b`), to: 'sorted($1, reverse=True)', note: '`reverse=True` puts the biggest first.', postfix: true },
     { re: R(String.raw`\bsorted (OPD)`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.' },
     { re: R(String.raw`\b(OPD) sorted\b(?!\()`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.', postfix: true },
+    // JSON: text that holds data (lists, dictionaries, numbers…), as web APIs and settings files use
+    { re: R(String.raw`\b(OPD) as JSON text\b`), to: 'json.dumps($1)', use: 'json', note: '`json.dumps()` writes the value as JSON text.', postfix: true },
+    { re: R(String.raw`\b(OPD) read as JSON\b`), to: 'json.loads($1)', use: 'json', note: '`json.loads()` reads JSON text into lists, dictionaries, numbers and text.', postfix: true },
+    { re: R(String.raw`\bJSON read from (OPD)`), to: 'json.load($1)', use: 'json', note: '`json.load()` reads the JSON in an open file.' },
+    { re: R(String.raw`\b(OPD) as an? JSON (?:reply|response)\b`), to: 'jsonify($1)', note: "`jsonify()` (Flask's) turns the value into a JSON reply for the web browser or app that asked.", postfix: true },
+    { re: R(String.raw`\bJSON sent with (OPD)`), to: '$1.get_json()', note: '`.get_json()` reads the JSON data sent with a web request.' },
     { re: R(String.raw`\b(OPD) as (?:a )?(?:whole )?number\b`), to: 'int($1)', note: '`int()` turns text like "42" into the whole number 42. It stops with an error if the text is not a number.', postfix: true },
     { re: R(String.raw`\b(OPD) as (?:a )?decimal(?: number)?\b`), to: 'float($1)', note: '`float()` turns text into a decimal number, like 3.5.', postfix: true },
     { re: R(String.raw`\b(OPD) as text\b`), to: 'str($1)', note: '`str()` turns a value into text, so it can be joined to other text.', postfix: true },
     { re: R(String.raw`\b(OPD) in (?:capitals|capital letters|uppercase|upper case)\b`), to: '$1.upper()', postfix: true },
     { re: R(String.raw`\b(OPD) in (?:lowercase|lower case|small letters)\b`), to: '$1.lower()', postfix: true },
+    // Text's own tools, in words
+    { re: R(String.raw`\b(OPD) trimmed\b`), to: '$1.strip()', note: '`.strip()` takes the spaces (and tabs and new lines) off both ends of the text.', postfix: true },
+    { re: R(String.raw`\b(OPD) split into words\b`), to: '$1.split()', note: '`.split()` cuts the text at every run of spaces and gives back a list of the words.', postfix: true },
+    { re: R(String.raw`\b(OPD) split at (OPD)`), to: '$1.split($2)', note: '`.split(x)` cuts the text at every x and gives back a list of the pieces.', postfix: true },
+    { re: R(String.raw`\b(OPD) joined by (OPD)`), to: '$2.join($1)', note: '`text.join(items)` puts the items together into one text, with that text between each.', postfix: true },
+    { re: R(String.raw`\b(OPD) with (OPD) replaced by (OPD)`), to: '$1.replace($2, $3)', note: '`.replace(a, b)` gives a copy of the text with every a swapped for b.', postfix: true },
+    { re: R(String.raw`\b(OPD) (?:does not|doesn't) start with (OPD)`), to: 'not $1.startswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) starts with (OPD)`), to: '$1.startswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) (?:does not|doesn't) end with (OPD)`), to: 'not $1.endswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) ends with (OPD)`), to: '$1.endswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) is not all letters or digits\b`), to: 'not $1.isalnum()', postfix: true },
+    { re: R(String.raw`\b(OPD) is all letters or digits\b`), to: '$1.isalnum()', note: '`.isalnum()` is true when the text has only letters and digits (and isn\'t empty).', postfix: true },
+    { re: R(String.raw`\b(OPD) is not all letters\b`), to: 'not $1.isalpha()', postfix: true },
+    { re: R(String.raw`\b(OPD) is all letters\b`), to: '$1.isalpha()', note: '`.isalpha()` is true when the text has only letters (and isn\'t empty).', postfix: true },
+    { re: R(String.raw`\b(OPD) is not all digits\b`), to: 'not $1.isdigit()', postfix: true },
+    { re: R(String.raw`\b(OPD) is all digits\b`), to: '$1.isdigit()', note: '`.isdigit()` is true when the text has only digits (and isn\'t empty).', postfix: true },
     { re: R(String.raw`\bpairs (?:of|in) (OPD)`), to: '$1.items()', note: '`.items()` gives the key and value of each entry in a dictionary, as pairs.' },
     // Randomness
     { re: R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`), to: 'random.randint($1, $2)', use: 'random', range: true, note: '`random.randint(a, b)` can give back a or b, and anything in between. The `random` module is imported for you.' },
@@ -222,12 +257,14 @@
     // Plain values
     { re: /\ban empty list\b|\bempty list\b/gi, to: '[]' },
     { re: /\ban empty dictionary\b|\bempty dictionary\b/gi, to: '{}' },
+    { re: /\ban empty set\b|\bempty set\b/gi, to: 'set()', note: '`set()` is an empty set: a collection that keeps each value once, in no order. (`{}` would be an empty dictionary.)' },
     { re: /\bempty text\b/gi, to: '""' },
-    { re: /\b(?:yes|true)\b/gi, to: 'True' },
-    { re: /\b(?:no|false)\b/gi, to: 'False' },
-    { re: /\b(?:nothing|none)\b/gi, to: 'None' },
+    // (never a .name: ast.Not and obj.none are names of their own)
+    { re: /(?<!\.)\b(?:yes|true)\b/gi, to: 'True' },
+    { re: /(?<!\.)\b(?:no|false)\b/gi, to: 'False' },
+    { re: /(?<!\.)\b(?:nothing|none)\b/gi, to: 'None' },
     { re: /\botherwise\b/gi, to: ' else ', note: '`a if condition else b` picks one of two values in a single line.' },
-    { re: /\b(and|or|not)\b/gi, to: (m) => m.toLowerCase() },
+    { re: /(?<!\.)\b(and|or|not)\b/gi, to: (m) => m.toLowerCase() },
   ];
   // Rules ending in an operand, like "length of x": what follows it must not belong to it (see tExpr).
   for (const r of EXPR_RULES) r.endsInOperand = r.re.source.endsWith(`(${OPD})`);
@@ -307,7 +344,7 @@
     if (slot) { x.err(`Fill in the ${slot[0]} slot.`); return '_'; }
     // Sentence-style names with spaces become snake_case; single words keep their case (API_KEY stays API_KEY).
     let py = /\s/.test(t) ? t.toLowerCase().replace(/[\s\-]+/g, '_') : t.replace(/-/g, '_');
-    const same = x.syms.get(py);
+    const same = (BUILTINS.has(py) || ALWAYS_KNOWN.has(py)) && !x.syms.map.has(py) ? undefined : x.syms.get(py);
     if (same && same.py !== py) {
       if (!opts.define) py = same.py;
       else if (same.kind !== 'class' && same.kind !== 'function') x.warn(`${code(py)} and ${code(same.py)} are different names in Python, because capital letters matter.`);
@@ -336,7 +373,14 @@
 
   /* Where a name is set: a tool ("fn:file/name"), or the top of a file ("mod:file"). What a name holds is
      kept per place, so a list in Main and some text in a tool, both called result, stay what they are. */
-  const scopeKey = (x) => (x.fn ? `fn:${x.file}/${x.fn.name}` : `mod:${x.file}`);
+  const scopeKey = (x) => {
+    // the innermost tool (a define, or a python: def), else the class (its tools and shared values aren't values
+    // at the top of the file), else the top of the file
+    const e = (x.stack || []).slice().reverse().find(e => e.fn || e.pyfn || e.type === 'class');
+    if (!e) return x.fn ? `fn:${x.file}/${x.fn.name}` : `mod:${x.file}`;
+    if (e.fn || e.pyfn) return `fn:${x.file}/${e.fn ? e.fn.name : e.pyfn}`;
+    return `cls:${x.file}/${e.cls || e.head}`;
+  };
   function declare(x, py, display, kind, extra = {}) {
     const env = x.env;
     const where = extra.where || scopeKey(x);
@@ -429,6 +473,55 @@
     }
   }
 
+  /* Comprehensions in words. A value (or the inside of a pair of brackets) that reads
+       [a list of | a set of | a dictionary of] X for each V in Y [if C]   -> [X for V in Y if C], {…}, or (… for …)
+       X for every V in Y [if C] / X for any V in Y [if C]                 -> all(X for V in Y …) / any(…)
+     is written as Python's own. The inside of each pair of brackets is read first, so one can sit inside another. */
+  function comprehensions(q, x) {
+    const OPEN = '([{', CLOSE = ')]}';
+    const closeOf = (s, i) => { for (let d = 0, j = i; j < s.length; j++) { if (OPEN.includes(s[j])) d++; else if (CLOSE.includes(s[j]) && --d === 0) return j; } return -1; };
+    // where a word sits outside every bracket
+    const top = (s, re) => {
+      const g = new RegExp(re.source, re.flags.replace('g', '') + 'g');
+      for (const m of s.matchAll(g)) {
+        let d = 0;
+        for (let j = 0; j < m.index; j++) { if (OPEN.includes(s[j])) d++; else if (CLOSE.includes(s[j])) d--; }
+        if (!d) return m;
+      }
+      return null;
+    };
+    const one = (seg, open) => {
+      const f = top(seg, / for (each|every|any) /i);
+      if (!f) return seg;
+      let lead = seg.slice(0, f.index).trim(), kind = f[1].toLowerCase(), after = seg.slice(f.index + f[0].length);
+      const v = after.match(/^([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+in\s+/i);
+      if (!v || !lead) return seg;
+      after = after.slice(v[0].length);
+      const cond = top(after, / if /i);
+      const from = (cond ? after.slice(0, cond.index) : after).trim(), test = cond ? after.slice(cond.index + cond[0].length).trim() : '';
+      const made = kind === 'each' && lead.match(/^(?:an?\s+)?(list|set|dictionary)\s+of\s+/i);
+      if (made) lead = lead.slice(made[0].length);
+      const body = `${lead} for ${v[1].replace(/\s*,\s*/g, ', ')} in ${from}${test ? ' if ' + test : ''}`;
+      x.note('A list (or set, dictionary) made in one go, from each item of another: Python calls this a comprehension.');
+      if (kind !== 'each') return `${kind === 'every' ? 'all' : 'any'}(${body})`;
+      if (made) return made[1].toLowerCase() === 'list' ? `[${body}]` : `{${body}}`;
+      return open ? body : `(${body})`;   // inside brackets already, or a generator in brackets of its own
+    };
+    const walk = (seg, open) => {
+      let out = '';
+      for (let i = 0; i < seg.length;) {
+        if (OPEN.includes(seg[i])) {
+          const j = closeOf(seg, i);
+          if (j < 0) { out += seg.slice(i); break; }
+          out += seg[i] + walk(seg.slice(i + 1, j), seg[i]) + seg[j];
+          i = j + 1;
+        } else out += seg[i++];
+      }
+      return one(out, open);
+    };
+    return walk(q, '');
+  }
+
   function tExpr(src, x, opts = {}) {
     let s = String(src == null ? '' : src).trim();
     if (!s) { x.err('Something is missing here: a value or a condition.'); return 'None'; }
@@ -457,6 +550,8 @@
 
     // 3. Filler words ("my score" is score, as when it was set).
     q = q.replace(/\bthe\b/gi, ' ').replace(/\bmy\s+(?=[A-Za-z_])/gi, ' ').replace(/\s+/g, ' ').trim();
+    // 3b. "a list of x times 2 for each x in xs": a list (set, dictionary) made in one go: Python's comprehensions
+    if (/\bfor (?:each|every|any) /i.test(q)) q = comprehensions(q, x);
 
     // 4. A single = in a condition almost always means "compare" (but not inside brackets: max(xs, key=abs)).
     if (opts.cond && /(^|[^=!<>])=(?!=)/.test(q)) {
@@ -548,7 +643,8 @@
       if (id === '_' && x.info.errs.some(e => e.startsWith('Fill in the'))) return id; // an unfilled ‹slot›, already reported
       if (/^\s*=(?!=)/.test(whole.slice(off + m.length))) return id; // keyword argument, e.g. end=""
       const low = id.toLowerCase();
-      const s = x.syms.get(id);
+      // Python's own tools are found by their exact spelling only: max is never MAX = 10
+      const s = (BUILTINS.has(id) || ALWAYS_KNOWN.has(id)) && !x.syms.map.has(id) ? undefined : x.syms.get(id);
       if (s && !(s.kind === 'class' && s.py !== id)) {   // (a class isn't found by another spelling: point is not Point)
         if (x.pass === 2 && s.scope === 'module' && FILE_ORDER[s.file] > FILE_ORDER[x.file]) {
           x.warn(`${code(s.py)} is set in ${sectionTitle(s.file)}, which this section can't see. Set it here, or pass it into the tool as an input.`);
@@ -579,6 +675,7 @@
     // 7. Tidy spacing. A lone = left now is a keyword argument, like end="".
     q = q.replace(/\s*(?<![=!<>])=(?!=)\s*/g, '=');
     q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').replace(/⟧\s+\.(?=[A-Za-z_])/g, '⟧.').trim();   // ", ".join(x) keeps its dot next to the text
+    q = q.replace(/\{\s+(?=⟦)/g, '{').replace(/⟧\s+([:}])/g, '⟧$1');   // {"ok": True}, not { "ok" : True}
 
     // 8. Put the text back. Text with {name} inside becomes an f-string; {{ and }} are braces.
     q = q.replace(/⟦(\d+)⟧/g, (m, i, off, all) => {
@@ -658,11 +755,22 @@
   }
 
   function doSet(nameRaw, valueRaw, x, verb) {
-    const tgt = setTarget(nameRaw, x);
     let value;
     const call = qmatch(valueRaw, /^(?:the\s+)?(?:result|answer|output) of\s+(.+?)(?:\s+(?:with|using|on)\s+(.+))?$/i);
+    // "a new Flask with __name__": an object made from a class (Python writes it as a call)
+    const made = !call && qmatch(valueRaw, /^(?:an?\s+)?new\s+([A-Za-z_][\w.]*)(?:\s+(?:with|using|from)\s+(.+))?$/i);
     if (call) value = callExpr(call[1], call[2], x);
+    else if (made) { value = callExpr(made[1], made[2], x); x.note(`Makes a new ${code(made[1])} object. Python writes this as a call, like running a tool.`); }
     else value = tExpr(valueRaw, x);
+    // "set count, sides to …": several names at once, one for each value (unpacking)
+    const many = splitItems(nameRaw, false);
+    if (many.length > 1 && /,/.test(mask(nameRaw)) && many.every(n => /^[A-Za-z_][\w ]*$/.test(n.trim()))) {
+      const pys = many.map(n => toName(n, x, { define: true }));
+      pys.forEach((py, i) => { declare(x, py, many[i].trim(), 'value'); assigned(x, py); });
+      x.note(`The value holds ${pys.length} values, so they are unpacked: one into each of ${pys.map(code).join(', ')}.`);
+      return { py: `${pys.join(', ')} = ${value}` };
+    }
+    const tgt = setTarget(nameRaw, x);
     if (tgt) {
       // what the items put in a dictionary or list hold, so "add 1 to totals[kind]" knows they're numbers
       const cs = tgt.coll && x.syms.get(tgt.coll);
@@ -740,8 +848,8 @@
       // inputs with a value to use when none is given (h=1) can be left out when the tool is run
       // (*args takes any number, so then the inputs aren't counted)
       declare(x, d[1], d[1], 'function', ps.some(p => p.startsWith('*')) ? {} : { params: ps.map(p => p.replace(/[:=].*$/, '').trim()), required: ps.filter(p => !/=/.test(p)).length });
-      // its inputs are names inside it, for the sentences under it
-      for (const p of ps) { const nm = p.replace(/^\*{1,2}/, '').replace(/[:=].*$/, '').trim(); if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, 'value'); }
+      // its inputs are names inside it, for the sentences under it (the tool's own: not values at the top of the file)
+      for (const p of ps) { const nm = p.replace(/^\*{1,2}/, '').replace(/[:=].*$/, '').trim(); if (/^[A-Za-z_]\w*$/.test(nm)) declare(x, nm, nm, 'value', { scope: 'local', where: `fn:${x.file}/${d[1]}` }); }
     }
     // names a block line makes: for x in …, with … as f, except E as e
     const made = py.match(/^\s*(?:async\s+)?for\s+(.+?)\s+in\s/) || py.match(/\bas\s+([A-Za-z_]\w*)\s*:\s*(?:#.*)?$/);
@@ -751,7 +859,7 @@
     const opens = !strOpen && /:\s*(#.*)?$/.test(py);
     const kw = (py.match(/^\s*(if|elif|else|for|while|def|async def|class|try|except|finally|with)\b/) || [])[1];
     const tag = { if: 'if', elif: 'elif', else: 'rawelse', try: 'try', except: 'except', finally: 'finally' }[kw];
-    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag, strOpen, comment: /^\s*(#|$)/.test(py) };
+    return { py, open: opens ? (d || /def$/.test(kw || '') ? 'def' : kw === 'for' || kw === 'while' ? 'loop' : kw === 'class' ? 'class' : 'block') : null, tag, strOpen, comment: /^\s*(#|$)/.test(py), pyfn: d && opens ? d[1] : undefined, cls: cls && opens ? cls[1] : undefined };
   });
 
   rule(/^(?:note|comment)\s*:\s*(.*)$|^#\s?(.*)$/i, (m, x) => {
@@ -765,6 +873,28 @@
     return { py: '"""' + m[1] + '"""', desc: m[1] };
   });
 
+  /* Imports in words: "bring in os and sys", "bring in tkinter as tk", "bring in Flask and jsonify from flask",
+     "bring in everything from math" (import *), "bring in views from this package" (from . import views). */
+  rule(/^bring in\s+(.+?)(?:\s+from\s+(this package|\.+[A-Za-z_][\w.]*|\.{2,}|[A-Za-z_][\w.]*))?$/i, (m, x) => {
+    const from = m[2] && (/^this package$/i.test(m[2]) ? '.' : m[2]);
+    const items = splitItems(m[1]);
+    if (from && items.length === 1 && /^everything$/i.test(items[0])) {
+      x.note(`\`from ${from} import *\` brings in every public name ${code(from)} has, so they can be used without ${code(from + '.')} in front.`);
+      return { py: `from ${from} import *` };
+    }
+    const parts = [];
+    for (const it of items) {
+      const p = it.match(from ? /^([A-Za-z_]\w*)(?:\s+as\s+([A-Za-z_]\w*))?$/ : /^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?:\s+as\s+([A-Za-z_]\w*))?$/);
+      if (!p || PY_KEYWORDS.has(p[1]) || (p[2] && PY_KEYWORDS.has(p[2]))) { x.err(`"${it}" can't be brought in: say a ${from ? 'name' : 'module'}, like ${from ? '"bring in sqrt from math"' : '"bring in random"'}, with "as" for another name.`); continue; }
+      const bound = p[2] || (from ? p[1] : p[1].split('.')[0]);
+      declare(x, bound, bound, from ? 'value' : 'module');
+      parts.push(p[1] + (p[2] ? ' as ' + p[2] : ''));
+    }
+    if (!parts.length) return { py: '# ??? ' + m.input };
+    x.note(from ? `\`from ${from} import …\` brings in ${parts.map(code).join(', ')} from ${code(from)}, so ${parts.length > 1 ? 'they' : 'it'} can be used by name.`
+      : `\`import\` loads ${parts.map(code).join(', ')}, so ${parts.length > 1 ? 'their' : 'its'} tools can be used${parts.some(p => / as /.test(p)) ? ' (by the name after "as")' : ''}.`);
+    return { py: from ? `from ${from} import ${parts.join(', ')}` : `import ${parts.join(', ')}` };
+  });
   rule(/^(?:use|import)\s+(?:the\s+)?([A-Za-z_]\w*)(\s+(?:module|library|toolkit))?$/i, (m, x) => {
     const mod = m[1].toLowerCase();
     if (!MODULES.has(mod) && !m[2] && !/^import/i.test(m[0])) return null; // "use hint" means run a tool
@@ -798,7 +928,25 @@
     declare(x, m[1], m[1], 'class');
     const bases = m[2] ? splitItems(m[2]).map(b => tExpr(b, x)) : [];
     x.note(`A class is a blueprint for objects. Each object made from ${code(m[1])} keeps its own values (written ${code('self.something')}) and can use the tools defined inside it.` + (bases.length ? ` It builds on ${bases.map(code).join(', ')}.` : ''));
-    return { py: `class ${m[1]}${bases.length ? `(${bases.join(', ')})` : ''}:`, open: 'class' };
+    return { py: `class ${m[1]}${bases.length ? `(${bases.join(', ')})` : ''}:`, open: 'class', cls: m[1] };
+  });
+  // the setting-up tool of a class: "when a new Account is made with owner, balance=0" -> def __init__(self, owner, balance=0):
+  rule(/^when\s+an?\s+new\s+([A-Za-z_]\w*)\s+is\s+(?:made|created)(?:\s+(?:with|from|using)\s+(.+))?$/i, (m, x) => {
+    const here = x.stack[x.stack.length - 1] || {};
+    if (here.type !== 'class') x.err(`"when a new ${m[1]} is made" sets up each new object of a class, so it goes right inside "define class ${m[1]}".`);
+    else if (here.cls && here.cls !== m[1]) x.err(`This is inside the class ${code(here.cls)}, so it's "when a new ${here.cls} is made".`);
+    const parts = m[2] ? splitItems(m[2]) : [];
+    const params = ['self'], shown = ['self'];
+    for (const p of parts) {
+      const d = p.match(/^([A-Za-z_]\w*)\s*(?::\s*(.+?))?\s*(?:=\s*(.+))?$/) || [null, p];
+      const pn = toName(d[1], x, { define: true, param: true });
+      params.push(pn);
+      shown.push(pn + (d[2] ? `: ${tExpr(d[2], x)}` : '') + (d[3] ? (d[2] ? ' = ' : '=') + tExpr(d[3], x) : ''));
+    }
+    declare(x, '__init__', '__init__', 'function', { params, required: 1 + parts.filter(p => !/=(?!=)/.test(p)).length });
+    for (const p of params) declare(x, p, p, 'value', { scope: 'local', where: `fn:${x.file}/__init__` });
+    x.note('`__init__` sets up each new object as it is made: Python runs it when you make one, with the inputs given then. `self` is the new object itself.');
+    return { py: `def __init__(${shown.join(', ')}):`, open: 'def', fn: { name: '__init__', params } };
   });
   /* Kinds of value in sentences -> Python types (as cpp_write.js does for C++). Only in lower case, so
      Decimal (from the decimal module) stays Decimal, and a class of the program's own keeps its name. */
@@ -862,11 +1010,50 @@
   });
 
   // --- Files and other things that need closing ----------------------------
-  rule(/^open\s+(?:the\s+)?(?:file\s+)?(.+?)(?:\s+for\s+(reading|writing|adding|appending))?\s+as\s+([A-Za-z_]\w*)$/i, (m, x) => {
+  rule(/^open\s+(?:the\s+)?(?:file\s+)?(.+?)(?:\s+for\s+(reading|writing|adding|appending))?(?:\s+with\s+(.+?))?\s+as\s+([A-Za-z_]\w*)$/i, (m, x) => {
     const mode = { reading: 'r', writing: 'w', adding: 'a', appending: 'a' }[(m[2] || '').toLowerCase()];
-    declare(x, m[3], m[3], 'value');
-    x.note(`\`with open(…)\` opens the file and closes it automatically when the indented lines finish.` + (mode === 'w' ? ' Writing replaces whatever was in the file.' : mode === 'a' ? ' Adding writes to the end and keeps what was there.' : ''));
-    return { py: `with open(${tExpr(m[1], x)}${mode ? `, "${mode}"` : ''}) as ${m[3]}:`, open: 'block' };
+    declare(x, m[4], m[4], 'value');
+    const extra = m[3] ? splitItems(m[3]).map(a => tExpr(a, x)) : [];
+    x.note(`\`with open(…)\` opens the file and closes it automatically when the indented lines finish.` + (mode === 'w' ? ' Writing replaces whatever was in the file.' : mode === 'a' ? ' Adding writes to the end and keeps what was there.' : '') + (extra.length ? ` ${extra.map(code).join(', ')} ${extra.length > 1 ? 'are' : 'is'} given to \`open\` as well.` : ''));
+    return { py: `with open(${[tExpr(m[1], x), ...(mode ? [`"${mode}"`] : []), ...extra].join(', ')}) as ${m[4]}:`, open: 'block' };
+  });
+  // files, JSON and databases
+  rule(/^save\s+(.+?)\s+as\s+JSON\s+(?:in|into)\s+(.+?)(?:\s+with\s+(.+))?$/i, (m, x) => {
+    x.use('json');
+    const extra = m[3] ? splitItems(m[3]).map(a => tExpr(a, x)) : [];
+    x.note('`json.dump(value, file)` writes the value into the open file as JSON text.');
+    return { py: `json.dump(${[tExpr(m[1], x), tExpr(m[2], x), ...extra].join(', ')})` };
+  });
+  rule(/^write\s+(.+?)\s+into\s+([A-Za-z_][\w.]*)$/i, (m, x) => {
+    x.note('`.write()` writes the text into the open file (or anything else that can be written to). It adds no new line by itself.');
+    return { py: `${m[2]}.write(${tExpr(m[1], x)})` };
+  });
+  rule(/^save the changes (?:to|in) ([A-Za-z_][\w.]*)$/i, (m, x) => {
+    x.note('`.commit()` makes the changes since the last commit permanent in the database.');
+    return { py: `${m[1]}.commit()` };
+  });
+  rule(/^run (?:the )?SQL\s+(.+?)\s+on\s+([A-Za-z_][\w.]*)(?:\s+with\s+(the\s+values?\s+)?(.+))?$/i, (m, x) => {
+    const sql = tExpr(m[1], x);
+    let rest = '';
+    if (m[4]) {
+      const vals = splitItems(m[4]).map(a => tExpr(a, x));
+      rest = m[3] ? `, (${vals.join(', ')}${vals.length === 1 ? ',' : ''})` : `, ${vals.join(', ')}`;
+    }
+    x.note('`.execute()` runs the SQL command on the database.' + (m[3] ? ' The values fill in its ? marks, in order; passed this way they can\'t change the command itself.' : ''));
+    return { py: `${m[2]}.execute(${sql}${rest})` };
+  });
+  /* A window part (tkinter and the like), made and placed in one line:
+     "add a tk.Button saying "Add" to root that runs self.add_task, packed with pady=5"
+       -> tk.Button(root, text="Add", command=self.add_task).pack(pady=5) */
+  rule(/^add an?\s+((?:[A-Za-z_]\w*\.)*[A-Z]\w*)(?:\s+saying\s+(.+?))?\s+to\s+([A-Za-z_][\w.]*)(?:\s+that runs\s+(.+?))?(?:\s+with\s+(.+?))?(?:,?\s+(packed|put in the grid|placed)(?:\s+with\s+(.+))?)?$/i, (m, x) => {
+    const args = [tExpr(m[3], x)];
+    if (m[2]) args.push(`text=${tExpr(m[2], x)}`);
+    if (m[4]) args.push(`command=${tExpr(m[4], x)}`);
+    if (m[5]) args.push(...splitItems(m[5]).map(a => tExpr(a, x)));
+    const how = { packed: 'pack', 'put in the grid': 'grid', placed: 'place' }[(m[6] || 'packed').toLowerCase()];
+    const place = m[7] ? splitItems(m[7]).map(a => tExpr(a, x)) : [];
+    x.note(`Makes a ${code(m[1])} inside ${code(args[0])} and places it with ${code('.' + how + '()')}, all in one line.` + (m[4] ? ` Clicking it runs ${code(tExpr(m[4], x))}.` : ''));
+    return { py: `${callExpr(m[1], null, x).replace(/\(\)$/, '')}(${args.join(', ')}).${how}(${place.join(', ')})` };
   });
   rule(/^(async\s+)?using\s+(.+?)(?:\s+as\s+([A-Za-z_]\w*))?$/i, (m, x) => {
     if (m[3]) declare(x, m[3], m[3], 'value');
@@ -1069,8 +1256,41 @@
     x.note('A dictionary stores values under keys, like a word and its meaning. Add to it with: set item "key" of ' + name + ' to value.');
     return { py: `${name} = {}` };
   });
+  // the list tools with words of their own, whatever the name holds
+  rule(/^add\s+(?:each|every)\s+item\s+(?:of|in|from)\s+(.+?)\s+to\s+(?:the\s+end\s+of\s+)?(.+)$/i, (m, x) => {
+    const target = tExpr(m[2], x);
+    x.note('`.extend()` adds each item of the other list to the end of this one.');
+    return { py: `${target}.extend(${tExpr(m[1], x)})` };
+  });
+  rule(/^add\s+(.+?)\s+to\s+the\s+set\s+(.+)$/i, (m, x) => {
+    const target = tExpr(m[2], x);
+    x.note('`.add()` puts the value into the set. A set keeps each value only once.');
+    return { py: `${target}.add(${tExpr(m[1], x)})` };
+  });
+  rule(/^insert\s+(.+?)\s+(?:into|in)\s+(.+?)\s+at\s+(?:position\s+)?(.+)$/i, (m, x) => {
+    const target = tExpr(m[2], x);
+    x.note('`.insert(position, value)` puts the value in at that position; the ones after it move along. Positions start at 0.');
+    return { py: `${target}.insert(${tExpr(m[3], x)}, ${tExpr(m[1], x)})` };
+  });
+  rule(/^take\s+(?:the\s+)?last\s+item\s+out\s+of\s+(.+)$/i, (m, x) => {
+    x.note('`.pop()` takes the last item out of the list.');
+    return { py: `${tExpr(m[1], x)}.pop()` };
+  });
+  rule(/^take\s+item\s+(\S+)\s+out\s+of\s+(.+)$/i, (m, x) => {
+    x.note('`.pop(n)` takes out the item at that position (or under that key). Positions start at 0.');
+    return { py: `${tExpr(m[2], x)}.pop(${tExpr(m[1], x)})` };
+  });
+  rule(/^take\s+(.+?)\s+out\s+of\s+(.+)$/i, (m, x) => {
+    x.note('`.remove()` takes out the first matching item. If it isn\'t there, Python stops with an error.');
+    return { py: `${tExpr(m[2], x)}.remove(${tExpr(m[1], x)})` };
+  });
   rule(/^(add|append|put)\s+(.+?)\s+(?:to|onto|into)\s+(?:the\s+end\s+of\s+)?(.+)$/i, (m, x) => {
     const target = tExpr(m[3], x);
+    // "append" always puts the value on the end of a list, whatever can be seen of the name
+    if (m[1].toLowerCase() === 'append') {
+      x.note(`"append" puts ${code(tExpr(m[2], x))} on the end of the list with ${code('.append()')}.`);
+      return { py: `${target}.append(${tExpr(m[2], x)})` };
+    }
     const s = x.syms.get(target), own = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(target);   // (an object's value: set in another tool, or by the class it builds on)
     const k = s ? kindHere(x, target) : pickedOut(target) ? itemKind(target, x) : own ? kindHere(x, target) : undefined;
     // "put 0 into count" stores a value; "put "milk" into basket" adds to a list
@@ -1165,6 +1385,10 @@
     x.note('`/=` divides and always leaves a decimal number, even 10 / 2 gives 5.0.');
     return { py: `${t} /= ${tExpr(m[2], x)}` };
   });
+  rule(/^sort\s+(.+?)\s+by\s+(.+?)(\s+(?:backwards|in reverse|biggest first|largest first|highest first|descending))?$/i, (m, x) => {
+    x.note('`.sort(key=…)` puts the list in order of what the key tool gives for each item.' + (m[3] ? ' `reverse=True` puts the biggest first.' : ''));
+    return { py: `${tExpr(m[1], x)}.sort(key=${tExpr(m[2], x)}${m[3] ? ', reverse=True' : ''})` };
+  });
   rule(/^(sort|reverse|shuffle|empty|clear)\s+(.+?)(\s+(?:backwards|in reverse|biggest first|largest first|highest first|descending))?$/i, (m, x) => {
     const verb = m[1].toLowerCase();
     const t = tExpr(m[2], x);
@@ -1193,6 +1417,11 @@
     declare(x, v, m[3], 'value'); assigned(x, v);
     x.note(`Makes a new ${code(m[1])} object and stores it in ${code(v)}. Python writes this as a call, like running a tool.`);
     return { py: `${v} = ${call}` };
+  });
+  // made and not kept: the object does its work as it is made (a window's app, a thread that starts itself…)
+  rule(/^(?:make|create)\s+(?:a\s+)?new\s+([A-Za-z_][\w.]*)(?:\s+(?:with|using|from)\s+(.+))?$/i, (m, x) => {
+    x.note(`Makes a new ${code(m[1])} object without keeping it. Python writes this as a call, like running a tool.`);
+    return { py: callExpr(m[1], m[2], x) };
   });
 
   // --- Storing -------------------------------------------------------------
@@ -1424,7 +1653,7 @@
       let top = stack[stack.length - 1];
       let pushed = false, popped = false, badIndent = false;
       if (pending) {
-        if (ind > top.ind) { stack.push({ ind, type: pending.type, fn: pending.fn, empty: true, head: pending.line, level: stack.length }); pushed = true; }
+        if (ind > top.ind) { stack.push({ ind, type: pending.type, fn: pending.fn, cls: pending.cls, pyfn: pending.pyfn, empty: true, head: pending.line, level: stack.length }); pushed = true; }
         else {
           info[pending.line].errs.push('Nothing is indented under this line. The lines that belong to it need to move right: press Tab at the start of the next line.');
           out.splice(pending.outIdx + 1, 0, { text: ' '.repeat((pending.level + 1) * 4) + 'pass', src: pending.line, extra: true });
@@ -1475,7 +1704,7 @@
       if (res.open) {
         const fn = res.fn ? { ...res.fn, outIdx: out.length - 1, level, line: i, locals: new Set(res.fn.params), globals: new Set() } : null;
         if (fn) fnRecords.push(fn);
-        pending = { line: i, type: res.open, level, outIdx: out.length - 1, fn };
+        pending = { line: i, type: res.open, level, outIdx: out.length - 1, fn, cls: res.cls, pyfn: res.pyfn };
       }
     }
     if (strOpen) info[strOpen.line].errs.push(`The text in triple quotes that starts here isn't closed: end it with ${strOpen.delim}.`);
@@ -1487,8 +1716,14 @@
 
     // Header: standard modules, then the project's own sections.
     const header = [];
+    // a module the file imports itself (import random, import os, sys, import os.path) isn't imported again
+    const imported = new Set();
+    for (const o of out) {
+      const im = o.text.match(/^\s*import\s+([^#]+?)\s*(?:#.*)?$/);
+      if (im) for (const part of im[1].split(',')) { const [name, as] = part.trim().split(/\s+as\s+/); imported.add(as || name.split('.')[0]); }
+    }
     for (const mod of [...env.imports].sort()) {
-      if (/^import /.test(out.find(o => o.text.trim() === 'import ' + mod)?.text || '')) continue;
+      if (imported.has(mod)) continue;
       header.push({ text: `import ${mod}`, src: -1, note: `Loads Python's ${code(mod)} module, because a sentence below uses it.` });
     }
     const order = project.sections.map(s => s.file);
@@ -1563,13 +1798,17 @@
     T('Lists', 'create list ‹name› with ‹a, b, c›', 'name = [a, b, c]', 'Leave off "with …" for an empty list.'),
     T('Lists', 'add ‹value› to ‹list›', 'list.append(value)', 'On a number, "add" increases it instead.', ['tools', 'main']),
     T('Lists', 'remove ‹value› from ‹list›', 'list.remove(value)', 'Or "remove item 0 from list" to remove by position.', ['tools', 'main']),
-    T('Lists', 'sort ‹list›', 'list.sort()', 'Add "biggest first" to reverse the order.', ['tools', 'main']),
+    T('Lists', 'append ‹value› to ‹list›', 'list.append(value)', 'Always puts the value on the end, whatever can be seen of the list.', ['tools', 'main']),
+    T('Lists', 'insert ‹value› into ‹list› at position ‹n›', 'list.insert(n, value)', 'Positions start at 0.', ['tools', 'main']),
+    T('Lists', 'take ‹value› out of ‹list›', 'list.remove(value)', '"take the last item out of ‹list›" is list.pop(); "take item 0 out of ‹list›" is list.pop(0).', ['tools', 'main']),
+    T('Lists', 'set ‹name› to a list of ‹value› for each ‹item› in ‹list›', 'name = [value for item in list]', 'Add "if ‹condition›" at the end to keep only some. "a set of", "a dictionary of k: v" work the same way.', ['settings', 'tools', 'main']),
+    T('Lists', 'sort ‹list›', 'list.sort()', 'Add "biggest first" to reverse the order, "by ‹tool›" to sort by what the tool gives for each item.', ['tools', 'main']),
     T('Lists', 'shuffle ‹list›', 'random.shuffle(list)', '', ['tools', 'main']),
     T('Tools', 'define ‹name› using ‹inputs›', 'def name(inputs):', 'Leave off "using …" if the tool needs no inputs.', ['tools', 'main']),
     T('Tools', 'give back ‹value›', 'return value', 'Only inside a define block.', ['tools']),
     T('Tools', 'description: ‹what it does›', '"""what it does"""', 'The first line under define or define class: help text Python keeps (a docstring). Several lines in a row make one text.', ['tools', 'main']),
     T('Tools', 'run ‹tool› with ‹inputs›', 'tool(inputs)', '', ['tools', 'main']),
-    T('Tools', 'run ‹tool› with ‹inputs› and store in ‹name›', 'name = tool(inputs)', 'Keeps what the tool gives back.', ['tools', 'main']),
+    T('Tools', 'set ‹name› to the result of ‹tool› with ‹inputs›', 'name = tool(inputs)', 'Keeps what the tool gives back. ("run ‹tool› with ‹inputs› and store in ‹name›" says the same.)', ['tools', 'main']),
     T('Dictionaries', 'create dictionary ‹name›', 'name = {}', 'Stores values under keys, like prices of items.'),
     T('Dictionaries', 'set item ‹key› of ‹dictionary› to ‹value›', 'dictionary[key] = value', ''),
     T('Dictionaries', 'for each ‹key›, ‹value› in pairs of ‹dictionary›', 'for key, value in dictionary.items():', 'Goes through every key together with its value.'),
@@ -1577,7 +1816,8 @@
     T('Objects', 'define class ‹Name›', 'class Name:', 'A blueprint for objects. Tools defined inside it take `self` first.', ['tools', 'main']),
     T('Objects', 'define class ‹Name› based on ‹Parent›', 'class Name(Parent):', 'Builds on another class and adds to it.', ['tools', 'main']),
     T('Objects', 'set self.‹value› to ‹value›', 'self.value = value', 'Inside a class: a value each object keeps for itself.', ['tools', 'main']),
-    T('Objects', 'make a new ‹Class› with ‹inputs› and store in ‹name›', 'name = Class(inputs)', 'Creates an object from a class.', ['tools', 'main']),
+    T('Objects', 'set ‹name› to a new ‹Class› with ‹inputs›', 'name = Class(inputs)', 'Creates an object from a class. ("make a new ‹Class› with ‹inputs› and store in ‹name›" says the same.)', ['tools', 'main']),
+    T('Objects', 'when a new ‹Class› is made with ‹inputs›', 'def __init__(self, inputs):', 'Inside "define class": the steps that set up each new object. Its own values are self.something.', ['tools', 'main']),
     T('Objects', 'run ‹object›.‹tool› with ‹inputs›', 'object.tool(inputs)', 'Runs a tool that belongs to an object or module, e.g. run conn.commit.', ['tools', 'main']),
     T('Objects', 'field ‹name›: ‹type›', 'name: type', 'Inside a data class: a value every object has. The type can be whole number, decimal, text, yes/no or a Python type.', ['tools', 'main']),
     T('Errors', 'try', 'try:', 'Indent the lines that might fail under it.', ['tools', 'main']),
@@ -1588,11 +1828,17 @@
     T('Files', 'open the file ‹path› as ‹f›', 'with open(path) as f:', 'Reads the file. The file closes itself after the indented lines.', ['tools', 'main']),
     T('Files', 'open the file ‹path› for writing as ‹f›', 'with open(path, "w") as f:', 'Replaces what was in the file. Use "for adding" to add to the end.', ['tools', 'main']),
     T('Files', 'using ‹something› as ‹name›', 'with something as name:', 'Sets something up and tidies it away afterwards.', ['tools', 'main']),
+    T('Files', 'write ‹text› into ‹f›', 'f.write(text)', 'Writes into a file opened for writing. No new line is added.', ['tools', 'main']),
+    T('Files', 'save ‹value› as JSON in ‹f›', 'json.dump(value, f)', 'Writes lists, dictionaries, numbers and text into the file as JSON. Read it back with "the JSON read from ‹f›".', ['tools', 'main']),
+    T('Files', 'run the SQL "‹command›" on ‹connection› with the values ‹a, b›', 'connection.execute("command", (a, b))', 'The values fill in the command\'s ? marks, in order. Then "save the changes to ‹connection›" (commit).', ['tools', 'main']),
+    T('Program', 'bring in ‹module›', 'import module', 'Several at once: "bring in os and sys". Another name: "bring in tkinter as tk".'),
+    T('Program', 'bring in ‹name› from ‹module›', 'from module import name', '"bring in everything from ‹module›" is import *.'),
     T('Program', 'if this file is run directly', 'if __name__ == "__main__":', 'The starting point of a program made of several files.', ['main']),
     T('Program', 'when ‹app› gets ‹GET› at "‹/path›"', '@app.route("/path", methods=["GET"])', 'A Flask web route. Put "define …" on the next line.', ['tools', 'main']),
     T('Program', 'when ‹app› handles ‹GET› at "‹/path›"', '@app.get("/path")', 'A FastAPI (or Flask 2) web route. Put "define …" on the next line.', ['tools', 'main']),
     T('Program', 'decorate with ‹decorator›', '@decorator', 'Adds behaviour to the next tool or class.', ['tools', 'main']),
     T('Program', 'use the shared ‹name›', 'global name', 'Inside a tool: change a value that lives outside it.', ['tools']),
+    T('Other', 'add a ‹tk.Button› saying "‹text›" to ‹window› that runs ‹tool›', 'tk.Button(window, text="text", command=tool).pack()', 'A window part (tkinter), made and placed in one line. Add ", packed with pady=5" or ", put in the grid with row=0 and column=1".', ['tools', 'main']),
     T('Other', 'wait ‹number› seconds', 'time.sleep(number)', '', ['tools', 'main']),
     T('Other', 'do nothing', 'pass', 'A placeholder for a block you will fill in later.', ['tools', 'main']),
     T('Other', 'stop the program', 'sys.exit()', '', ['tools', 'main']),
@@ -1614,6 +1860,14 @@
     ['"Hi {name}"', 'f"Hi {name}"'],
     ['x is nothing', 'x is None'], ['a if check otherwise b', 'a if check else b'], ['pairs of d', 'd.items()'],
     ['wait for fetch(url)', 'await fetch(url)'],
+    ['item "k" of d or 0 if there isn\'t one', 'd.get("k", 0)'], ['item "k" of d if there is one', 'd.get("k")'],
+    ['the result of f with a and b', 'f(a, b)'], ['a new Point with 1 and 2', 'Point(1, 2)'],
+    ['a list of x times 2 for each x in xs', '[x * 2 for x in xs]'], ['x is more than 0 for every x in xs', 'all(x > 0 for x in xs)'],
+    ['x trimmed', 'x.strip()'], ['x split into words', 'x.split()'], ['x split at ","', 'x.split(",")'], ['words joined by " "', '" ".join(words)'],
+    ['x with "a" replaced by "b"', 'x.replace("a", "b")'], ['x starts with "a"', 'x.startswith("a")'], ['x is all letters', 'x.isalpha()'],
+    ['xs sorted by len biggest first', 'sorted(xs, key=len, reverse=True)'], ['the last item taken out of xs', 'xs.pop()'],
+    ['an empty set', 'set()'], ['the environment variable "HOME"', 'os.getenv("HOME")'], ['there is a file or folder at p', 'os.path.exists(p)'],
+    ['the JSON read from f', 'json.load(f)'], ['x as JSON text', 'json.dumps(x)'], ['x as a JSON reply', 'jsonify(x)'], ['the JSON sent with the request', 'request.get_json()'],
   ];
 
   const GUIDE = {

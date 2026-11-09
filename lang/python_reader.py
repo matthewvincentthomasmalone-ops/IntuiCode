@@ -68,6 +68,8 @@ SENTENCE_WORDS = {
     # filler and step words the sentence reader leaves out or splits on
     "please", "kindly", "just", "simply", "basically", "really", "actually", "quickly", "then", "afterwards",
     "thanks", "do",
+    # words of phrases that follow their value ("name trimmed", "line split at ","): a name like these could be read as one
+    "trimmed", "split", "replaced", "starts", "ends", "taken",
 }
 
 MAX_STEPS = 16
@@ -106,7 +108,10 @@ _TRIGGERS = re.compile(
     r"as (?:a )?decimal|as text|in (?:capitals|capital letters|uppercase|upper case|lowercase|lower case|small letters)|"
     r"is (?:even|odd)|random (?:whole )?number|random (?:item|choice|one|pick|thing|decimal|fraction)|"
     r"(?:biggest|largest|highest|maximum|max|smallest|lowest|minimum|min) (?:of|in)|square root|absolute|sorted \S|"
-    r"empty (?:list|text|dictionary)|wait for|yes|no|please|kindly|just|simply|basically|really|actually|quickly|"
+    r"empty (?:list|text|dictionary|set)|wait for|yes|no|please|kindly|just|simply|basically|really|actually|quickly|"
+    r"split (?:into|at)|joined by|replaced by|(?:starts?|ends?) with|all (?:letters|digits)|taken out of|"
+    r"environment variable|file or folder|json (?:read|sent)|read as json|as (?:an? )?json|sorted (?:by|biggest)|"
+    r"for (?:each|every|any)|(?:list|set|dictionary) of|"
     r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|fifty|hundred)\b", re.I)
 
 
@@ -116,6 +121,9 @@ def safe_code(e):
         if isinstance(n, ast.Name) and not name_ok(n.id):
             return False
         if isinstance(n, ast.Compare) and any(isinstance(o, (ast.Is, ast.IsNot)) for o in n.ops):
+            return False
+        # x == 1 or 2: the translator reads "… or 2" after a comparison as x == 2 (what was almost always meant)
+        if isinstance(n, ast.BoolOp) and any(isinstance(b, ast.Constant) and isinstance(a, ast.Compare) for a, b in zip(n.values, n.values[1:])):
             return False
     text = ast.unparse(e)
     if "\n" in text or ";" in text:
@@ -211,6 +219,46 @@ def described(node, level):
     return out
 
 
+def one_operand(text):
+    """Is this one operand for the sentence translator: a text, a number, a name or a bracketed group, then
+    any .names, calls and indexes (a.b(c)[d]), with no space outside brackets?"""
+    s = _STR.sub("''", text)
+    n = len(s)
+
+    def group(i):
+        d = 0
+        for j in range(i, n):
+            if s[j] in "([{":
+                d += 1
+            elif s[j] in ")]}":
+                d -= 1
+                if d == 0:
+                    return j + 1
+        return -1
+    m = re.match(r"''|-?\d+(?:\.\d+)?(?![\w.])|[A-Za-z_]\w*", s)
+    if m:
+        i = m.end()
+    elif s[:1] in ("(", "[", "{"):
+        i = group(0)
+    else:
+        return False
+    while 0 < i < n:
+        m = re.match(r"\.[A-Za-z_]\w*", s[i:])
+        if m:
+            i += m.end()
+        elif s[i] in "([":
+            i = group(i)
+        else:
+            return False
+    return i == n
+
+
+def and_list(items):
+    """["a"] -> a; ["a", "b"] -> a and b; ["a", "b", "c"] -> a, b and c."""
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
 def dotted_name(e):
     """a / a.b / a.b.c -> the text, else None."""
     parts = []
@@ -226,10 +274,77 @@ class Words:
     """Turns expressions into words. strict=True refuses anything that might not round-trip exactly;
     `expr` then falls back to plain Python inside the sentence when that is safe."""
 
-    def __init__(self, strict, tools=(), lists=()):
+    # what web frameworks and os keep as dictionaries: request.args.get(…) is a lookup, session.get(url) isn't
+    DICT_ATTRS = re.compile(r"(?:^|\.)(?:args|form|headers|cookies|values|files|environ|json|data|params|query_params|config|settings|kwargs|options|meta|attrs)$")
+
+    def __init__(self, strict, tools=(), lists=(), alias=None, modules=(), dicts=(), texts=(), imported=()):
         self.strict = strict
         self.tools = set(tools)
         self.lists = set(lists)
+        self.alias = alias or {}          # name -> the module it comes from
+        self.modules = set(modules)       # modules imported under their own name (import os), so phrases can use them
+        self.dicts = set(dicts)           # names (and a.b) set to a dictionary somewhere in the file
+        self.texts = set(texts)           # names set to text somewhere in the file (sep = ", ")
+        self.imported = set(imported)     # names bound by import: a module's own tools (os.remove) aren't list tools
+
+    def is_dict(self, e):
+        d = dotted_name(e)
+        return bool(d) and (d in self.dicts or (self.DICT_ATTRS.search(d) is not None and d.split(".")[0] not in self.imported) or d == "os.environ")
+
+    def of_module(self, e):
+        d = dotted_name(e)
+        return bool(d) and d.split(".")[0] in self.imported and d != "os.environ"
+
+    def sub(self, e):
+        return self.w(e, False)
+
+    def opd(self, e):
+        """e as one operand of a phrase ("item K of D", "X trimmed"): its words when they are one operand, else
+        its code when that is, else its words in brackets."""
+        try:
+            text = self.sub(e)
+        except Unwordable:
+            text = None
+        if text is not None and one_operand(text):
+            return text
+        try:
+            code_ = self.raw(e)
+        except Unwordable:
+            code_ = None
+        # a phrase reads better than its code: (title split into words) joined by " "
+        if code_ is not None and one_operand(code_) and (text is None or text == code_ or not self.strict):
+            return code_
+        if text is None or not self.strict:
+            raise Unwordable()
+        return f"({text})"
+
+    def comp(self, e):
+        """A comprehension's parts in words: (what, names, source, test)."""
+        if len(e.generators) != 1:
+            raise Unwordable()
+        g = e.generators[0]
+        if g.is_async or len(g.ifs) > 1:
+            raise Unwordable()
+        t = g.target
+        names = [t.id] if isinstance(t, ast.Name) else \
+            [x.id for x in t.elts] if isinstance(t, ast.Tuple) and t.elts and all(isinstance(x, ast.Name) for x in t.elts) else None
+        if not names or not all(name_ok(x) for x in names):
+            raise Unwordable()
+        what = f"{self.sub(e.key)}: {self.sub(e.value)}" if isinstance(e, ast.DictComp) else self.sub(e.elt)
+        source = self.sub(g.iter)
+        test = self.sub(g.ifs[0]) if g.ifs else None
+        # the parts can't hold another "for each" outside brackets, the source no "if" (Python needs brackets there too)
+        for part in (what, source, test or ""):
+            if re.search(r"\sfor (?:each|every|any)\s", _STR.sub("''", part)):
+                raise Unwordable()
+        if re.search(r"\sif\s", _STR.sub("''", source)) and not one_operand(source):
+            raise Unwordable()
+        return what, ", ".join(names), source, test
+
+    def comprehension(self, e, top, lead="", kind="each"):
+        what, names, source, test = self.comp(e)
+        text = f"{lead}{what} for {kind} {names} in {source}" + (f" if {test}" if test else "")
+        return text if top else f"({text})"
 
     def raw(self, e):
         if self.strict and not safe_code(e):
@@ -274,14 +389,30 @@ class Words:
             if not word:
                 return self.raw(e)
             left = self.w(e.left, False) if self._chain(e.left, e.op) else self.wrap(e.left)
+            # "random number from 1 to 6 plus 1" is asked about (up to 6, or up to 7?), so that one stays code
+            if re.search(r"\brandom (?:whole )?number from .* to [^ ]+$", left) and isinstance(e.left, ast.Call):
+                left = self.raw(e.left)
             return f"{left} {word} {self.right(e.right)}"
         if isinstance(e, ast.UnaryOp):
             if isinstance(e.op, ast.Not):
-                return f"not {self.wrap(e.operand)}"
+                c = e.operand
+                # "not x.startswith(p)" -> "x doesn't start with p"; "not os.path.exists(p)" -> "there is no file or folder at p"
+                if isinstance(c, ast.Call) and not c.keywords and self.strict:
+                    f, a = c.func, c.args
+                    if dotted_name(f) == "os.path.exists" and "os" in self.modules and len(a) == 1:
+                        return f"there is no file or folder at {self.opd(a[0])}"
+                    if isinstance(f, ast.Attribute) and f.attr in ("startswith", "endswith") and len(a) == 1:
+                        return f"{self.opd(f.value)} doesn't {f.attr[:-5]} with {self.opd(a[0])}"
+                    if isinstance(f, ast.Attribute) and f.attr in self.ALL and not a:
+                        return f"{self.opd(f.value)} is not all {self.ALL[f.attr]}"
+                return f"not {self.tight(e.operand)}"
             return self.raw(e)
         if isinstance(e, ast.BoolOp):
             word = " and " if isinstance(e.op, ast.And) else " or "
-            return word.join(self.wrap(v) for v in e.values)
+            # "x is 1 or 2" is read as x == 1 or x == 2, so a bare value after a comparison stays code
+            if self.strict and any(isinstance(b, ast.Constant) and isinstance(a, ast.Compare) for a, b in zip(e.values, e.values[1:])):
+                raise Unwordable()
+            return word.join(self.tight(v) for v in e.values)
         if isinstance(e, ast.Compare):
             if len(e.ops) != 1:
                 return self.raw(e)
@@ -291,15 +422,30 @@ class Words:
                 if isinstance(right, ast.Constant) and right.value is None:
                     return f"{self.wrap(e.left)} {'is' if op is ast.Is else 'is not'} nothing"
                 raise Unwordable()
+            # n % 2 == 0 -> n is even; n % 3 == 0 -> n is divisible by 3
+            left = e.left
+            if self.strict and op in (ast.Eq, ast.NotEq) and isinstance(left, ast.BinOp) and isinstance(left.op, ast.Mod) \
+                    and isinstance(right, ast.Constant) and type(right.value) is int:
+                x, by = self.opd(left.left), left.right
+                # (as the writer reads them: is even % 2 == 0, is odd % 2 == 1, is not even % 2 != 0)
+                said = {(ast.Eq, 0): "even", (ast.Eq, 1): "odd", (ast.NotEq, 0): "not even"}.get((op, right.value))
+                if isinstance(by, ast.Constant) and by.value == 2 and said and not x.startswith("("):
+                    return f"{x} is {said}"
+                if op is ast.Eq and right.value == 0 and not x.startswith("("):
+                    return f"{x} is divisible by {self.opd(by)}"
             words = {ast.Eq: "is", ast.NotEq: "is not", ast.Lt: "is less than", ast.Gt: "is more than",
                      ast.LtE: "is at most", ast.GtE: "is at least", ast.In: "is in", ast.NotIn: "is not in"}
-            return f"{self.wrap(e.left)} {words[op]} {self.wrap(right)}"
+            # "(item "a" of d or 0 if there isn't one) is 1" reads as one thing compared
+            side = lambda x: (lambda t: f"({t})" if self.strict and isinstance(x, ast.Call) and " if there " in t else t)(self.wrap(x))
+            return f"{side(e.left)} {words[op]} {side(right)}"
         if isinstance(e, ast.IfExp):
-            return f"{self.wrap(e.body)} if {self.wrap(e.test)} otherwise {self.wrap(e.orelse)}"
+            # comparisons, not, and, or all bind tighter than … if … else …, so they need no brackets there
+            loose = lambda x: self.sub(x) if self.strict and isinstance(x, (ast.Compare, ast.BoolOp, ast.UnaryOp)) and not isinstance(x, ast.IfExp) else self.wrap(x)
+            return f"{loose(e.body)} if {loose(e.test)} otherwise {loose(e.orelse)}"
         if isinstance(e, ast.Await):
             return f"wait for {self.expr(e.value)}"
         if isinstance(e, ast.Call):
-            return self.call(e)
+            return self.call(e, top)
         if isinstance(e, ast.Subscript) and not isinstance(e.slice, ast.Slice):
             coll = self.simple(e.value)
             s = e.slice
@@ -308,8 +454,44 @@ class Words:
             if isinstance(s, ast.UnaryOp) and isinstance(s.op, ast.USub) and isinstance(s.operand, ast.Constant) and s.operand.value == 1:
                 return f"last item of {coll}"
             if isinstance(s, (ast.Constant, ast.Name)):
-                return f"item {self.w(s)} of {coll}"
+                return f"item {self.sub(s)} of {coll}"
             return self.raw(e)
+        # lists, tuples and dictionaries written out: their values said the sentence way ("text", yes, nothing)
+        if self.strict and isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+            def part(x):
+                if x is None or isinstance(x, ast.Starred):
+                    raise Unwordable()
+                try:
+                    text = self.sub(x)
+                    if one_operand(text):
+                        return text
+                except Unwordable:
+                    pass
+                text = self.raw(x)
+                if not one_operand(text):
+                    raise Unwordable()
+                return text
+            try:
+                if isinstance(e, ast.Dict):
+                    return "{" + ", ".join(f"{part(k)}: {part(v)}" for k, v in zip(e.keys, e.values)) + "}"
+                parts = [part(x) for x in e.elts]
+                if isinstance(e, ast.Set) and parts:
+                    return "{" + ", ".join(parts) + "}"
+                if isinstance(e, ast.Tuple) and len(parts) > 1:
+                    return "(" + ", ".join(parts) + ")"
+                if isinstance(e, ast.List):
+                    return "[" + ", ".join(parts) + "]"
+            except Unwordable:
+                pass
+            return self.raw(e)
+        if self.strict and isinstance(e, ast.ListComp):
+            return self.comprehension(e, top, "a list of ")
+        if self.strict and isinstance(e, ast.SetComp):
+            return self.comprehension(e, top, "a set of ")
+        if self.strict and isinstance(e, ast.DictComp):
+            return self.comprehension(e, top, "a dictionary of ")
+        if self.strict and isinstance(e, ast.GeneratorExp):
+            return self.comprehension(e, False)
         if isinstance(e, ast.JoinedStr):
             parts = []
             for v in e.values:
@@ -318,10 +500,31 @@ class Words:
                         return self.raw(e)
                     parts.append(v.value)
                 elif isinstance(v, ast.FormattedValue):
-                    inner = ast.unparse(v.value)
-                    if v.conversion != -1 or v.format_spec is not None or not re.fullmatch(r"[A-Za-z_]\w*", inner) or not name_ok(inner):
+                    if v.conversion != -1:
                         return self.raw(e)
-                    parts.append("{" + inner + "}")
+                    inner = ast.unparse(v.value)
+                    if self.strict and not re.fullmatch(r"[A-Za-z_]\w*", inner):
+                        # {self.owner}, {attempt plus 1}: the value said in words, or as code when the words can't sit in text
+                        try:
+                            said = self.sub(v.value)
+                        except Unwordable:
+                            said = None
+                        bad = re.compile(r'["{}:\n\\]|^\s|\s$')
+                        if said is not None and not bad.search(said):
+                            inner = said
+                        elif bad.search(inner) or not safe_code(v.value):
+                            return self.raw(e)
+                    elif not re.fullmatch(r"[A-Za-z_]\w*", inner) or not name_ok(inner):
+                        return self.raw(e)
+                    spec = ""
+                    if v.format_spec is not None:
+                        fs = v.format_spec
+                        if not (isinstance(fs, ast.JoinedStr) and all(isinstance(x, ast.Constant) for x in fs.values)):
+                            return self.raw(e)
+                        spec = ":" + "".join(x.value for x in fs.values)
+                        if re.search(r'["{}\n\\\s]', spec):
+                            return self.raw(e)
+                    parts.append("{" + inner + spec + "}")
             return '"' + "".join(parts) + '"'
         return self.raw(e)
 
@@ -330,13 +533,21 @@ class Words:
 
     # Words that follow their value ("qty as text"). After "times" they would read as being about the whole
     # calculation ("price times qty as text"), so a value said that way stays as code on the right of one.
-    POSTFIX = re.compile(r" (?:as (?:number|decimal|text)|in (?:capitals|lowercase)|rounded(?: to .*)?)$")
+    POSTFIX = re.compile(r" (?:as (?:number|decimal|text|JSON text|a JSON reply)|in (?:capitals|lowercase)|rounded(?: to .*)?|"
+                         r"trimmed|split into words|split at .*|joined by .*|replaced by .*|starts with .*|ends with .*|"
+                         r"start with .*|end with .*|is (?:not )?all .*|read as JSON|sorted by .*|sorted biggest first)$")
 
     def right(self, e):
         text = self.wrap(e)
         if isinstance(e, ast.Call) and self.POSTFIX.search(text):
             return self.raw(e)
         return text
+
+    def tight(self, e):
+        """An operand of not / and / or: a comparison binds tighter than those, so it needs no brackets."""
+        if self.strict and isinstance(e, ast.Compare):
+            return self.sub(e)
+        return self.wrap(e)
 
     def wrap(self, e):
         text = self.w(e, False)
@@ -351,29 +562,43 @@ class Words:
             return self.w(e)
         return self.raw(e)
 
-    def call(self, e):
+    ALL = {"isalpha": "letters", "isdigit": "digits", "isalnum": "letters or digits"}
+
+    def call(self, e, top=True):
         f = e.func
-        if e.keywords:
-            return self.raw(e)
         fname = ast.unparse(f)
         args = e.args
         one = len(args) == 1
+        if any(k.arg is None for k in e.keywords) or any(isinstance(a, ast.Starred) for a in args):
+            return self.raw(e)
+        kws = [k.arg for k in e.keywords]
+        if self.strict and fname == "sorted" and one and kws in ([], ["key"], ["reverse"], ["key", "reverse"]):
+            kw = {k.arg: k.value for k in e.keywords}
+            rev = kw.get("reverse")
+            if rev is not None and not (isinstance(rev, ast.Constant) and rev.value is True):
+                return self.raw(e)
+            what = self.opd(args[0])
+            if "key" in kw:
+                return f"{what} sorted by {self.opd(kw['key'])}" + (" biggest first" if rev is not None else "")
+            return f"{what} sorted biggest first" if rev is not None else f"sorted {what}"
+        if e.keywords:
+            return self.raw(e)
         if fname == "len" and one:
-            return f"length of {self.simple(args[0])}"
-        if fname == "int" and one and isinstance(args[0], ast.Name):
-            return f"{self.w(args[0])} as number"
-        if fname == "float" and one and isinstance(args[0], ast.Name):
-            return f"{self.w(args[0])} as decimal"
-        if fname == "str" and one and isinstance(args[0], ast.Name):
-            return f"{self.w(args[0])} as text"
+            return f"length of {self.opd(args[0]) if self.strict else self.simple(args[0])}"
+        if fname in ("int", "float", "str") and one and (isinstance(args[0], ast.Name) or self.strict):
+            word = {"int": "number", "float": "decimal", "str": "text"}[fname]
+            what = self.w(args[0]) if isinstance(args[0], ast.Name) else self.opd(args[0])
+            return f"{what} as {word}"
         if fname == "sum" and one:
-            return f"sum of {self.simple(args[0])}"
+            return f"sum of {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname == "max" and one:
-            return f"biggest in {self.simple(args[0])}"
+            return f"biggest in {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname == "min" and one:
-            return f"smallest in {self.simple(args[0])}"
+            return f"smallest in {self.opd(args[0]) if self.strict else self.simple(args[0])}"
         if fname == "random.randint" and len(args) == 2 and all(isinstance(a, (ast.Constant, ast.Name)) for a in args):
             return f"random number from {self.w(args[0])} to {self.w(args[1])}"
+        if fname == "random.randint" and len(args) == 2 and self.strict:
+            return f"random number from {self.opd(args[0])} to {self.opd(args[1])}"
         if fname == "random.choice" and one:
             return f"random item from {self.simple(args[0])}"
         if fname == "math.sqrt" and one and isinstance(args[0], (ast.Constant, ast.Name)):
@@ -383,6 +608,77 @@ class Words:
                 return f"{self.w(f.value)} in {'capitals' if f.attr == 'upper' else 'lowercase'}"
             if f.attr == "items":
                 return f"pairs of {self.w(f.value)}"
+        if not self.strict:
+            return self.raw(e)
+        return self.more_calls(e, f, fname, args, top)
+
+    def more_calls(self, e, f, fname, args, top):
+        """Phrases for more of Python's and the libraries' own tools (strict reading only)."""
+        n = len(args)
+        if fname == "round" and n == 1:
+            return f"{self.opd(args[0])} rounded"
+        if fname == "round" and n == 2 and isinstance(args[1], ast.Constant) and type(args[1].value) is int and args[1].value >= 0:
+            return f"{self.opd(args[0])} rounded to {args[1].value} place{'' if args[1].value == 1 else 's'}"
+        if fname == "abs" and n == 1:
+            return f"absolute value of {self.opd(args[0])}"
+        if fname == "set" and n == 0:
+            return "an empty set"
+        if fname == "random.random" and n == 0 and "random" in self.modules:
+            return "random decimal"
+        if fname in ("all", "any") and n == 1 and isinstance(args[0], ast.GeneratorExp):
+            return self.comprehension(args[0], top, "", "every" if fname == "all" else "any")
+        if fname == "os.getenv" and n in (1, 2) and "os" in self.modules:
+            text = f"the environment variable {self.opd(args[0])}"
+            return text + (f" or {self.opd(args[1])} if there isn't one" if n == 2 else "")
+        if fname == "os.path.exists" and n == 1 and "os" in self.modules:
+            return f"there is a file or folder at {self.opd(args[0])}"
+        if fname == "json.load" and n == 1 and "json" in self.modules:
+            return f"the JSON read from {self.opd(args[0])}"
+        if fname == "json.loads" and n == 1 and "json" in self.modules:
+            return f"{self.opd(args[0])} read as JSON"
+        if fname == "json.dumps" and n == 1 and "json" in self.modules:
+            return f"{self.opd(args[0])} as JSON text"
+        if fname == "jsonify" and n == 1 and self.alias.get("jsonify") == "flask":
+            return f"{self.opd(args[0])} as a JSON reply"
+        if not isinstance(f, ast.Attribute) or self.of_module(f.value):
+            return self.raw(e)
+        what, m = f.value, f.attr
+        if m == "get" and not self.is_dict(what):
+            return self.raw(e)   # session.get(url) fetches a page; only a dictionary's get looks an item up
+        if m == "join" and not ((isinstance(what, ast.Constant) and isinstance(what.value, str)) or dotted_name(what) in self.texts):
+            return self.raw(e)   # thread.join(5) waits for a thread; text.join(items) joins
+        # "item (a, b) of d": a tool called item would take the brackets as its own, so a key in brackets stays code
+        key = self.opd(args[0]) if m in ("get", "pop") and n else ""
+        if key.startswith("("):
+            return self.raw(e)
+        if m == "get" and n in (1, 2):
+            text = f"item {key} of {self.opd(what)}"
+            return text + (f" or {self.opd(args[1])} if there isn't one" if n == 2 else " if there is one")
+        if m == "pop" and n == 0:
+            return f"the last item taken out of {self.opd(what)}"
+        if m == "pop" and n == 1:
+            return f"item {key} taken out of {self.opd(what)}"
+        if m == "get_json" and n == 0:
+            obj = self.opd(what)
+            return f"the JSON sent with {'the request' if obj == 'request' else obj}"
+        if m == "join" and n == 1:
+            return f"{self.opd(args[0])} joined by {self.opd(what)}"
+        if m == "strip" and n == 0:
+            return f"{self.opd(what)} trimmed"
+        if m == "split" and n == 0:
+            return f"{self.opd(what)} split into words"
+        if m == "split" and n == 1:
+            return f"{self.opd(what)} split at {self.opd(args[0])}"
+        if m == "replace" and n == 2:
+            return f"{self.opd(what)} with {self.opd(args[0])} replaced by {self.opd(args[1])}"
+        if m in ("startswith", "endswith") and n == 1:
+            return f"{self.opd(what)} {m[:-4]} with {self.opd(args[0])}"
+        if m in self.ALL and n == 0:
+            return f"{self.opd(what)} is all {self.ALL[m]}"
+        if m in ("upper", "lower") and n == 0:
+            return f"{self.opd(what)} in {'capitals' if m == 'upper' else 'lowercase'}"
+        if m == "items" and n == 0:
+            return f"pairs of {self.opd(what)}"
         return self.raw(e)
 
 
@@ -396,10 +692,14 @@ HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
 class Sentences:
     """Writes statements as IntuaCode sentences. Anything that can't be said exactly becomes a `python:` line."""
 
-    def __init__(self, strict, tools=(), lists=(), known=(), comments=None, force_raw=(), classes=()):
+    def __init__(self, strict, tools=(), lists=(), known=(), comments=None, force_raw=(), classes=(), alias=None, modules=(), sets=(),
+                 dicts=(), texts=(), imported=()):
         self.strict = strict
         self.classes = set(classes)
-        self.words = Words(strict, tools, lists)
+        self.alias = alias or {}
+        self.modules = set(modules)
+        self.sets = set(sets)   # names that hold a set (x = set()), so x.add(v) is "add v to the set x"
+        self.words = Words(strict, tools, lists, self.alias, self.modules, dicts, texts, imported)
         self.tools = set(tools)
         self.lists = set(lists)
         self.known = set(tools) | set(known) | BUILTIN_CALLS
@@ -463,10 +763,10 @@ class Sentences:
             if k.arg is None:
                 raise Unwordable()
             parts.append(f"{k.arg}={self.arg(k.value)}")
-        return ", ".join(parts)
+        return and_list(parts) if parts else ""
 
     def target(self, t):
-        """Something that can be set or increased: name, a.b, or item k of name."""
+        """Something that can be set or increased: name, a.b, or item k of name (or of a.b)."""
         if isinstance(t, ast.Name):
             if not name_ok(t.id):
                 raise Unwordable()
@@ -474,10 +774,41 @@ class Sentences:
         d = dotted_name(t)
         if d and isinstance(t, ast.Attribute):
             return d
-        if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and name_ok(t.value.id) \
+        coll = dotted_name(t.value) if isinstance(t, ast.Subscript) else None
+        if coll and all(name_ok(p) for p in coll.split(".")) \
                 and isinstance(t.slice, (ast.Constant, ast.Name)) and not isinstance(t.slice, ast.Slice):
-            return f"item {self.words.w(t.slice)} of {t.value.id}"
+            return f"item {self.words.w(t.slice)} of {coll}"
         raise Unwordable()
+
+    def value(self, v, calls=True):
+        """A value to store, in words: a phrase when one fits ("a random item from WORDS"), a call as
+        "a new Flask with __name__" or "the result of get_db" (calls: only "set … to" reads those), else the value
+        as it reads."""
+        if self.strict and isinstance(v, ast.Call) and not isinstance(v.func, ast.Lambda):
+            try:
+                text = self.words.w(v)
+                if text != ast.unparse(v):
+                    return text
+            except Unwordable:
+                pass
+            if calls:
+                try:
+                    return self.call_value(v)
+                except Unwordable:
+                    pass
+        return self.E(v)
+
+    def is_class(self, name):
+        last = name.split(".")[-1]
+        return name in self.classes or (re.match(r"_*[A-Z]", last) is not None and re.search(r"[a-z]", last) is not None)
+
+    def call_value(self, v):
+        name = self.callable_name(v.func)
+        if name in BUILTIN_CALLS:   # list(…), dict(…), enumerate(…) read better as they are
+            raise Unwordable()
+        args = self.args(v)
+        lead = "a new" if self.is_class(name) else "the result of"
+        return f"{lead} {name}" + (f" with {args}" if args else "")
 
     def callable_name(self, f):
         """Only name calls the translator will accept: known tools, imports, builtins, or dotted names."""
@@ -526,12 +857,10 @@ class Sentences:
                     p = (" " + E(prompt)) if prompt is not None else ""
                     lead = {"text": "ask", "number": "ask for a number", "decimal": "ask for a decimal"}[kind]
                     return S(level, f"{lead}{p} and store in {t.id}")
-                if isinstance(v, ast.Call) and not isinstance(v.func, ast.Lambda):
+                if isinstance(v, ast.Call) and not isinstance(v.func, ast.Lambda) and not self.strict:
                     try:
                         name = self.callable_name(v.func)
                         args = self.args(v)
-                        if name in self.classes:
-                            return S(level, f"make a new {name}{' with ' + args if args else ''} and store in {t.id}")
                         return S(level, f"run {name}{' with ' + args if args else ''} and store in {t.id}")
                     except Unwordable:
                         pass
@@ -543,8 +872,11 @@ class Sentences:
                     return S(level, f"create list {t.id} with {', '.join(self.arg(x) for x in v.elts)}")
                 if isinstance(v, ast.Dict) and not v.keys:
                     return S(level, f"create dictionary {t.id}")
-                return S(level, f"set {t.id} to {E(v)}")
-            return S(level, f"set {self.target(t)} to {E(v)}")
+                return S(level, f"set {t.id} to {self.value(v)}")
+            # several names at once: count, sides = …
+            if self.strict and isinstance(t, ast.Tuple) and len(t.elts) > 1 and all(isinstance(x, ast.Name) and name_ok(x.id) for x in t.elts):
+                return S(level, f"set {', '.join(x.id for x in t.elts)} to {self.value(v)}")
+            return S(level, f"set {self.target(t)} to {self.value(v)}")
         if isinstance(n, ast.AugAssign):
             verb = {ast.Add: "increase {t} by {v}", ast.Sub: "decrease {t} by {v}",
                     ast.Mult: "multiply {t} by {v}", ast.Div: "divide {t} by {v}"}.get(type(n.op))
@@ -610,7 +942,16 @@ class Sentences:
         if isinstance(n, ast.Pass):
             return S(level, "do nothing")
         if isinstance(n, ast.Return):
-            return S(level, "give back" + (f" {E(n.value)}" if n.value is not None else ""))
+            v = n.value
+            # return a, b: two values, said with a comma ("give back a and b" would be asked about)
+            if self.strict and isinstance(v, ast.Tuple) and len(v.elts) > 1 and not any(isinstance(x, ast.Starred) for x in v.elts):
+                try:
+                    return S(level, "give back " + ", ".join(self.arg(x) for x in v.elts))
+                except Unwordable:
+                    pass
+            if isinstance(v, ast.BoolOp) and isinstance(v.op, ast.And) and not any(isinstance(x, (ast.Compare, ast.UnaryOp, ast.BoolOp)) for x in v.values):
+                raise Unwordable()   # "give back total and count" is asked about: two values, or both true?
+            return S(level, "give back" + (f" {self.value(v, calls=False)}" if v is not None else ""))
         if isinstance(n, ast.Raise):
             if n.cause is not None:
                 raise Unwordable()
@@ -646,11 +987,14 @@ class Sentences:
             c = item.context_expr
             is_async = isinstance(n, ast.AsyncWith)
             if not is_async and var is not None and isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "open" \
-                    and not c.keywords and 1 <= len(c.args) <= 2:
+                    and (not c.keywords or self.strict) and 1 <= len(c.args) <= 2 and all(k.arg for k in c.keywords):
                 mode = c.args[1].value if len(c.args) == 2 and isinstance(c.args[1], ast.Constant) else None
                 words = {None: "", "r": " for reading", "w": " for writing", "a": " for adding"}
                 if len(c.args) == 1 or mode in ("r", "w", "a"):
-                    return S(level, f"open the file {self.arg(c.args[0])}{words[mode]} as {var.id}") + self.block(n.body, level + 1)
+                    path = self.arg(c.args[0])
+                    extra = and_list([f"{k.arg}={self.arg(k.value)}" for k in c.keywords]) if c.keywords else ""
+                    if not (has_word(path, "for", "with", "as") or has_word(extra, "as")):
+                        return S(level, f"open the file {path}{words[mode]}{' with ' + extra if extra else ''} as {var.id}") + self.block(n.body, level + 1)
             return S(level, f"{'async ' if is_async else ''}using {E(c)}{' as ' + var.id if var is not None else ''}") + self.block(n.body, level + 1)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and simple_args(n) and not n.returns and name_ok(n.name):
             a = n.args
@@ -660,11 +1004,20 @@ class Sentences:
             defaults = [None] * (len(names) - len(a.defaults)) + list(a.defaults)
             params = []
             for x_, d in zip(a.args, defaults):
-                ann = f": {self.arg(x_.annotation)}" if x_.annotation is not None else ""
+                # a type is read as code (Optional[bool], not "item bool of Optional")
+                an = x_.annotation
+                ann = "" if an is None else f": {self.words.raw(an) if self.strict and not isinstance(an, ast.Name) and safe_code(an) else self.arg(an)}"
                 params.append(x_.arg + ann + ("" if d is None else (" = " if ann else "=") + self.arg(d)))
             out = []
             for d in n.decorator_list:
                 out += self.decorator(d, level)
+            # a class's __init__ (self first): what happens when a new object is made
+            cls = getattr(self, "in_class", None)
+            if self.strict and cls and n.name == "__init__" and isinstance(n, ast.FunctionDef) and not n.decorator_list \
+                    and names and names[0] == "self" and a.args[0].annotation is None and len(defaults) == len(names) and defaults[0] is None:
+                rest = params[1:]
+                head = f"when a new {cls} is made" + (f" with {and_list(rest)}" if rest else "")
+                return S(level, head) + self.block(n.body, level + 1)
             head = f"define {'async ' if isinstance(n, ast.AsyncFunctionDef) else ''}{n.name}" + (f" using {', '.join(params)}" if params else "")
             return out + S(level, head) + self.block(n.body, level + 1)
         if isinstance(n, ast.ClassDef) and not n.keywords:
@@ -674,13 +1027,37 @@ class Sentences:
             out = []
             for d in n.decorator_list:
                 out += self.decorator(d, level)
-            return out + S(level, f"define class {n.name}" + (f" based on {', '.join(bases)}" if bases else "")) + self.block(n.body, level + 1)
+            outer, self.in_class = getattr(self, "in_class", None), n.name
+            try:
+                body = self.block(n.body, level + 1)
+            finally:
+                self.in_class = outer
+            return out + S(level, f"define class {n.name}" + (f" based on {', '.join(bases)}" if bases else "")) + body
         if isinstance(n, (ast.Import, ast.ImportFrom)):
-            if not self.strict:
-                mods = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or "."]
-                return S(level, "use " + ", ".join(mods))
-            raise Unwordable()
+            return S(level, self.import_sentence(n))
         return self.compound(n, level)
+
+    def import_sentence(self, n):
+        """import os, sys -> bring in os and sys; from flask import Flask as F -> bring in Flask as F from flask;
+        from math import * -> bring in everything from math; from . import views -> bring in views from this package."""
+        def ok(name):
+            return all(re.fullmatch(r"[A-Za-z_]\w*", p) and name_ok(p) for p in name.split("."))
+        names = []
+        for a in n.names:
+            if a.name == "*" or not ok(a.name) or (a.asname and not ok(a.asname)):
+                if a.name == "*" and isinstance(n, ast.ImportFrom) and len(n.names) == 1:
+                    names.append("everything")
+                    break
+                raise Unwordable()
+            if isinstance(n, ast.ImportFrom) and a.name.lower() == "everything":
+                raise Unwordable()   # "everything" is what * is called
+            names.append(a.name + (f" as {a.asname}" if a.asname else ""))
+        if isinstance(n, ast.Import):
+            return "bring in " + and_list(names)
+        mod = "." * n.level + (n.module or "")
+        if n.module and not ok(n.module):
+            raise Unwordable()
+        return f"bring in {and_list(names)} from {'this package' if mod == '.' else mod}"
 
     def call_stmt(self, c, level):
         S = self.say
@@ -696,10 +1073,21 @@ class Sentences:
                 if end is not None:
                     raise Unwordable()
                 return S(level, "show a blank line")
-            return S(level, "show " + " and ".join(self.arg(a) for a in c.args) + (" on the same line" if end is not None else ""))
+            parts = [self.arg(a) for a in c.args]
+            # "and" between tests is read as one yes/no test ("show a is 1 and b"), so tests are separated by commas
+            test = re.compile(r"\b(?:is|isn't|are|contains?|equals?|than|not|or|even|odd|divisible|at least|at most)\b|[=<>!]", re.I)
+            join = ", " if any(test.search(_STR.sub("''", p)) for p in parts) else " and "
+            return S(level, "show " + join.join(parts) + (" on the same line" if end is not None else ""))
         if not c.keywords:
             if f == "time.sleep" and len(c.args) == 1 and isinstance(c.args[0], ast.Constant) and isinstance(c.args[0].value, (int, float)):
-                return S(level, f"wait {c.args[0].value} seconds")
+                return S(level, f"wait {c.args[0].value} second{'' if c.args[0].value == 1 else 's'}")
+            if f == "time.sleep" and len(c.args) == 1 and self.strict and "time" in self.modules:
+                try:
+                    secs = self.arg(c.args[0])
+                    if not re.search(r"\bsec", _STR.sub("''", secs)) and not secs.startswith("for "):
+                        return S(level, f"wait {secs} seconds")
+                except Unwordable:
+                    pass
             if f == "random.shuffle" and len(c.args) == 1 and isinstance(c.args[0], ast.Name):
                 return S(level, f"shuffle {c.args[0].id}")
             if f == "sys.exit" and not c.args:
@@ -712,9 +1100,10 @@ class Sentences:
             # "add … to …" and "remove … from …" split at the first of those words outside quotes
             if meth == "append" and len(c.args) == 1 and not c.keywords and is_list:
                 item = self.arg(c.args[0])
-                if has_word(item, "to", "onto", "into"):
+                if not has_word(item, "to", "onto", "into"):
+                    return S(level, f"add {item} to {obj}")
+                if not self.strict:
                     raise Unwordable()
-                return S(level, f"add {item} to {obj}")
             if meth == "sort" and not c.args and is_list:
                 rev = kw.get("reverse")
                 if not c.keywords:
@@ -725,12 +1114,116 @@ class Sentences:
                 return S(level, f"reverse {obj}")
             if meth == "remove" and len(c.args) == 1 and not c.keywords and is_list:
                 item = self.arg(c.args[0])
-                if has_word(item, "from") or re.match(r"(?:the\s+)?item\s", item, re.I):   # "remove item 2 from x" removes by position
+                if not (has_word(item, "from") or re.match(r"(?:the\s+)?item\s", item, re.I)):   # "remove item 2 from x" removes by position
+                    return S(level, f"remove {item} from {obj}")
+                if not self.strict:
                     raise Unwordable()
-                return S(level, f"remove {item} from {obj}")
+        if self.strict:
+            try:
+                said = self.method_sentence(c)
+            except Unwordable:
+                said = None
+            if said:
+                return S(level, said)
         name = self.callable_name(c.func)
         args = self.args(c)
+        if self.strict and self.is_class(name) and name not in BUILTIN_CALLS:
+            return S(level, f"make a new {name}" + (f" with {args}" if args else ""))
         return S(level, f"run {name}" + (f" with {args}" if args else ""))
+
+    def method_sentence(self, c):
+        """Calls with sentences of their own: list and set tools, files, JSON, databases, window parts.
+        None when there is none; Unwordable when the parts can't be said."""
+        f, args, kws = c.func, c.args, c.keywords
+        if any(k.arg is None for k in kws) or any(isinstance(a, ast.Starred) for a in args):
+            return None
+        kwtext = lambda ks: and_list([f"{k.arg}={self.arg(k.value)}" for k in ks]) if ks else ""
+        name = dotted_name(f)
+        if name == "json.dump" and len(args) == 2 and "json" in self.modules:
+            v, into = self.arg(args[0]), self.words.opd(args[1])
+            extra = kwtext(kws)
+            return f"save {v} as JSON in {into}" + (f" with {extra}" if extra else "")
+        # a window part made and placed in one go: tk.Button(root, text="Add", command=f).pack()
+        if isinstance(f, ast.Attribute) and f.attr in ("pack", "grid", "place") and not args and isinstance(f.value, ast.Call):
+            made = f.value
+            cname = dotted_name(made.func)
+            parent = dotted_name(made.args[0]) if len(made.args) == 1 else None
+            if cname and parent and re.match(r"[A-Z]", cname.split(".")[-1]) and self.is_class(cname) and not any(k.arg is None for k in made.keywords) \
+                    and all(name_ok(p) for p in parent.split(".")):
+                self.callable_name(made.func)
+                ks = list(made.keywords)
+                saying = self.arg(ks.pop(0).value) if ks and ks[0].arg == "text" else None
+                runs = self.arg(ks.pop(0).value) if ks and ks[0].arg == "command" else None
+                if any(k.arg in ("text", "command") for k in ks):
+                    raise Unwordable()
+                extra, place = kwtext(ks), kwtext(kws)
+                if (saying and has_word(saying, "to", "that", "with")) or (runs and has_word(runs, "with", "packed", "placed", "put")) \
+                        or has_word(extra, "packed", "placed", "put"):
+                    raise Unwordable()
+                how = {"pack": ", packed" if kws else "", "grid": ", put in the grid", "place": ", placed"}[f.attr]
+                return f"add a{'n' if cname[0] in 'AEIOU' else ''} {cname}" + (f" saying {saying}" if saying else "") + f" to {parent}" \
+                    + (f" that runs {runs}" if runs else "") + (f" with {extra}" if extra else "") + how + (f" with {place}" if place else "")
+        if not isinstance(f, ast.Attribute) or self.words.of_module(f.value):
+            return None   # os.remove(path) deletes a file: a module's own tools aren't list tools
+        m, n = f.attr, len(args)
+        obj = self.words.opd(f.value)
+        if re.search(r"\s", _STR.sub("''", obj)):
+            return None
+        plain = re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", obj) is not None
+        if kws and m not in ("sort",):
+            return None
+        if m == "append" and n == 1:
+            item = self.arg(args[0])
+            return None if has_word(item, "to", "onto", "into") else f"append {item} to {obj}"
+        if m == "extend" and n == 1:
+            items = self.arg(args[0])
+            return None if has_word(items, "to") else f"add every item of {items} to {obj}"
+        if m == "insert" and n == 2:
+            at, item = self.arg(args[0]), self.arg(args[1])
+            return None if has_word(item, "into", "in", "at") else f"insert {item} into {obj} at position {at}"
+        if m == "remove" and n == 1:
+            item = self.arg(args[0])
+            if has_word(item, "out") or re.match(r"(?:the\s+)?(?:last\s+)?item\s", item, re.I):
+                return None
+            return f"take {item} out of {obj}"
+        if m == "pop" and n == 0:
+            return f"take the last item out of {obj}"
+        if m == "pop" and n == 1:
+            at = self.words.opd(args[0])
+            return None if re.search(r"\s", at) else f"take item {at} out of {obj}"
+        if m == "clear" and n == 0:
+            return f"empty {obj}"
+        if m == "reverse" and n == 0:
+            return f"reverse {obj}"
+        if m == "sort" and n == 0:
+            kw = {k.arg: k.value for k in kws}
+            if [k.arg for k in kws] not in ([], ["key"], ["reverse"], ["key", "reverse"]):
+                return None
+            rev = kw.get("reverse")
+            if rev is not None and not (isinstance(rev, ast.Constant) and rev.value is True):
+                return None
+            by = f" by {self.words.opd(kw['key'])}" if "key" in kw else ""
+            return f"sort {obj}{by}" + (" biggest first" if rev is not None else "")
+        if m == "add" and n == 1 and obj in self.sets:
+            item = self.arg(args[0])
+            return None if has_word(item, "to") else f"add {item} to the set {obj}"
+        if m == "write" and n == 1 and plain:
+            text = self.arg(args[0])
+            return None if has_word(text, "into") else f"write {text} into {obj}"
+        if m == "commit" and n == 0 and plain:
+            return f"save the changes to {obj}"
+        if m == "execute" and 1 <= n <= 2 and plain and isinstance(args[0], (ast.Constant, ast.JoinedStr)) \
+                and (isinstance(args[0], ast.JoinedStr) or isinstance(args[0].value, str)):
+            sql = self.arg(args[0])
+            if n == 1:
+                return f"run the SQL {sql} on {obj}"
+            p = args[1]
+            if isinstance(p, ast.Tuple) and p.elts and not any(isinstance(x, ast.Starred) for x in p.elts):
+                vals = [self.arg(x) for x in p.elts]
+                return f"run the SQL {sql} on {obj} with the value{'s' if len(vals) > 1 else ''} {and_list(vals)}"
+            pv = self.arg(p)
+            return None if re.match(r"the\s+values?\b", pv, re.I) else f"run the SQL {sql} on {obj} with {pv}"
+        return None
 
     def compound(self, n, level):
         pad = "    " * level
@@ -1486,8 +1979,21 @@ def to_sentences(source, force_raw=()):
     mark_elifs(tree, lines)
     alias, tools, lists = file_context(tree)
     classes = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
+    # modules imported under their own name anywhere in the file (import os, import json): phrases may use them,
+    # because the writer then sees the import and adds none of its own
+    modules = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import)
+               for a in n.names if (a.asname or a.name.split(".")[0]) == a.name.split(".")[0]}
+    # what names hold, as far as their assignments show: sets, dictionaries and text
+    assigns = [(dotted_name(t), n.value) for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets if dotted_name(t)]
+    calls = lambda v: dotted(v.func) if isinstance(v, ast.Call) else ""
+    sets = {t for t, v in assigns if isinstance(v, (ast.Set, ast.SetComp)) or calls(v) == "set"}
+    dicts = {t for t, v in assigns if isinstance(v, (ast.Dict, ast.DictComp)) or calls(v) in ("dict", "defaultdict", "Counter", "OrderedDict",
+             "collections.defaultdict", "collections.Counter", "json.load", "json.loads", "vars")
+             or re.search(r"\.(?:get_json|json)$", calls(v))}
+    texts = {t for t, v in assigns if isinstance(v, (ast.Constant, ast.JoinedStr)) and isinstance(getattr(v, "value", ""), str)}
+    imported = {(a.asname or a.name).split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     sent = Sentences(True, tools, [], known=set(alias) | classes, comments=full_line_comments(source),
-                     force_raw=force_raw, classes=classes)
+                     force_raw=force_raw, classes=classes, alias=alias, modules=modules, sets=sets, dicts=dicts, texts=texts, imported=imported)
     out = []
     for g in group_sections(tree):
         label = {"about": "About", "imports": "Toolkits", "settings": "Settings", "tool": "Tool", "route": "Web route",
