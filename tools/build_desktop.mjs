@@ -18,7 +18,7 @@ writeFileSync(path.join(DIST, 'index.html'), `<!doctype html>
 ${body}
 </body></html>
 `);
-for (const f of ['app.css', 'app.js', 'runner.js', 'lang', 'samples']) cpSync(path.join(ROOT, f), path.join(DIST, f), { recursive: true });
+for (const f of ['app.css', 'app.js', 'runner.js', 'lang', 'samples', 'fonts']) cpSync(path.join(ROOT, f), path.join(DIST, f), { recursive: true });
 
 // The desktop app never loads these from the internet (see runner.js), so a release build
 // without them would have no built-in Python and no web reader. Debug builds only warn.

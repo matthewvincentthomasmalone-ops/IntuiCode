@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- This page loads nothing from anywhere else: its own styles, script, fonts and pictures only. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="no-referrer">
+<title>IntuaCode</title>
+<meta name="description" content="Read and change code in plain language. Turn any part of a program into sentences, right where it is, and back into exact code. Free and open source, for Windows, Linux and the browser.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B0B0D">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="home.css">
+<script src="home.js" defer></script>
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="./" aria-label="IntuaCode, home">
+    <svg viewBox="0 0 24 24" aria-hidden="true" class="logo"><rect x="2" y="3" width="20" height="15" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="4.6" y="5.6" width="14.8" height="9.8" rx="1.6" class="logo-glass"/><path d="M7 9l2.2 1.6L7 12.2" class="logo-glow" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.6 12.2h3.2" class="logo-glow" stroke-width="1.4" stroke-linecap="round"/><path d="M9 21h6M12 18v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    <span class="brand-name">IntuaCode</span>
+  </a>
+  <nav class="nav" aria-label="On this page">
+    <a href="#features">What it does</a>
+    <a href="#download">Download</a>
+    <a href="#trust">Security</a>
+    <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode" rel="noopener">Source</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Free and open source · Windows · Linux · browser</p>
+      <h1>Read and change code in&nbsp;plain&nbsp;language.</h1>
+      <p class="lede">Select any part of a program and IntuaCode says it in sentences, right where it is. Change the sentences and it turns them back into exact code. Python, websites, C++ and Arduino, including code an AI wrote for you.</p>
+      <div class="cta">
+        <a class="key primary" id="dlMain" href="#download">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="dlMainLabel">Download</span>
+        </a>
+        <a class="key" href="app/">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.5 5.5h13" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.6l1.6 1.2L5 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Open in your browser
+        </a>
+      </div>
+      <p class="cta-note" id="dlNote">The browser version needs nothing installed: your projects stay in your browser.</p>
+    </div>
+
+    <figure class="window" aria-label="IntuaCode's Unity mode, showing an Arduino sketch">
+      <div class="win-plate">
+        <span class="win-dot" aria-hidden="true"></span><b>blink.ino</b>
+        <span class="win-tags"><span class="chip t-display">Interface</span><span class="chip t-mech">Mechanics</span></span>
+      </div>
+      <div class="win-well">
+        <ol class="code">
+          <li><span class="k">int</span> led = <span class="n">LED_BUILTIN</span>;</li>
+          <li></li>
+          <li><span class="k">void</span> <span class="f">setup</span>() {</li>
+          <li>  <span class="f">pinMode</span>(led, OUTPUT);</li>
+          <li>}</li>
+          <li class="say">over and over</li>
+          <li class="say link">    turn pin led on</li>
+          <li class="say">    wait <span class="n">500</span> milliseconds</li>
+          <li class="say">    turn pin led off</li>
+          <li class="say">    wait <span class="n">500</span> milliseconds</li>
+        </ol>
+      </div>
+      <figcaption class="win-help"><span class="lbl">You wrote · line 7</span> <code>turn pin led on</code> <span class="arrow" aria-hidden="true">→</span> <code>digitalWrite(led, HIGH);</code></figcaption>
+    </figure>
+  </section>
+
+  <section class="features" id="features" aria-labelledby="featuresH">
+    <h2 id="featuresH" class="plate">What it does</h2>
+    <div class="grid">
+      <article class="card">
+        <h3>Unity</h3>
+        <p>Real code in one pane. Select a part and press <b>Translate to Plain Language Syntax</b>: it becomes sentences, in green, in place. <b>Original Code</b> puts it back exactly as it was.</p>
+      </article>
+      <article class="card">
+        <h3>Split Mode</h3>
+        <p>Write in sentences on the left and watch the code they make on the right, with why each line is written that way.</p>
+      </article>
+      <article class="card">
+        <h3>Interface or mechanics</h3>
+        <p>Every part of a project is sorted into <span class="chip t-display">Interface &amp; Display</span> and <span class="chip t-mech">Backend &amp; Mechanics</span>. One click shows only the side you care about.</p>
+      </article>
+      <article class="card">
+        <h3>Project Link</h3>
+        <p>Use your website in the preview and the code behind what you click lights up <span class="pink">pink</span>: its page, its styles and the script that runs.</p>
+      </article>
+      <article class="card">
+        <h3>Bring your own code</h3>
+        <p>Import a file, a folder or a .zip in any of 40 languages. Python, web pages, C++ and Arduino can be said in sentences; the rest is explained part by part.</p>
+      </article>
+      <article class="card">
+        <h3>Runs it for real</h3>
+        <p>Python runs in the page; the desktop app uses your own Python, C++ compiler and Arduino tools, with a real terminal.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="download" id="download" aria-labelledby="downloadH">
+    <h2 id="downloadH" class="plate">Download</h2>
+    <p class="sub" id="relInfo">The desktop app works offline and on real folders. Pick your system.</p>
+    <div class="dl-grid" id="dlGrid">
+      <noscript><p>See <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/releases">all downloads on GitHub</a>.</p></noscript>
+    </div>
+    <p class="sub"><a id="allRel" href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/releases" rel="noopener">All files and earlier versions</a></p>
+    <details class="verify">
+      <summary>Check a download before you open it</summary>
+      <ol>
+        <li>Compare its SHA-256 with the one shown above.<br>
+          Windows (PowerShell): <code>Get-FileHash .\IntuaCode_x64-setup.exe -Algorithm SHA256</code><br>
+          Linux: <code>sha256sum -c SHA256SUMS.txt --ignore-missing</code></li>
+        <li>Or confirm it was built from this source by GitHub, with the <a href="https://cli.github.com" rel="noopener">GitHub CLI</a>:<br>
+          <code>gh attestation verify IntuaCode_x64-setup.exe --repo matthewvincentthomasmalone-ops/IntuiCode</code></li>
+      </ol>
+      <p>The installers aren't code-signed yet, so Windows may say it protected your PC: choose <b>More info → Run anyway</b> once the checksum matches. On Linux, make the AppImage runnable with <code>chmod +x</code>, or install the .deb or .rpm.</p>
+    </details>
+  </section>
+
+  <section class="trust" id="trust" aria-labelledby="trustH">
+    <h2 id="trustH" class="plate">Security and privacy</h2>
+    <div class="grid">
+      <article class="card">
+        <h3>Your code stays with you</h3>
+        <p>The browser version runs entirely in your browser and keeps projects there. The desktop app works on folders you choose. Nothing is uploaded.</p>
+      </article>
+      <article class="card">
+        <h3>No accounts, no tracking</h3>
+        <p>No sign-up, no analytics, no adverts. This page and the app load nothing from other sites, not even fonts.</p>
+      </article>
+      <article class="card">
+        <h3>Open source</h3>
+        <p>Every line is public under the Apache 2.0 licence, and every installer is built from it by GitHub, in the open.</p>
+      </article>
+      <article class="card">
+        <h3>Downloads you can check</h3>
+        <p>Each release lists a SHA-256 checksum for every file and carries a signed record of the build that made it.</p>
+      </article>
+      <article class="card">
+        <h3>Programs kept apart</h3>
+        <p>Web pages you build run in a sealed preview that can't reach the editor or your files. The desktop app only opens folders you pick.</p>
+      </article>
+      <article class="card">
+        <h3>Report a problem</h3>
+        <p>Found a security issue? Our <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/blob/main/SECURITY.md" rel="noopener">security policy</a> says how to tell us privately.</p>
+      </article>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>IntuaCode · <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/blob/main/LICENSE" rel="noopener">Apache 2.0</a></span>
+  <span><a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode" rel="noopener">Source</a> · <a href="https://github.com/matthewvincentthomasmalone-ops/IntuiCode/blob/main/SECURITY.md" rel="noopener">Security policy</a> · <a href=".well-known/security.txt">security.txt</a></span>
+</footer>
+</body>
+</html>

@@ -8,6 +8,10 @@ line of Python, every summary points at real lines, and the same input always gi
 the same result. The aim is to let intuition and plain language lead, while you stay
 directly connected to every part of the code.
 
+**Get it:** [intuacode.com](https://intuacode.com) has the downloads for Windows, Linux and macOS, each with its
+SHA-256, and a button to open the browser version (nothing to install). [SECURITY.md](SECURITY.md) says what
+IntuaCode does with your code (nothing leaves your computer), how to check a download, and how to report a problem.
+
 ## Two directions
 
 **Write: idea → sentences → Python**
@@ -426,8 +430,19 @@ xvfb-run node tests/e2e/run.mjs
 
 ## Run it
 
-The browser version is at **https://intuacode.com**. Every push to `main` publishes it
-(`.github/workflows/pages.yml`, GitHub Pages), with Python and the parsers bundled.
+The browser version is at **https://intuacode.com/app/**, under the home page at **https://intuacode.com**.
+Every push to `main` publishes both (`.github/workflows/pages.yml`, GitHub Pages), with Python, the parsers and
+the fonts bundled: `tools/build_site.mjs` puts the home page (`site/`) at the top, the app (`dist/`) under `app/`,
+the newest release's downloads and checksums in `downloads.json`, and `.well-known/security.txt`. To try the site:
+
+```
+node tools/build_desktop.mjs && node tools/build_site.mjs
+python3 -m http.server 8080 --directory _site
+```
+
+Installers come from `.github/workflows/desktop.yml` (Actions → Desktop app → Run workflow on `main`): Windows,
+Linux and macOS for the version in `src-tauri/tauri.conf.json`, attached to a GitHub Release with
+`SHA256SUMS.txt` and a signed provenance attestation each, after which the website is rebuilt to offer them.
 
 To run it on your own computer:
 
