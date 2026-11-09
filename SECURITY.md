@@ -33,20 +33,22 @@ Each release has:
 - a signed provenance attestation for each installer, recording the workflow run and commit that built it:
   `gh attestation verify <file> --repo matthewvincentthomasmalone-ops/IntuiCode`.
 
-Windows installers are code-signed through [SignPath Foundation](https://signpath.org) from the first release after
-the project is accepted there ([code signing policy](https://intuacode.com/code-signing.html)). Until then, and on
-macOS, Windows SmartScreen and macOS Gatekeeper warn the first time they're opened: check the checksum or the
-attestation first.
+The installers aren't code-signed yet ([code signing policy](https://intuacode.com/code-signing.html)), so Windows
+SmartScreen and macOS Gatekeeper warn the first time they're opened: check the checksum or the attestation first.
 
-## Code signing: setting it up (for the maintainer)
+## Code signing later (for the maintainer)
 
-The release workflow already has the signing step (`sign-windows` in `.github/workflows/desktop.yml`); it stays off
-until SignPath is set up:
+Windows code signing through [SignPath Foundation](https://signpath.org) (free for open source) is planned once the
+project is established: SignPath asks for evidence that a project is used and trusted, and for the maintainer's own
+name and email. The release workflow already has the signing step (`sign-windows` in
+`.github/workflows/desktop.yml`); it stays off until SignPath is set up:
 
 1. Turn on multi-factor authentication for GitHub (and, later, SignPath): SignPath Foundation requires it.
 2. Apply at <https://signpath.org> for free open-source signing, with the repository
    (`matthewvincentthomasmalone-ops/IntuiCode`), the licence (Apache-2.0), the home page (https://intuacode.com) and
-   the code signing policy page (https://intuacode.com/code-signing.html).
+   the code signing policy page (https://intuacode.com/code-signing.html), which then needs SignPath's credit lines
+   ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") and its team roles (authors,
+   reviewers, approvers). Maintainer type: individual; build system: GitHub Actions.
 3. Once accepted, in SignPath: a project with the slug `intuacode` linked to this GitHub repository, a signing
    policy `release-signing` (manual approval, the approver from the policy page), and an artifact configuration
    from `.signpath/artifact-configuration.xml`. Create a CI user and an API token for it.
