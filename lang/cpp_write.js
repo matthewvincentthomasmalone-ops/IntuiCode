@@ -97,7 +97,7 @@
     return masked.split(re).map(p => p.replace(/\u0001(\d+)\u0001/g, (m, i) => strs[+i]).trim()).filter(Boolean);
   }
 
-  const TYPE_WORDS = { number: 'int', numbers: 'int', 'whole number': 'int', 'whole numbers': 'int', decimal: 'double', decimals: 'double', text: 'std::string', words: 'std::string', 'yes/no': 'bool', 'yes/no values': 'bool', character: 'char', characters: 'char' };
+  const TYPE_WORDS = { number: 'int', numbers: 'int', 'whole number': 'int', 'whole numbers': 'int', decimal: 'double', decimals: 'double', text: 'std::string', words: 'std::string', 'yes/no': 'bool', 'yes/no value': 'bool', 'yes/no values': 'bool', character: 'char', characters: 'char' };
   /* What a list holds, as said after "list of": "whole numbers", "text", or a C++ type and "values" ("float values"). */
   function itemType(word, x) {
     const low = String(word || '').trim().toLowerCase();
@@ -248,6 +248,7 @@
       // "how long pin echo stays on": pulseIn waits for the pin to turn on, then times how long it stays on (in microseconds)
       swap(String.raw`\bhow long pin (OPD) stays (on|off|high|low)\b`, (m, p, v) => { note(inf, '`pulseIn` waits for the pin to change, then measures how long it stays that way, in microseconds (millionths of a second).'); return `pulseIn(${p}, ${/on|high/i.test(v) ? 'HIGH' : 'LOW'})`; });
       swap(String.raw`\bpin (OPD)`, '$1');
+      q = q.replace(/\b(?:time|milliseconds) since (?:the )?start\b/gi, () => { note(inf, '`millis()` is how many milliseconds have passed since the board started.'); return 'millis()'; });
       // "at least 500 milliseconds have passed since lastBlink": millis() - lastBlink >= 500 (the way to wait without stopping)
       swap(String.raw`\b(at least|more than|less than|at most) (OPD) milliseconds? (?:have|has) passed since (OPD)`, (m, how, n, since, off, all) => {
         note(inf, '`millis()` is the time since the board started, so `millis() - ' + since + '` is how long ago ' + since + ' was. Taking away (rather than adding to ' + since + ') keeps working when millis() wraps round to 0 after 49 days.');
@@ -256,7 +257,6 @@
       });
       // "reading scaled from 0–1023 to 0–255": map moves a value from one range to another
       swap(String.raw`(OPD) scaled from (OPD)\s*[–—]\s*(OPD) to (OPD)\s*[–—]\s*(OPD)`, (m, v, a, b, c, d) => { note(inf, '`map` moves a value from one range to another, in whole numbers. It doesn\'t stop at the ends: "limited to" does that.'); return `map(${v}, ${a}, ${b}, ${c}, ${d})`; });
-      q = q.replace(/\b(?:time|milliseconds) since (?:the )?start\b/gi, () => { note(inf, '`millis()` is how many milliseconds have passed since the board started.'); return 'millis()'; });
     }
     // "level limited to 0–255": constrain (Arduino) or std::clamp (C++) keeps it from going past either end
     swap(String.raw`(OPD) limited to (OPD)\s*[–—]\s*(OPD)`, (m, v, a, b) => {
@@ -700,7 +700,7 @@
       // "count i from 1 to 10", "count down from 10 to 1" (the count is n), "… in steps of 2"
       if ((m = M(/^count(?:\s+(up|down))?(?:\s+(?!from\b)([A-Za-z_]\w*))?\s+from\s+(.+?)\s+(down\s+)?to\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i))) {
         const v = m[2] || 'n', a = m[3].trim(), b = m[5].trim(), num = (t) => /^-?\d+$/.test(t);
-        const down = /down/i.test(m[1] || '') || !!m[4] || (num(a) && num(b) && +a > +b);
+        const down = /down/i.test(m[1] || '') || !!m[4] || (!m[1] && num(a) && num(b) && +a > +b);   // "count up" always counts up
         // which way? only numbers written here say; otherwise ask (never count the wrong way)
         if (!m[1] && !m[4] && !num(a) && num(b)) inf.errs.push(`IntuaCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up ${v} from …" or "count down ${v} from …".`);
         if (!m[2]) note(inf, 'No name was given for the count, so it is called `n`. Write "count i from …" to choose a name.');
