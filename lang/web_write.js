@@ -401,7 +401,7 @@
   /* Things that belong in Styling or Mechanics, said in Structure: where to write them instead. */
   const ELSEWHERE = [
     [/^add\s+(?:a\s+|an\s+|some\s+)?(border|outline|background(?: colou?r)?|colou?r|shadow|rounded corners|round corners|padding|margin|space(?: inside| around)?|font|gap)\b/i,
-      (w) => `A ${w.toLowerCase()} is how something looks, so it goes in Styling (style.css), like: style ‹name›: ${/border|outline/i.test(w) ? 'border 2 solid navy' : /shadow/i.test(w) ? 'shadow' : /corner/i.test(w) ? 'rounded corners 8' : /padding|inside/i.test(w) ? 'space inside 12' : /margin|around/i.test(w) ? 'space around 12' : /font/i.test(w) ? 'font Inter' : /gap/i.test(w) ? 'gap 12' : /colou?r$/i.test(w) && !/background/i.test(w) ? 'text colour navy' : 'background navy'}. Give the element a name here first ("called ‹name›").`],
+      (w) => `A ${w.toLowerCase()} is how something looks, so it goes in Styling (style.css), like ${/border|outline|shadow|corner/i.test(w) ? `"add ${/s$/i.test(w) ? '' : 'a '}${w.toLowerCase()} to ‹name›" or ` : ''}style ‹name›: ${/border|outline/i.test(w) ? 'border 2 solid navy' : /shadow/i.test(w) ? 'shadow' : /corner/i.test(w) ? 'rounded corners 8' : /padding|inside/i.test(w) ? 'space inside 12' : /margin|around/i.test(w) ? 'space around 12' : /font/i.test(w) ? 'font Inter' : /gap/i.test(w) ? 'gap 12' : /colou?r$/i.test(w) && !/background/i.test(w) ? 'text colour navy' : 'background navy'}. Give the element a name here first ("called ‹name›").`],
     [/^add\s+(?:a\s+|an\s+)?(click|animation|timer|sound)\b/i, (w) => `A ${w.toLowerCase()} is something the page does, so it goes in Mechanics (script.js), like: when ‹name› is clicked.`],
     [/^add\s+(?:a\s+|the\s+)?(?:page\s+)?title\b/i, () => 'The page\'s title (in the browser tab) is written: page title is "…". A title shown on the page is a heading: add a big heading "…".'],
     [new RegExp(`^add\\s+(?:a\\s+|an\\s+|some\\s+)?(${SVG_WORDS.flatMap(r => r.slice(1)).filter(w => !HTML_WORD_TAG.has(w) && !/^(?:title|description|page area)$/.test(w)).join('|')})\\b`, 'i'),
@@ -858,6 +858,10 @@
       part = part.trim().replace(/\.$/, '');
       let m;
       if ((m = part.match(/^(-{0,2}[a-z][a-z0-9-]*)\s*:\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); checkRaw(m[1].toLowerCase(), m[2], inf); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
+      if ((m = part.match(/^background (?:a )?gradient(?:\s+at\s+(-?\d+(?:\.\d+)?deg))?\s+from\s+(.+?)((?:\s+through\s+.+?)*)\s+to\s+(.+)$/i))) {   // "background gradient from #fff3e0 to #ffe0b2"
+        const cs = [m[2], ...m[3].split(/\s+through\s+/i).filter(s => s.trim()), m[4]].map(c => color(c.trim(), inf));
+        out.push(['background', `linear-gradient(${m[1] ? m[1] + ', ' : ''}${cs.join(', ')})`]); continue;
+      }
       if ((m = part.match(/^(?:background|background colou?r)\s+(.+?)(?:\s+(\d+)%\s+(?:see-through|transparent))?$/i))) {
         const pic = m[1].match(/^picture\s+(.+)$/i);
         if (pic) { out.push(['background-image', `url(${pic[1].trim()})`], ['background-size', 'cover']); continue; }
@@ -869,11 +873,19 @@
         }
         out.push(['background', c]); continue;
       }
-      if ((m = part.match(/^(?:text colou?r|colou?r|text)\s+(.+)$/i)) && !/^(size|centred|centered|bold)/i.test(m[1])) { out.push(['color', color(m[1], inf)]); continue; }
+      if ((m = part.match(/^(?:text colou?r|colou?r|text)\s+(.+)$/i)) && !/^(size|centred|centered|bold|weight|aligned)\b/i.test(m[1])) { out.push(['color', color(m[1], inf)]); continue; }
       if ((m = part.match(/^(?:text size|font size|size of text)\s+(.+)$/i))) { out.push(['font-size', unit(m[1], inf)]); continue; }
       if (/^bold( text)?$/i.test(part)) { out.push(['font-weight', 'bold']); continue; }
       if (/^italic( text)?$/i.test(part)) { out.push(['font-style', 'italic']); continue; }
       if (/^(?:capitals|all capitals|uppercase)( text)?$/i.test(part)) { out.push(['text-transform', 'uppercase']); continue; }
+      if ((m = part.match(/^font\s+(.+?)\s+or any (serif|sans-serif|monospace|cursive) font$/i))) { const f = m[1].replace(/^["']|["']$/g, ''); out.push(['font-family', `"${f}", ${m[2].toLowerCase()}`]); continue; }
+      if ((m = part.match(/^(?:text|font) weight\s+(\d{3}|normal|bold|bolder|lighter)$/i))) { out.push(['font-weight', m[1].toLowerCase()]); continue; }
+      if ((m = part.match(/^line height\s+(\S+)$/i))) { out.push(['line-height', m[1]]); note(inf, 'A line height without a unit is that many times the text size.'); continue; }
+      if ((m = part.match(/^letter spacing\s+(\S+)$/i))) { out.push(['letter-spacing', unit(m[1], inf)]); continue; }
+      if ((m = part.match(/^text aligned (left|right|center|centre|justify|start|end)$/i))) { out.push(['text-align', m[1].toLowerCase().replace('centre', 'center')]); continue; }
+      if (/^underlined( text)?$/i.test(part)) { out.push(['text-decoration', 'underline']); continue; }
+      if (/^(?:struck through|crossed out)( text)?$/i.test(part)) { out.push(['text-decoration', 'line-through']); continue; }
+      if (/^(?:its )?size includes (?:the |its )?padding plus border$/i.test(part)) { out.push(['box-sizing', 'border-box']); note(inf, '`box-sizing: border-box`: the width and height include the space inside and the border, so they are the size you see.'); continue; }
       if ((m = part.match(/^font\s+(.+)$/i))) { const f = m[1].replace(/^["']|["']$/g, ''); out.push(['font-family', `"${f}", sans-serif`]); continue; }
       if ((m = part.match(/^(?:space inside|padding|inner space)\s+(.+)$/i))) { out.push(['padding', m[1].split(/\s+/).map(v => unit(v, inf)).join(' ')]); continue; }
       if ((m = part.match(/^(?:space around|margin|outer space)\s+(.+)$/i))) { out.push(['margin', m[1].split(/\s+/).map(v => unit(v, inf)).join(' ')]); continue; }
@@ -932,7 +944,7 @@
       inf.warns.push(`There's no <${m[1]}> element, and nothing on the page is called ${code(m[1])} yet. For an element you named, write #${m[1]}${m[2]}.`);
       return n;
     }
-    if (/^[.#:*\[]|[>~+]/.test(n) || /^[a-z]+[.#:]/.test(n)) { note(inf, `${code(n)} is a CSS selector written directly.`); return n; }
+    if (/^[.#:*\[]|[>~+\[]/.test(n) || /^[a-z]+[.#:]/.test(n)) { note(inf, `${code(n)} is a CSS selector written directly.`); return n; }
     if ((m = n.match(/^group\s+(.+)$/i))) return '.' + toId(m[1]);
     if ((m = n.match(/^(?:the element|element)\s+(.+)$/i))) return '#' + toId(m[1]);
     const every = !!(m = n.match(/^every\s+(.+)$/i));
@@ -1004,10 +1016,17 @@
         rules.push({ sel, props: cssProps(m[2], inf), media, src: i });
         return;
       }
-      if ((m = s.match(/^when\s+(.+?)\s+is\s+(hovered|pointed at|clicked|focused|selected)\s*:\s*(.+)$/i))) {
-        const pseudo = { hovered: ':hover', 'pointed at': ':hover', clicked: ':active', focused: ':focus', selected: ':checked' }[m[2].toLowerCase()];
+      if ((m = s.match(/^when\s+(.+?)\s+is\s+(hovered|pointed at|clicked|focused with the keyboard|focused|selected|disabled|visited|empty)\s*:\s*(.+)$/i)) ||
+          (m = s.match(/^when\s+(.+?)\s+(has focus inside)\s*:\s*(.+)$/i))) {
+        const pseudo = { hovered: ':hover', 'pointed at': ':hover', clicked: ':active', focused: ':focus', 'focused with the keyboard': ':focus-visible', selected: ':checked', disabled: ':disabled', visited: ':visited', empty: ':empty', 'has focus inside': ':focus-within' }[m[2].toLowerCase()];
         rules.push({ sel: withPseudo(selectorFor(m[1], shared, inf), pseudo), props: cssProps(m[3], inf), media, src: i });
-        note(inf, `${code(pseudo)} applies these styles only ${m[2].toLowerCase() === 'hovered' || m[2].toLowerCase() === 'pointed at' ? 'while the mouse is over it' : 'while it is ' + m[2].toLowerCase()}.`);
+        note(inf, `${code(pseudo)} applies these styles only ${m[2].toLowerCase() === 'hovered' || m[2].toLowerCase() === 'pointed at' ? 'while the mouse is over it' : m[2].toLowerCase() === 'has focus inside' ? 'while something inside it is focused' : 'while it is ' + m[2].toLowerCase()}.`);
+        return;
+      }
+      // "add a border to card", "add rounded corners to group card": the same as "style card: border"
+      if ((m = s.match(/^add\s+(?:a\s+|an\s+|some\s+)?(.+?)\s+to\s+(.+?)$/i)) && !/^(?:css|raw)\s*:/i.test(s)) {
+        const phrase = m[1].replace(/^(.+?)\s+(border|outline)$/i, '$2 $1');
+        rules.push({ sel: selectorFor(m[2], shared, inf), props: cssProps(phrase, inf), media, src: i });
         return;
       }
       if ((m = s.match(/^(before|after|at the (?:start|end) of)\s+(.+?)\s*:(?!:)\s*(.+)$/i))) {
@@ -1917,6 +1936,7 @@
     T('Styles', 'style ‹name›: background ‹colour›, text colour ‹colour›', '#name { background: …; color: … }', 'Separate styles with commas.', ['styling']),
     T('Styles', 'create group ‹name›: rounded corners ‹8›, shadow', '.name { border-radius: 8px; box-shadow: … }', 'A group is a CSS class. Reuse it on many elements.', ['styling']),
     T('Styles', 'style ‹name›: border ‹2› ‹dashed› ‹navy›', '#name { border: 2px dashed navy }', 'The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border".', ['styling']),
+    T('Styles', 'add a border to ‹name›', '#name { border: 1px solid currentColor }', 'The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …".', ['styling']),
     T('Styles', '‹element› belongs to group ‹group›', 'class="group" in the HTML', 'Adds the group to an element in Structure.', ['styling']),
     T('Styles', 'when ‹name› is hovered: ‹styles›', '#name:hover { … }', '', ['styling']),
     T('Styles', 'on screens narrower than ‹600›:', '@media (max-width: 600px) {', 'Indent styles under it for phones.', ['styling']),
@@ -1981,7 +2001,7 @@
   };
   const WORDS = {
     structure: [['called save', 'id="save"'], ['called "helpToggle"', 'id="helpToggle" (exactly)'], ['in group card', 'class="card"'], ['hidden from screen readers', 'aria-hidden="true"'], ['storing chord "C"', 'data-chord="C"'], ['drawing', '<svg>'], ['set of shapes', '<g>'], ['big heading', '<h1>'], ['heading', '<h2>'], ['block', '<div>'], ['navigation bar', '<nav>'], ['main area', '<main>'], ['side panel', '<aside>'], ['picture', '<img>'], ['text box', '<input>'], ['big text box', '<textarea>']],
-    styling: [['background navy', 'background: navy'], ['background #000 40% see-through', 'background: rgba(0,0,0,0.6)'], ['50% see-through', 'opacity: 0.5'], ['text colour white', 'color: white'], ['text size 20', 'font-size: 20px'], ['space inside 12', 'padding: 12px'], ['space around 8', 'margin: 8px'], ['rounded corners 8', 'border-radius: 8px'], ['shadow', 'box-shadow: …'], ['in a row', 'display: flex'], ['in a grid of 3 columns', 'display: grid'], ['hand cursor', 'cursor: pointer'], ['centred', 'margin: 0 auto'], ['hidden', 'display: none']],
+    styling: [['background navy', 'background: navy'], ['background #000 40% see-through', 'background: rgba(0,0,0,0.6)'], ['50% see-through', 'opacity: 0.5'], ['text colour white', 'color: white'], ['text size 20', 'font-size: 20px'], ['space inside 12', 'padding: 12px'], ['space around 8', 'margin: 8px'], ['rounded corners 8', 'border-radius: 8px'], ['shadow', 'box-shadow: …'], ['in a row', 'display: flex'], ['in a grid of 3 columns', 'display: grid'], ['hand cursor', 'cursor: pointer'], ['centred', 'margin: 0 auto'], ['hidden', 'display: none'], ['border 2 dashed navy', 'border: 2px dashed navy'], ['underlined', 'text-decoration: underline'], ['line height 1.5', 'line-height: 1.5'], ['text weight 600', 'font-weight: 600'], ['background gradient from #fff to #000', 'background: linear-gradient(#fff, #000)'], ['the colour main', 'var(--main)']],
     mechanics: [['a is b', 'a === b'], ['a is not b', 'a !== b'], ['a and b', 'a && b'], ['not a', '!a'], ['length of x', 'x.length'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'Math.floor(Math.random()*6)+1'], ['text of name', 'name.value / .textContent'], ['"Hi {name}"', '`Hi ${name}`'], ['box is ticked', 'box.checked'], ['card is in group done', 'card.classList.contains("done")'], ['the file in picker', 'picker.files[0]'], ['wait for x', 'await x']],
   };
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog)\b|on screens |in dark mode)/i;

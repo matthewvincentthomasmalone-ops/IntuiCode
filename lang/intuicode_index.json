@@ -1371,6 +1371,15 @@
         },
         {
           "topic": "Styles",
+          "say": "add a border to ‹name›",
+          "becomes": "#name { border: 1px solid currentColor }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "The same as \"style ‹name›: border\". Also \"add a 2 dashed navy border to …\", \"add a shadow to …\", \"add rounded corners to …\"."
+        },
+        {
+          "topic": "Styles",
           "say": "‹element› belongs to group ‹group›",
           "becomes": "class=\"group\" in the HTML",
           "folders": [
@@ -1471,6 +1480,30 @@
         {
           "say": "hidden",
           "becomes": "display: none"
+        },
+        {
+          "say": "border 2 dashed navy",
+          "becomes": "border: 2px dashed navy"
+        },
+        {
+          "say": "underlined",
+          "becomes": "text-decoration: underline"
+        },
+        {
+          "say": "line height 1.5",
+          "becomes": "line-height: 1.5"
+        },
+        {
+          "say": "text weight 600",
+          "becomes": "font-weight: 600"
+        },
+        {
+          "say": "background gradient from #fff to #000",
+          "becomes": "background: linear-gradient(#fff, #000)"
+        },
+        {
+          "say": "the colour main",
+          "becomes": "var(--main)"
         }
       ],
       "selectors": [

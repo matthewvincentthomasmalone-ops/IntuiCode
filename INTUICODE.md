@@ -559,8 +559,10 @@ dark        = "in dark mode" [ ":" ] ;                                (* → @me
 shared      = ( "shared" | "main" ) ( "colour" | "color" ) name "is" colour ;      (* → :root { --name: colour } *)
 join-group  = name ( "belongs to" | "is in" | "joins" ) "group" name ;             (* adds the class to that element in Structure *)
 group       = ( "create" | "make" ) [ "a" ] "group" name ":" styles ;             (* → .name { … } *)
-state       = "when" what "is" ( "hovered" | "pointed at" | "clicked" | "focused" | "selected" ) ":" styles ;
-                                                                          (* → :hover, :active, :focus, :checked *)
+state       = "when" what "is" ( "hovered" | "pointed at" | "clicked" | "focused" | "focused with the keyboard" | "selected"
+              | "disabled" | "visited" | "empty" ) ":" styles | "when" what "has focus inside:" styles ;
+                                    (* → :hover, :active, :focus, :focus-visible, :checked, :disabled, :visited, :empty, :focus-within *)
+add-style   = "add" [ "a" | "an" | "some" ] styles "to" what ;    (* the same as style; "add a 2 dashed navy border to card" *)
 piece       = ( "before" | "after" | "at the start of" | "at the end of" ) what ":" styles ; (* → ::before, ::after *)
 style       = ( "style" | "make" | "give" ) what ":" styles ;
 styles      = style-phrase { ( "," | "and" ) style-phrase } ;
@@ -583,7 +585,11 @@ and `#name`.
 | `text colour C`, `colour C`, `text C` | `color: C` |
 | `text size N`, `font size N`, `size of text N` | `font-size` |
 | `bold`, `italic`, `capitals` (`all capitals`, `uppercase`), each with an optional `text` | `font-weight`, `font-style`, `text-transform` |
-| `font F` | `font-family: "F", sans-serif` |
+| `font F`, `font F or any serif font` (sans-serif, monospace, cursive) | `font-family: "F", sans-serif` (or that kind) |
+| `text weight N` (600, normal…), `line height N`, `letter spacing N`, `text aligned left` (right, justify…) | `font-weight`, `line-height` (as written), `letter-spacing`, `text-align` |
+| `underlined`, `struck through`, `no underline` | `text-decoration` |
+| `background gradient [at Ndeg] from C through C … to C` | `background: linear-gradient(…)` |
+| `size includes padding plus border` | `box-sizing: border-box` |
 | `space inside V…`, `padding V…`, `inner space V…` | `padding` |
 | `space around V…`, `margin V…`, `outer space V…` | `margin` |
 | `centred`, `centered`, `in the middle` | `margin-left: auto; margin-right: auto` |
@@ -1804,6 +1810,7 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | **Styles** | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
 |  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
+|  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
 |  | `‹element› belongs to group ‹group›` | `class="group" in the HTML` | Adds the group to an element in Structure. |
 |  | `when ‹name› is hovered: ‹styles›` | `#name:hover { … }` |  |
 |  | `on screens narrower than ‹600›:` | `@media (max-width: 600px) {` | Indent styles under it for phones. |
@@ -1828,6 +1835,12 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `hand cursor` | `cursor: pointer` |
 | `centred` | `margin: 0 auto` |
 | `hidden` | `display: none` |
+| `border 2 dashed navy` | `border: 2px dashed navy` |
+| `underlined` | `text-decoration: underline` |
+| `line height 1.5` | `line-height: 1.5` |
+| `text weight 600` | `font-weight: 600` |
+| `background gradient from #fff to #000` | `background: linear-gradient(#fff, #000)` |
+| `the colour main` | `var(--main)` |
 
 #### CSS: words for what to style
 

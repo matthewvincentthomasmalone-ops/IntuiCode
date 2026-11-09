@@ -484,7 +484,7 @@
 
   const TAG_PHRASE = { button: 'buttons', 'h1, h2, h3': 'headings', h1: 'big headings', a: 'links', p: 'paragraphs', img: 'pictures', 'input, textarea': 'text boxes', 'ul, ol': 'lists', li: 'list items', section: 'sections', body: 'the page', '*': 'everything', header: 'header', footer: 'footer', nav: 'navigation bar', form: 'forms', label: 'labels', input: 'inputs' };
   const COMBOS = { 'display:flex;align-items:center': 'in a row', 'display:flex;flex-direction:column': 'in a column', 'margin-left:auto;margin-right:auto': 'centred', 'position:sticky;top:0': 'stays in place', 'background-image:url(': null };
-  const PSEUDO = { hover: 'hovered', active: 'clicked', focus: 'focused', checked: 'selected' };
+  const PSEUDO = { hover: 'hovered', active: 'clicked', focus: 'focused', checked: 'selected', 'focus-visible': 'focused with the keyboard', disabled: 'disabled', visited: 'visited', empty: 'empty' };
   const HTML_TAG = /^(?:a|abbr|address|article|aside|audio|b|blockquote|body|button|canvas|caption|code|dd|details|dialog|div|dl|dt|em|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|i|iframe|img|input|kbd|label|legend|li|main|mark|menu|nav|ol|optgroup|option|output|p|picture|pre|progress|q|s|section|select|small|span|strong|sub|summary|sup|svg|table|tbody|td|textarea|tfoot|th|thead|time|tr|u|ul|video)$/;
 
   /* One declaration as a style phrase that the Styling translator turns back into exactly [prop, value]. */
@@ -499,8 +499,17 @@
       'box-shadow': value === 'none' ? ['no shadow'] : [], display: value === 'none' ? ['hidden'] : [], width: [`width ${short}`], height: [`height ${short}`], 'max-width': [`at most ${short} wide`], 'min-height': [`at least ${short} tall`],
       gap: [`gap ${short}`], 'justify-content': value === 'space-between' ? ['spread out'] : [], cursor: value === 'pointer' ? ['hand cursor'] : [], 'text-decoration': value === 'none' ? ['no underline'] : [], 'text-align': value === 'center' ? ['centred text'] : [],
       opacity: /^0?\.\d+$|^[01]$/.test(value) ? [`${Math.round((1 - parseFloat(value)) * 100)}% see-through`] : [],
-      'font-family': (value.match(/^"([^"]+)", sans-serif$/) || [])[1] ? [`font ${value.match(/^"([^"]+)"/)[1]}`] : [],
+      'font-family': (value.match(/^"([^"]+)", sans-serif$/) || [])[1] ? [`font ${value.match(/^"([^"]+)"/)[1]}`] : (value.match(/^"([^"]+)", (serif|monospace|cursive)$/) || [])[1] ? [`font ${value.match(/^"([^"]+)"/)[1]} or any ${value.match(/, (\w+)$/)[1]} font`] : [],
+      'line-height': [`line height ${value}`], 'letter-spacing': [`letter spacing ${short}`], 'box-sizing': value === 'border-box' ? ['size includes padding plus border'] : [],
     };
+    const shared = value.match(/^var\(--([a-z][a-z0-9-]*)\)$/);   // a shared colour: "the colour crust"
+    if (shared && (prop === 'color' || prop === 'background')) tries.push(`${prop === 'color' ? 'text colour' : 'background'} the colour ${shared[1]}`);
+    if (prop === 'font-weight' && /^\d{3}$|^(?:normal|lighter|bolder)$/.test(value)) tries.push(`text weight ${value}`);
+    if (prop === 'text-align' && /^(?:left|right|justify|start|end)$/.test(value)) tries.push(`text aligned ${value}`);
+    if (prop === 'text-decoration' && value === 'underline') tries.push('underlined');
+    if (prop === 'text-decoration' && value === 'line-through') tries.push('struck through');
+    const grad = prop === 'background' && value.match(/^linear-gradient\((?:(-?\d+(?:\.\d+)?deg), )?([^()]+)\)$/);
+    if (grad) { const cs = grad[2].split(', '); if (cs.length >= 2 && cs.every(c => /^(?:#[0-9a-f]{3,8}|[a-z]+)$/.test(c))) tries.push(`background gradient${grad[1] ? ' at ' + grad[1] : ''} from ${cs[0]}${cs.slice(1, -1).map(c => ' through ' + c).join('')} to ${cs[cs.length - 1]}`); }
     const line = prop.match(/^(border|outline)(?:-(top|bottom|left|right))?$/);
     if (line && value !== 'none') {   // "border 2 dashed navy", "bottom border 1 solid #ddd"
       tries.push(`${line[2] ? line[2] + ' ' : ''}${line[1]} ${value.replace(/(^|\s)(-?\d*\.?\d+)px(?=\s|$)/g, '$1$2')}`);
@@ -530,7 +539,7 @@
       if (WEB.TAG_WORDS[s]) return null;
       if (HTML_TAG.test(s) && !ids[s] && !groups.has(s)) return s;
       if (/^[a-z0-9]+(?:, [a-z0-9]+)+$/.test(s) && s.split(', ').every(t => HTML_TAG.test(t))) return s;
-      if (/^[.#*\[]/.test(s) || /[>~+]/.test(s) || /^[a-z]+[.#]/.test(s)) return s;
+      if (/^[.#*\[]/.test(s) || /[>~+\[]/.test(s) || /^[a-z]+[.#]/.test(s)) return s;
       return null;
     };
     const decls = (blockNode) => {
@@ -562,8 +571,10 @@
       const back = WEB.cssPropsFor(props, inf);
       if (inf.errs.length || JSON.stringify(back) !== JSON.stringify(ds)) return null;
       const sel = collapseCode(selNode.text);
-      const pm = sel.match(/^([^:\s]+):(hover|active|focus|checked)$/);
-      if (pm) { const who = selPhrase(pm[1]); return who ? `when ${who} is ${PSEUDO[pm[2]]}: ${props}` : null; }
+      const pm = sel.match(/^([^:\s]+):(hover|active|focus|checked|focus-visible|disabled|visited|empty|focus-within)$/);
+      if (pm) { const who = selPhrase(pm[1]); return who ? pm[2] === 'focus-within' ? `when ${who} has focus inside: ${props}` : `when ${who} is ${PSEUDO[pm[2]]}: ${props}` : null; }
+      const pe = sel.match(/^([^:]+)::(before|after)$/);   // a piece CSS adds at the start or end
+      if (pe) { const who = selPhrase(pe[1]); return who ? `${pe[2]} ${who}: ${props}` : null; }
       const who = selPhrase(sel);
       return who ? `style ${who}: ${props}` : null;
     };

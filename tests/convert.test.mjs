@@ -80,7 +80,7 @@ test('code -> sentences: the sentences read naturally', () => {
   assert.match(ino, /^when the board starts\n    make pin BUTTON an input with pull-up$/m);
   assert.match(ino, /^    if pin BUTTON is off$/m);
   const css = convert('css', read('tests/corpus_web/styles.css'), pageNames(read('tests/corpus_web/landing.html'))).text;
-  assert.match(css, /^style group cta: background var\(--crust\), text colour white, no border, rounded corners 999, space inside 12 28, hand cursor$/m);
+  assert.match(css, /^style group cta: background the colour crust, text colour white, no border, rounded corners 999, space inside 12 28, hand cursor$/m);
   assert.match(css, /^on screens narrower than 600px:\n    style group hero: space inside 40 16$/m);
   const html = convert('html', read('tests/corpus_web/landing.html'), { pulled: ['styles.css', 'app.js'] }).text;
   assert.match(html, /^    add a button called order saying "Order ahead" in group cta$/m);

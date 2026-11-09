@@ -125,7 +125,7 @@ test('structure: natural words, and pointing to Styling for how things look', ()
   const chart = body('add a data graph called sales 600 by 300');
   assert.equal(chart.html, '<canvas id="sales" width="600" height="300"></canvas>');
   assert.ok(chart.notes.some(n => /chart is drawn on a drawing area/.test(n)));
-  assert.match(body('add a border').errs[0], /Styling \(style\.css\), like: style ‹name›: border 2 solid navy/);
+  assert.match(body('add a border').errs[0], /Styling \(style\.css\), like "add a border to ‹name›" or style ‹name›: border 2 solid navy/);
   assert.match(body('add a shadow').errs[0], /style ‹name›: shadow/);
   assert.match(body('add a title "Hi"').errs[0], /page title is "…"/);
   // a note goes where its indentation puts it
@@ -185,4 +185,24 @@ test('styling: borders and outlines take a width, a line style and a colour in a
   assert.equal(one('border 1 solid rgba(0, 0, 0, 0.5)'), 'border: 1px solid rgba(0, 0, 0, 0.5);');
   // and they read back that way
   reads('css', '.a {\n  border: 2px dashed navy;\n  outline: 2px solid #4af;\n  border-bottom: 1px solid #333;\n}\n', 'style group a: border 2 dashed navy, outline 2 solid #4af, bottom border 1 solid #333', { groups: ['a'] });
+  // "add a border to card" is the same as "style card: border …"
+  assert.equal(css('add a 2 dashed navy border to group card\nadd rounded corners to group card').text, '.card {\n  border: 2px dashed navy;\n}\n\n.card {\n  border-radius: 8px;\n}\n');
+});
+
+test('styling: plainer words for common CSS, both ways', () => {
+  const both = (css, said, extra = { groups: ['a'] }) => {
+    reads('css', css, said, extra);
+    const r = WEB.compileCss({ id: 'x', file: 'x', text: said }, { ids: Object.fromEntries(Object.entries(extra.ids || {}).map(([k, t]) => [k, { tag: t }])), groups: Object.fromEntries((extra.groups || []).map(g => [g, true])), cssGroups: {}, addGroups: {} });
+    assert.deepEqual(plain(r.info.flatMap(i => i.errs)), []);
+    assert.equal(r.text, css.replace(/\n$/, '\n'));
+  };
+  both('.a {\n  font-family: "Georgia", serif;\n  font-weight: 600;\n  line-height: 1.5;\n  letter-spacing: 2px;\n  text-align: right;\n}\n',
+    'style group a: font Georgia or any serif font, text weight 600, line height 1.5, letter spacing 2, text aligned right');
+  both('.a {\n  background: linear-gradient(#fff3e0, #ffe0b2);\n  box-sizing: border-box;\n}\n', 'style group a: background gradient from #fff3e0 to #ffe0b2, size includes padding plus border');
+  both(':root {\n  --crust: #b5651d;\n}\n\n.a {\n  color: var(--crust);\n  text-decoration: underline;\n}\n', 'shared colour crust is #b5651d\n\nstyle group a: text colour the colour crust, underlined');
+  both('.a:focus-visible {\n  outline: 2px solid #4af;\n}\n\n.a:disabled {\n  text-decoration: line-through;\n}\n', 'when group a is focused with the keyboard: outline 2 solid #4af\n\nwhen group a is disabled: struck through');
+  both('a[href^="http"]::after {\n  content: " ↗";\n}\n', 'after a[href^="http"]: content: " ↗"', {});
+  // a style with brackets after a list that takes commas is a style of its own
+  both('body {\n  font-family: "Inter", system-ui;\n  background: var(--x);\n}\n', 'style the page: font-family: "Inter", system-ui, background the colour x', {});
+  assert.equal(WEB.compileCss({ id: 'x', file: 'x', text: 'style the page: font-family: "Inter", system-ui, background var(--x)' }, shared()).text, 'body {\n  font-family: "Inter", system-ui;\n  background: var(--x);\n}\n');
 });
