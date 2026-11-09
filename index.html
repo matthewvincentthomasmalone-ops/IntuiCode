@@ -12,10 +12,13 @@
       <span class="brand-name">IntuaCode</span>
       <span class="lang-chip" title="Language for this project">Python</span>
       <div class="modes" role="tablist" aria-label="Mode">
-        <button type="button" role="tab" id="modeWrite" aria-selected="true" title="Write a program in sentences">Write</button>
-        <button type="button" role="tab" id="modeRead" aria-selected="false" title="Read existing code in plain English">Read</button>
-        <button type="button" role="tab" id="modeUnity" aria-selected="false" title="One pane of real code: select any part and translate it to plain language syntax, right where it is">Unity</button>
+        <button type="button" role="tab" id="modeUnity" aria-selected="true" title="Unity: one pane of real code. Select any part and translate it to plain language syntax, right where it is">Unity</button>
+        <button type="button" role="tab" id="modeWrite" aria-selected="false" title="Split Mode: sentences on the left, the code they make on the right">Split Mode</button>
       </div>
+    </div>
+    <div class="groups" role="group" aria-label="Show one side of the project">
+      <button type="button" class="grp-btn" id="grpDisplay" data-group="display" aria-pressed="false" title="Show only the code people see and use: pages, screens, layout, styles, text, buttons and lights. Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Interface<span class="grp-more"> &amp; Display</span></span></button>
+      <button type="button" class="grp-btn" id="grpMechanics" data-group="mechanics" aria-pressed="false" title="Show only the code that works behind the scenes: logic, data, saving, timing and calculations. Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span><span class="grp-more">Backend &amp; </span>Mechanics</span></button>
     </div>
     <div class="bar-actions">
       <span class="folder-name" id="folderName" hidden></span>
@@ -23,16 +26,15 @@
         <button type="button" id="btnFile" class="btn ghost" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList">File</button>
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
-          <button type="button" role="menuitem" id="btnBuilder">Plan a project…</button>
+          <button type="button" role="menuitem" id="btnBuilder" title="Plan a project step by step: what you're making, its steps, then build">Plan a project…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
-          <button type="button" role="menuitem" id="btnAddImage" title="Add a picture (PNG, JPEG, GIF, WebP or SVG) to the project's images/ folder">Add an image…</button>
           <div class="menu-sep" role="separator"></div>
-          <button type="button" role="menuitem" id="btnImport">Import code…</button>
+          <button type="button" role="menuitem" id="btnImport" title="Bring in code: a file, a folder or a .zip. It becomes the project's own files, in Unity and Split Mode">Import code…</button>
+          <button type="button" role="menuitem" id="btnAddImage" title="Add a picture (PNG, JPEG, GIF, WebP or SVG) to the project's images/ folder">Add an image…</button>
         </div>
       </div>
-      <button type="button" id="btnPlan" class="btn ghost" title="Plan a project step by step: what you're making, its steps, then build">Plan</button>
-      <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates</button>
+      <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making"><span class="bt-more">Project </span>Templates</button>
       <button type="button" id="btnLibrary" class="btn ghost" hidden title="Parts to add to your project: by kind of project or by what they do, in the languages they're written in, and code that joins two languages">Library</button>
       <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
@@ -43,17 +45,12 @@
   <div class="workspace">
     <aside class="side" aria-label="Project">
       <div id="writeSide">
-        <div class="side-h">Project <span class="side-acts"><button type="button" class="btn tiny" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">+ File</button><button type="button" class="btn tiny" id="btnAddFolder" title="Add a folder">+ Folder</button></span></div>
+        <div class="side-h">Project <span class="side-acts"><button type="button" class="btn tiny" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">+ File</button><button type="button" class="btn tiny" id="btnAddFolder" title="Add a folder">+ Folder</button><button type="button" class="btn tiny" id="btnImport2" title="Import code: a file, a folder or a .zip">Import</button></span></div>
         <div class="tree-root" id="treeRoot"></div>
         <nav id="tree" class="tree"></nav>
-        <div id="unitySide" hidden>
-          <div class="side-pad u-side">
-            <div class="u-acts"><button type="button" class="btn small" id="uOpen" title="Add a code file from your computer to the project, and open it here">Open a file…</button><button type="button" class="btn small" id="uCopy" title="Copy this file's code: what Run uses, with every green part as code">Copy the code</button></div>
-            <input type="file" id="uFile" hidden accept=".py,.pyw,.html,.htm,.css,.js,.mjs,.cjs,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino">
-          </div>
-          <div class="side-h">In sentences <span id="uCount" class="count"></span></div>
-          <ul id="uRegions" class="u-regions"></ul>
-          <p class="side-note u-how">The file picked above, in one pane: sentences in green. <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>) turns selected code into sentences in place; <b>Original Code</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>) puts code back, exactly as it was if unchanged. Write mode shows the same file.</p>
+        <div id="partsWrap">
+          <div class="side-h">Parts <span id="partsCount" class="count"></span><span class="side-acts seg" role="tablist" aria-label="List the parts by"><button type="button" role="tab" id="partsByType" aria-selected="true" title="By what each part is for: interface and display, mechanics, setup, data">Type</button><button type="button" role="tab" id="partsByLang" aria-selected="false" title="By the kind of code each part is written in">Language</button></span></div>
+          <div id="parts" class="parts" aria-live="polite"></div>
         </div>
         <div id="imgWrap" hidden>
           <div class="side-h">Images <span id="imgCount" class="count"></span></div>
@@ -67,15 +64,6 @@
         </div>
         <div class="side-h">Problems <span id="probCount" class="count"></span></div>
         <ul id="problems" class="problems"></ul>
-      </div>
-      <div id="readSide" hidden>
-        <div class="side-h">Imported code</div>
-        <nav id="rdFiles" class="tree"></nav>
-        <div class="side-pad"><button type="button" class="btn small" id="btnImport2">Import code</button></div>
-        <div id="rdOutlineWrap">
-          <div class="side-h">Sections in this file</div>
-          <nav id="rdOutline" class="outline"></nav>
-        </div>
       </div>
     </aside>
 
@@ -96,6 +84,7 @@
               <div class="band band-link" id="bandLink" hidden></div>
               <div class="band band-mask" id="bandMask" hidden><span>your turn: say it in the balloon</span></div>
               <pre class="hl" id="hl" aria-hidden="true"></pre>
+              <div class="marks" id="sayMarks" aria-hidden="true"></div>
               <div class="pm-ghost" id="ghost" aria-hidden="true" hidden></div>
               <div class="dd-layer" id="ddLayer"></div>
               <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Sentences"></textarea>
@@ -120,31 +109,6 @@
         </div>
       </section>
 
-      <div class="explain-wrap" id="explainWrap">
-        <button type="button" class="dock-btn" id="btnHelpDock" aria-expanded="true" aria-controls="explain" title="Hide the help under the windows, for more room"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Hide help</span></button>
-        <section class="explain" id="explain" aria-live="polite"></section>
-      </div>
-
-      <section class="read" id="readView" hidden>
-        <div class="read-h">
-          <div class="read-title">
-            <h2 id="rdName">No code imported yet</h2>
-            <p id="rdOverview"></p>
-          </div>
-          <div class="read-tools">
-            <span class="rd-as" id="rdAsWrap" hidden><label for="rdLang">Read as</label><select id="rdLang" title="The language this file is read as. Auto: from its name, or from its text when the name doesn't say."></select></span>
-            <button type="button" id="btnTour" class="btn small" disabled title="Walk through this file's habits (Python, C++ or Arduino), in reading order">Style tour</button>
-            <button type="button" id="btnSummarise" class="btn primary small" disabled>Summarise selection</button>
-            <button type="button" id="btnToSentences" class="btn small" disabled>Open as sentences</button>
-          </div>
-        </div>
-        <div class="rd-project" id="rdProject" hidden></div>
-        <div class="read-body" id="rdBody">
-          <div class="rcode" id="rdCode" tabindex="0" aria-label="Imported code"></div>
-          <div class="rsum" id="rdSum" aria-live="polite"></div>
-        </div>
-      </section>
-
       <section class="u-view pane" id="unityView" hidden>
         <div class="pane-h">
           <div class="pane-title">
@@ -152,23 +116,29 @@
             <p id="uSub">One pane of code. The green parts are sentences.</p>
           </div>
           <div class="pane-tools">
+            <button type="button" class="btn small predict-btn" id="uPredict" aria-pressed="false" title="Predictive Mode: while you type sentences in a green part, the rest of the sentence shows in dim text. → takes all of it, Ctrl+→ one word, Esc puts it away."><span class="pm-dot" aria-hidden="true"></span>Predictive Mode</button>
             <button type="button" class="btn small primary" id="uDe" title="Turn the selected code into sentences, right where it is (Ctrl+Shift+D)">Translate to Plain Language Syntax</button>
             <button type="button" class="btn small" id="uRe" title="Turn the green part the cursor is in back into code (Ctrl+Shift+B)">Original Code</button>
             <button type="button" class="btn small" id="uReAll" title="Turn every green part back into code">Original Code (all)</button>
+            <button type="button" class="btn small" id="uCopy" title="Copy this file's code: what Run uses, with every green part as code">Copy</button>
             <button type="button" class="btn small max-btn" data-max="unity" aria-pressed="false" title="Full screen: Unity (Esc to come back)" aria-label="Full screen: Unity"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
         </div>
         <div class="editor u-editor" id="uEditor">
           <div class="gutter"><div class="u-gutter" id="uGutter"></div></div>
-          <div class="codewrap">
+          <div class="codewrap" id="uWrap">
             <pre class="hl u-hl" id="uHl" aria-hidden="true"></pre>
+            <div class="pm-ghost" id="uGhost" aria-hidden="true" hidden></div>
             <textarea id="uTa" class="u-ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Code, with some parts in sentences"></textarea>
             <button type="button" class="u-float" id="uFloat" hidden>Translate to Plain Language Syntax</button>
           </div>
         </div>
-        <div class="u-strip" id="uStrip" aria-live="polite"></div>
       </section>
 
+      <div class="explain-wrap" id="explainWrap">
+        <button type="button" class="dock-btn" id="btnHelpDock" aria-expanded="true" aria-controls="explain" title="Hide the help under the windows, for more room"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Hide help</span></button>
+        <section class="explain" id="explain" aria-live="polite"></section>
+      </div>
       <section class="term" id="term" aria-label="Terminal">
         <div class="term-grip" id="termGrip" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="Drag to resize the terminal (double-click: usual size)" title="Drag to resize · double-click for the usual size"></div>
         <div class="term-h">
@@ -177,11 +147,13 @@
             <button type="button" role="tab" id="tabPreview" class="term-tab" aria-selected="false" hidden>Preview</button>
           </div>
           <span class="py-status" id="pyStatus">Python not loaded</span>
+          <button type="button" class="btn small term-btn link-btn" id="btnLink" aria-pressed="true" hidden title="Project Link: as you use the page here, the code behind what you're pointing at, clicking or typing in lights up pink: in the editor, in Project and in Parts."><span class="link-dot" aria-hidden="true"></span>Project Link</button>
           <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
           <button type="button" class="btn small term-btn" id="btnStop" hidden>Stop</button>
           <button type="button" class="btn small term-btn" id="btnClear">Clear</button><button type="button" class="btn small term-btn dock-term" id="btnTermDock" aria-expanded="true" aria-controls="termBody previewWrap" title="Hide the terminal, for more room" aria-label="Hide the terminal"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="btn small term-btn max-btn" data-max="term" aria-pressed="false" title="Full screen: the terminal (Esc to come back)" aria-label="Full screen: the terminal"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
         <div class="preview-wrap" id="previewWrap" hidden>
+          <div class="link-bar" id="linkBar" hidden aria-live="polite"></div>
           <!-- no allow-same-origin: the page runs in an origin of its own, so it can't reach the editor
                (or, in the desktop app, its commands). It talks to the editor only with postMessage. -->
           <iframe id="preview" title="Live preview of the page" sandbox="allow-scripts allow-forms allow-modals"></iframe>
@@ -410,5 +382,6 @@
 <script src="lang/library/web.js"></script>
 <script src="lang/library.js"></script>
 <script src="lang/predict.js"></script>
+<script src="lang/parts.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

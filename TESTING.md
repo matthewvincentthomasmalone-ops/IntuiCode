@@ -69,31 +69,50 @@ Tick each one. If something is off, note what you did and what the terminal said
       move it below): the untouched line is flagged with **Keep the new code**.
 
 **Unity mode**
-- [ ] **Unity** (beside Write and Read): the project's tree and Problems are on the left, and the open file shows with its
-      sentences in green. Click another file in the tree: it opens in Unity. Write mode shows the same file.
+- [ ] A fresh start (no saved mode) opens in **Unity**; the header reads Unity, Split Mode. Switch to Split Mode and reload:
+      it opens in Split Mode. Back to Unity.
+- [ ] **Unity**: the project's tree, its Parts and Problems are on the left, and the open file shows with its
+      sentences in green. Click another file in the tree: it opens in Unity. Split Mode shows the same file.
+- [ ] Under the pane is the help, as in Split Mode: on a green line, the sentence and the code it makes; on a code line,
+      its terms and the part it's in. **Hide help** folds it away; Show help brings it back.
 - [ ] In Unity, Library → a Python part → Add to the project: the new file opens in Unity, in green.
-- [ ] **Open a file…** → a small `.py` file: it's added to the project as code. Select lines 4–6 (inside a `def`): a
+- [ ] **Import** (beside + File) → Choose files → a small `.py` file: it's added to the project as code. Select lines 4–6 (inside a `def`): a
       **Translate to Plain Language Syntax** button appears over the selection; press it. Those lines become sentences
       in dark green, in the same place.
-- [ ] Put the cursor in the green part: the strip under the pane says "Unchanged". Press **Original Code**: the code is exactly as before.
+- [ ] Put the cursor in the green part: the help says Original Code gives it back exactly. Press **Original Code**: the code is exactly as before.
 - [ ] Translate one line, then Select all (Ctrl+A) and Translate again: the rest becomes sentences and the green part stays as it
       was. With only green lines selected, Translate to Plain Language Syntax is greyed out and Ctrl+Shift+D does nothing.
-- [ ] Translate them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the strip shows the f-string it will write.
+- [ ] Translate them again, change `show "Top roll!"` to `show "Top roll, {n}!"`: the help shows the f-string it will write.
       **Original Code** (Ctrl+Shift+B): `print(f"Top roll, {n}!")` at the same indentation.
 - [ ] Write a sentence that doesn't exist in a green part and press Original Code: it stays green, the line number turns red, and the
-      terminal says why. **Copy the code** refuses until it's fixed.
+      terminal says why. **Copy** refuses until it's fixed.
+- [ ] **Predictive Mode** in Unity: in a green part, start a sentence the file already has: its rest shows dim; → takes it.
 - [ ] The code reaches about three quarters of the way down, with the terminal under it. Fold the terminal away (its
       chevron): the code fills the room. The corner button: full screen, no side panel or terminal; Esc comes back.
-- [ ] **Open a file…** → a `.cpp` program: it comes in as sentences, one green part per statement. Original Code on the loop:
-      its code, inside `main` in Write mode's code. Original Code on `include <iostream>`: it stays green and says why.
-- [ ] The Arduino sample: Original Code (all), then Write mode: one `setup()` and one `loop()`. Select all, Translate: the
+- [ ] **Import** → a `.cpp` program: it comes in as sentences, one green part per statement. Original Code on the loop:
+      its code, inside `main` in Split Mode's code. Original Code on `include <iostream>`: it stays green and says why.
+- [ ] The Arduino sample: Original Code (all), then Split Mode: one `setup()` and one `loop()`. Select all, Translate: the
       sentences are back.
 
-**Reading other languages**
-- [ ] Import code → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's named `pasted.rs`, the
-      terminal says why it's Rust, and the code is split into its parts with plain-English summaries.
-- [ ] **Read as** → C++: it's read as C++ (and says it can't be, for Rust). Back to Auto: Rust again.
-- [ ] Open a folder with a `README.md`, a `package.json` and a `.sql` file: each is listed and read.
+**Other languages**
+- [ ] Import code → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's added as `pasted.rs`,
+      the terminal says why it's Rust, and in Unity the help says what each part does, in plain words.
+- [ ] Import a folder with a `README.md`, a `package.json` and a `.sql` file: each is in the tree, `package.json` as Setup.
+
+**Parts and the two sides**
+- [ ] Parts (under Project) lists every part, **Type** first: Interface & Display, Backend & Mechanics, Setup & Settings,
+      Data & Notes. **Language** lists them by language, each with what it does ("CSS: how it looks"). Click a part: it opens there.
+- [ ] **Interface & Display** at the top: the tree keeps only files with that kind of code, Parts only those parts, and the
+      rest of the code is dimmed in Unity and in both panes of Split Mode. In the Arduino blink sketch, `wait` lines are half dimmed.
+      Press it again: everything shows. **Backend & Mechanics** does the same for the other side.
+- [ ] With a side picked, open the **Library**: only parts with that kind of code are listed, each with its type chip.
+
+**Project Link** (needs a website project)
+- [ ] Import → Try the example project → open `static/index.html` → Preview. **Project Link** is on (its dot lit).
+- [ ] Point at the form in the preview: its sentences turn light pink in Unity, `static/index.html` and `static/` turn pink in
+      the tree, and its part in Parts. The bar over the preview says what's pointed at and where its code is.
+- [ ] Click **Add task**: the submit handler's lines in `static/app.js` are named in the bar; click it there to open them in pink.
+- [ ] Turn on **Predictive Mode**: Project Link turns off (the terminal says so). Turn Project Link on: Predictive Mode turns off.
 
 **Predictive Mode**
 - [ ] With **Predictive Mode** off (its dot hollow), type `set` on a new line: nothing pops up.
@@ -122,13 +141,11 @@ Tick each one. If something is off, note what you did and what the terminal said
       matter) says "Exactly right". After three, **Write this line as Python** appears.
 - [ ] **Ctrl+H** on a line of code: a window with its terms, examples and related terms. On an everyday sentence: the
       shapes it follows. On a website sentence with `hero` or `cta`: those words, explained.
-- [ ] Read mode → Try the example project → `app.py` → **Style tour**: Next walks through the file's habits.
 - [ ] Build **C++ guessing game** with Tutor on: click the code line `guesses += 1;`, **✎ Write it yourself**, write `guesses += 1;`:
       "Exactly right". `guesses++;` is "Not quite" (the same result, said differently).
 - [ ] Build **Arduino: button and light**: the notes say "In Arduino C++" (pinMode, INPUT_PULLUP, …).
-- [ ] Read mode → import `samples/cpp/blink/blink.ino` → **Style tour**: setup and loop, pinMode, delay…
 
-**Python (Write mode)**
+**Python (Split Mode)**
 - [ ] Project Templates → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
 - [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
@@ -157,12 +174,12 @@ Tick each one. If something is off, note what you did and what the terminal said
       Type `board esp32`, then Run: it uploads. (Most ESP32 boards have no `LED_BUILTIN`: the
       compiler's complaint comes with a hint to use a pin number.)
 
-**Reading and converting code**
-- [ ] Import code → **Try the example project**. The overview and the file map appear.
-- [ ] Click `static/index.html` → **Open as sentences**: three ✓ lines ("checked, the sentences make exactly the same code").
-- [ ] Open a folder of your own (a small website, a `.cpp` program or an Arduino sketch): it opens as sentences,
-      or in Read mode, with the ✓ check or a clear reason.
-- [ ] Drag a folder of code from your file manager onto the window: it opens in Read mode.
+**Importing and converting code**
+- [ ] Import code → **Try the example project**: a new project of 16 files (the terminal counts them by language), the page,
+      its styles and script under `static/`. `static/index.html` is in sentences, green in Unity.
+- [ ] Open a folder of your own (a small website, a `.cpp` program or an Arduino sketch): it opens as sentences, with the ✓
+      check or a clear reason. Any other folder of code comes in as a new, unsaved project.
+- [ ] Drag a folder of code from your file manager onto the window: it comes in as a project.
 
 ## 3. Things that are known not to work yet
 

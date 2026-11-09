@@ -83,8 +83,10 @@ try {
 
   await check('the window opens as the desktop app', async () => {
     await waitFor('the page', inPage(() => document.readyState === 'complete' && !!document.getElementById('ta')));
-    const r = await js(() => ({ tauri: !!(window.__TAURI__ && window.__TAURI__.core), desktop: document.documentElement.classList.contains('desktop'), save: !document.getElementById('btnSave').hidden }));
-    if (!r.tauri || !r.desktop || !r.save) throw new Error(JSON.stringify(r));
+    const r = await js(() => ({ tauri: !!(window.__TAURI__ && window.__TAURI__.core), desktop: document.documentElement.classList.contains('desktop'), save: !document.getElementById('btnSave').hidden, unity: document.getElementById('modeUnity').getAttribute('aria-selected') === 'true' }));
+    if (!r.tauri || !r.desktop || !r.save || !r.unity) throw new Error(JSON.stringify(r));
+    // the checks below type sentences: Split Mode (remembered from here on)
+    await click('modeWrite');
   });
 
   await check('File → New project makes an empty project of the chosen kind', async () => {
@@ -233,7 +235,7 @@ try {
   await check('planning has stages, presets and a kit editor; each window can go full screen', async () => {
     const r = await js(() => {
       const vis = (sel) => { const el = document.querySelector(sel); return !!el && el.offsetWidth > 0; };
-      document.getElementById('btnPlan').click();
+      document.getElementById('btnBuilder').click();
       const stages = document.querySelectorAll('#bldStages li').length;
       [...document.querySelectorAll('#bldBody [data-opt]')].find(b => /Creative/.test(b.textContent)).click();
       const dawOpt = [...document.querySelectorAll('#bldBody [data-opt]')].find(b => /Audio workstation/.test(b.textContent)); if (dawOpt) dawOpt.click();
@@ -437,15 +439,16 @@ try {
     if (!(await js(() => document.getElementById('termLog').innerText.includes('The sketch builds')))) throw new Error(await terminal());
   });
 
-  await check('imported code opens as sentences, checked exact', async () => {
+  await check('imported code becomes the project\'s own files, the page in sentences, in Unity', async () => {
     await clearTerminal();
     await click('btnImport');
     await click('impExample');
-    await waitFor('the example project', () => js(() => !!document.querySelector('#rdFiles .tree-item')), 180000);
-    await waitFor('the page in the file list', () => js(() => { const b = [...document.querySelectorAll('#rdFiles .tree-item')].find(x => /index\.html/.test(x.textContent)); if (b) b.click(); return !!b; }));
-    await waitFor('the button', () => js(() => !document.getElementById('btnToSentences').disabled), 120000);
-    await click('btnToSentences');
-    await waitFor('three checked files', () => js(() => (document.getElementById('termLog').innerText.match(/✓ static\/[\w.]+: checked/g) || []).length === 3), 60000);
+    await waitFor('the example project', logHas('Imported taskboard'), 180000);
+    const files = await js(() => [...document.querySelectorAll('#tree .tree-item .ti-file')].map(x => x.textContent));
+    for (const f of ['static/index.html', 'static/style.css', 'static/app.js', 'app.py']) if (!files.some(x => x.startsWith(f))) throw new Error('missing ' + f + ': ' + files.join(', '));
+    await js(() => { if (document.getElementById('modeUnity').getAttribute('aria-selected') !== 'true') document.getElementById('modeUnity').click(); [...document.querySelectorAll('#tree .tree-item')].find(x => /static\/index\.html/.test(x.textContent)).click(); return true; });
+    await waitFor('the page in sentences, green in Unity', () => js(() => document.querySelectorAll('#uHl .u-region').length > 0));
+    await waitFor('its parts listed', () => js(() => document.querySelectorAll('#parts .part-row').length > 3));
   });
 
   const scratch = () => wd('POST', `/session/${session}/execute/async`, { script: 'const [done] = arguments; window.__TAURI__.core.invoke("scratch_folder").then(done, (e) => done("error: " + e));', args: [] });
@@ -476,7 +479,7 @@ try {
     }
   });
 
-  await check('files and folders dropped on the window open in Read mode (and a page can\'t pretend a drop to reach other folders)', async () => {
+  await check('a folder dropped on the window comes in as a project (and a page can\'t pretend a drop to reach other folders)', async () => {
     await clearTerminal();
     const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
     writeFileSync(path.join(elsewhere, 'private.py'), 'print("not for the page")\n');
@@ -488,11 +491,11 @@ try {
     // the window's own drop events can't be made from here, so these are the page's pretend ones: the
     // scratch folder is allowed already, the other folder isn't (a real drop is what allows a folder)
     const drop = (paths) => js((p) => { window.__TAURI__.event.emit('tauri://drag-drop', { paths: p, position: { x: 10, y: 10 } }); return true; }, paths);
-    const listed = (name) => js((n) => [...document.querySelectorAll('#rdFiles .tree-item')].some(x => x.textContent.includes(n)), name);
+    const listed = (name) => js((n) => [...document.querySelectorAll('#tree .tree-item')].some(x => x.textContent.includes(n)), name);
     await drop([dir]);
-    await waitFor('the dropped folder in Read mode', () => listed('greet.py'));
+    await waitFor('the dropped folder as a project', () => listed('greet.py'));
     await drop([elsewhere]);
-    await waitFor('the refusal', logHas('Nothing to read there'));
+    await waitFor('the refusal', logHas('Nothing to import there'));
     if (await listed('private.py')) throw new Error('a pretend drop read a folder the page may not');
   });
 

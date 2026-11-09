@@ -1,7 +1,8 @@
 /* IntuaCode — the app.
  *
- * Write mode:  blueprint (story with blanks) -> sentences in folders -> Python -> terminal
- * Read mode:   imported Python -> sections -> plain-English summaries and sentences
+ * Unity:       one pane of real code; any part said in sentences, in place
+ * Split Mode:  sentences on the left, the code they make on the right (from a blueprint, a kit or your own)
+ * Import:      code from a file, a folder or a .zip becomes the project's own files
  */
 (function () {
   'use strict';
@@ -67,7 +68,7 @@
   function packFor(sec) {
     if (!isSentences(sec)) {
       const l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
-      return { ...NO_PACK, guide: { name: l.name, purpose: l.write === 'code' ? `${l.name} files are written as code here: IntuaCode has no sentences for ${l.name} yet. Read mode explains it in plain words, section by section.` : `${l.name} files hold notes or data, kept exactly as written.`, section: metaOf(sec).purpose + '.', rules: [] } };
+      return { ...NO_PACK, guide: { name: l.name, purpose: l.write === 'code' ? `${l.name} files are written as code here: IntuaCode has no sentences for ${l.name} yet. The help reads it to you in plain words, part by part.` : `${l.name} files hold notes or data, kept exactly as written.`, section: metaOf(sec).purpose + '.', rules: [] } };
     }
     if (sec.lang === 'python' && tplRole(sec) !== sec.file) return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: 'A Python file of your own. The Python files listed before it in the project can use what it defines (IntuaCode adds the import); the start file can use them all.' }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes('main') };
     if (secLang(sec) === 'cpp') { const ino = sec.file === 'sketch'; return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: ino ? CPP.ARDUINO_WORDS : CPP.WORDS, guide: ino ? CPP.ARDUINO_GUIDE : CPP.GUIDE, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true }; }
@@ -141,7 +142,7 @@
   let compiled = null;
   let runtimeMark = null;  // {sec, line, msg}
   let typingLine = -1;     // errors on the line being typed wait until the cursor leaves it
-  let mode = 'write';
+  let mode = store.get('intuicode.mode.v1', 'unity') === 'write' ? 'write' : 'unity';   // Unity, unless Split Mode was used last
   // Which side you're working in: the sentences ('say') or the code ('code', at line codeIdx of the code).
   // The explain strip, the tutor and Ctrl+H all follow it.
   let pane = 'say', codeIdx = -1;
@@ -197,7 +198,7 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Compile + render (Write mode)                                       */
+  /* Compile + render (Split Mode)                                       */
   /* ------------------------------------------------------------------ */
 
   const webTriple = PRJ.webTriple;
@@ -327,12 +328,14 @@
     hl.innerHTML = lines.map((l, i) => (plain ? hlFileLine(sec, l) : hlLine(l, marks[i], names))).join('\n') + '\n ';
     const cur = caretLine();
     gutterInner.innerHTML = lines.map((_, i) => `<div class="gl${i === cur ? ' cur' : ''}${marks[i] ? ' ' + marks[i] : ''}">${i + 1}</div>`).join('');
+    renderSayMarks();
     syncScroll();
   }
 
   function syncScroll() {
     hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft;
     gutterInner.style.transform = `translateY(${-ta.scrollTop}px)`;
+    $('sayMarks').style.transform = `translateY(${-ta.scrollTop}px)`;
     placeBand(bandCur, caretLine());
     if (!bandLink.hidden) placeBand(bandLink, +bandLink.dataset.line);
     const mask = $('bandMask');
@@ -382,7 +385,7 @@
 
   /* ---------- Code, notes and data files ----------
    * Written as they are. The editor colours them; the right-hand side shows what they are: a Markdown
-   * page, a table, the shape of JSON, or what the code does in plain words (Read mode's reader). */
+   * page, a table, the shape of JSON, or what the code does in plain words (the code reader). */
   const OTHER_KW = new Set('if else elif elsif unless for foreach while loop do return fn func function def fun sub class struct enum union trait impl interface protocol module mod namespace package import use using require include export from let var val const mut static pub public private protected internal final override virtual abstract async await yield try catch except finally throw throws raise match switch case when default break continue goto new delete this self super true false null nil none None True False and or not in is as then end begin local where type typedef extends implements defer go chan select guard extension lambda'.split(' '));
   function hlOther(lang, line) {
     const l = LANGS.byId(lang) || {};
@@ -413,7 +416,7 @@
     return `<ul>${entries.map(([k, x]) => `<li><code>${escHtml(String(k))}</code> ${escHtml(jsonKind(x))}${jsonOutline(x, depth + 1)}</li>`).join('')}${Array.isArray(v) && v.length > 5 ? `<li class="dim">… and ${v.length - 5} more</li>` : ''}</ul>`;
   }
 
-  /* Read mode's reader on a code file of the project (when it's loaded): its sections, for the side and the strip. */
+  /* The code reader on a code file of the project (when it's loaded): its sections, for the side and the strip. */
   const fileReads = new Map();   // sec.id -> { text, analysis }
   function readOf(sec) {
     const got = fileReads.get(sec.id);
@@ -447,7 +450,7 @@
       $('codeSub').textContent = 'You write the code; this is what it does, in plain words.';
       const a = readOf(sec);
       body = a && a.sections ? `<div class="md-page">${a.overview ? `<p>${rich(a.overview)}</p>` : ''}${a.sections.map(s => `<div class="side-sec" data-line="${(s.start || 1) - 1}"><b>${escHtml(s.title)}</b> <span class="dim">lines ${s.start}–${s.end}</span><p>${rich(s.headline || '')}</p>${(s.facts || []).slice(0, 4).map(f => `<p class="dim">${rich(f)}</p>`).join('')}</div>`).join('')}</div>`
-        : `<p class="sum-empty">${window.IntuiCodeReader || /^(ts|tsx)$/.test(sec.lang) ? 'Reading it…' : `IntuaCode keeps ${escHtml(l.name)} exactly as you write it. Read mode can explain it.`}</p>`;
+        : `<p class="sum-empty">${window.IntuiCodeReader || /^(ts|tsx)$/.test(sec.lang) ? 'Reading it…' : `IntuaCode keeps ${escHtml(l.name)} exactly as you write it.`}</p>`;
     } else { $('codeSub').textContent = 'Kept exactly as written.'; body = `<pre class="md-code">${escHtml(sec.text)}</pre>`; }
     pycode.innerHTML = `<div class="side-file">${body}</div>`;
   }
@@ -468,9 +471,11 @@
     $('codeTitle').textContent = sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)];
     $('codeSub').textContent = `Generated from your sentences. Read it here, change it there.`;
     if (!r) { pycode.innerHTML = ''; return; }
+    const looks = lineLooks(sec, ta.value.split('\n').length), linked = linkedLines(sec.id);
     pycode.innerHTML = r.lines.map((o, i) => {
       const hasNote = o.note || (o.src >= 0 && r.info[o.src] && r.info[o.src].notes.length);
-      return `<div class="pl${o.src < 0 ? ' hdr' : ''}${hasNote ? ' note' : ''}" data-i="${i}" data-src="${o.src}"><span class="ln">${i + 1}</span><span class="pc">${hlCode(secLang(sec), o.text) || ' '}</span></div>`;
+      const look = o.src >= 0 ? looks[o.src] : groupFilter ? 'ctx' : '';
+      return `<div class="pl${o.src < 0 ? ' hdr' : ''}${hasNote ? ' note' : ''}${look ? ' ' + look : ''}${o.src >= 0 && linked.has(o.src) ? ' lk' : ''}" data-i="${i}" data-src="${o.src}"><span class="ln">${i + 1}</span><span class="pc">${hlCode(secLang(sec), o.text) || ' '}</span></div>`;
     }).join('');
     if (pane === 'code' && codeIdx >= 0) {   // the picked line stays picked as the code changes
       codeIdx = Math.min(codeIdx, r.lines.length - 1);
@@ -501,6 +506,7 @@
    * said (its shape, its words, how to talk to the program); in the code it's about the code (what each
    * term is, your names, why it's written that way). */
   function renderExplain() {
+    if (mode === 'unity') return renderExplainUnity();
     if (!isSentences(activeSec())) return renderExplainFile(activeSec());
     if (pane === 'code' && mode === 'write' && codeIdx >= 0) return renderExplainCode();
     const sec = activeSec();
@@ -700,24 +706,167 @@
   function renderTree() {
     $('treeRoot').innerHTML = `${FOLDER_SVG}${escHtml(project.name)}/`;
     const folders = projectFolders(), many = project.sections.length > 1, out = [];
+    const shown = project.sections.filter(s => secInGroup(s, groupFilter) || s.id === project.active);
+    const linkedFile = (s) => linkedLines(s.id).size > 0;
     const fileRow = (s, depth) => {
       const meta = metaOf(s);
+      const types = PARTS ? [...secTypes(s)].filter(t => t === 'display' || t === 'mechanics').map(t => `<span class="pdot t-${t}" title="${escHtml(typeName(t))}"></span>`).join('') : '';
       const errs = issues(s, 'errs', true), warns = issues(s, 'warns', true);
       const badge = errs ? `<span class="ti-badge" title="${errs} problem${errs > 1 ? 's' : ''}">${errs}</span>` : warns ? `<span class="ti-badge warn" title="${warns} warning${warns > 1 ? 's' : ''}">${warns}</span>` : '';
       const start = many && s.id === project.start ? ' <span class="ti-start" title="Run starts here">start</span>' : '';
-      return `<div class="tree-row" style="--depth:${depth}"><button type="button" class="tree-item${s.id === project.active ? ' active' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${escHtml(meta.title)}${start}</span>${badge}<span class="ti-file">${escHtml(fileName(s))}${isSentences(s) ? '' : ' · ' + escHtml(langName(s.lang))}</span></button><button type="button" class="ti-more" data-file-menu="${escHtml(s.id)}" title="Name, language, start, delete" aria-label="${escHtml(fileName(s))}: name, language, start, delete">⋯</button></div>`;
+      return `<div class="tree-row" style="--depth:${depth}"><button type="button" class="tree-item${s.id === project.active ? ' active' : ''}${linkedFile(s) ? ' linked' : ''}" data-id="${escHtml(s.id)}" title="${escHtml(meta.purpose)}">${iconSvg(meta.icon)}<span class="ti-title">${escHtml(meta.title)}${start}</span>${types ? `<span class="ti-types">${types}</span>` : ''}${badge}<span class="ti-file">${escHtml(fileName(s))}${isSentences(s) ? '' : ' · ' + escHtml(langName(s.lang))}</span></button><button type="button" class="ti-more" data-file-menu="${escHtml(s.id)}" title="Name, language, start, delete" aria-label="${escHtml(fileName(s))}: name, language, start, delete">⋯</button></div>`;
     };
     const walk = (dir, depth) => {
       const prefix = dir ? dir + '/' : '';
       const subs = [...folders].filter(f => f.startsWith(prefix) && f !== dir && !f.slice(prefix.length).includes('/')).sort();
       for (const f of subs) {
-        out.push(`<div class="tree-row folder" style="--depth:${depth}"><span class="tree-folder">${iconSvg(FOLDER_ICON)}<span>${escHtml(f.slice(prefix.length))}/</span></span><button type="button" class="ti-more" data-folder-menu="${escHtml(f)}" title="Rename or delete this folder" aria-label="${escHtml(f)}/: rename or delete">⋯</button></div>`);
+        const inside = shown.filter(s => s.path.startsWith(f + '/'));
+        if (groupFilter && !inside.length) continue;
+        out.push(`<div class="tree-row folder${inside.some(linkedFile) ? ' linked' : ''}" style="--depth:${depth}"><span class="tree-folder">${iconSvg(FOLDER_ICON)}<span>${escHtml(f.slice(prefix.length))}/</span></span><button type="button" class="ti-more" data-folder-menu="${escHtml(f)}" title="Rename or delete this folder" aria-label="${escHtml(f)}/: rename or delete">⋯</button></div>`);
         walk(f, depth + 1);
       }
-      for (const s of project.sections) if (s.path.startsWith(prefix) && !s.path.slice(prefix.length).includes('/')) out.push(fileRow(s, depth));
+      for (const s of shown) if (s.path.startsWith(prefix) && !s.path.slice(prefix.length).includes('/')) out.push(fileRow(s, depth));
     };
     walk('', 0);
     $('tree').innerHTML = out.join('');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Parts: every file's code in parts (lang/parts.js), each one         */
+  /* Interface & Display, Backend & Mechanics, Setup & Settings or Data  */
+  /* & Notes. The two buttons at the top show one side of the project;   */
+  /* Parts lists them all, by type or by language; Project Link marks    */
+  /* the ones in use.                                                    */
+  /* ------------------------------------------------------------------ */
+
+  const PARTS = window.IntuiParts;
+  const partsCache = new Map();   // sec.id -> { text, lang, parts }
+  let groupFilter = null;         // 'display' | 'mechanics' | null: the side of the project shown
+  const textOf = (sec) => (sec.id === project.active && mode === 'write' ? ta.value : sec.text);
+  function partsOf(sec) {
+    if (!PARTS || !sec) return [];
+    const text = textOf(sec), got = partsCache.get(sec.id);
+    if (got && got.text === text && got.lang === sec.lang && got.path === sec.path) return got.parts;
+    let parts = [];
+    try { parts = PARTS.split(sec.lang, text, sec.path); } catch (e) { console.error(e); }
+    partsCache.set(sec.id, { text, lang: sec.lang, path: sec.path, parts });
+    return parts;
+  }
+  const partAt = (sec, li) => partsOf(sec).find(p => li >= p.from && li <= p.to) || null;
+  const typeName = (t) => (PARTS ? PARTS.typeOf(t).name : t);
+  const typeChip = (t) => (PARTS ? `<span class="tchip t-${t}" title="${escHtml(PARTS.typeOf(t).about)}">${escHtml(PARTS.typeOf(t).short)}</span>` : '');
+  const inGroup = (part, g) => !g || PARTS.involves(part).has(g);
+  const secInGroup = (sec, g) => !g || partsOf(sec).some(p => inGroup(p, g));
+  const secTypes = (sec) => { const set = new Set(); for (const p of partsOf(sec)) for (const t of PARTS.involves(p)) set.add(t); return set; };
+
+  /* How each line looks while one side is shown: '' as usual, 'ctx' a line of a shown part that's about
+     something else (the loop around the lines that light an LED), 'off' dimmed. */
+  function lineLooks(sec, count) {
+    const out = new Array(count).fill('');
+    if (!groupFilter || !PARTS) return out;
+    out.fill('off');
+    for (const p of partsOf(sec)) {
+      if (!inGroup(p, groupFilter)) continue;
+      for (let i = p.from; i <= p.to && i < count; i++) { const t = p.lines[i - p.from]; out[i] = !t || t === groupFilter ? '' : 'ctx'; }
+    }
+    return out;
+  }
+  /* Runs of lines with the same look, as bands for a pane whose text is one block (Split Mode's sentences). */
+  function bandsHtml(looks, linked, count) {
+    let html = '', i = 0;
+    while (i < count) {
+      const cls = (looks[i] ? looks[i] : '') + (linked.has(i) ? ' lk' : '');
+      let j = i + 1;
+      while (j < count && ((looks[j] ? looks[j] : '') + (linked.has(j) ? ' lk' : '')) === cls) j++;
+      if (cls.trim()) html += `<div class="mk ${cls.trim()}" style="top:${PAD_T + i * LH}px;height:${(j - i) * LH}px"></div>`;
+      i = j;
+    }
+    return html;
+  }
+  function renderSayMarks() {
+    const sec = activeSec(), n = ta.value.split('\n').length;
+    $('sayMarks').innerHTML = bandsHtml(lineLooks(sec, n), linkedLines(sec.id), n);
+    $('sayMarks').style.transform = `translateY(${-ta.scrollTop}px)`;
+  }
+
+  function setGroup(g) {
+    groupFilter = groupFilter === g ? null : g;
+    for (const b of document.querySelectorAll('.grp-btn')) b.setAttribute('aria-pressed', String(b.dataset.group === groupFilter));
+    $('app').dataset.group = groupFilter || '';
+    if (groupFilter && !secInGroup(activeSec(), groupFilter)) {
+      // the open file has nothing on this side: open the first that has
+      const next = project.sections.find(s => secInGroup(s, groupFilter));
+      if (next) {
+        const first = partsOf(next).find(p => inGroup(p, groupFilter));
+        openSection(next.id, first ? first.from : null);
+        tLine(`${typeName(groupFilter)}: opened ${fileName(next)}, the first file with some.`, 't-sys');
+        return renderGroupViews();
+      }
+      tLine(`Nothing in this project is ${typeName(groupFilter)} yet.`, 't-sys');
+    }
+    renderGroupViews();
+  }
+  function renderGroupViews() {
+    renderTree(); renderParts();
+    if (mode === 'unity') renderUnity(); else { renderOverlay(); renderPython(); }
+    if (!$('libModal').hidden) renderLibList();
+  }
+  for (const b of document.querySelectorAll('.grp-btn')) b.addEventListener('click', () => setGroup(b.dataset.group));
+
+  /* What each language does in a project, for Parts by language. */
+  const LANG_ROLE = {
+    html: 'the page: what\'s on it', css: 'how it looks', js: 'what it does when it\'s used', ts: 'what it does, with types', tsx: 'screens and components (React)',
+    vue: 'screens and components (Vue)', python: 'the program', cpp: 'the program', arduino: 'the board\'s sketch', c: 'the program', json: 'data and settings',
+    yaml: 'settings', toml: 'settings', csv: 'a table of data', markdown: 'notes', text: 'notes', sql: 'the database', php: 'the server\'s pages', ruby: 'the program',
+  };
+  const partsClosed = new Set();   // groups folded away in Parts
+  function renderParts() {
+    const wrap = $('partsWrap'), box = $('parts');
+    if (!PARTS) { wrap.hidden = true; return; }
+    const by = layout.partsBy === 'lang' ? 'lang' : 'type';
+    $('partsByType').setAttribute('aria-selected', String(by === 'type'));
+    $('partsByLang').setAttribute('aria-selected', String(by === 'lang'));
+    const all = [];
+    for (const s of project.sections) for (const p of partsOf(s)) if (inGroup(p, groupFilter)) all.push({ s, p });
+    $('partsCount').textContent = all.length || '';
+    const here = activeSec(), li = mode === 'unity' ? uLineOf(uTa.selectionStart) : caretLine();
+    const multi = project.sections.length > 1;
+    const row = ({ s, p }) => {
+      const linked = [...linkedLines(s.id)].some(n => n >= p.from && n <= p.to);
+      const at = s.id === here.id && li >= p.from && li <= p.to;
+      return `<li><button type="button" class="part-row${linked ? ' linked' : ''}${at ? ' here' : ''}" data-part-sec="${escHtml(s.id)}" data-part-line="${p.from}" title="${escHtml(fileName(s))}, lines ${p.from + 1}–${p.to + 1}: ${escHtml(typeName(p.type))}">`
+        + `<span class="pdot t-${p.type}" aria-hidden="true"></span><span class="pr-title">${escHtml(p.title)}</span><span class="pr-where">${multi ? escHtml(fileName(s).split('/').pop()) + ':' : ''}${p.from + 1}</span></button></li>`;
+    };
+    const group = (key, head, rows) => {
+      const shown = rows.slice(0, 120);
+      return `<details class="pg" data-pg="${escHtml(key)}"${partsClosed.has(key) ? '' : ' open'}><summary>${head}<span class="count">${rows.length}</span></summary><ul class="part-list">${shown.map(row).join('')}${rows.length > shown.length ? `<li class="side-note">and ${rows.length - shown.length} more</li>` : ''}</ul></details>`;
+    };
+    let html = '';
+    if (by === 'type') {
+      for (const t of PARTS.TYPES) {
+        const rows = all.filter(x => x.p.type === t.id);
+        if (rows.length) html += group('t:' + t.id, `${typeChip(t.id)}<span class="pg-name">${escHtml(t.name)}</span>`, rows);
+      }
+    } else {
+      const langs = new Map();
+      for (const x of all) { if (!langs.has(x.s.lang)) langs.set(x.s.lang, []); langs.get(x.s.lang).push(x); }
+      for (const [l, rows] of [...langs].sort((a, b) => b[1].length - a[1].length)) {
+        const role = LANG_ROLE[l] || ((LANGS.byId(l) || {}).write === 'text' ? 'notes and data' : 'code');
+        html += group('l:' + l, `<span class="pg-name">${escHtml(langName(l))}</span><span class="pg-role">${escHtml(role)}</span>`, rows);
+      }
+    }
+    box.innerHTML = html || `<p class="side-note">${groupFilter ? `Nothing here is ${escHtml(typeName(groupFilter))} yet.` : 'No code yet.'}</p>`;
+  }
+  $('parts').addEventListener('toggle', (e) => {
+    const d = e.target.closest && e.target.closest('details[data-pg]');
+    if (d) { if (d.open) partsClosed.delete(d.dataset.pg); else partsClosed.add(d.dataset.pg); }
+  }, true);
+  $('parts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-part-sec]');
+    if (b) openSection(b.dataset.partSec, +b.dataset.partLine);
+  });
+  for (const [id, by] of [['partsByType', 'type'], ['partsByLang', 'lang']]) {
+    $(id).addEventListener('click', () => { layout.partsBy = by; store.set(LAYOUT_KEY, layout); renderParts(); });
   }
 
   /* ---------- Adding, renaming and removing files and folders ---------- */
@@ -731,7 +880,7 @@
   function fileHow(lang) {
     const l = LANGS.byId(lang) || { name: lang, write: 'text' };
     if (l.write === 'sentences') return `You write sentences; IntuaCode writes the ${l.name} and shows it on the right.` + (lang === 'arduino' ? ' A project has one sketch that Run puts on the board; more .ino files are more tabs of it.' : '');
-    if (l.write === 'code') return `You write ${l.name} itself: IntuaCode has no sentences for it yet. It reads the code to you in plain words, on the right and in Read mode.`;
+    if (l.write === 'code') return `You write ${l.name} itself: IntuaCode has no sentences for it yet. It reads the code to you in plain words, in the help and in Split Mode's right-hand pane.`;
     return { markdown: 'Notes: headings (#), lists (-), **bold**, `code` and tables, shown as a page on the right.', csv: 'A table: one row per line, cells separated by commas. Python files in the project can open it.', json: 'Data (JSON): checked as you type, and its shape is shown on the right. Python files can open it.' }[lang] || `${l.name}, kept exactly as written.`;
   }
   function openFileDialog(opts) {
@@ -799,8 +948,8 @@
     renderSectionHeader();
     refreshAll();
     updateChip();
-    $('work').classList.toggle('web', mode === 'write' && webOn());
-    $('tabPreview').hidden = !(mode === 'write' && webOn());
+    $('work').classList.toggle('web', webOn());
+    $('tabPreview').hidden = !webOn();
     if (!webOn()) showBottom('terminal');
     save(); autosave();
     if (mode === 'unity') unityShow();
@@ -915,7 +1064,7 @@
   function refreshAll() {
     clearTimeout(compileTimer);
     compile();
-    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderPlan(); renderProblems();
+    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPlan(); renderProblems();
     tutorSoon();
     schedulePreview();
   }
@@ -1030,7 +1179,18 @@
       if (s.lang !== sec.lang) continue;
       (s.id === sec.id ? ta.value : s.text).split('\n').forEach((l, i) => { if (s.id !== sec.id || i !== cur) out.push(l); });
     }
-    return out;
+    return out.concat(librarySentences(sec.lang));
+  }
+  /* The Library's sentences in a language, for predictions: what its parts say, line by line. */
+  const libSentenceCache = new Map();
+  function librarySentences(lang) {
+    if (!window.IntuiLibrary) return [];
+    if (!libSentenceCache.has(lang)) {
+      const out = [];
+      try { for (const p of window.IntuiLibrary.catalog().parts) for (const v of p.variants) if (v.lang === lang && (LANGS.byId(lang) || {}).write === 'sentences') out.push(...v.text.split('\n')); } catch (_) { /* the Library didn't load */ }
+      libSentenceCache.set(lang, out);
+    }
+    return libSentenceCache.get(lang);
   }
   /* A line entered with Enter is remembered (whether Predictive Mode is on or not), as a terminal keeps its history. */
   function rememberLine(text) {
@@ -1128,17 +1288,21 @@
   }
 
   function applyPredict() {
-    const b = $('btnPredict');
-    b.hidden = !PRED;
-    b.setAttribute('aria-pressed', String(predictOn()));
-    if (!predictOn()) closeAc();
+    for (const b of [$('btnPredict'), $('uPredict')]) {
+      b.hidden = !PRED;
+      b.setAttribute('aria-pressed', String(predictOn()));
+      b.title = b.title.replace(/ Off while Project Link is on\.$/, '') + (layout.link ? ' Off while Project Link is on.' : '');
+    }
+    if (!predictOn()) { closeAc(); if (UNITY) uUpdateGhost(); }
   }
   function setPredict(on) {
+    if (on && layout.link) { setLink(false); tLine('Project Link is off while Predictive Mode is on. Turn it back on over the Preview.', 't-sys'); }
     layout.predict = on; store.set(LAYOUT_KEY, layout); applyPredict();
-    ta.focus({ preventScroll: true });
-    if (on) updateAc();
+    if (mode === 'unity') { uTa.focus({ preventScroll: true }); uUpdateGhost(); }
+    else { ta.focus({ preventScroll: true }); if (on) updateAc(); }
   }
   $('btnPredict').addEventListener('click', () => setPredict(!layout.predict));
+  $('uPredict').addEventListener('click', () => setPredict(!layout.predict));
 
   function moveAc(d) {
     acIndex = (acIndex + d + acItems.length) % acItems.length;
@@ -1239,7 +1403,6 @@
   });
   document.addEventListener('selectionchange', () => {
     if (document.activeElement === ta) { afterCaretMove(false); updateGhost(); }
-    if (mode === 'read') updateSummariseButton();
   });
 
   /* The two sides. Working in the sentences, everything below them is about how things are said; working in
@@ -1339,7 +1502,7 @@
   const tutorLang = (sec) => (TUTOR.CARDS[secLang(sec)] ? secLang(sec) : null);
   const tutorReady = (lang) => (lang === 'python' ? !!tutorRun.reader : lang === 'cpp' ? !!tutorRun.cpp : false);
   const tutorSays = (sec) => (sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]);
-  const TOUR_LANGS = new Set(['python', 'cpp']);   // Read mode's Style tour
+  const TOUR_LANGS = new Set(['python', 'cpp']);   // the languages the tutor's style cards cover
   const RAW_LINE = { python: /^\s*(?:raw python|python|raw|note|comment)\s*:|^\s*#/i, cpp: /^\s*(?:c\+\+|cpp|raw|above main|outside main|at the top|note|comment)\s*:|^\s*include\b/i };
 
   function loadTutorReader(lang = 'python') {
@@ -1347,7 +1510,7 @@
       if (tutorRun.cpp || tutorRun.cppLoading) return;
       tutorRun.cppLoading = Runner.webReader((s) => setStatus(s))
         .then(WR => WR.loadLangs(['cpp']).then(() => { tutorRun.cpp = WR.parse; renderExplain(); tutorSoon(300); }))
-        .catch(() => { /* the reader couldn't load: Read mode says so */ })
+        .catch(() => { /* the reader couldn't load: the tutor goes without it */ })
         .finally(() => { tutorRun.cppLoading = null; });
       return;
     }
@@ -1692,7 +1855,10 @@
   /* ------------------------------------------------------------------ */
 
   const LAYOUT_KEY = 'intuicode.layout.v1';
-  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false, predict: false }, store.get(LAYOUT_KEY, {}));
+  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false, predict: false, partsBy: 'type' }, store.get(LAYOUT_KEY, {}));
+  // Project Link and Predictive Mode take turns: predictions popping up while you click around a running page get in the way
+  if (layout.link === undefined) layout.link = !layout.predict;
+  if (layout.link && layout.predict) layout.predict = false;
   const ROW_PROP = { termRow: '--term-row', webRow: '--web-row', unityRow: '--unity-row' };   // the terminal's height in each layout
   function applyLayout() {
     const work = $('work'), hb = $('btnHelpDock'), tb = $('btnTermDock');
@@ -1720,7 +1886,7 @@
   $('btnTermDock').addEventListener('click', () => setDock('term', !layout.term));
 
   const grip = $('termGrip');
-  const rowKey = () => ($('work').classList.contains('unity') ? 'unityRow' : $('work').classList.contains('web') ? 'webRow' : 'termRow');
+  const rowKey = () => ($('work').classList.contains('web') ? 'webRow' : $('work').classList.contains('unity') ? 'unityRow' : 'termRow');
   function setTermHeight(h) {
     const r = $('work').getBoundingClientRect(), key = rowKey();
     layout[key] = Math.round(Math.min(Math.max(h, 90), Math.max(r.height - 170, 90)));
@@ -2081,7 +2247,7 @@
   function tLink(label, sec, line) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 't-link'; b.textContent = label;
-    b.addEventListener('click', () => { setMode('write'); openSection(sec, line); });
+    b.addEventListener('click', () => openSection(sec, line));
     termLog.appendChild(b); tWrite('\n');
   }
   /* A problem found while running: a link to its sentence, which is also marked in the editor
@@ -2155,7 +2321,6 @@
 
   async function run() {
     setDock('term', true);   // Run shows what happens, even when the terminal was folded away
-    if (mode === 'read') { tLine('Run works on the program in Write mode. Use "Open as sentences" to bring imported code there.', 't-sys'); return; }
     // Run starts the project's start file, in its own way: a page in the preview, a program, a sketch on a board
     const st = startSec();
     // only problems in the files that run stop a run (a half-written note or page doesn't stop the Python)
@@ -2269,13 +2434,191 @@
       const el = e.target.closest('[data-ic-line]');
       send({ type: 'pick', id: el && el.id, tag: el && el.tagName.toLowerCase(), line: el ? +el.dataset.icLine : null, x: Math.round(e.pageX), y: Math.round(e.pageY), alt: e.altKey });
     }, true);
+    // Project Link: what's being pointed at, focused, clicked or typed in, and which of the page's own
+    // handlers answered, so the editor can light up the code behind it
+    let linkOn = ${layout.link ? 'true' : 'false'}, lastLink = '';
+    const rulesFor = (el) => {
+      const out = [];
+      const walk = (rules) => { for (const r of rules) { try { if (r.selectorText && el.matches(r.selectorText)) out.push(r.selectorText); else if (r.cssRules && r.cssRules.length) walk(r.cssRules); } catch (e) {} } };
+      try { for (const sh of document.styleSheets) walk(sh.cssRules || []); } catch (e) {}
+      return out.slice(0, 40);
+    };
+    const report = (target, ev) => {
+      if (!linkOn || picking) return;
+      const el = target && target.closest ? target.closest('[data-ic-line]') : null;
+      const key = el ? el.dataset.icLine + '|' + (ev === 'hover' ? 'hover' : 'use') : '';
+      if (ev === 'hover' && key === lastLink) return;
+      lastLink = key;
+      if (!el) { send({ type: 'link', none: true }); return; }
+      send({ type: 'link', ev: ev, line: +el.dataset.icLine, tag: el.tagName.toLowerCase(), id: el.id || '', classes: Array.from(el.classList), sels: rulesFor(el) });
+    };
+    document.addEventListener('mouseover', (e) => report(e.target, 'hover'), true);
+    document.addEventListener('focusin', (e) => report(e.target, 'focus'), true);
+    document.addEventListener('pointerdown', (e) => report(e.target, 'click'), true);
+    document.addEventListener('input', (e) => report(e.target, 'type'), true);
+    document.documentElement.addEventListener('mouseleave', () => { if (linkOn && lastLink) { lastLink = ''; send({ type: 'link', none: true }); } });
+    window.addEventListener('message', (e) => { if (e.data && e.data.intuicodeLink !== undefined) { linkOn = !!e.data.intuicodeLink; if (!linkOn) lastLink = ''; } });
+    // the page's own handlers, from here on, say when they answer (and which one) while Project Link is on
+    const USED = /^(click|dblclick|input|change|submit|keydown|keyup|keypress|pointerdown|pointerup|mousedown|mouseup|touchstart|touchend)$/;
+    const realAdd = EventTarget.prototype.addEventListener, realRemove = EventTarget.prototype.removeEventListener, wraps = new WeakMap();
+    EventTarget.prototype.addEventListener = function (type, fn, opts) {
+      if (typeof fn !== 'function' || !USED.test(type)) return realAdd.call(this, type, fn, opts);
+      let w = wraps.get(fn);
+      if (!w) {
+        w = function (...args) { if (linkOn) { try { send({ type: 'link-run', ev: type, src: String(fn).slice(0, 4000) }); } catch (e) {} } return fn.apply(this, args); };
+        wraps.set(fn, w);
+      }
+      return realAdd.call(this, type, w, opts);
+    };
+    EventTarget.prototype.removeEventListener = function (type, fn, opts) { return realRemove.call(this, type, (fn && wraps.get(fn)) || fn, opts); };
   })();`;
 
   let previewInfo = null, picking = false, previewTimer = null;
+  /* ---------- Project Link: the code behind what's in use in the preview, in pink ---------- */
+  /* The page says what's being pointed at, focused, clicked or typed in (the element's sentence line, and the CSS
+     rules that style it) and which of its handlers answered. That becomes lines of the project's files, as Unity
+     and Split Mode show them: the element and what's inside it, its style rules, the script lines that name it,
+     and the handler that ran. Those lines turn pink in the editor; their files, folders and parts in the side. */
+  const NO_LINES = new Set();
+  let link = { lines: new Map(), el: null, run: null };   // lines: sec.id -> Set of lines
+  let previewCode = null;   // the page's script as one text, to find the handler that answered
+  const linkedLines = (id) => link.lines.get(id) || NO_LINES;
+  const escRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  function setLink(on, quiet) {
+    layout.link = on;
+    if (on && layout.predict) {
+      layout.predict = false; applyPredict();
+      if (!quiet) tLine('Predictive Mode is off while Project Link is on, so clicking around the page doesn\'t bring up predictions.', 't-sys');
+    }
+    store.set(LAYOUT_KEY, layout);
+    $('btnLink').setAttribute('aria-pressed', String(on));
+    const w = $('preview').contentWindow;
+    if (w) w.postMessage({ intuicodeLink: on }, '*');
+    if (!on) clearLink();
+  }
+  $('btnLink').addEventListener('click', () => setLink(!layout.link));
+
+  function clearLink() {
+    if (!link.lines.size && !link.el && !link.run) return;
+    link = { lines: new Map(), el: null, run: null };
+    showLink(false);
+  }
+  /* A sentence and the lines indented under it: an element and what's inside it. */
+  function blockFrom(text, line) {
+    const lines = text.split('\n'), ind = (s) => s.match(/^\s*/)[0].length, base = ind(lines[line] || '');
+    let end = line;
+    while (end + 1 < lines.length && (!lines[end + 1].trim() || ind(lines[end + 1]) > base)) end++;
+    while (end > line && !lines[end].trim()) end--;
+    const out = new Set();
+    for (let i = line; i <= end; i++) out.add(i);
+    return out;
+  }
+  const normSel = (s) => s.replace(/\s+/g, ' ').replace(/\s*([>+~,])\s*/g, '$1').trim();
+  /* The sentence lines behind the style rules a page element matches. */
+  function cssLinesFor(sec, sels) {
+    const r = sec && secResult(sec.id), out = new Set();
+    if (!r || !sels.length) return out;
+    const want = new Set(sels.map(normSel));
+    let inRule = false;
+    for (const o of r.lines) {
+      const t = o.text.trim(), one = t.match(/^([^{}]+)\{.*\}$/), open = t.match(/^([^{}]+)\{\s*$/);
+      if (one) { if (want.has(normSel(one[1])) && o.src >= 0) out.add(o.src); continue; }
+      if (open) inRule = want.has(normSel(open[1]));
+      if (inRule && o.src >= 0) out.add(o.src);
+      if (/^\}/.test(t)) inRule = false;
+    }
+    return out;
+  }
+  /* The sentence lines of the script that name an element (its id, or a class it has). */
+  function jsLinesNaming(sec, el) {
+    const r = sec && secResult(sec.id), out = new Set();
+    const names = [el.id && '#' + el.id, el.id, ...el.classes.map(c => '.' + c)].filter(Boolean);
+    if (!r || !names.length) return out;
+    const re = new RegExp(`["'\`](?:${names.map(escRx).join('|')})["'\`]`);
+    for (const o of r.lines) if (o.src >= 0 && re.test(o.text)) out.add(o.src);
+    return out;
+  }
+  /* The sentence lines of the handler that answered, found by its own text in the page's script. */
+  function jsLinesRan(sec, src) {
+    const r = sec && secResult(sec.id), out = new Set();
+    if (!r || !src) return out;
+    if (!previewCode || previewCode.id !== sec.id || previewCode.r !== r) previewCode = { id: sec.id, r, text: r.lines.map(o => o.text).join('\n') };
+    const at = previewCode.text.indexOf(src.slice(0, 200));
+    if (at < 0) return out;
+    const first = previewCode.text.slice(0, at).split('\n').length - 1, count = src.split('\n').length;
+    for (let i = first; i < first + count && i < r.lines.length; i++) if (r.lines[i].src >= 0) out.add(r.lines[i].src);
+    return out;
+  }
+  function onLink(d) {
+    if (!layout.link || !previewInfo) return;
+    const pg = previewInfo.page;
+    if (d.type === 'link') {
+      if (d.none || !link.el || link.el.line !== d.line) link.run = null;   // another element: the last handler's done
+      link.el = d.none ? null : d;
+    } else link.run = d;
+    const lines = new Map();
+    const add = (sec, set) => {
+      if (!sec || !set.size) return;
+      const cur = lines.get(sec.id) || new Set();
+      for (const n of set) cur.add(n);
+      lines.set(sec.id, cur);
+    };
+    const el = link.el;
+    if (el && pg.html) add(pg.html, blockFrom(textOf(pg.html), el.line));
+    if (el) add(pg.styling, cssLinesFor(pg.styling, el.sels || []));
+    if (el && !link.run) add(pg.mechanics, jsLinesNaming(pg.mechanics, el));
+    if (link.run) add(pg.mechanics, jsLinesRan(pg.mechanics, link.run.src));
+    link.lines = lines;
+    showLink(d.type === 'link-run' || (d.ev && d.ev !== 'hover'));
+  }
+  const lineList = (ls) => {
+    const out = [];
+    for (let i = 0; i < ls.length; i++) {
+      let j = i;
+      while (j + 1 < ls.length && ls[j + 1] === ls[j] + 1) j++;
+      out.push(j > i ? `${ls[i] + 1}–${ls[j] + 1}` : `${ls[i] + 1}`);
+      i = j;
+    }
+    return out.slice(0, 4).join(', ') + (out.length > 4 ? '…' : '');
+  };
+  const LINK_VERB = { hover: 'Pointing at', focus: 'In', click: 'Clicked', type: 'Typing in' };
+  function showLink(scroll) {
+    const bar = $('linkBar');
+    if (!link.el && !link.run) bar.hidden = true;
+    else {
+      const el = link.el, what = el ? `<code>&lt;${escHtml(el.tag)}&gt;${el.id ? '#' + escHtml(el.id) : el.classes[0] ? '.' + escHtml(el.classes[0]) : ''}</code>` : 'the page';
+      const where = [...link.lines].map(([id, set]) => {
+        const s = project.sections.find(x => x.id === id), ls = [...set].sort((a, b) => a - b);
+        return s ? `<button type="button" class="linklike" data-link-go="${escHtml(id)}" data-link-line="${ls[0]}">${escHtml(fileName(s))} <span class="dim">${ls.length > 1 ? 'lines' : 'line'} ${lineList(ls)}</span></button>` : '';
+      }).filter(Boolean).join('<span class="dim"> · </span>');
+      bar.innerHTML = `<span class="link-dot" aria-hidden="true"></span><span class="lb-what">${link.run ? `${escHtml(link.run.ev)} on ${what}: its handler ran` : `${LINK_VERB[el.ev] || 'At'} ${what}`}</span>${where ? `<span class="lb-where">${where}</span>` : '<span class="dim">no code of its own</span>'}`;
+      bar.hidden = false;
+    }
+    renderTree(); renderParts();
+    if (mode === 'unity') renderUnity(); else { renderSayMarks(); renderPython(); }
+    if (scroll) scrollToLinked();
+  }
+  /* After a click or a handler, the open file's pink lines come into view (pointing alone never scrolls). */
+  function scrollToLinked() {
+    const ls = [...linkedLines(activeSec().id)].sort((a, b) => a - b);
+    if (!ls.length) return;
+    const box = mode === 'unity' ? uTa : ta, lh = mode === 'unity' ? (parseFloat(getComputedStyle(uTa).lineHeight) || 22) : LH;
+    const top = ls[0] * lh, bottom = (ls[ls.length - 1] + 1) * lh;
+    if (top < box.scrollTop || bottom > box.scrollTop + box.clientHeight) {
+      box.scrollTop = Math.max(0, top - lh * 2);
+      if (mode === 'unity') uSync(); else syncScroll();
+    }
+  }
+  $('linkBar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-link-go]');
+    if (b) openSection(b.dataset.linkGo, +b.dataset.linkLine);
+  });
+
   function updateChip() {
     const chip = document.querySelector('.lang-chip');
     const engines = [...new Set(project.sections.map(s => ENGINE[s.lang]).filter(Boolean))].map(e => ENGINE_NAME[e]);
-    chip.textContent = mode === 'read' ? 'Reading' : mode === 'unity' ? 'Unity · ' + langName(activeSec().lang) : engines.length ? engines.join(' + ') : 'Files';
+    chip.textContent = mode === 'unity' ? langName(activeSec().lang) : engines.length ? engines.join(' + ') : 'Files';
   }
   function showBottom(which) {
     const web = webOn();
@@ -2286,13 +2629,16 @@
     $('tabPreview').setAttribute('aria-selected', String(showPreview));
     $('tabTerm').setAttribute('aria-selected', String(!showPreview));
     $('btnPick').hidden = !showPreview;
+    $('btnLink').hidden = !showPreview;
     $('btnClear').hidden = showPreview;
+    if (!showPreview) clearLink();
   }
   function runWebsite(announce) {
     if (!compiled) compile();
     const pg = previewPage(), res = (s) => (s ? secResult(s.id) : null);
     previewInfo = WEB.previewDocument({ results: { structure: res(pg.html), styling: res(pg.styling), mechanics: res(pg.mechanics) } }, previewHelper());
     previewInfo.page = pg;
+    previewCode = null;
     showPreviewPage(withImages(previewInfo.html), announce);
     setPicking(false);
     if (announce) {
@@ -2353,6 +2699,7 @@
       if (d.data && typeof d.data === 'object' && JSON.stringify(d.data).length < 1_000_000) { all[project.name] = d.data; store.set(PAGE_STORE_KEY, all); }
       return;
     }
+    if (d.type === 'link' || d.type === 'link-run') { onLink(d); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
       let where = '';
@@ -2496,7 +2843,7 @@
     const G = PK.guide;
     const match = (...parts) => !q || parts.join(' ').toLowerCase().includes(q);
     let html = '';
-    $('indexTitle').textContent = mode === 'read' ? `${G.name} · reading code` : `${G.name} · ${metaOf(activeSec()).title}`;
+    $('indexTitle').textContent = `${G.name} · ${metaOf(activeSec()).title}`;
     if (!G.rules) G.rules = [];
     if (!q) {
       html += `<div class="ix"><h3>What ${G.name} is for</h3><p>${withCode(G.purpose)}</p>
@@ -2778,21 +3125,36 @@
     const hay = [e.title, e.about, e.summary, e.heading, e.learn, ...(e.variants || []).map(v => v.name), ...(e.languages || []).map(l => l.said + ' ' + l.uses.join(' '))].join(' ').toLowerCase();
     return q.split(/\s+/).every(w => hay.includes(w));
   }
+  /* What a Library part is for, read as the project's own code is (lang/parts.js): the type most of its
+     variants' lines are, for the chip beside it and the side shown at the top. */
+  const libTypeCache = new Map();
+  function libPartType(p) {
+    if (!PARTS) return null;
+    if (!libTypeCache.has(p.id)) {
+      const tally = {};
+      for (const v of p.variants) for (const x of PARTS.split(v.lang, v.text, v.file)) tally[x.type] = (tally[x.type] || 0) + (x.to - x.from + 1);
+      libTypeCache.set(p.id, Object.entries(tally).sort((a, b) => b[1] - a[1]).map(([t]) => t)[0] || null);
+    }
+    return libTypeCache.get(p.id);
+  }
+  const libInGroup = (p) => !groupFilter || p.variants.some(v => PARTS.split(v.lang, v.text, v.file).some(x => PARTS.involves(x).has(groupFilter)));
   function renderLibList() {
     const c = LIB.catalog(), q = libState.q.trim().toLowerCase(), box = $('libList'), scroll = box.scrollTop;
     const typeItem = (t) => `<button type="button" class="bp-item${libOn('type', t.id)}" data-lib-type="${escHtml(t.id)}"><b>${escHtml(t.title)}</b><span>${t.platforms.map(libPlat).join('')}${escHtml(t.about)}</span></button>`;
-    const partItem = (p) => `<button type="button" class="bp-item${libOn('part', p.id)}" data-lib-part="${escHtml(p.id)}"><b>${escHtml(p.title)}</b><span>${libLangTags(p)}${escHtml(p.about)}</span></button>`;
+    const partItem = (p) => `<button type="button" class="bp-item${libOn('part', p.id)}" data-lib-part="${escHtml(p.id)}"><b>${escHtml(p.title)}${libPartType(p) ? ' ' + typeChip(libPartType(p)) : ''}</b><span>${libLangTags(p)}${escHtml(p.about)}</span></button>`;
+    const parts = c.parts.filter(libInGroup);
     const tab = (v, label) => `<button type="button" class="bp-filter${libState.view === v ? ' on' : ''}" data-lib-view="${v}" aria-pressed="${libState.view === v}">${label}</button>`;
     let body;
     if (q) {
-      const ts = c.types.filter(t => libFits(t, q)), ps = c.parts.filter(p => libFits(p, q));
+      const ts = c.types.filter(t => libFits(t, q)), ps = parts.filter(p => libFits(p, q));
       body = (ts.length ? `<div class="bp-group">Kinds of project</div>${ts.map(typeItem).join('')}` : '')
         + (ps.length ? `<div class="bp-group">Parts</div>${ps.map(partItem).join('')}` : '')
         || '<p class="bp-none">Nothing matches. Try fewer words, or a language\'s name.</p>';
     } else if (libState.view === 'types') {
       body = c.headings.map(h => `<div class="bp-group">${escHtml(h)}</div>${c.types.filter(t => t.heading === h).map(typeItem).join('')}`).join('');
     } else {
-      body = c.groups.map(g => { const ps = c.parts.filter(p => p.group === g.id); return ps.length ? `<div class="bp-group" title="${escHtml(g.about)}">${escHtml(g.title)}</div>${ps.map(partItem).join('')}` : ''; }).join('');
+      body = (groupFilter ? `<p class="bp-none lib-side">Showing the parts with ${escHtml(typeName(groupFilter))} code (the side picked at the top). Press it again for all of them.</p>` : '')
+        + c.groups.map(g => { const ps = parts.filter(p => p.group === g.id); return ps.length ? `<div class="bp-group" title="${escHtml(g.about)}">${escHtml(g.title)}</div>${ps.map(partItem).join('')}` : ''; }).join('');
     }
     box.innerHTML = `<div class="bp-filters" role="group" aria-label="List by">${tab('types', 'Kinds of project')}${tab('parts', 'Parts')}</div>${body}`;
     box.scrollTop = scroll;
@@ -2964,11 +3326,11 @@
   /* ------------------------------------------------------------------ */
   /* Unity mode: the project's file in one pane; any part in sentences  */
   /* ------------------------------------------------------------------ */
-  /* Unity is Write mode's project in one pane instead of two. It shows the file open in the project, line for
+  /* Unity is Split Mode's project in one pane instead of two. It shows the file open in the project, line for
    * line (lang/unity.js fromFile): its exact lines (python: …) as code, its sentences in green. Translate to Plain
    * Language Syntax turns selected code into sentences right where it is; Original Code turns a green part back
    * into code: exactly as it was if nobody changed it, or written in the context of the code around it (and the
-   * project's other files) if they did. Every change is the project's file at once (toFile), so Write mode, Run,
+   * project's other files) if they did. Every change is the project's file at once (toFile), so Split Mode, Run,
    * Problems and the Library all see the same file. */
   const UNITY = window.IntuiUnity;
   const UNITY_OLD = 'intuicode.unity.v1';   // Unity's own scratch file, from before it worked on the project
@@ -2987,7 +3349,7 @@
   // the file Unity shows: id, lang (null for a file with no sentences: notes, data, other code), text, regions
   let unity = { id: null, lang: null, text: '', regions: [] };
   const uTa = $('uTa');
-  let uBefore = [''], uCaret = -1, uProblems = [], uStripTimer = 0, uFrame = 0, uViewsTimer = 0;
+  let uBefore = [''], uCaret = -1, uProblems = [], uStripTimer = 0, uFrame = 0, uViewsTimer = 0;   // (uStripTimer: the help, a moment after the cursor stops)
   const uCan = (sec) => !!UNITY && !!sec && UNITY.LANGS.includes(sec.lang);
   const uSec = () => project.sections.find(s => s.id === unity.id);
   const uCodeLang = () => (unity.lang === 'arduino' ? 'cpp' : unity.lang);
@@ -3031,7 +3393,7 @@
     uBefore = unity.text.split('\n');
     uProblems = [];
   }
-  /* Sentences from Write mode (or the Library) come with no code of their own: each green part gets the code
+  /* Sentences from Split Mode (or the Library) come with no code of their own: each green part gets the code
      its sentences make now, so Original Code on one nobody changes gives exactly that. A part whose sentences
      can't be code yet gets none, and is written when they can. */
   function uGiveCode() {
@@ -3044,7 +3406,7 @@
       } catch (e) { console.error(e); }
     });
   }
-  /* Unity's text is the project's file: written back at every change, as Write mode's typing is. */
+  /* Unity's text is the project's file: written back at every change, as Split Mode's typing is. */
   function uCommit() {
     const sec = uSec();
     if (!sec) return;
@@ -3117,7 +3479,9 @@
     if (uTa.value !== unity.text) uTa.value = unity.text;
     const lines = unity.text.split('\n'), code = uCodeLang();
     const bad = new Map(uProblems.map(p => [p.line, p.errs.length ? 'err' : 'warn']));
-    const lineHtml = (l, words) => `<div class="ul">${(words ? hlLine(l) : unity.lang ? hlCode(code, l) : hlFileLine(sec, l)) || '​'}</div>`;
+    const looks = lineLooks(sec, lines.length), linked = linkedLines(sec.id);
+    let at = 0;
+    const lineHtml = (l, words) => { const i = at++; return `<div class="ul${looks[i] ? ' ' + looks[i] : ''}${linked.has(i) ? ' lk' : ''}">${(words ? hlLine(l) : unity.lang ? hlCode(code, l) : hlFileLine(sec, l)) || '​'}</div>`; };
     const sorted = unity.regions.slice().sort((a, b) => a.from - b.from);
     let html = '', n = 0;
     for (const r of sorted) {
@@ -3130,11 +3494,6 @@
     $('uGutter').innerHTML = lines.map((_, i) => `<div class="gl${uRegionAt(i) >= 0 ? ' u-in' : ''}${bad.has(i) ? ' ' + bad.get(i) : ''}">${i + 1}</div>`).join('');
     $('uTitle').textContent = fileName(sec);
     $('uSub').textContent = unity.lang ? `${langName(sec.lang)}, in one pane. The green parts are sentences.` : `${langName(sec.lang)}, as it is: it has no sentences, so nothing here turns green.`;
-    $('uCount').textContent = unity.regions.length || '';
-    $('uRegions').innerHTML = sorted.map((r) => {
-      const i = unity.regions.indexOf(r), same = UNITY.unchanged(r, lines);
-      return `<li><button type="button" class="u-reg" data-u-go="${i}" title="Go to it">Lines ${r.from + 1}–${r.to + 1}${same ? '' : ' <span class="dim">changed</span>'}</button><button type="button" class="btn tiny" data-u-re="${i}">Original Code</button></li>`;
-    }).join('') || `<li class="side-note">${unity.lang ? 'None in this file.' : 'This file has no sentences.'}</li>`;
     uSync(); uTools();
     if (mode === 'unity') updateChip();
   }
@@ -3163,7 +3522,7 @@
     $('uRe').disabled = at < 0;
     $('uReAll').disabled = !unity.regions.length;
     uFloatPos();
-    clearTimeout(uStripTimer); uStripTimer = setTimeout(uStrip, 120);
+    clearTimeout(uStripTimer); uStripTimer = setTimeout(renderExplain, 120);
   }
   /* A Translate to Plain Language Syntax button just above a selection of code. */
   function uFloatPos() {
@@ -3174,29 +3533,98 @@
     f.style.top = Math.max(4, 12 + from * lh - uTa.scrollTop - lh - 2) + 'px';
     f.hidden = false;
   }
-  /* Under the pane: what the region at the cursor will become, and its problems. */
-  function uStrip() {
-    if (mode !== 'unity') return;
-    const box = $('uStrip'), lines = uLines(), at = uRegionAt(uLineOf(uTa.selectionStart)), code = uCodeLang();
-    if (!unity.lang) {
-      const sec = uSec() || activeSec();
-      box.innerHTML = `<span class="dim">${escHtml(langName(sec.lang))} has no sentences in IntuaCode, so Unity shows this file as it is: change it here. Python, HTML, CSS, JavaScript, C++ and Arduino files can be put in sentences.</span>`;
+  /* The help under Unity's pane: Split Mode's help, for the line Unity's cursor is on. In a green part, the
+     sentence you wrote and the code Original Code gives for it (with its problems, its shape and its words); on
+     a line of code, what's in it and the part it belongs to; with nothing there, how Unity works. */
+  function renderExplainUnity() {
+    if (!UNITY || mode !== 'unity') return;
+    const box = $('explain'), sec = uSec() || activeSec();
+    const li = uLineOf(uTa.selectionStart), lines = uLines(), text = lines[li] || '', at = uRegionAt(li), code = uCodeLang();
+    const part = partAt(sec, li), selected = uTa.selectionEnd > uTa.selectionStart;
+    const partCell = part ? `<div class="ex-cell"><span class="ex-lbl">In the part · lines ${part.from + 1}–${part.to + 1}</span><div class="ex-part">${typeChip(part.type)} <b>${escHtml(part.title)}</b></div><div class="dim">${escHtml(PARTS.typeOf(part.type).about)}</div></div>` : '';
+    if (at >= 0) {
+      const r = unity.regions[at], items = [];
+      let label, out = null;
+      if (r.original && UNITY.unchanged(r, lines)) label = 'Original Code gives back, exactly';
+      else {
+        try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { items.push(`<li class="err">The writer hit a problem: ${escHtml(e.message)}</li>`); }
+        if (out) {
+          out.problems.forEach(p => { p.errs.forEach(e => items.push(`<li class="err">Line ${p.line + 1}: ${withCode(e)}</li>`)); p.warns.forEach(w => items.push(`<li class="warn">Line ${p.line + 1}: ${withCode(w)}</li>`)); });
+          label = out.problems.some(p => p.errs.length) ? 'Can\'t go back to code yet' : 'Original Code will write';
+        }
+      }
+      const codeLines = out ? (out.problems.some(p => p.errs.length) ? [] : out.code) : r.original || [];
+      box.innerHTML = `<div class="ex-map">
+          <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
+          <div class="ex-arrow" aria-hidden="true">→</div>
+          <div class="ex-cell"><span class="ex-lbl">${escHtml(label || 'Code')} · ${escHtml(langName(sec.lang))}</span><div class="ex-py">${codeLines.map(l => hlCode(code, l)).join('\n') || '<span class="dim">Nothing yet.</span>'}</div></div>
+        </div>
+        ${text.trim() ? shapeHtml(sec, text) : ''}
+        ${items.length ? `<ul class="ex-notes">${items.slice(0, 5).join('')}</ul>` : ''}
+        ${out && out.needs.length ? `<p class="ex-guide">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</p>` : ''}
+        <p class="ex-foot"><span>Green part · lines ${r.from + 1}–${r.to + 1}${part ? ` · ${escHtml(PARTS.typeOf(part.type).name)}` : ''}</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> Original Code</span></p>`;
       return;
     }
-    if (at < 0) {
-      box.innerHTML = uTa.selectionEnd > uTa.selectionStart ? '<span class="dim">Press <b>Translate to Plain Language Syntax</b> to say the selected code in sentences, right where it is.</span>'
-        : '<span class="dim">Select some code to translate it to plain language syntax. The green parts are sentences: put the cursor in one to see the code it makes.</span>';
+    if (!text.trim() && !selected) {
+      box.innerHTML = `<p class="ex-guide">${withCode(metaOf(sec).purpose)}.</p>
+        <div class="ex-hint">${unity.lang ? '<span>Select some code and press <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it\'s said in sentences, right where it is, in green.</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> turns a green part back into code</span>' : `<span>${escHtml(langName(sec.lang))} has no sentences in IntuaCode: change it here as it is, and the help reads it to you.</span>`}<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Start from an idea: <b>Project Templates</b>, or add parts from the <b>Library</b>.</span><span><b>Interface &amp; Display</b> and <b>Backend &amp; Mechanics</b>, at the top, show one side of the project.</span></div>`;
       return;
     }
-    const r = unity.regions[at];
-    if (r.original && UNITY.unchanged(r, lines)) { box.innerHTML = `<span class="ex-lbl">Unchanged · Original Code gives back exactly</span><pre class="u-code">${r.original.map(l => hlCode(code, l)).join('\n')}</pre>`; return; }
-    let out;
-    try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { box.textContent = 'The writer hit a problem: ' + e.message; return; }
-    const errs = out.problems.flatMap(p => p.errs.map(e => [p.line, e, 'err'])), warns = out.problems.flatMap(p => p.warns.map(w => [p.line, w, 'warn']));
-    box.innerHTML = `<span class="ex-lbl">${errs.length ? 'Can\'t go back to code yet' : 'Original Code will write'}</span>`
-      + (errs.length ? '' : `<pre class="u-code">${out.code.map(l => hlCode(code, l)).join('\n')}</pre>`)
-      + [...errs, ...warns].slice(0, 4).map(([n, msg, k]) => `<div class="u-msg ${k}">Line ${n + 1}: ${withCode(msg)}</div>`).join('')
-      + (out.needs.length ? `<div class="u-msg">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</div>` : '');
+    const a = !unity.lang && (LANGS.byId(sec.lang) || {}).write === 'code' ? readOf(sec) : null;
+    const said = a && a.sections && a.sections.find(s => li + 1 >= s.start && li + 1 <= s.end);
+    box.innerHTML = `<div class="ex-map">
+        <div class="ex-cell"><span class="ex-lbl">${escHtml(langName(sec.lang))} · line ${li + 1}</span><div class="ex-py">${(unity.lang ? hlCode(code, text.trim()) : hlFileLine(sec, text.trim())) || '<span class="dim">(an empty line)</span>'}</div></div>
+        ${partCell}
+      </div>
+      ${said ? `<p class="ex-guide"><b>${escHtml(said.title)}:</b> ${rich(said.headline || '')}</p>` : ''}
+      ${unity.lang ? partsHtml(sec, text) : ''}
+      <p class="ex-foot"><span>${unity.lang ? (selected ? 'Press <b>Translate to Plain Language Syntax</b> to say the selection in sentences' : 'Select code and press <b>Translate to Plain Language Syntax</b> to say it in sentences') : 'Kept exactly as written'}</span></p>`;
+  }
+
+
+  /* Predictive Mode in Unity: in a green part, the rest of the sentence being typed shows dim after the cursor
+     (sentences written before, the project's own, the Library's, then the sentence patterns). → takes it all,
+     Ctrl+→ one word, Esc puts it away. */
+  let uGhostRest = '', uCharW = 0;
+  function uPredictFor(typed, li) {
+    const sec = uSec();
+    if (!sec || !PRED) return '';
+    const lines = (predictMem[sec.lang] || []).slice();
+    for (const s of project.sections) {
+      if (s.lang !== sec.lang) continue;
+      s.text.split('\n').forEach((l, i) => { if (s.id !== sec.id || i !== li) lines.push(l); });
+    }
+    lines.push(...librarySentences(sec.lang));
+    const h = PRED.history(typed, lines, 1)[0];
+    if (h) return h;
+    const low = typed.toLowerCase(), t = packFor(sec).templates.find(x => x.pattern.toLowerCase().startsWith(low) && x.pattern.toLowerCase() !== low);
+    return t ? t.pattern : '';
+  }
+  function uUpdateGhost() {
+    const g = $('uGhost');
+    const hide = () => { uGhostRest = ''; if (!g.hidden) g.hidden = true; };
+    if (!predictOn() || mode !== 'unity' || !unity.lang || document.activeElement !== uTa) return hide();
+    const a = uTa.selectionStart;
+    if (a !== uTa.selectionEnd) return hide();
+    const li = uLineOf(a), line = uLines()[li] || '';
+    if (uRegionAt(li) < 0 || a - uPosOf(li) !== line.length) return hide();   // in a green part, at the end of its line
+    const typed = line.trim();
+    if (typed.length < 2) return hide();
+    const rest = PRED.rest(typed, uPredictFor(typed, li));
+    if (!rest) return hide();
+    const cs = getComputedStyle(uTa);
+    if (!uCharW) {
+      const probe = document.createElement('span');
+      probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${cs.fontSize}/${cs.lineHeight} ${cs.fontFamily}`;
+      probe.textContent = 'x'.repeat(100);
+      document.body.appendChild(probe); uCharW = probe.getBoundingClientRect().width / 100 || 8.4; probe.remove();
+    }
+    uGhostRest = rest;
+    g.innerHTML = escHtml(rest).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>');
+    g.style.font = `${cs.fontSize}/${cs.lineHeight} ${cs.fontFamily}`;
+    g.style.top = ((parseFloat(cs.paddingTop) || 12) + li * (parseFloat(cs.lineHeight) || 22) - uTa.scrollTop) + 'px';
+    g.style.left = ((parseFloat(cs.paddingLeft) || 14) + line.replace(/\t/g, '    ').length * uCharW - uTa.scrollLeft) + 'px';
+    g.hidden = false;
   }
 
   /* The code in the selection into sentences. The green parts in it are sentences already and stay as they are,
@@ -3260,34 +3688,6 @@
     else if (ok) tLine('Every green part is code again.', 't-sys');
   }
 
-  /* A code file from the computer, added to the project and opened here. Python, CSS and JavaScript come in as
-     code (translate any part); a whole C++ program, Arduino sketch or HTML page comes in as sentences, because
-     IntuaCode writes the main, setup and loop, or the page's head, around a file's sentences itself. */
-  async function uAddFile(f) {
-    const lang = LANGS.fromPath(f.name);
-    if (!UNITY.LANGS.includes(lang)) { tLine(`Unity opens Python, HTML, CSS, JavaScript, C++ and Arduino files. ${f.name} can be read in Read mode.`, 't-err'); return; }
-    const code = (await f.text()).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
-    const m = f.name.match(/^(.*?)(\.[^.]+)?$/);
-    const stem = lang === 'python' ? m[1].replace(/\W/g, '_').replace(/^(\d)/, '_$1') : m[1].replace(/[^\w+ .-]/g, '-');
-    let path = null;
-    for (let n = 1, p = stem + (m[2] || ''); n < 50; n++, p = `${stem}${lang === 'python' ? '_' : '-'}${n}${m[2] || ''}`) {
-      if (!project.sections.some(s => s.path.toLowerCase() === p.toLowerCase()) && !pathProblem(p, lang)) { path = p; break; }
-    }
-    if (!path) { tLine(`There's no free name for ${f.name} in this project. Rename a file, then open it again.`, 't-err'); return; }
-    let text = UNITY.toFile(lang, code.split('\n'), []) + '\n', how = 'as code: select any part and press Translate to Plain Language Syntax.', note = '';
-    if (lang === 'cpp' || lang === 'arduino' || lang === 'html') {
-      const r = await uConvert(lang, code + '\n');
-      if (!r.ok) { tLine(`${f.name} couldn't be read into sentences (${r.reason}), so it wasn't added.`, 't-err'); return; }
-      text = r.text.replace(/\n+$/, '') + '\n';
-      how = `in sentences: IntuaCode writes ${lang === 'html' ? 'the page around them' : lang === 'arduino' ? 'setup and loop' : 'the main'} itself. Press Original Code on any part to see its code.`;
-      if (r.exact === false) note = ` Some of it may not come back exactly: ${r.reason || 'check it'}.`;
-    }
-    const copy = JSON.parse(JSON.stringify(project)), id = newId();
-    copy.sections.push({ id, path, lang, text });
-    const err = changeProject(copy, id, `Added ${path} to the project, ${how}${note}`);
-    if (err) tLine(err, 't-err');
-  }
-
   if (UNITY) {
     uTa.addEventListener('beforeinput', () => { uCaret = uRegionAt(uLineOf(uTa.selectionStart)); });
     uTa.addEventListener('input', () => {
@@ -3300,10 +3700,22 @@
       // not requestAnimationFrame, so it still draws when the window isn't in front
       if (!uFrame) uFrame = setTimeout(() => { uFrame = 0; renderUnity(); }, 16);
     });
-    uTa.addEventListener('scroll', uSync);
+    uTa.addEventListener('scroll', () => { uSync(); uUpdateGhost(); });
     for (const ev of ['select', 'click', 'keyup', 'focus']) uTa.addEventListener(ev, uTools);
+    for (const ev of ['input', 'click', 'keyup', 'blur']) uTa.addEventListener(ev, () => setTimeout(uUpdateGhost, 0));
     uTa.addEventListener('blur', () => setTimeout(uFloatPos, 0));
     uTa.addEventListener('keydown', (e) => {
+      if (uGhostRest && e.key === 'ArrowRight' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        document.execCommand('insertText', false, e.ctrlKey || e.metaKey ? PRED.nextWord(uGhostRest) : uGhostRest);
+        return;
+      }
+      if (uGhostRest && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); uGhostRest = ''; $('uGhost').hidden = true; return; }
+      if (e.key === 'Enter' && PRED && unity.lang && uRegionAt(uLineOf(uTa.selectionStart)) >= 0) {
+        // a sentence entered is remembered, as a terminal keeps its history
+        const line = (uLines()[uLineOf(uTa.selectionStart)] || '').trim(), lang = unity.lang;
+        if (PRED.worth(line)) { predictMem[lang] = PRED.remember(predictMem[lang] || [], line); store.set(PREDICT_KEY, predictMem); }
+      }
       if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         const unit = UNITY.unitOf(uLines()), at = uPosOf(uLineOf(uTa.selectionStart));
@@ -3321,17 +3733,6 @@
     $('uFloat').addEventListener('click', uDeRegex);
     $('uRe').addEventListener('click', () => { const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); uTa.focus(); });
     $('uReAll').addEventListener('click', uReRegexAll);
-    $('uRegions').addEventListener('click', (e) => {
-      const go = e.target.closest('[data-u-go]'), re = e.target.closest('[data-u-re]');
-      if (re) { uReRegex(+re.dataset.uRe); return; }
-      if (go) { const r = unity.regions[+go.dataset.uGo]; if (!r) return; uTa.focus(); const p = uPosOf(r.from) + r.base.length; uTa.setSelectionRange(p, p); const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22; uTa.scrollTop = Math.max(0, r.from * lh - 40); uTools(); }
-    });
-    $('uOpen').addEventListener('click', () => $('uFile').click());
-    $('uFile').addEventListener('change', async (e) => {
-      const f = e.target.files[0];
-      e.target.value = '';
-      if (f) await uAddFile(f);
-    });
     $('uCopy').addEventListener('click', (e) => {
       const sec = uSec() || activeSec();
       uCommit();
@@ -3342,558 +3743,46 @@
   } else $('modeUnity').hidden = true;
 
   /* ------------------------------------------------------------------ */
-  /* Read mode: import a file or a whole project, sections, summaries    */
+  /* Modes: Unity (one pane of code, any part in sentences, where       */
+  /* IntuaCode opens) and Split Mode (sentences on the left, the code    */
+  /* they make on the right). Both work on the same project's files.     */
   /* ------------------------------------------------------------------ */
 
-  const READ_KEY = 'intuicode.read.v2';
-  let reads = store.get(READ_KEY, { files: [], active: -1 });  // active: index into pyFiles(), or -1 for the project overview
-  let proj = null;         // the reader's analysis of the whole project
-  let readFocus = null;    // {type:'section', id} | {type:'range', summary}
-  const KIND_LABEL = { about: 'About', imports: 'Toolkits', settings: 'Settings', steps: 'Steps', tool: 'Tool', route: 'Web route', class: 'Class', start: 'Start',
-    component: 'Component', handler: 'Event', head: 'Page info', part: 'Part', script: 'Script', style: 'Style', media: 'Screens',
-    type: 'Type', test: 'Test', data: 'Data', heading: 'Heading' };
-  const ROLE_ORDER = ['entry', 'settings', 'models', 'helpers', 'routes', 'script', 'package', 'tests'];
+  const MODE_KEY = 'intuicode.mode.v1';
   const SKIP_DIRS = new Set(['venv', '.venv', 'env', '.env', 'node_modules', '__pycache__', '.git', 'site-packages', 'build', 'dist', '.tox', '.mypy_cache', '.pytest_cache', '.idea', '.vscode']);
   const EXTRA_FILE = /(^|\/)(readme(\.\w+)?|requirements[\w.-]*\.txt|pyproject\.toml|pipfile|package\.json)$/i;
   const CODE_FILE = /\.(py|jsx?|mjs|cjs|tsx?|html?|css|cpp|cc|cxx|hpp|hh|h|ino)$/i;   // what the Python and web readers read
-  /* A file's language in Read mode: the one chosen for it ("Read as"), else the one its name says. The Python
-     and web readers read their own languages (and can turn them into sentences); the code reader
-     (lang/code_read.js) reads everything else, and any file read as another language than its name says. */
-  const OWN_READ = new Set(['python', 'html', 'css', 'js', 'ts', 'tsx', 'cpp', 'arduino']);
-  const extLang = (name) => LANGS.fromPath(name);
-  const readLang = (f) => f.lang || f.auto || extLang(f.name);   // (auto: what the text of a file named .txt or nothing turned out to be)
-  const ownReader = (f) => (!f.lang || f.lang === extLang(f.name)) && CODE_FILE.test(f.name) && OWN_READ.has(extLang(f.name));
-  const codeReader = (f) => !ownReader(f) && readLang(f) !== 'text' && !!window.IntuiCodeReader;
-  const readableFile = (f) => ownReader(f) || codeReader(f);
-  const readFileOf = (p) => reads.files.find(x => x.name === p);
-  /* The highlighter's and the tour's name for a file's language (an Arduino sketch is C++ to them). */
-  const langOfPath = (p) => { const f = readFileOf(p), l = f ? readLang(f) : extLang(p); return l === 'arduino' ? 'cpp' : l; };
-
-  function saveReads() {
-    try { localStorage.setItem(READ_KEY, JSON.stringify(reads)); }
-    catch (_) { tLine('This project is too big to remember after a reload, but you can read it now.', 't-sys'); }
-  }
+  /* The language a file's name says (the highlighter's and the converter's: an Arduino sketch is C++ to them). */
+  const langOfPath = (p) => { const l = LANGS.fromPath(p); return l === 'arduino' ? 'cpp' : l; };
+  let importTop = '';   // the folder an imported project came in, left off the paths it's shown with
+  const shortPath = (p) => (importTop && p.startsWith(importTop + '/') ? p.slice(importTop.length + 1) : p);
+  /* Reader text: `code` as code, and [[path]] / [[path#name]] as the name of that file or part. */
+  const rich = (s) => withCode(s).replace(/\[\[([^\]#]+)(?:#([^\]]+))?\]\]/g, (m, path, name) => `<code>${name || shortPath(path)}</code>`);
 
   function setMode(next) {
+    if (next === 'unity' && !UNITY) next = 'write';
     if (maxed && next !== mode) setMax(maxed);   // full screen belongs to the mode it was opened in
+    if (mode === 'write' && next === 'unity') activeSec().text = ta.value;
     mode = next;
+    store.set(MODE_KEY, next);
     hideTip();
+    closeAc();
     $('modeWrite').setAttribute('aria-selected', String(next === 'write'));
-    $('modeRead').setAttribute('aria-selected', String(next === 'read'));
     $('modeUnity').setAttribute('aria-selected', String(next === 'unity'));
     $('unityView').hidden = next !== 'unity';
-    $('unitySide').hidden = next !== 'unity';
+    $('writeView').hidden = next !== 'write';
     $('writeSide').classList.toggle('in-unity', next === 'unity');
     $('work').classList.toggle('unity', next === 'unity');
-    $('writeView').hidden = next !== 'write';
-    $('explainWrap').hidden = next !== 'write';
-    $('writeSide').hidden = next !== 'write' && next !== 'unity';
-    $('readView').hidden = next !== 'read';
-    $('readSide').hidden = next !== 'read';
+    $('work').classList.toggle('web', webOn());
     renderImages();
-    $('work').classList.toggle('reading', next === 'read');
-    $('work').classList.toggle('web', next === 'write' && webOn());
-    showBottom(next === 'write' && project.kind === 'website' ? 'preview' : 'terminal');
-    $('tabPreview').hidden = !(next === 'write' && webOn());
+    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
-    if (next === 'read') renderRead();
-    else if (next === 'unity') { uMoveOldScratch(); unityShow(); $('uTa').focus(); }
-    else { measure(); syncScroll(); }
+    if (next === 'unity') { uMoveOldScratch(); unityShow(); $('uTa').focus(); }
+    else { ta.value = activeSec().text; refreshAll(); measure(); syncScroll(); }
     if (!$('index').hidden) renderIndex();
   }
   $('modeWrite').addEventListener('click', () => setMode('write'));
-  $('modeRead').addEventListener('click', () => setMode('read'));
   $('modeUnity').addEventListener('click', () => setMode('unity'));
-
-  const pyFiles = () => reads.files.filter(readableFile);   // every file that can be read
-  const curFile = () => (reads.active >= 0 ? pyFiles()[reads.active] : null);
-  const fileInfo = (path) => proj && proj.files.find(x => x.path === path);
-  const curAnalysis = () => { const f = curFile(); const i = f && fileInfo(f.name); return i ? i.analysis : null; };
-  const shortPath = (p) => (proj && proj.name && p.startsWith(proj.name + '/') ? p.slice(proj.name.length + 1) : p);
-
-  /* [[path]] and [[path#name]] in reader text become links to that file. The text is already
-   * escaped HTML, so the path is turned back into plain text before being escaped once for the link. */
-  const unescHtml = (s) => s.replace(/&(amp|lt|gt|quot);/g, (m, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"' }[e]));
-  function linkify(html) {
-    return html.replace(/\[\[([^\]#]+)(?:#([^\]]+))?\]\]/g, (m, escPath, escName) => {
-      const path = unescHtml(escPath), name = escName && unescHtml(escName);
-      const label = name ? `<code>${escHtml(name)}</code> <span class="dim">(${escHtml(shortPath(path))})</span>` : `<code>${escHtml(shortPath(path))}</code>`;
-      return `<button type="button" class="linklike" data-file="${escHtml(path)}"${name ? ` data-name="${escHtml(name)}"` : ''}>${label}</button>`;
-    });
-  }
-  const rich = (s) => linkify(withCode(s));
-
-  async function analyse() {
-    if (!reads.files.length) { proj = null; return; }
-    $('rdSum').innerHTML = '<p class="sum-empty">Reading the code… (the first time, this loads Python into the page)</p>';
-    // Python's reader also takes the project's notes (README, requirements…); the others read their own files
-    const pyOwn = (f) => ownReader(f) && extLang(f.name) === 'python';
-    const pySide = reads.files.filter(f => pyOwn(f) || EXTRA_FILE.test(f.name));
-    const webSide = reads.files.filter(f => ownReader(f) && !pyOwn(f));
-    const codeSide = reads.files.filter(codeReader);
-    let py = null, web = null, code = null;
-    try {
-      if (pySide.some(pyOwn)) {
-        if (!(await ensurePython())) { $('rdSum').innerHTML = '<p class="sum-empty">Python couldn\'t start, so the Python files can\'t be read here.</p>'; return; }
-        const R = await Runner.reader((s) => setStatus(s));
-        py = R.analyzeProject(pySide);
-      }
-      if (webSide.length || codeSide.length) {
-        const WR = await Runner.webReader((s) => setStatus(s));
-        if (webSide.length) {
-          await WR.loadLangs([...new Set(webSide.map(f => WR.kindOfPath(f.name)).filter(Boolean))]);
-          web = WR.analyzeProject(webSide, py);
-        }
-        if (codeSide.length) {
-          const CR = window.IntuiCodeReader;
-          for (const l of new Set(codeSide.map(readLang))) { try { await CR.load(l); } catch (_) { /* read without its grammar: an outline */ } }
-          code = codeSide.map(f => codeFileEntry(f, CR.analyze(readLang(f), f.name, f.source)));
-        }
-        setStatus(Runner.ready ? $('pyStatus').textContent.replace(/^Loading.*/, 'Readers ready') : 'Readers ready', 'ready');
-      }
-      proj = withCodeFiles(mergeProjects(py, web), code);
-    } catch (e) {
-      proj = null;
-      $('rdSum').innerHTML = `<p class="sum-empty">The reader hit a problem: ${escHtml(e.message)}</p>`;
-    }
-  }
-
-  /* One project view from the Python reader and the web reader. */
-  function mergeProjects(py, web) {
-    if (!web) return py;
-    const files = (py ? py.files : []).concat(web.files);
-    const seen = new Set();
-    const edges = (py ? py.edges : []).concat(web.edges).filter(([a, b]) => { const k = a + '>' + b; if (seen.has(k) || a === b) return false; seen.add(k); return true; });
-    for (const f of files) f.imports = [...new Set(f.imports)];
-    for (const f of files) f.imported_by = [];
-    for (const [a, b] of edges) { const t = files.find(x => x.path === b); if (t && !t.imported_by.includes(a)) t.imported_by.push(a); }
-    // Python routes learn who calls them
-    for (const [key, from] of Object.entries(web.calledBy || {})) {
-      const [path, name] = key.split('#');
-      const f = files.find(x => x.path === path);
-      const sec = f && f.analysis.sections.find(x => x.name === name);
-      if (sec) sec.facts.splice(1, 0, 'Called from the front end: ' + from.map(p => `[[${p}]]`).join(', ') + '.');
-    }
-    const pages = web.files.filter(f => f.role === 'page').sort((a, b) => (/index\.html?$/.test(b.path) - /index\.html?$/.test(a.path)) || a.path.length - b.path.length);
-    let entries = py && py.entries.length ? py.entries.slice() : [];
-    if (pages.length) entries.push(pages[0].path);
-    for (const f of web.files) if ((f.role === 'entry' || f.role === 'sketch') && !entries.includes(f.path)) entries.push(f.path);
-    if (!entries.length) { const f = web.files.find(x => /server|routes|components|script/.test(x.role)); if (f) entries = [f.path]; }
-    const order = [], queue = [...entries], done = new Set();
-    while (queue.length) { const p = queue.shift(); if (done.has(p)) continue; done.add(p); order.push(p); edges.filter(e => e[0] === p).forEach(e => queue.push(e[1])); }
-    const ROLE_SORT = ['entry', 'sketch', 'page', 'server', 'routes', 'components', 'script', 'styles', 'settings', 'models', 'helpers', 'package', 'tests'];
-    files.filter(f => !done.has(f.path)).sort((a, b) => ROLE_SORT.indexOf(a.role) - ROLE_SORT.indexOf(b.role) || a.path.localeCompare(b.path)).forEach(f => order.push(f.path));
-    const count = (r) => web.files.filter(f => f.role === r).length;
-    const scripts = web.files.filter(f => /script|components|helpers|settings/.test(f.role) && f.lang !== 'css' && f.lang !== 'html').length;
-    const linked = web.fetches.filter(f => f.route).length;
-    const name = py ? py.name : (() => { const firsts = new Set(files.map(f => f.path.split('/')[0])); return firsts.size === 1 && files.every(f => f.path.includes('/')) ? [...firsts][0] : 'this project'; })();
-    const guess = web.files.some(f => f.role === 'sketch') ? 'an Arduino project' : web.files.some(f => f.lang === 'cpp') && !pages.length ? 'a C++ program' : web.files.some(f => f.role === 'components') ? 'a React app' : pages.length && (py || web.hasServer) ? 'a website with its own server' : pages.length ? 'a website' : web.hasServer ? 'a JavaScript web server' : 'a JavaScript project';
-    let overview = py ? py.overview + ` It also has a front end: ${count('page')} web page${count('page') === 1 ? '' : 's'}, ${count('styles')} style file${count('styles') === 1 ? '' : 's'} and ${scripts} script${scripts === 1 ? '' : 's'}.`
-      : `${name} looks like ${guess}. It has ${files.length} file${files.length === 1 ? '' : 's'}.` + (entries[0] ? ` Start reading at [[${entries[0]}]].` : '');
-    if (linked) overview += ` The front end talks to the back end through ${linked} request${linked === 1 ? '' : 's'}, each linked to the route that answers it.`;
-    const warnings = (py ? py.warnings : []).filter(w => !/There are no tests/.test(w) || !web.files.some(f => f.role === 'tests'));
-    for (const ft of web.fetches) if (!ft.route && !ft.dynamic && web.hasServer) warnings.push(`[[${ft.from}]] asks the server for ${ft.method} ${'`' + ft.url + '`'}, but no route in this project answers it.`);
-    const libs = (py ? py.libs : []).slice();
-    for (const f of web.files) for (const l of f.libs || []) { let e = libs.find(x => x.name === l); if (!e) libs.push(e = { name: l, what: '', files: [], stdlib: false }); e.files.push(f.path); }
-    const readmeFile = reads.files.find(f => /(^|\/)readme(\.\w+)?$/i.test(f.name));
-    const readme = py && py.readme ? py.readme : readmeFile ? (readmeFile.source.split(/\n\s*\n/).map(p => p.trim()).find(p => p && !/^(#|!\[|<|```)/.test(p)) || '').replace(/[`*_]/g, '').slice(0, 300) : '';
-    return { ok: true, name, overview, readme, entries, order, files, edges, libs, warnings, secrets: py ? py.secrets : [] };
-  }
-
-  /* A file the code reader read, in the shape the project view uses. */
-  function codeFileEntry(f, a) {
-    const lang = readLang(f);
-    a = a || { ok: false, error: 'It couldn\'t be read.', sections: [] };
-    return {
-      path: f.name, module: f.name, lang, role: 'code', role_label: langName(lang), summary: a.overview || '', imports: [], imported_by: [],
-      analysis: { ok: a.ok !== false, error: a.error, overview: a.overview || '', sections: a.sections || [], lines: a.lines }, libs: a.libs || [], lines: a.lines,
-    };
-  }
-  /* The project with the code reader's files in it (or, with only those, a project of them). */
-  function withCodeFiles(p, code) {
-    if (!code || !code.length) return p;
-    const langs = [...new Set(code.map(f => f.role_label))];
-    const said = langs.length > 1 ? langs.slice(0, -1).join(', ') + ' and ' + langs[langs.length - 1] : langs[0];
-    const libs = p ? p.libs.slice() : [];
-    for (const f of code) for (const l of f.libs) { const name = typeof l === 'string' ? l : l.name; if (!name) continue; let e = libs.find(x => x.name === name); if (!e) libs.push(e = { name, what: '', files: [], stdlib: false }); if (!e.files.includes(f.path)) e.files.push(f.path); }
-    if (p) {
-      p.files.push(...code);
-      p.order.push(...code.map(f => f.path));
-      p.libs = libs;
-      p.overview += ` It also has ${code.length} file${code.length === 1 ? '' : 's'} in ${said}.`;
-      return p;
-    }
-    const files = code, firsts = new Set(files.map(f => f.path.split('/')[0]));
-    const name = firsts.size === 1 && files.every(f => f.path.includes('/')) ? [...firsts][0] : 'this project';
-    const readmeFile = reads.files.find(f => /(^|\/)readme(\.\w+)?$/i.test(f.name));
-    const readme = readmeFile ? (readmeFile.source.split(/\n\s*\n/).map(x => x.trim()).find(x => x && !/^(#|!\[|<|```)/.test(x)) || '').replace(/[`*_]/g, '').slice(0, 300) : '';
-    const start = files.find(f => (f.analysis.sections || []).some(s => s.kind === 'start')) || files.find(f => !/^(markdown|json|yaml|toml|csv|text)$/.test(f.lang)) || files[0];
-    return {
-      ok: true, name, readme, files, libs, edges: [], warnings: [], secrets: [],
-      overview: `${name === 'this project' ? 'This project' : name} has ${files.length} file${files.length === 1 ? '' : 's'}, in ${said}.` + (start ? ` Start reading at [[${start.path}]].` : ''),
-      entries: start ? [start.path] : [], order: [start, ...files.filter(f => f !== start)].filter(Boolean).map(f => f.path),
-    };
-  }
-
-  function readTreeHtml() {
-    const files = pyFiles();
-    if (!files.length) return '<p class="side-note">Nothing imported yet.</p>';
-    const multi = files.length > 1;
-    let html = multi ? `<button type="button" class="tree-item${reads.active === -1 ? ' active' : ''}" data-i="-1">${FOLDER_SVG.replace('<svg', '<svg class="ti-icon"')}<span class="ti-title">Project overview</span><span class="ti-file">${escHtml(proj ? proj.name : 'project')}</span></button>` : '';
-    let lastDir = null;
-    const sorted = files.map((f, i) => ({ f, i, p: shortPath(f.name) })).sort((a, b) => a.p.split('/').length - b.p.split('/').length || a.p.localeCompare(b.p));
-    for (const { f, i, p } of sorted) {
-      const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '';
-      if (dir !== lastDir && dir) html += `<div class="tree-dir">${escHtml(dir)}</div>`;
-      lastDir = dir;
-      const info = fileInfo(f.name);
-      const role = info ? info.role : '';
-      html += `<button type="button" class="tree-item file${i === reads.active ? ' active' : ''}${role === 'package' ? ' faint' : ''}${dir ? ' nested' : ''}" data-i="${i}"><span class="ti-title">${escHtml(p.split('/').pop())}</span>${info ? `<span class="role r-${role}">${escHtml(info.role_label)}</span>` : ''}</button>`;
-    }
-    const extras = reads.files.filter(f => !readableFile(f));
-    if (extras.length) html += `<div class="tree-dir">Also found</div>` + extras.map(f => `<div class="tree-extra">${escHtml(shortPath(f.name))}</div>`).join('');
-    return html;
-  }
-
-  function renderRead() {
-    const files = pyFiles();
-    if (reads.active >= files.length) reads.active = files.length > 1 ? -1 : 0;
-    if (files.length === 1 && reads.active === -1) reads.active = 0;
-    $('rdFiles').innerHTML = readTreeHtml();
-    const file = curFile();
-    const a = curAnalysis();
-    const overview = files.length > 1 && reads.active === -1;
-    $('rdProject').hidden = !overview;
-    $('rdBody').hidden = overview;
-    $('rdOutlineWrap').hidden = !file;
-    $('btnSummarise').disabled = !a || !a.ok;
-    $('btnToSentences').disabled = !a || !a.ok;
-    $('btnTour').disabled = !a || !file || !ownReader(file) || !TOUR_LANGS.has(langOfPath(file.name)) || (langOfPath(file.name) === 'python' && !a.ok);
-    $('rdAsWrap').hidden = !file || (files.length > 1 && reads.active === -1);
-    if (file) {
-      const auto = file.auto || extLang(file.name);
-      $('rdLang').innerHTML = `<option value="">Auto (${escHtml(langName(auto))})</option>` + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}"${file.lang === l.id ? ' selected' : ''}>${escHtml(l.name)}</option>`).join('');
-    }
-    if (!files.length) {
-      $('rdName').textContent = 'No code imported yet';
-      $('rdOverview').textContent = 'Import Python, such as a project an AI wrote for you, to see it split into sections and explained in plain English.';
-      $('rdProject').hidden = true; $('rdBody').hidden = false;
-      $('rdCode').innerHTML = '';
-      $('rdSum').innerHTML = `<div class="sum-empty"><p>Nothing to read yet.</p><div class="bp-actions"><button type="button" class="btn primary" id="rdImport">Import code</button><button type="button" class="btn" id="rdExample">Try the example project</button></div></div>`;
-      return;
-    }
-    if (overview) return renderProject();
-    const info = fileInfo(file.name);
-    $('rdName').textContent = shortPath(file.name);
-    const fileLinks = (paths) => paths.map(p => `[[${escHtml(p)}]]`).join(', ');
-    const links = info && (info.imported_by.length || info.imports.length) ? linkify(`<span class="rd-links">${info.imports.length ? ' Uses ' + fileLinks(info.imports) + '.' : ''}${info.imported_by.length ? ' Used by ' + fileLinks(info.imported_by) + '.' : ''}</span>`) : '';
-    $('rdOverview').innerHTML = a ? (a.ok ? rich(a.overview) + links : `<span class="bad-text">This file can't be read as ${escHtml(langName(readLang(file)))}. ${escHtml(a.error || '')} Try another language in <b>Read as</b>.</span>`) : 'Reading…';
-    const secs = a && (a.ok || (a.sections && a.sections.length)) ? a.sections : [];
-    const fileLang = langOfPath(file.name);
-    const canSay = ownReader(file) && /^(python|html|css|js|cpp)$/.test(fileLang) && !/\.(h|hh|hpp|jsx|tsx?)$/i.test(file.name);
-    $('btnToSentences').disabled = !a || !a.ok || !canSay;
-    $('btnToSentences').title = canSay ? (fileLang === 'python' ? '' : 'Turn this file (and, for a web page, its own styles and script) into sentences in Write mode, checked against the original.') : /\.(h|hh|hpp)$/i.test(file.name) ? 'Header files describe code that lives in another file: open the .cpp file instead.' : !ownReader(file) ? `IntuaCode has sentences for Python, HTML, CSS, JavaScript, C++ and Arduino; ${langName(readLang(file))} is read to you instead.` : 'TypeScript and React files can\'t be opened as sentences yet.';
-    const startOf = new Map(secs.map(s => [s.start, s]));
-    const secOfLine = (ln) => secs.find(s => ln >= s.start && ln <= s.end);
-    $('rdCode').innerHTML = file.source.split('\n').map((l, i) => {
-      const ln = i + 1;
-      const s = secOfLine(ln);
-      const head = startOf.get(ln);
-      const label = head ? `<div class="rl-sec" data-sec="${head.id}"><span class="chip k-${head.kind}">${KIND_LABEL[head.kind]}</span>${escHtml(head.title)}${head.warnings.length ? `<span class="warn-dot" title="${head.warnings.length} thing${head.warnings.length > 1 ? 's' : ''} worth checking">!</span>` : ''}</div>` : '';
-      return `${label}<div class="rl${s ? ' in-sec' : ''}${s && s.id % 2 ? ' alt' : ''}" data-line="${ln}" data-sec="${s ? s.id : ''}"><span class="ln">${ln}</span><span class="pc">${(ownReader(file) ? hlCode(fileLang, l) : hlFileLine({ lang: readLang(file) }, l)) || ' '}</span></div>`;
-    }).join('');
-    $('rdOutline').innerHTML = secs.map(s => `<button type="button" class="ol-item" data-sec="${s.id}"><span class="chip k-${s.kind}">${KIND_LABEL[s.kind]}</span><span class="ol-t">${escHtml(s.title)}</span>${s.warnings.length ? '<span class="warn-dot">!</span>' : ''}<span class="ol-l">${s.start}–${s.end}</span></button>`).join('');
-    renderFocus();
-  }
-
-  /* Project overview: what it is, where to start, how files connect, what to check. */
-  function renderProject() {
-    $('rdName').textContent = proj ? proj.name : 'Project';
-    const langs = proj ? [...new Set(proj.files.map(f => langName(readLang(readFileOf(f.path) || { name: f.path }))))] : [];
-    $('rdOverview').textContent = proj ? `${proj.files.length} files · ${langs.join(', ')}` : 'Reading…';
-    if (!proj) { $('rdProject').innerHTML = '<p class="sum-empty">Reading the project…</p>'; return; }
-    const allWarn = proj.warnings.map(w => ({ w })).concat(proj.files.flatMap(f => (f.analysis.sections || []).flatMap(s => s.warnings.map(w => ({ w, f, s })))));
-    const outside = proj.libs.filter(l => !l.stdlib);
-    const inside = proj.libs.filter(l => l.stdlib);
-    $('rdProject').innerHTML = `<div class="pj">
-      <section class="pj-top">
-        <p class="pj-lead">${rich(proj.overview)}</p>
-        ${proj.readme ? `<blockquote class="pj-readme"><span class="ex-lbl">From the README</span>${escHtml(proj.readme)}</blockquote>` : ''}
-        <h4>How the files connect</h4>
-        <div class="pj-map" id="pjMap">${projectMap()}</div>
-        <p class="pj-legend">Each arrow points from a file to a file it uses, so files further right are building blocks for the ones on their left. Hover a file to see its connections; click it to read it.</p>
-      </section>
-      <div class="pj-cols">
-      <section>
-        <h4>Reading order</h4>
-        <ol class="pj-order">${proj.order.filter(p => fileInfo(p).role !== 'package').map(p => { const f = fileInfo(p); return `<li><button type="button" class="linklike" data-file="${escHtml(p)}"><code>${escHtml(shortPath(p))}</code></button> <span class="role r-${f.role}">${escHtml(f.role_label)}</span><div class="pj-sum">${rich(f.summary)}</div></li>`; }).join('')}</ol>
-      </section>
-      <section>
-        ${allWarn.length ? `<div class="sum-warn"><h4>Worth checking (${allWarn.length})</h4><ul>${allWarn.map(x => `<li>${x.f ? `<button type="button" class="linklike" data-file="${escHtml(x.f.path)}" data-sec="${x.s.id}"><code>${escHtml(shortPath(x.f.path))}</code></button> ${escHtml(x.s.title)}: ` : ''}${rich(x.w)}</li>`).join('')}</ul></div>` : ''}
-      </section>
-      <section>
-        <h4>Libraries</h4>
-        <ul class="sum-facts">${outside.map(l => `<li><code>${escHtml(l.name)}</code>${l.what ? ' ' + escHtml(l.what) : ''} <span class="dim">· ${l.files.length} file${l.files.length > 1 ? 's' : ''}</span></li>`).join('') || '<li>No outside libraries.</li>'}
-        ${inside.length ? `<li class="dim">Built into Python: ${inside.map(l => escHtml(l.name)).join(', ')}</li>` : ''}</ul>
-      </section>
-      </div>
-    </div>`;
-  }
-
-  function projectMap() {
-    const nodes = proj.files.filter(f => f.role !== 'package').map(f => f.path);
-    if (nodes.length > 60) return '<p class="sum-empty">This project has too many files to draw. Use the reading order instead.</p>';
-    const set = new Set(nodes);
-    const edges = proj.edges.filter(([a, b]) => set.has(a) && set.has(b) && a !== b);
-    const depth = Object.fromEntries(nodes.map(n => [n, 0]));
-    for (let k = 0; k < nodes.length; k++) {
-      let changed = false;
-      for (const [a, b] of edges) if (depth[b] < depth[a] + 1 && depth[a] + 1 < nodes.length) { depth[b] = depth[a] + 1; changed = true; }
-      if (!changed) break;
-    }
-    const cols = [];
-    nodes.forEach(n => { (cols[depth[n]] = cols[depth[n]] || []).push(n); });
-    cols.forEach(c => c.sort((a, b) => ROLE_ORDER.indexOf(fileInfo(a).role) - ROLE_ORDER.indexOf(fileInfo(b).role) || a.localeCompare(b)));
-    const W = 176, H = 44, CW = 232, RH = 64, PAD = 16;
-    const pos = {};
-    cols.forEach((c, ci) => c.forEach((n, ri) => { pos[n] = { x: PAD + ci * CW, y: PAD + ri * RH }; }));
-    const width = PAD * 2 + (cols.length - 1) * CW + W;
-    const height = PAD * 2 + (Math.max(...cols.map(c => c.length)) - 1) * RH + H;
-    const lines = edges.map(([a, b]) => {
-      const p = pos[a], q = pos[b];
-      let d;
-      if (q.x > p.x) {
-        const x1 = p.x + W, y1 = p.y + H / 2, x2 = q.x - 4, y2 = q.y + H / 2, mx = (x1 + x2) / 2;
-        d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
-      } else {
-        const x1 = p.x + W / 2, y1 = p.y + H, x2 = q.x + W / 2, y2 = q.y + H + 4;
-        d = `M${x1},${y1} C${x1},${y1 + 40} ${x2},${y2 + 40} ${x2},${y2}`;
-      }
-      return `<path class="pj-edge" data-a="${escHtml(a)}" data-b="${escHtml(b)}" d="${d}" marker-end="url(#pjArrow)"/>`;
-    }).join('');
-    const boxes = nodes.map(n => {
-      const f = fileInfo(n), p = pos[n], sp = shortPath(n);
-      const base = sp.split('/').pop(), dir = sp.includes('/') ? sp.slice(0, sp.lastIndexOf('/') + 1) : '';
-      return `<g class="pj-node r-${f.role}" data-file="${escHtml(n)}" tabindex="0" role="button" aria-label="${escHtml(sp)}, ${escHtml(f.role_label)}">
-        <rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="7"/>
-        <text x="${p.x + 10}" y="${p.y + 18}" class="pj-name">${escHtml(dir)}<tspan class="pj-base">${escHtml(base.length > 22 ? base.slice(0, 21) + '…' : base)}</tspan></text>
-        <text x="${p.x + 10}" y="${p.y + 34}" class="pj-role">${escHtml(f.role_label)}${f.analysis.sections && f.analysis.sections.some(s => s.warnings.length) ? ' · worth checking' : ''}</text>
-      </g>`;
-    }).join('');
-    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Map of how the files connect">
-      <defs><marker id="pjArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="pj-arrowhead"/></marker></defs>
-      ${lines}${boxes}</svg>`;
-  }
-
-  function openFile(path, name, secId) {
-    const i = pyFiles().findIndex(f => f.name === path);
-    if (i < 0) return;
-    reads.active = i; readFocus = null; saveReads();
-    renderRead();
-    const a = curAnalysis();
-    const sec = a && a.sections && (secId != null ? a.sections.find(s => s.id === +secId) : name ? a.sections.find(s => s.name === name) : null);
-    if (sec) focusSection(sec.id, true);
-  }
-
-  $('rdProject').addEventListener('click', (e) => {
-    const link = e.target.closest('[data-file]');
-    if (link) openFile(link.dataset.file, link.dataset.name, link.dataset.sec);
-  });
-  $('rdProject').addEventListener('keydown', (e) => {
-    const n = e.target.closest('.pj-node');
-    if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openFile(n.dataset.file); }
-  });
-  $('rdProject').addEventListener('mouseover', (e) => {
-    const n = e.target.closest('.pj-node');
-    $('rdProject').querySelectorAll('.pj-edge.hot').forEach(x => x.classList.remove('hot'));
-    $('rdProject').querySelectorAll('.pj-node.dim').forEach(x => x.classList.remove('dim'));
-    if (!n) return;
-    const f = n.dataset.file;
-    const linked = new Set([f]);
-    $('rdProject').querySelectorAll('.pj-edge').forEach(x => { if (x.dataset.a === f || x.dataset.b === f) { x.classList.add('hot'); linked.add(x.dataset.a); linked.add(x.dataset.b); } });
-    $('rdProject').querySelectorAll('.pj-node').forEach(x => x.classList.toggle('dim', !linked.has(x.dataset.file)));
-  });
-
-  function markLines(start, end, cls) {
-    $('rdCode').querySelectorAll('.rl.' + cls).forEach(el => el.classList.remove(cls));
-    if (start == null) return null;
-    let first = null;
-    $('rdCode').querySelectorAll('.rl').forEach(el => {
-      const ln = +el.dataset.line;
-      if (ln >= start && ln <= end) { el.classList.add(cls); first = first || el; }
-    });
-    return first;
-  }
-
-  function summaryHtml(s, label) {
-    const steps = s.steps && s.steps.length ? `<h4>Step by step, as sentences</h4><pre class="sum-steps">${s.steps.map(l => hlLine(l)).join('\n')}${s.more ? '\n<span class="s-com">…and more</span>' : ''}</pre>` : '';
-    return `<div class="sum-kind">${escHtml(label)}</div>
-      <h3>${escHtml(s.title)}</h3>
-      <p class="sum-head">${rich(s.headline)}</p>
-      ${s.facts.length ? `<ul class="sum-facts">${s.facts.map(f => `<li>${rich(f)}</li>`).join('')}</ul>` : ''}
-      ${s.warnings.length ? `<div class="sum-warn"><h4>Worth checking</h4><ul>${s.warnings.map(w => `<li>${rich(w)}</li>`).join('')}</ul></div>` : ''}
-      ${steps}`;
-  }
-
-  function renderFocus() {
-    const a = curAnalysis();
-    const box = $('rdSum');
-    $('rdOutline').querySelectorAll('.ol-item').forEach(b => b.classList.toggle('on', !!readFocus && readFocus.type === 'section' && +b.dataset.sec === readFocus.id));
-    if (!a || !a.ok) { markLines(null, null, 'focus'); box.innerHTML = a ? `<p class="sum-empty">${escHtml(a.error || '')}</p>` : ''; return; }
-    if (readFocus && readFocus.type === 'tour') return renderTour(box);
-    if (readFocus && readFocus.type === 'section') {
-      const s = a.sections.find(x => x.id === readFocus.id);
-      if (s) { markLines(s.start, s.end, 'focus'); box.innerHTML = summaryHtml(s, `${KIND_LABEL[s.kind]} · lines ${s.start}–${s.end}`); return; }
-    }
-    if (readFocus && readFocus.type === 'range') {
-      const s = readFocus.summary;
-      if (!s.ok) { markLines(null, null, 'focus'); box.innerHTML = `<div class="sum-kind">Your selection</div><p class="sum-head">${escHtml(s.error)}</p>`; return; }
-      markLines(s.start, s.end, 'focus');
-      box.innerHTML = summaryHtml(s, `Your selection · lines ${s.start}–${s.end}`);
-      return;
-    }
-    markLines(null, null, 'focus');
-    const warns = a.sections.flatMap(s => s.warnings.map(w => ({ s, w })));
-    box.innerHTML = `<div class="sum-kind">Whole file</div><h3>${escHtml(shortPath(curFile().name))}</h3><p class="sum-head">${rich(a.overview)}</p>
-      <p class="sum-tip">Click a section to see what it does, or highlight any lines and press <b>Summarise selection</b>.</p>
-      <h4>Sections</h4><ul class="sum-facts">${a.sections.map(s => `<li><button type="button" class="linklike" data-sec="${s.id}">${escHtml(s.title)}</button>: ${rich(s.headline)}</li>`).join('')}</ul>
-      ${warns.length ? `<div class="sum-warn"><h4>Worth checking in this file (${warns.length})</h4><ul>${warns.map(x => `<li><button type="button" class="linklike" data-sec="${x.s.id}">${escHtml(x.s.title)}</button>: ${rich(x.w)}</li>`).join('')}</ul></div>` : ''}`;
-  }
-
-  function focusSection(id, scroll) {
-    readFocus = { type: 'section', id };
-    renderFocus();
-    if (scroll) {
-      const el = $('rdCode').querySelector(`.rl-sec[data-sec="${id}"]`) || $('rdCode').querySelector(`.rl[data-sec="${id}"]`);
-      if (el) $('rdCode').scrollTop = el.offsetTop - 8;
-    }
-  }
-
-  function selectedLines() {
-    const sel = getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-    const code = $('rdCode');
-    const lineOf = (node) => { const el = (node.nodeType === 1 ? node : node.parentElement); const rl = el && el.closest('.rl'); return rl && code.contains(rl) ? +rl.dataset.line : null; };
-    let a = lineOf(sel.anchorNode), b = lineOf(sel.focusNode);
-    if (a == null || b == null) return null;
-    if (a > b) [a, b] = [b, a];
-    return { start: a, end: b };
-  }
-
-  function updateSummariseButton() {
-    const r = selectedLines();
-    $('btnSummarise').textContent = r ? `Summarise lines ${r.start}–${r.end}` : 'Summarise selection';
-  }
-
-  $('btnSummarise').addEventListener('click', async () => {
-    const r = selectedLines();
-    if (!r) {
-      $('rdSum').innerHTML = '<div class="sum-kind">Summarise</div><p class="sum-head">Highlight some lines in the code first (drag across them), then press Summarise.</p>';
-      return;
-    }
-    const f = curFile();
-    if (ownReader(f) && langOfPath(f.name) === 'python') {
-      const R = await Runner.reader();
-      readFocus = { type: 'range', summary: R.summarise(f.source, r.start, r.end, f.name) };
-    } else {
-      // web and other files: read the highlighted lines on their own
-      const WR = await Runner.webReader();
-      const text = f.source.split('\n').slice(r.start - 1, r.end).join('\n');
-      const k = WR.kindOfPath(f.name);
-      const a = codeReader(f) ? window.IntuiCodeReader.analyze(readLang(f), f.name, text)
-        : k === 'html' ? WR.analyzeHtml(f.name, text, { fileOf: () => null, scriptsFor: () => [], stylesFor: () => [] })
-        : k === 'css' ? WR.analyzeCss(f.name, text, { htmlMatches: () => [], hasHtml: false, scriptMentions: () => false })
-        : WR.analyzeJs(f.name, text, k, { path: f.name, xnames: {}, uses: [], fetches: [], htmlTargets: () => null, routeFor: () => null, hasServer: false, fileOf: () => null });
-      const secs = a.sections || [];
-      readFocus = { type: 'range', summary: secs.length ? { ok: true, title: `Lines ${r.start}–${r.end}`, headline: secs.map(x => x.headline).join(' '), facts: [...new Set(secs.flatMap(x => x.facts))], warnings: [...new Set(secs.flatMap(x => x.warnings))], steps: secs.flatMap(x => x.steps).slice(0, 16), more: false, start: r.start, end: r.end } : { ok: false, error: 'Nothing complete was found in the highlighted lines.' } };
-    }
-    renderFocus();
-  });
-
-  $('rdCode').addEventListener('click', (e) => {
-    if (!getSelection().isCollapsed) return;
-    const head = e.target.closest('.rl-sec');
-    const rl = e.target.closest('.rl');
-    const id = head ? +head.dataset.sec : rl && rl.dataset.sec !== '' ? +rl.dataset.sec : null;
-    if (id != null) focusSection(id, false);
-  });
-  $('rdOutline').addEventListener('click', (e) => { const b = e.target.closest('.ol-item'); if (b) focusSection(+b.dataset.sec, true); });
-  const onReadLink = (e) => {
-    const f = e.target.closest('[data-file]');
-    if (f) { openFile(f.dataset.file, f.dataset.name, f.dataset.sec); return true; }
-    const b = e.target.closest('.linklike[data-sec]');
-    if (b) { focusSection(+b.dataset.sec, true); return true; }
-    return false;
-  };
-  $('rdSum').addEventListener('click', (e) => {
-    const t = e.target.closest('[data-tour]');
-    if (t) return tourStep(t.dataset.tour, t.dataset.file);
-    if (onReadLink(e)) return;
-    if (e.target.id === 'rdImport') openImport();
-    if (e.target.id === 'rdExample') loadExampleProject();
-  });
-
-  /* Style tour: the habits a Python or C++ file shows, in reading order, each with why it's said that way. */
-  const BLOCK_CARDS = new Set(['class', 'def', 'init', 'indentation', 'if', 'for-in', 'range', 'enumerate', 'while', 'with-open', 'try', 'main-guard', 'decorator', 'async', 'default-args', 'star-args', 'type-hints', 'snake-case', 'private',
-    'cpp:class', 'cpp:function', 'cpp:void', 'cpp:constructor', 'cpp:main', 'cpp:setup-loop', 'cpp:if', 'cpp:for-count', 'cpp:range-for', 'cpp:while', 'cpp:template', 'cpp:braces', 'cpp:lambda']);
-  async function startTour() {
-    const file = curFile(), lang = file && langOfPath(file.name);
-    if (!TOUR_LANGS.has(lang)) return;
-    let res;
-    if (lang === 'cpp') {
-      const WR = await Runner.webReader((s) => setStatus(s));
-      await WR.loadLangs(['cpp']);
-      res = TUTOR.cppStylePoints(WR.parse, file.source, false);
-      res.ok = true;   // (a part it couldn't read just has no stops)
-    } else res = (await Runner.reader((s) => setStatus(s))).stylePoints(file.source, false);
-    if (!res.ok) { $('rdSum').innerHTML = `<p class="sum-empty">${escHtml(res.error)}</p>`; return; }
-    readFocus = { type: 'tour', file: file.name, lang, points: res.points.map(p => ({ ...p, card: cardId(lang, p.card) })).filter(p => cardOf(p.card)), i: 0 };
-    renderFocus();
-  }
-  function renderTour(box) {
-    const t = readFocus, p = t.points[t.i];
-    if (!p) { markLines(null, null, 'focus'); box.innerHTML = '<p class="sum-empty">This file doesn\'t show any of the habits the tour knows yet.</p>'; return; }
-    const c = cardOf(p.card), last = t.i === t.points.length - 1;
-    const first = markLines(p.line, BLOCK_CARDS.has(p.card) ? p.line : p.end, 'focus');
-    if (first) $('rdCode').scrollTop = first.offsetTop - $('rdCode').clientHeight / 3;
-    const order = proj ? proj.order.filter(x => langOfPath(x) === t.lang) : [];
-    const nextFile = last ? order[order.indexOf(t.file) + 1] : null;
-    box.innerHTML = `<div class="sum-kind">Style tour · ${t.i + 1} of ${t.points.length}</div>
-      <h3>${withCode(c.title)}</h3>
-      <p class="sum-head">${withCode(c.say)}</p>
-      <p class="tour-more">${withCode(c.more)}</p>
-      <p class="dim">Line ${p.line}${p.name ? ` · <code>${escHtml(p.name)}</code>` : ''}</p>
-      <div class="bp-actions">
-        <button type="button" class="btn small" data-tour="prev"${t.i ? '' : ' disabled'}>← Previous</button>
-        ${last ? '' : '<button type="button" class="btn small primary" data-tour="next">Next →</button>'}
-        ${nextFile ? `<button type="button" class="btn small primary" data-tour="file" data-file="${escHtml(nextFile)}">Next file: ${escHtml(shortPath(nextFile))} →</button>` : ''}
-      </div>
-      ${last ? `<p class="sum-tip">That's the tour of this file.${nextFile ? ' The reading order continues with the next file.' : ''} Press <b>Open as sentences</b> to take the wheel.</p>` : ''}`;
-  }
-  function tourStep(dir, path) {
-    if (dir === 'file') { openFile(path); startTour(); return; }
-    readFocus.i = Math.max(0, Math.min(readFocus.points.length - 1, readFocus.i + (dir === 'next' ? 1 : -1)));
-    renderFocus();
-  }
-  $('btnTour').addEventListener('click', startTour);
-  $('rdOverview').addEventListener('click', onReadLink);
-  $('rdFiles').addEventListener('click', (e) => {
-    const b = e.target.closest('.tree-item');
-    if (!b) return;
-    reads.active = +b.dataset.i; readFocus = null; saveReads(); renderRead();
-  });
-
-  $('btnToSentences').addEventListener('click', async () => {
-    const file = curFile();
-    if (langOfPath(file.name) !== 'python') return codeAsSentences(file, pyFiles());
-    const out = checkedSentences(await Runner.reader(), file.source);
-    if (!out.ok) { tLine('This file can\'t be turned into sentences: ' + out.error, 't-err'); return; }
-    const next = { version: 1, lang: 'python', name: slug(file.name.split('/').pop()), sections: [{ id: 'main', file: 'main', text: out.text }], active: 'main' };
-    replaceProject(next, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
-    const { check, kept } = out;
-    if (check.same) tLine('✓ Checked: these sentences make exactly the same program as the original file.' + (kept ? ` (${kept} part${kept > 1 ? 's were' : ' was'} kept as python: lines to stay exact.)` : ''), 't-ok');
-    else tLine(`Note: the sentences differ from the original ${check.error ? '(' + check.error + ')' : 'at lines ' + check.differs.map(d => d[0] === d[1] ? d[0] : d[0] + '–' + d[1]).join(', ')}. Check those parts before relying on them.`, 't-err');
-  });
 
   /* Python -> sentences, checked. Safety net: any statement that doesn't come back exactly is kept
    * as a python: line and the check runs again. */
@@ -3959,14 +3848,6 @@
     const nm = name || (page ? (page.name.split('/').length > 1 ? page.name.split('/')[0] : baseName(page.name).replace(/\.\w+$/, '')) : baseName(file.name).replace(/\.\w+$/, ''));
     return { project: { version: 1, lang: 'python', kind: 'website', name: slug(nm), sections: ['structure', 'styling', 'mechanics'].map(f => ({ id: f, file: f, text: sections[f] })), active: page ? 'structure' : lang === 'css' ? 'styling' : 'mechanics' }, results, exact: results.every(([, r]) => r.exact) };
   }
-  async function codeAsSentences(file, files) {
-    let out;
-    try { out = await codeToProject(file, files); }
-    catch (e) { tLine('Could not turn this code into sentences: ' + e.message, 't-err'); return; }
-    if (!out) return;
-    replaceProject(out.project, `Opened ${shortPath(file.name)} as sentences. Anything that can't be said in words stays as exact code.`);
-    reportConversion(out.results);
-  }
 
   /* ---------- Import: paste, files, a folder, a .zip, or drag and drop ---------- */
 
@@ -3978,7 +3859,7 @@
     if (name.endsWith('.py')) return 'py';
     if (CODE_FILE.test(name)) return 'web';
     if (EXTRA_FILE.test(path)) return 'extra';
-    if (LANGS.fromPath(name) !== 'text') return 'code';   // any other language Read mode knows
+    if (LANGS.fromPath(name) !== 'text') return 'code';   // any other language IntuaCode knows
     return null;
   }
 
@@ -3997,20 +3878,9 @@
   }
 
   function openImport() { $('impModal').hidden = false; $('impNote').textContent = ''; $('impText').focus(); }
-  // the languages Read mode knows, for pasted code and for choosing files
+  // the languages IntuaCode knows, for pasted code and for choosing files
   $('impLang').innerHTML = '<option value="">Auto-detect</option>' + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
   $('impFiles').accept = [...new Set(LANGS.LANGUAGES.flatMap(l => l.exts))].map(e => '.' + e).concat('.pyw', 'text/plain').join(',');
-  $('rdLang').addEventListener('change', async (e) => {
-    const f = curFile();
-    if (!f) return;
-    if (e.target.value) f.lang = e.target.value; else delete f.lang;
-    readFocus = null;
-    saveReads();
-    await analyse();
-    reads.active = Math.max(0, pyFiles().indexOf(f));
-    renderRead();
-    tLine(`Reading ${shortPath(f.name)} as ${langName(readLang(f))}${e.target.value ? '' : ' (from its name and text)'}.`, 't-sys');
-  });
   function closeImport() { $('impModal').hidden = true; $('impCard').classList.remove('dropping'); }
   $('btnImport').addEventListener('click', openImport);
   $('btnImport2').addEventListener('click', openImport);
@@ -4624,7 +4494,6 @@
   });
   $('bldBody').addEventListener('focusin', (e) => { if (e.target.id === 'bldName' && !bld.edit) renderStages(3); });
   $('btnBuilder').addEventListener('click', openBuilder);
-  $('btnPlan').addEventListener('click', openBuilder);
   $('newToBuilder').addEventListener('click', openBuilder);
 
   /* The project map: the plan's steps, in order. Each opens a window about its role in the whole. */
@@ -4706,7 +4575,7 @@
     const to = e.target.closest('[data-step-to]');
     if (to) return openStep(+to.dataset.stepTo);
     const go = e.target.closest('[data-go-sec]');
-    if (go) { closeStep(); setMode('write'); if (go.dataset.goSec !== project.active) openSection(go.dataset.goSec); goToLine(+go.dataset.goLine); }
+    if (go) { closeStep(); openSection(go.dataset.goSec, +go.dataset.goLine); }
   });
 
   async function loadExampleProject() {
@@ -4796,48 +4665,97 @@
     closeImport();
     $('impText').value = '';
     addFiles([{ name, source, ...(picked ? { lang: picked } : {}) }]);
-    if (!picked && d) tLine(`Reading it as ${langName(lang)}: ${d.why} If that's wrong, choose another language in Read as.`, 't-sys');
+    if (!picked && d) tLine(`Reading it as ${langName(lang)}: ${d.why} If that's wrong, change it with ⋯ beside the file in Project.`, 't-sys');
   });
 
-  /* A folder, zip or example replaces what was imported before; single files are added to it. */
+  /* Imported code becomes the project's own files, in Unity and Split Mode alike. A folder, a .zip or the example
+   * is a new project (the one before is kept for "restore"); single files join the open project.
+   *   Python, CSS and JavaScript come in as their exact lines: Unity shows them as code, and Translate to Plain
+   *   Language Syntax turns any part into sentences. HTML, C++ and Arduino are read into sentences, because
+   *   IntuaCode writes the page, the main or setup and loop around them. Other languages, notes and data come in
+   *   as they are, and the help reads them to you. */
+  const IMPORT_MAX = 200;   // a project's files (lang/project.js)
+  function importLang(f) {
+    if (f.lang && LANGS.byId(f.lang)) return f.lang;
+    const byName = LANGS.fromPath(f.name), CR = window.IntuiCodeReader;
+    if (byName !== 'text' || !CR) return byName;
+    const d = CR.detect(f.name, f.source);   // no ending, or .txt: what the text itself is
+    return d && d.lang && d.confidence !== 'guess' && LANGS.byId(d.lang) ? d.lang : 'text';
+  }
+  /* A path the project can hold: folders and names IntuaCode writes (Python's as module names), at most six deep. */
+  function importPath(path, lang, taken) {
+    let parts = path.split('/').filter(Boolean).map(p => p.replace(/[^\w+ .-]+/g, '-').replace(/^[^A-Za-z0-9_]+/, '').replace(/\s+$/, '').slice(0, 60) || 'file');
+    if (parts.length > 6) parts = parts.slice(0, 5).concat(parts.slice(5).join('-'));
+    if (lang === 'python') parts = parts.map((p, i) => (i === parts.length - 1 ? p.replace(/\.pyw?$/i, '') : p).replace(/\W/g, '_').replace(/^(\d)/, '_$1') + (i === parts.length - 1 ? '.py' : ''));
+    const base = parts.join('/'), m = base.match(/^(.*?)(\.[^./]+)?$/);
+    const clash = (p) => { const low = p.toLowerCase(); return taken.has(low) || [...taken].some(t => t.startsWith(low + '/') || low.startsWith(t + '/')); };
+    for (let n = 1, p = base; n < 50; n++, p = `${m[1]}${lang === 'python' ? '_' : '-'}${n}${m[2] || ''}`) {
+      if (!clash(p) && !pathProblem(p, lang)) return p;
+    }
+    return null;
+  }
+  /* One imported file as a project file: { section, note }. */
+  async function importSection(f, path, lang) {
+    const code = f.source.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+    const id = newId();
+    if (!UNITY || !UNITY.LANGS.includes(lang)) return { section: { id, path, lang, text: code + '\n' } };
+    if (lang === 'python' || lang === 'css' || lang === 'js') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    let r;
+    try { r = await uConvert(lang, code + '\n'); } catch (e) { r = { ok: false, reason: e.message }; }
+    if (r.ok) return { section: { id, path, lang, text: r.text.replace(/\n+$/, '') + '\n' }, note: r.exact === false ? `${path} may not come back exactly: ${r.reason || 'check it'}.` : '' };
+    // can't be said in sentences (a header file, say): kept exactly as it is, as code IntuaCode reads to you
+    return { section: { id, path, lang: lang === 'html' ? 'text' : 'c', text: code + '\n' }, note: `${path} couldn't be read into sentences (${r.reason}), so it's kept exactly as it is.` };
+  }
+  async function importSections(files, taken) {
+    const out = [], notes = [];
+    let left = 0, secrets = 0;
+    for (const f of files) {
+      if (/(^|\/)\.env(\.|$)/.test(f.name)) { secrets++; continue; }   // never bring secrets into a project
+      if (taken.size >= IMPORT_MAX) { left++; continue; }
+      const lang = importLang(f), path = importPath(shortPath(f.name), lang, taken);
+      if (!path) { left++; continue; }
+      const got = await importSection(f, path, lang);
+      taken.add(path.toLowerCase());
+      out.push(got.section);
+      if (got.note) notes.push(got.note);
+    }
+    if (secrets) notes.push(`Left out ${secrets} secrets file${secrets > 1 ? 's' : ''} (.env): passwords and keys stay out of projects.`);
+    if (left) notes.push(`${left} file${left > 1 ? 's' : ''} didn't fit (a project holds ${IMPORT_MAX} files, with names IntuaCode can write).`);
+    return { sections: out, notes };
+  }
+  function countLangs(sections) {
+    const counts = {};
+    for (const s of sections) { const l = langName(s.lang); counts[l] = (counts[l] || 0) + 1; }
+    const parts = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([l, c]) => `${c} ${l}`);
+    return parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0] || 'nothing';
+  }
+  /* A folder, a .zip or the example: a new project of its files. */
   async function importProject(files, note) {
     closeImport();
-    autoLangs(files);
-    if (!files.some(readableFile)) { tLine('No code files were found there.', 't-err'); return; }
-    reads = { files, active: -1 };
-    await afterImport(note);
+    if (!files.length) { tLine('No code files were found there.', 't-err'); return; }
+    const tops = new Set(files.map(f => (f.name.includes('/') ? f.name.split('/')[0] : '')));
+    importTop = tops.size === 1 && !tops.has('') ? [...tops][0] : '';
+    tLine(`Importing ${files.length} file${files.length > 1 ? 's' : ''}…`, 't-sys');
+    const { sections, notes } = await importSections(files, new Set());
+    if (!sections.length) { tLine('No code files were found there.', 't-err'); return; }
+    const name = slug(importTop || baseName(files[0].name).replace(/\.\w+$/, '')) || 'imported';
+    const pick = (re) => sections.find(s => re.test(s.path));
+    const first = pick(/^index\.html?$/i) || pick(/^main\.py$/i) || pick(/^app\.py$/i) || pick(/\.ino$/i) || pick(/^main\.cpp$/i)
+      || pick(/^(src\/)?(main|index|app)\.\w+$/i) || sections.find(isSentences) || sections[0];
+    replaceProject({ version: 2, lang: 'python', name, sections, active: first.id, start: first.id }, `Imported ${name}: ${countLangs(sections)}.${note ? ' ' + note : ''}`);
+    for (const n of notes) tLine('Note: ' + n, 't-sys');
   }
+  /* Single files: added to the open project, the first one opened. */
   async function addFiles(files) {
-    autoLangs(files);
-    for (const f of files) {
-      const at = reads.files.findIndex(x => x.name === f.name);
-      if (at >= 0) reads.files[at] = f; else reads.files.push(f);
-    }
-    reads.active = pyFiles().findIndex(x => x.name === files[0].name);
-    await afterImport('');
-  }
-  /* Files whose name says nothing (no ending, .txt): the language their text is in, if it's clear. */
-  function autoLangs(files) {
-    const CR = window.IntuiCodeReader;
-    if (!CR) return;
-    for (const f of files) {
-      if (f.lang || extLang(f.name) !== 'text') continue;
-      const d = CR.detect(f.name, f.source);
-      if (d && d.lang && d.lang !== 'text' && d.confidence !== 'guess') f.auto = d.lang;
-    }
-  }
-  async function afterImport(note) {
-    readFocus = null;
-    saveReads();
-    setMode('read');
-    await analyse();
-    if (pyFiles().length === 1) reads.active = 0;
-    renderRead();
-    const counts = {};
-    for (const f of pyFiles()) { const l = langName(readLang(f)); counts[l] = (counts[l] || 0) + 1; }
-    const parts = Object.entries(counts).map(([l, c]) => `${c} ${l}`);
-    const n = pyFiles().length;
-    tLine(`Imported ${n} file${n === 1 ? '' : 's'}${parts.length ? ` (${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]})` : ''}.` + (note ? ' ' + note : ''), 't-sys');
+    closeImport();
+    importTop = '';
+    const { sections, notes } = await importSections(files, new Set(project.sections.map(s => s.path.toLowerCase())));
+    if (!sections.length) { tLine(notes[0] || 'Nothing was added.', 't-err'); return; }
+    const copy = JSON.parse(JSON.stringify(project));
+    copy.sections.push(...sections);
+    const err = changeProject(copy, sections[0].id, `Added ${sections.map(s => s.path).join(', ')} to the project.`);
+    if (err) { tLine(err, 't-err'); return; }
+    for (const n of notes) tLine('Note: ' + n, 't-sys');
   }
 
   /* ------------------------------------------------------------------ */
@@ -5062,7 +4980,7 @@
     desk.saveTimer = setTimeout(() => saveProject('quiet'), 1500);
   }
 
-  /* Open a folder in Write mode. Code on disk wins over saved sentences if they disagree. */
+  /* Open a folder in Split Mode. Code on disk wins over saved sentences if they disagree. */
   async function openFolderWrite() {
     const folder = await pickFolder('Open a project folder');
     if (!folder) return;
@@ -5086,7 +5004,7 @@
           if (secLang(s) !== 'python') {
             const res = await rebuildSection(folder, s, read);
             if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
-            else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date; Read mode shows the file as it is.`, 't-err');
+            else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date: Unity shows its code as it was.`, 't-err');
             continue;
           }
           const res = await sentencesFor(onDisk);
@@ -5131,7 +5049,7 @@
     }
     const files = await invoke('read_folder', { path: folder });
     if (files.some(f => /\.(py|jsx?|tsx?|html?|css|cpp|cc|h|hpp|ino)$/i.test(f.name))) {
-      tLine(`${baseName(folder)} isn't an IntuaCode project, so it opens in Read mode.`, 't-sys');
+      tLine(`${baseName(folder)} isn't an IntuaCode project yet: its code comes in as a new, unsaved project (the folder is left as it is). Press Save to keep it.`, 't-sys');
       desk.readFolder = folder;
       return importProject(files, '');
     }
@@ -5140,8 +5058,9 @@
     tLine(`${baseName(folder)} was empty, so the current project was saved into it.`, 't-sys');
   }
 
-  async function openFolderRead() {
-    const folder = await pickFolder('Open a folder to read');
+  /* Import a folder's code (the desktop app's own folder picker). */
+  async function importFolder() {
+    const folder = await pickFolder('Import a folder of code');
     if (!folder) return;
     closeImport();
     tLine(`Reading ${folder}…`, 't-sys');
@@ -5179,7 +5098,7 @@
       try { files.push({ name, source: (await invoke('read_text', { path })).replace(/\r\n?/g, '\n') }); } catch (_) { skipped++; }
     }
     closeImport();
-    if (!files.length) { tLine(`Nothing to read there: IntuaCode reads code files (Python, JavaScript, HTML, CSS, C++ and Arduino sketches), folders of them, and .zip files.`, 't-err'); return; }
+    if (!files.length) { tLine(`Nothing to import there: IntuaCode takes code files, folders of them and .zip files.`, 't-err'); return; }
     const note = skipped ? `Skipped ${skipped} file${skipped > 1 ? 's' : ''} that ${skipped > 1 ? 'aren\'t' : 'isn\'t'} code.` : '';
     if (folders) importProject(files, note); else { addFiles(files); if (note) tLine(note, 't-sys'); }
   }
@@ -5378,11 +5297,11 @@
     $('btnOpenFolder').hidden = false;
     $('btnSave').hidden = false;
     showFolder();
-    $('btnOpenFolder').addEventListener('click', () => (mode === 'read' ? openFolderRead() : openFolderWrite()));
+    $('btnOpenFolder').addEventListener('click', openFolderWrite);
     $('btnSave').addEventListener('click', () => saveProject());
     $('btnStop').addEventListener('click', () => { if (desk.proc) invoke('stop_program', { id: desk.proc.id }); });
     // the import dialog's folder button uses the native picker
-    $('impFolder').closest('label').addEventListener('click', (e) => { e.preventDefault(); openFolderRead(); });
+    $('impFolder').closest('label').addEventListener('click', (e) => { e.preventDefault(); importFolder(); });
     // drops on the window come as paths (the page's own drop events never fire)
     await TAURI.event.listen('tauri://drag-enter', () => { if (!$('impModal').hidden) $('impCard').classList.add('dropping'); });
     await TAURI.event.listen('tauri://drag-leave', () => $('impCard').classList.remove('dropping'));
@@ -5476,9 +5395,11 @@
     applyLayout();
     applyDropDown();
     applyPredict();
+    $('btnLink').setAttribute('aria-pressed', String(!!layout.link));
     ta.value = activeSec().text;
     renderSectionHeader();
     refreshAll();
+    setMode(mode);   // Unity, unless Split Mode was used last
     $('work').classList.toggle('web', webOn());
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
@@ -5490,7 +5411,6 @@
     setTimeout(async () => {
       await ensurePython();
       if (tutor.on) loadTutorReader();
-      if (reads.files.length) { await analyse(); if (mode === 'read') renderRead(); }
     }, 1200);
   }
 
