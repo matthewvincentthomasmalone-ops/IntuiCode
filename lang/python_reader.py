@@ -1073,7 +1073,11 @@ class Sentences:
                 if end is not None:
                     raise Unwordable()
                 return S(level, "show a blank line")
-            return S(level, "show " + " and ".join(self.arg(a) for a in c.args) + (" on the same line" if end is not None else ""))
+            parts = [self.arg(a) for a in c.args]
+            # "and" between tests is read as one yes/no test ("show a is 1 and b"), so tests are separated by commas
+            test = re.compile(r"\b(?:is|isn't|are|contains?|equals?|than|not|or|even|odd|divisible|at least|at most)\b|[=<>!]", re.I)
+            join = ", " if any(test.search(_STR.sub("''", p)) for p in parts) else " and "
+            return S(level, "show " + join.join(parts) + (" on the same line" if end is not None else ""))
         if not c.keywords:
             if f == "time.sleep" and len(c.args) == 1 and isinstance(c.args[0], ast.Constant) and isinstance(c.args[0].value, (int, float)):
                 return S(level, f"wait {c.args[0].value} second{'' if c.args[0].value == 1 else 's'}")

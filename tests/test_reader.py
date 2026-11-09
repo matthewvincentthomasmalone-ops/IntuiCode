@@ -115,6 +115,40 @@ class Sentences(unittest.TestCase):
         self.assertIn("open the file DATA_FILE for writing as f", R.to_sentences(read("tests/corpus/inventory_cli.py")))
 
 
+class PlainWords(unittest.TestCase):
+    """The plainer sentences (tests/plain-python.test.mjs checks each one comes back exactly)."""
+
+    def said(self, code):
+        return [l.strip() for l in R.to_sentences(code).splitlines()]
+
+    def test_imports_are_sentences(self):
+        lines = self.said("import os, sys\nfrom flask import Flask, request\nfrom x import everything\n")
+        self.assertIn("bring in os and sys", lines)
+        self.assertIn("bring in Flask and request from flask", lines)
+        self.assertIn("python: from x import everything", lines)   # "everything" is what * is called
+
+    def test_calls_read_as_values(self):
+        lines = self.said("from flask import Flask\napp = Flask(__name__)\ndef f():\n    return 1\nx = f()\ny = list(x)\n")
+        self.assertIn("set app to a new Flask with __name__", lines)
+        self.assertIn("set x to the result of f", lines)
+        self.assertIn("set y to list(x)", lines)   # Python's own tools read better as they are
+
+    def test_lookups_only_on_dictionaries(self):
+        lines = self.said("from flask import request\nimport requests\ns = requests.Session()\na = request.args.get('a', '')\nb = s.get('u')\n")
+        self.assertIn("set a to item \"a\" of request.args or \"\" if there isn't one", lines)
+        self.assertIn("set b to the result of s.get with \"u\"", lines)
+
+    def test_module_tools_are_not_list_tools(self):
+        lines = self.said("import os\nimport threading\nos.remove('x')\nt = threading.Thread()\nt.join(5)\n")
+        self.assertIn("run os.remove with \"x\"", lines)
+        self.assertIn("run t.join with 5", lines)
+
+    def test_phrases_need_their_module(self):
+        # without "import json" the writer would add one, so the phrase isn't used
+        lines = self.said("from json import loads\nimport json as j\nx = j.loads('1')\n")
+        self.assertIn("set x to the result of j.loads with \"1\"", lines)
+
+
 STYLE_SAMPLE = '''import os
 import sys
 
