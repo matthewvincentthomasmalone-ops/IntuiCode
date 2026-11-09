@@ -1,0 +1,162 @@
+/* IntuaCode's home page: the app's own look (app.css), on one page. A charcoal chassis, anodised rose metal
+   for the plates, keycap buttons, dark glass wells for code, phosphor green for what's live. Always dark. */
+:root {
+  --paper: #0E0F11;
+  --panel: #16171A;
+  --panel-2: #22242A;
+  --field: #0A0B0D;
+  --rule: #2B2D33;
+  --ink: #ECE6E8;
+  --ink-2: #BEB4B8;
+  --ink-3: #91878C;
+  --accent: #E8AABA;
+  --kw: #F0A6B8;
+  --num: #F2C46B;
+  --fn: #FFB98C;
+  --rose-hi: #F4CDD7;
+  --rose: #D59BAA;
+  --rose-lo: #A86B7D;
+  --phosphor: #A9F3C7;
+  --phosphor-glow: #7FF0B2;
+  --metal:
+    linear-gradient(100deg, transparent 22%, rgba(255, 214, 226, .07) 38%, transparent 56%),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, .035) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, .09) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #6C2537 0%, #5A1C2D 46%, #4E1727 54%, #421321 100%);
+  --metal-ink: #F6D3DC;
+  --engrave: 0 -1px 0 rgba(0, 0, 0, .55);
+  --machined: inset 0 1px 0 rgba(255, 196, 212, .2), inset 0 -1px 0 rgba(0, 0, 0, .55);
+  --face: linear-gradient(180deg, #6E2539 0%, #5C1E30 55%, #4E1928 100%);
+  --face-hover: linear-gradient(180deg, #7D2C43 0%, #6A2438 55%, #5A1E30 100%);
+  --face-ink: #F8DDE4;
+  --pressed: #3B111E;
+  --raised: inset 0 1px 0 rgba(255, 190, 210, .2), inset 0 -1px 0 rgba(0, 0, 0, .45), 0 1px 2px rgba(0, 0, 0, .55), 0 0 0 1px #14060B;
+  --sunken: inset 0 2px 5px rgba(0, 0, 0, .65), inset 0 0 0 1px #000, 0 1px 0 rgba(255, 255, 255, .05);
+  --card: linear-gradient(180deg, #24262B 0%, #1E2024 100%);
+  --card-raised: inset 0 1px 0 rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 1px #050506;
+  --texture: radial-gradient(rgba(255, 255, 255, .032) 1px, transparent 1.3px) 0 0 / 5px 5px;
+  --t-display: #7CC6F0;
+  --t-mech: #F0B25A;
+  --link-pink: #FFB6D3;
+  --f-ui: "Atkinson Hyperlegible Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-say: "Atkinson Hyperlegible Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  --f-py: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --gutter: clamp(16px, 4vw, 40px);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--texture), var(--paper); color: var(--ink); font: 16px/1.55 var(--f-ui); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { color: var(--rose-hi); }
+code { font: .88em var(--f-py); background: #000; color: var(--ink-2); padding: 1px 6px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--rule); overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The header: black, with the machined rose hairline beneath, as in the app */
+.bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px var(--gutter);
+  background: linear-gradient(180deg, rgba(11, 11, 13, .96), rgba(7, 7, 8, .96)); box-shadow: inset 0 -1px 0 #000; backdrop-filter: blur(6px); }
+.bar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  background: linear-gradient(90deg, transparent, #A86B7D 12%, #F0C3CE 50%, #A86B7D 88%, transparent); box-shadow: 0 1px 0 #000, 0 4px 14px rgba(0, 0, 0, .7); }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo { width: 28px; height: 28px; color: var(--rose); flex: none; }
+.logo-glass { fill: #04100A; }
+.logo-glow { stroke: var(--phosphor); filter: drop-shadow(0 0 1.5px rgba(127, 240, 178, .8)); }
+.brand-name { font-weight: 700; font-size: 19px; letter-spacing: .015em;
+  background: linear-gradient(180deg, #F8D7DF 0%, #E2AFBC 50%, #C08495 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand-name::after { content: ">"; margin-left: 1px; color: var(--phosphor); -webkit-text-fill-color: var(--phosphor); text-shadow: 0 0 7px rgba(127, 240, 178, .6); font-family: var(--f-py); font-weight: 500; }
+.nav { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.nav a { color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: 14px; padding: 6px 10px; border-radius: 4px; }
+.nav a:hover { color: var(--face-ink); background: var(--face-hover); box-shadow: var(--raised); }
+
+main { max-width: 1160px; margin: 0 auto; padding: 0 var(--gutter); }
+
+/* The opening: what it is, two keys, and a window of the app */
+.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; align-items: center; padding: 72px 0 64px; }
+.eyebrow { margin: 0 0 14px; font: 600 12px var(--f-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--rose); }
+h1 { margin: 0; font-size: clamp(34px, 5vw, 54px); line-height: 1.08; letter-spacing: -.01em; text-wrap: balance;
+  background: linear-gradient(180deg, #FFF3F6 0%, #F2CBD5 60%, #D59BAA 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lede { margin: 20px 0 0; font-size: 18px; color: var(--ink-2); max-width: 54ch; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.cta-note { margin: 14px 0 0; font-size: 14px; color: var(--ink-3); }
+.cta-note a { color: var(--ink-2); }
+
+/* Keycaps: the wine face; the main one lit mint, like the app's Run */
+.key { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 22px; border-radius: 5px; text-decoration: none; font-weight: 700; font-size: 16px;
+  color: var(--face-ink); background: var(--face); box-shadow: var(--raised); text-shadow: var(--engrave); }
+.key svg { width: 18px; height: 18px; flex: none; }
+.key:hover { color: var(--face-ink); background: var(--face-hover); }
+.key:active { background: var(--pressed); box-shadow: var(--sunken); }
+.key.primary { color: var(--phosphor); letter-spacing: .01em; text-shadow: 0 0 6px rgba(127, 240, 178, .6);
+  box-shadow: var(--raised), inset 0 0 0 1px rgba(127, 240, 178, .26), 0 0 18px rgba(80, 230, 150, .14); }
+.key.primary svg { filter: drop-shadow(0 0 4px rgba(127, 240, 178, .7)); }
+.key.primary:hover { color: #CBFFE0; box-shadow: var(--raised), inset 0 0 0 1px rgba(127, 240, 178, .4), 0 0 24px rgba(80, 230, 150, .22); }
+
+/* A window of the app: a rose title plate over a dark glass well */
+.window { margin: 0; border-radius: 8px; overflow: hidden; background: var(--panel); box-shadow: 0 0 0 1px #000, 0 24px 60px rgba(0, 0, 0, .6), 0 4px 12px rgba(0, 0, 0, .45); }
+.win-plate { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--metal); box-shadow: var(--machined); color: var(--metal-ink); text-shadow: var(--engrave); font-size: 14px; }
+.win-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--phosphor-glow); box-shadow: 0 0 6px var(--phosphor-glow); }
+.win-tags { margin-left: auto; display: flex; gap: 6px; }
+.win-well { margin: 8px; border-radius: 4px; background: var(--field); box-shadow: var(--sunken); padding: 10px 0; overflow-x: auto; }
+.code { list-style: none; margin: 0; padding: 0; counter-reset: ln; font: 14px/24px var(--f-py); }
+.code li { counter-increment: ln; padding: 0 16px 0 52px; position: relative; min-height: 24px; color: var(--ink); white-space: pre; }
+.code li::before { content: counter(ln); position: absolute; left: 0; width: 36px; text-align: right; color: var(--ink-3); font-size: 12px; }
+.code li.say { font-family: var(--f-say); background: rgba(14, 84, 46, .46); box-shadow: inset 0 0 0 1px rgba(110, 230, 160, .08); }
+.code li.say::before { color: #7FE0A6; }
+.code li.link { background: rgba(255, 170, 205, .2); box-shadow: inset 3px 0 0 var(--link-pink); }
+.k { color: var(--kw); } .n { color: var(--num); } .f { color: var(--fn); }
+.win-help { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 10px 14px 12px; font-size: 13px; color: var(--ink-2); border-top: 1px solid #000; background: linear-gradient(180deg, #17181B, #141518); }
+.win-help .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.arrow { color: var(--rose); }
+
+.chip { display: inline-block; font: 700 10px/1 var(--f-ui); letter-spacing: .07em; text-transform: uppercase; padding: 4px 7px; border-radius: 3px; color: var(--tc); text-shadow: none;
+  background: color-mix(in srgb, var(--tc) 14%, #0B0C0E); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tc) 38%, transparent); vertical-align: 1px; }
+.t-display { --tc: var(--t-display); }
+.t-mech { --tc: var(--t-mech); }
+.pink { color: var(--link-pink); font-weight: 700; }
+
+/* Sections: an engraved title plate, then cards */
+section { padding: 40px 0; }
+.plate { display: inline-block; margin: 0 0 22px; padding: 8px 16px; border-radius: 4px; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--metal-ink); background: var(--metal); box-shadow: var(--machined), 0 0 0 1px #000; text-shadow: var(--engrave); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.card { padding: 18px 20px 20px; border-radius: 6px; background: var(--card); box-shadow: var(--card-raised); }
+.card h3 { margin: 0 0 6px; font-size: 17px; color: var(--rose-hi); }
+.card p { margin: 0; color: var(--ink-2); font-size: 15px; }
+.sub { margin: -8px 0 18px; color: var(--ink-2); }
+
+/* Downloads: one panel per system, its files with their sizes and checksums */
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 14px; }
+.dl { border-radius: 6px; background: var(--card); box-shadow: var(--card-raised); overflow: hidden; }
+.dl.mine { box-shadow: var(--card-raised), 0 0 0 1px rgba(127, 240, 178, .35), 0 0 22px rgba(80, 230, 150, .08); }
+.dl-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 12px 16px; background: var(--metal); box-shadow: var(--machined); color: var(--metal-ink); text-shadow: var(--engrave); }
+.dl-h h3 { margin: 0; font-size: 16px; }
+.dl-h span { font-size: 12.5px; color: #DDAAB8; }
+.dl ul { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border-radius: 4px; background: var(--field); box-shadow: var(--sunken); }
+.file a.get { font-weight: 700; text-decoration: none; color: var(--face-ink); }
+.file a.get:hover { color: var(--phosphor); }
+.file .what { font-size: 13px; color: var(--ink-3); }
+.file .size { grid-column: 2; grid-row: 1; font: 12px var(--f-py); color: var(--ink-3); }
+.sha { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sha code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; background: none; box-shadow: none; padding: 0; color: var(--ink-3); }
+.copy { flex: none; border: 0; cursor: pointer; font: 600 11.5px var(--f-ui); padding: 3px 9px; border-radius: 3px; color: var(--face-ink); background: var(--face); box-shadow: var(--raised); }
+.copy:hover { background: var(--face-hover); }
+.copy:active { background: var(--pressed); box-shadow: var(--sunken); }
+.dl-empty { padding: 16px; color: var(--ink-2); }
+
+.verify { margin-top: 8px; padding: 14px 18px; border-radius: 6px; background: var(--card); box-shadow: var(--card-raised); color: var(--ink-2); font-size: 15px; }
+.verify summary { cursor: pointer; font-weight: 700; color: var(--ink); }
+.verify ol { padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.verify p { margin: 10px 0 0; }
+
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; max-width: 1160px; margin: 24px auto 0; padding: 22px var(--gutter) 34px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 14px; }
+.foot a { color: var(--ink-2); }
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 44px 0 32px; }
+  .nav a:not([href^="#download"]) { display: none; }
+  .key { flex: 1 1 100%; justify-content: center; }
+  .code { font-size: 12.5px; }
+}
