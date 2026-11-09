@@ -1062,6 +1062,204 @@
             "structure"
           ],
           "tip": "Add to the end of any line to put it in a group (a CSS class)."
+        },
+        {
+          "topic": "Layout",
+          "say": "add a box called ‹name›",
+          "becomes": "<div id=\"name\">",
+          "folders": [
+            "structure"
+          ],
+          "tip": "A box (a block) holds the lines indented under it. With a box setting (\"with hint …\") it is a box to type in."
+        },
+        {
+          "topic": "Layout",
+          "say": "add a figure",
+          "becomes": "<figure>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Indent a picture and add a caption \"‹text›\" under it."
+        },
+        {
+          "topic": "Layout",
+          "say": "add a collapsible section",
+          "becomes": "<details>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Indent add a summary \"‹title›\" (always shown), then what opens under it."
+        },
+        {
+          "topic": "Layout",
+          "say": "add a ‹my-widget› element",
+          "becomes": "<my-widget>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Any element that has no words of its own."
+        },
+        {
+          "topic": "Text",
+          "say": "\"‹text›\"",
+          "becomes": "text",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Text on its own line, inside the element above it: text with other things in it (\"add bold text …\") is said a line at a time."
+        },
+        {
+          "topic": "Text",
+          "say": "add bold text \"‹text›\"",
+          "becomes": "<b>…</b>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Also strong text, italic text, emphasised text, highlighted text, small text, code \"…\", a key \"Ctrl\", a line break."
+        },
+        {
+          "topic": "Media",
+          "say": "add a chart called ‹name› ‹600› by ‹300›",
+          "becomes": "<canvas id=\"name\" width=\"600\" height=\"300\">",
+          "folders": [
+            "structure"
+          ],
+          "tip": "A chart is drawn on a drawing area, by Mechanics or a chart library."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, hidden from screen readers",
+          "becomes": "aria-hidden=\"true\"",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Settings go after commas at the end of a line, before \"in group\". Also: labelled \"‹text›\" for screen readers, labelled by ‹name›, controls ‹name›, starts collapsed, marked as the current page, read out when it changes."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, with tooltip \"‹text›\"",
+          "becomes": "title=\"…\"",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Shown when the pointer rests on it."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, storing ‹chord› \"‹C›\"",
+          "becomes": "data-chord=\"C\"",
+          "folders": [
+            "structure"
+          ],
+          "tip": "A value kept on the element for Mechanics (and for CSS: attr(data-chord))."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, disabled",
+          "becomes": "disabled",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Also hidden, required, read-only, ticked, selected, opening in a new tab, sent as \"‹name›\", sized ‹320› by ‹180›, with no description."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, running \"‹clearDone()›\" when clicked",
+          "becomes": "onclick=\"…\"",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Code run from the tag itself. Mechanics (\"when … is clicked\") keeps it out of the page."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, with ‹name› \"‹value›\"",
+          "becomes": "name=\"value\"",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Any other attribute, as it is written."
+        },
+        {
+          "topic": "Settings",
+          "say": "…, with no space before it",
+          "becomes": "(no space)",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Joins it to the thing before: a line break between two pieces of text, links or pictures would show as a space."
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a drawing sized ‹200› by ‹100›, drawn on a ‹200› by ‹100› grid",
+          "becomes": "<svg width height viewBox>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "A picture made of shapes (SVG). Indent the shapes under it; the grid is what their positions count in."
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›",
+          "becomes": "<circle cx cy r fill>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Also: an ellipse … with radii 20 and 10. Inside a drawing only."
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a rectangle at ‹10›, ‹10› sized ‹80› by ‹40›, with rounded corners ‹6›",
+          "becomes": "<rect x y width height rx>",
+          "folders": [
+            "structure"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a line from ‹0›, ‹0› to ‹100›, ‹50›, outlined in ‹navy›, outline ‹2› wide",
+          "becomes": "<line x1 y1 x2 y2 stroke stroke-width>",
+          "folders": [
+            "structure"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a path following \"‹M 0 0 L 100 50›\", not filled, outlined in ‹navy›",
+          "becomes": "<path d fill=\"none\" stroke>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "The path data stays as written. Also: a polygon through \"‹0,0 10,0 5,8›\"."
+        },
+        {
+          "topic": "Drawings",
+          "say": "add text \"‹label›\" at ‹10›, ‹20›",
+          "becomes": "<text x y>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Text drawn in the drawing."
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›",
+          "becomes": "<linearGradient><stop>…",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Add \"through ‹colour› at ‹.5›\" for more colours, \", ending ‹0› across and ‹1› down\" for its direction; then \"filled with the gradient sky\". Put it in \"add reusable parts\"."
+        },
+        {
+          "topic": "Drawings",
+          "say": "add a set of shapes, outlined in ‹navy›",
+          "becomes": "<g stroke>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Settings on it apply to the shapes indented under it."
         }
       ],
       "words": [
@@ -1070,8 +1268,28 @@
           "becomes": "id=\"save\""
         },
         {
+          "say": "called \"helpToggle\"",
+          "becomes": "id=\"helpToggle\" (exactly)"
+        },
+        {
           "say": "in group card",
           "becomes": "class=\"card\""
+        },
+        {
+          "say": "hidden from screen readers",
+          "becomes": "aria-hidden=\"true\""
+        },
+        {
+          "say": "storing chord \"C\"",
+          "becomes": "data-chord=\"C\""
+        },
+        {
+          "say": "drawing",
+          "becomes": "<svg>"
+        },
+        {
+          "say": "set of shapes",
+          "becomes": "<g>"
         },
         {
           "say": "big heading",
@@ -1141,6 +1359,24 @@
             "styling"
           ],
           "tip": "A group is a CSS class. Reuse it on many elements."
+        },
+        {
+          "topic": "Styles",
+          "say": "style ‹name›: border ‹2› ‹dashed› ‹navy›",
+          "becomes": "#name { border: 2px dashed navy }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "The line can be solid, dashed, dotted or double; without a width it is 1px. Also \"outline …\", \"bottom border …\" (top, left, right) and \"no border\"."
+        },
+        {
+          "topic": "Styles",
+          "say": "add a border to ‹name›",
+          "becomes": "#name { border: 1px solid currentColor }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "The same as \"style ‹name›: border\". Also \"add a 2 dashed navy border to …\", \"add a shadow to …\", \"add rounded corners to …\"."
         },
         {
           "topic": "Styles",
@@ -1244,6 +1480,30 @@
         {
           "say": "hidden",
           "becomes": "display: none"
+        },
+        {
+          "say": "border 2 dashed navy",
+          "becomes": "border: 2px dashed navy"
+        },
+        {
+          "say": "underlined",
+          "becomes": "text-decoration: underline"
+        },
+        {
+          "say": "line height 1.5",
+          "becomes": "line-height: 1.5"
+        },
+        {
+          "say": "text weight 600",
+          "becomes": "font-weight: 600"
+        },
+        {
+          "say": "background gradient from #fff to #000",
+          "becomes": "background: linear-gradient(#fff, #000)"
+        },
+        {
+          "say": "the colour main",
+          "becomes": "var(--main)"
         }
       ],
       "selectors": [
@@ -1384,6 +1644,33 @@
             "mechanics"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Events",
+          "say": "when ‹name› is clicked, with the event as ‹e›",
+          "becomes": "name.addEventListener(\"click\", (e) => …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Names what happened, for the indented lines: e.target is the element it happened to."
+        },
+        {
+          "topic": "Page",
+          "say": "constant ‹box› is the element matching \"‹#list li›\"",
+          "becomes": "document.querySelector(…)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "The first element the CSS selector picks; \"every element matching …\" gives them all."
+        },
+        {
+          "topic": "Logic",
+          "say": "run ‹tool› without waiting",
+          "becomes": "tool();",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Starts a tool that waits for something (a fetch) and goes straight on to the next line, without await."
         },
         {
           "topic": "Events",

@@ -27,9 +27,14 @@
   const simpleName = (s) => toId(s) === s && /^[a-z]/.test(s);
 
   const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', copy: '©', reg: '®', trade: '™', hellip: '…', mdash: '—', ndash: '–', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', times: '×', middot: '·', bull: '•', larr: '←', rarr: '→', uarr: '↑', darr: '↓', deg: '°', euro: '€', pound: '£', laquo: '«', raquo: '»' };
-  const decode = (s) => String(s).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
-    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(n) ? String.fromCodePoint(n) : m; }
-    return ENT[e.toLowerCase()] ?? m;
+  /* strict (for the check): an & the table doesn't know ("&nearr;", "&copy" without its ;) may still be a
+     character to the browser, so it never counts the same as those letters written out. */
+  const UPPER_ENT = new Set(['AMP', 'LT', 'GT', 'QUOT', 'COPY', 'REG']);
+  const decode = (s, strict) => String(s).replace(strict ? /&(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);?/gi : /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    const closed = m.endsWith(';');
+    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(n) && n <= 0x10ffff && (closed || !strict) ? String.fromCodePoint(n) : strict ? '\u0001' + m.slice(1) : m; }
+    if (!strict) return ENT[e.toLowerCase()] ?? m;
+    return closed && (ENT[e] != null || UPPER_ENT.has(e)) ? ENT[e.toLowerCase()] : '\u0001' + m.slice(1);
   });
   /* A text value as a quoted sentence string for Structure: \" \' and \\ stand for the character itself. */
   const quote = (t) => { const s = String(t).replace(/\\/g, '\\\\'); return !s.includes('"') ? `"${s}"` : !s.includes("'") ? `'${s}'` : `"${s.replace(/"/g, '\\"')}"`; };
@@ -138,6 +143,7 @@
     o.h = o.c ? `${o.t}${o.v != null ? ':' + JSON.stringify(o.v) : ''}(${o.c.map(hashOf).join(',')})` : `${o.t}:${JSON.stringify(o.v)}`;
     return o.h;
   }
+  let blameNear = false;   // set while comparing HTML (see cmpBlock)
   /* true = same; false = differs (blame the enclosing statement); [keys] = these statements differ. */
   function cmp(a, b) {
     if (a.t !== b.t || a.v !== b.v || !!a.c !== !!b.c) return false;
@@ -163,6 +169,7 @@
       const ga = as.slice(gi, i2), gb = bs.slice(gj, j2);
       if (ga.length === gb.length) cmpPairs(ga, gb, out);
       else if (ga.length) out.push(...ga.map(x => x.k));
+      else if (blameNear && [as[gi - 1], as[gi]].some(x => x && x.k != null)) out.push(...[as[gi - 1], as[gi]].filter(x => x && x.k != null).map(x => x.k));   // (HTML: a space too many between two things: blame them)
       else out.push(null);   // extra code with nothing to blame
     };
     while (i < n && j < m) {
@@ -197,6 +204,8 @@
     const tree = env.parse('js', src);
     const o = Out();
     const ids = env.ids || {};
+    const fileFns = new Set(tree.descendantsOfType('function_declaration').map(f => (F(f, 'name') || {}).text).filter(Boolean));   // this file's own tools
+    const asyncFns = new Set(tree.descendantsOfType('function_declaration').filter(f => kids(f).some(k => k.type === 'async')).map(f => (F(f, 'name') || {}).text));   // the ones that wait
     const elId = (n) => {   // document.getElementById("x") -> x (a name from the page)
       if (!n || n.type !== 'call_expression' || F(n, 'function').text !== 'document.getElementById') return null;
       const a = named(F(n, 'arguments')).filter(x => !isComment(x));
@@ -205,6 +214,8 @@
       return ids[id] && simpleName(id) ? id : null;
     };
     const isField = (id) => /^(input|textarea|select)$/.test(ids[id]);
+    // a page element by its name, or a name in Mechanics that may hold one (const form = …; the writer checks it does)
+    const holder = (n) => elId(n) || (n && n.type === 'identifier' && !ids[n.text] && !/^(?:document|window|event|this)$/.test(n.text) ? n.text : null);
     function ex(n) {
       if (!n) return null;
       switch (n.type) {
@@ -248,6 +259,8 @@
           const args = named(F(n, 'arguments') || { namedChildCount: 0 }).filter(x => !isComment(x)).map(ex);
           if (args.some(a => a == null)) return null;
           if (elId(n)) return elId(n);
+          const qs = fn.text.match(/^document\.querySelector(All)?$/), qa = named(F(n, 'arguments')).filter(x => !isComment(x));
+          if (qs && qa.length === 1 && qa[0].type === 'string' && args[0] === qa[0].text) return `${qs[1] ? 'every' : 'the'} element matching ${args[0]}`;
           if (!isChain(fn)) return n.text;
           if (fn.text === 'Number' && args.length === 1 && isChain(named(F(n, 'arguments'))[0])) return `${args[0]} as number`;
           if (fn.text === 'String' && args.length === 1 && isChain(named(F(n, 'arguments'))[0])) return `${args[0]} as text`;
@@ -262,19 +275,40 @@
     const bodyOf = (n) => (n.type === 'statement_block' ? named(n) : [n]);
     const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, 'js:', src, one);
 
-    function handler(fnNode, allowEvent) {  // () => { … } or (event) => { … }
+    /* () => { … }, (event) => { … }, or one expression, () => f(x), which counts as { f(x); } where nothing reads
+       what it gives back (a listener or a timer). name: the event's name when it isn't "event". */
+    function handler(fnNode, allowEvent) {
       if (!fnNode || fnNode.type !== 'arrow_function') return null;
       const params = F(fnNode, 'parameters') || F(fnNode, 'parameter');
       const p = params ? (params.type === 'identifier' ? [params] : named(params)) : [];
-      if (p.length > 1 || (p.length === 1 && (!allowEvent || p[0].text !== 'event'))) return null;
+      if (p.length > 1 || (p.length === 1 && (!allowEvent || p[0].type !== 'identifier'))) return null;
       const body = F(fnNode, 'body');
-      if (!body || body.type !== 'statement_block') return null;
-      return { body: named(body), usesEvent: p.length === 1 };
+      if (!body) return null;
+      const name = p.length ? p[0].text : null;
+      if (body.type === 'statement_block') return { body: named(body), usesEvent: p.length === 1, name };
+      if (body.type === 'update_expression' || /^(?:object|sequence_expression|parenthesized_expression)$/.test(body.type)) return null;
+      const stmt = { type: 'expression_statement', startIndex: body.startIndex, endIndex: body.endIndex, startPosition: body.startPosition, endPosition: body.endPosition,
+        text: body.text, namedChildCount: 1, childCount: 1, namedChild: () => body, child: () => body, nextSibling: null, parent: fnNode, descendantsOfType: (t) => body.descendantsOfType(t) };
+      return { body: [stmt], usesEvent: p.length === 1, name };
     }
 
-    function exprStmt(e, depth) {
+    function exprStmt(e, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
-      if (e.type === 'await_expression') { const c = named(e)[0]; if (c && c.type === 'call_expression' && isChain(F(c, 'function'))) { const a = args(c).map(ex); if (a.some(x => x == null)) return false; return say(`run ${F(c, 'function').text}${a.length ? ' with ' + a.join(', ') : ''}`); } return false; }
+      if (e.type === 'await_expression') {
+        const c = named(e)[0];
+        if (!c || c.type !== 'call_expression' || !isChain(F(c, 'function'))) return false;
+        const a = args(c).map(ex);
+        if (a.some(x => x == null)) return false;
+        // a tool of this file is waited for by "run"; anything else (fetch, a browser call), or the careful way, by "wait for"
+        if (fileFns.has(F(c, 'function').text) && !lvl) return say(`run ${F(c, 'function').text}${a.length ? ' with ' + a.join(', ') : ''}`);
+        return say(`wait for ${F(c, 'function').text}(${a.join(', ')})`);
+      }
+      // a tool of this file that waits, run without waiting for it (no await): said so, or the writer would wait
+      if (lvl || (e.type === 'call_expression' && F(e, 'function').type === 'identifier' && asyncFns.has(F(e, 'function').text))) {
+        if (e.type !== 'call_expression' || F(e, 'function').type !== 'identifier' || !fileFns.has(F(e, 'function').text)) return false;
+        const v = args(e).map(ex);
+        return !v.some(x => x == null) && say(`run ${F(e, 'function').text}${v.length ? ' with ' + v.join(', ') : ''} without waiting`);
+      }
       if (e.type === 'call_expression') {
         const fn = F(e, 'function'), a = args(e);
         const fnText = fn.text;
@@ -292,21 +326,25 @@
           if (prop === 'addEventListener' && a.length === 2 && a[0].type === 'string') {
             const ev = a[0].text.slice(1, -1);
             if (obj.text === 'document' && ev === 'DOMContentLoaded') { const h = handler(a[1], false); if (!h) return false; say('when the page has loaded'); block(h.body, depth + 1, e.startIndex); return true; }
-            const id = elId(obj);
+            const id = holder(obj);
             if (!id || !EVENTS[ev]) return false;
             const h = handler(a[1], true);
             if (!h) return false;
             let body = h.body;
+            const evName = h.name || 'event';
             if (ev === 'submit') {
-              if (!h.usesEvent || !body.length || body[0].text.replace(/\s+/g, '') !== 'event.preventDefault();') return false;
+              if (!h.usesEvent || !body.length || body[0].text.replace(/\s+/g, '') !== `${evName}.preventDefault();`) return false;
               body = body.slice(1);
             }
-            say(`when ${id} is ${EVENTS[ev]}`);
+            // the writer calls the event "event", and only names it when the lines use it; say so otherwise
+            const usesName = h.name && body.some(s => new RegExp(`\\b${h.name.replace(/\$/g, '\\$')}\\b`).test(s.text.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')));
+            const named_ = h.name && (h.name !== 'event' || (ev !== 'submit' && !usesName)) ? `, with the event as ${h.name}` : '';
+            say(`when ${id} is ${EVENTS[ev]}${named_}`);
             block(body, depth + 1, e.startIndex);
             return true;
           }
           if (F(obj, 'property') && F(obj, 'property').text === 'classList' && a.length === 1 && a[0].type === 'string') {
-            const id = elId(F(obj, 'object')), g = a[0].text.slice(1, -1);
+            const id = holder(F(obj, 'object')), g = a[0].text.slice(1, -1);
             if (!id || !simpleName(g)) return false;
             if (prop === 'add') return say(`put ${id} in group ${g}`);
             if (prop === 'remove') return say(`take ${id} out of group ${g}`);
@@ -333,7 +371,7 @@
             if (prop === 'value' && right.text === '""') return say(`clear ${id}`);
             const v = ex(right); return v != null && say(`set the text of ${id} to ${v}`);
           }
-          if (id && prop === 'hidden' && /^(true|false)$/.test(right.text)) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${id}`);
+          if (prop === 'hidden' && /^(true|false)$/.test(right.text) && holder(F(left, 'object'))) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${holder(F(left, 'object'))}`);
           if (left.text === 'window.location.href') { const v = ex(right); return v != null && say(`go to ${v}`); }
           if (isChain(left) && !id) { const v = ex(right); return v != null && say(`set ${left.text} to ${v}`); }
           return false;
@@ -358,9 +396,14 @@
 
     function one(n, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
-      if (lvl && n.type !== 'lexical_declaration') return false;
+      if (lvl && n.type !== 'lexical_declaration' && n.type !== 'expression_statement') return false;
       switch (n.type) {
-        case 'expression_statement': return exprStmt(named(n)[0], depth);
+        case 'expression_statement': {
+          const e = named(n)[0], c = e && e.type === 'await_expression' ? named(e)[0] : e;
+          // running a tool of this file: the writer may wait for it (await) where the code doesn't, or the other way round
+          if (c && c.type === 'call_expression' && fileFns.has(F(c, 'function').text)) o.careful.add(n.startIndex);
+          return exprStmt(e, depth, lvl);
+        }
         case 'lexical_declaration': {
           const d = named(n).filter(x => x.type === 'variable_declarator');
           if (d.length !== 1 || F(d[0], 'name').type !== 'identifier' || !F(d[0], 'value')) return false;
@@ -466,6 +509,14 @@
     },
     block: (n) => n.type === 'program' || n.type === 'statement_block',
     after: (o, n) => {
+      // () => f(x) as a listener or a timer is () => { f(x); }: nothing reads what a listener or a timer gives back
+      if (n.type === 'arrow_function' && F(n, 'body') && F(n, 'body').type !== 'statement_block' && F(n, 'body').type !== 'update_expression' && n.parent && n.parent.type === 'arguments') {
+        const call = n.parent.parent, fn = call && F(call, 'function'), list = named(n.parent).filter(x => !isComment(x));
+        const listener = fn && fn.type === 'member_expression' && F(fn, 'property').text === 'addEventListener' && list[1] && list[1].startIndex === n.startIndex;
+        const timer = fn && /^(?:setTimeout|setInterval)$/.test(fn.text) && list[0] && list[0].startIndex === n.startIndex;
+        const body = F(n, 'body'), i = o.c.findIndex(x => x.k === body.startIndex && x.t === body.type);
+        if ((listener || timer) && i >= 0) o.c[i] = { t: 'statement_block', k: body.startIndex, block: true, c: [{ t: 'expression_statement', k: body.startIndex, c: [o.c[i]] }] };
+      }
       if (/^(if_statement|for_statement|for_in_statement|while_statement|do_statement)$/.test(n.type)) wrapBodies(o, n, ['consequence', 'body'], 'statement_block');
       if (n.type === 'else_clause') { const c = named(n).find(x => !isComment(x)); if (c && c.type !== 'statement_block' && c.type !== 'if_statement') { const i = o.c.findIndex(x => x.k === c.startIndex); if (i >= 0) o.c[i] = { t: 'statement_block', k: c.startIndex, block: true, c: [o.c[i]] }; } }
     },
@@ -477,7 +528,7 @@
 
   const TAG_PHRASE = { button: 'buttons', 'h1, h2, h3': 'headings', h1: 'big headings', a: 'links', p: 'paragraphs', img: 'pictures', 'input, textarea': 'text boxes', 'ul, ol': 'lists', li: 'list items', section: 'sections', body: 'the page', '*': 'everything', header: 'header', footer: 'footer', nav: 'navigation bar', form: 'forms', label: 'labels', input: 'inputs' };
   const COMBOS = { 'display:flex;align-items:center': 'in a row', 'display:flex;flex-direction:column': 'in a column', 'margin-left:auto;margin-right:auto': 'centred', 'position:sticky;top:0': 'stays in place', 'background-image:url(': null };
-  const PSEUDO = { hover: 'hovered', active: 'clicked', focus: 'focused', checked: 'selected' };
+  const PSEUDO = { hover: 'hovered', active: 'clicked', focus: 'focused', checked: 'selected', 'focus-visible': 'focused with the keyboard', disabled: 'disabled', visited: 'visited', empty: 'empty' };
   const HTML_TAG = /^(?:a|abbr|address|article|aside|audio|b|blockquote|body|button|canvas|caption|code|dd|details|dialog|div|dl|dt|em|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|i|iframe|img|input|kbd|label|legend|li|main|mark|menu|nav|ol|optgroup|option|output|p|picture|pre|progress|q|s|section|select|small|span|strong|sub|summary|sup|svg|table|tbody|td|textarea|tfoot|th|thead|time|tr|u|ul|video)$/;
 
   /* One declaration as a style phrase that the Styling translator turns back into exactly [prop, value]. */
@@ -492,8 +543,22 @@
       'box-shadow': value === 'none' ? ['no shadow'] : [], display: value === 'none' ? ['hidden'] : [], width: [`width ${short}`], height: [`height ${short}`], 'max-width': [`at most ${short} wide`], 'min-height': [`at least ${short} tall`],
       gap: [`gap ${short}`], 'justify-content': value === 'space-between' ? ['spread out'] : [], cursor: value === 'pointer' ? ['hand cursor'] : [], 'text-decoration': value === 'none' ? ['no underline'] : [], 'text-align': value === 'center' ? ['centred text'] : [],
       opacity: /^0?\.\d+$|^[01]$/.test(value) ? [`${Math.round((1 - parseFloat(value)) * 100)}% see-through`] : [],
-      'font-family': (value.match(/^"([^"]+)", sans-serif$/) || [])[1] ? [`font ${value.match(/^"([^"]+)"/)[1]}`] : [],
+      'font-family': (value.match(/^"([^"]+)", sans-serif$/) || [])[1] ? [`font ${value.match(/^"([^"]+)"/)[1]}`] : (value.match(/^"([^"]+)", (serif|monospace|cursive)$/) || [])[1] ? [`font ${value.match(/^"([^"]+)"/)[1]} or any ${value.match(/, (\w+)$/)[1]} font`] : [],
+      'line-height': [`line height ${value}`], 'letter-spacing': [`letter spacing ${short}`], 'box-sizing': value === 'border-box' ? ['size includes padding plus border'] : [],
     };
+    const shared = value.match(/^var\(--([a-z][a-z0-9-]*)\)$/);   // a shared colour: "the colour crust"
+    if (shared && (prop === 'color' || prop === 'background')) tries.push(`${prop === 'color' ? 'text colour' : 'background'} the colour ${shared[1]}`);
+    if (prop === 'font-weight' && /^\d{3}$|^(?:normal|lighter|bolder)$/.test(value)) tries.push(`text weight ${value}`);
+    if (prop === 'text-align' && /^(?:left|right|justify|start|end)$/.test(value)) tries.push(`text aligned ${value}`);
+    if (prop === 'text-decoration' && value === 'underline') tries.push('underlined');
+    if (prop === 'text-decoration' && value === 'line-through') tries.push('struck through');
+    const grad = prop === 'background' && value.match(/^linear-gradient\((?:(-?\d+(?:\.\d+)?deg), )?([^()]+)\)$/);
+    if (grad) { const cs = grad[2].split(', '); if (cs.length >= 2 && cs.every(c => /^(?:#[0-9a-f]{3,8}|[a-z]+)$/.test(c))) tries.push(`background gradient${grad[1] ? ' at ' + grad[1] : ''} from ${cs[0]}${cs.slice(1, -1).map(c => ' through ' + c).join('')} to ${cs[cs.length - 1]}`); }
+    const line = prop.match(/^(border|outline)(?:-(top|bottom|left|right))?$/);
+    if (line && value !== 'none') {   // "border 2 dashed navy", "bottom border 1 solid #ddd"
+      tries.push(`${line[2] ? line[2] + ' ' : ''}${line[1]} ${value.replace(/(^|\s)(-?\d*\.?\d+)px(?=\s|$)/g, '$1$2')}`);
+    }
+    if (line && value === 'none' && !line[2]) tries.push(`no ${line[1]}`);
     tries.push(...(P[prop] || []), `${prop}: ${value}`);
     for (const t of tries) {
       const inf = { notes: [], warns: [], errs: [] };
@@ -518,7 +583,7 @@
       if (WEB.TAG_WORDS[s]) return null;
       if (HTML_TAG.test(s) && !ids[s] && !groups.has(s)) return s;
       if (/^[a-z0-9]+(?:, [a-z0-9]+)+$/.test(s) && s.split(', ').every(t => HTML_TAG.test(t))) return s;
-      if (/^[.#*\[]/.test(s) || /[>~+]/.test(s) || /^[a-z]+[.#]/.test(s)) return s;
+      if (/^[.#*\[]/.test(s) || /[>~+\[]/.test(s) || /^[a-z]+[.#]/.test(s)) return s;
       return null;
     };
     const decls = (blockNode) => {
@@ -550,8 +615,10 @@
       const back = WEB.cssPropsFor(props, inf);
       if (inf.errs.length || JSON.stringify(back) !== JSON.stringify(ds)) return null;
       const sel = collapseCode(selNode.text);
-      const pm = sel.match(/^([^:\s]+):(hover|active|focus|checked)$/);
-      if (pm) { const who = selPhrase(pm[1]); return who ? `when ${who} is ${PSEUDO[pm[2]]}: ${props}` : null; }
+      const pm = sel.match(/^([^:\s]+):(hover|active|focus|checked|focus-visible|disabled|visited|empty|focus-within)$/);
+      if (pm) { const who = selPhrase(pm[1]); return who ? pm[2] === 'focus-within' ? `when ${who} has focus inside: ${props}` : `when ${who} is ${PSEUDO[pm[2]]}: ${props}` : null; }
+      const pe = sel.match(/^([^:]+)::(before|after)$/);   // a piece CSS adds at the start or end
+      if (pe) { const who = selPhrase(pe[1]); return who ? `${pe[2]} ${who}: ${props}` : null; }
       const who = selPhrase(sel);
       return who ? `style ${who}: ${props}` : null;
     };
@@ -601,24 +668,24 @@
   /* ================================================================== */
 
   const tagOf = (el) => { const st = named(el).find(x => x.type === 'start_tag' || x.type === 'self_closing_tag'); const t = st && named(st).find(x => x.type === 'tag_name'); return t ? t.text.toLowerCase() : ''; };
-  const attrsOf = (el) => {
+  const attrsOf = (el, strict) => {
     const st = named(el).find(x => x.type === 'start_tag' || x.type === 'self_closing_tag');
     return st ? named(st).filter(x => x.type === 'attribute').map(a => {
       const nm = named(a).find(x => x.type === 'attribute_name');
       const val = named(a).find(x => x.type === 'quoted_attribute_value' || x.type === 'attribute_value');
       const raw = val ? (val.type === 'quoted_attribute_value' ? (named(val)[0] ? named(val)[0].text : '') : val.text) : null;
-      return { name: nm.text.toLowerCase(), value: raw == null ? null : decode(raw), text: a.text };
+      return { name: nm.text.toLowerCase(), rawName: nm.text, value: raw == null ? null : decode(raw, strict), text: a.text };
     }) : [];
   };
   const childNodes = (el) => named(el).filter(x => !/^(start_tag|end_tag|self_closing_tag|erroneous_end_tag)$/.test(x.type));
   const isEl = (n) => /^(element|script_element|style_element)$/.test(n.type);
   /* The text inside an element, from the source (so spaces around &amp; and friends are kept). */
-  const textOf = (el) => {
+  const textOf = (el, strict) => {
     const st = named(el).find(x => x.type === 'start_tag'), et = named(el).find(x => x.type === 'end_tag');
     const inner = childNodes(el);
     if (!inner.length) return '';
     const from = st ? st.endIndex : inner[0].startIndex, to = et ? et.startIndex : inner[inner.length - 1].endIndex;
-    return decode(el.text.slice(from - el.startIndex, to - el.startIndex).replace(/<!--[\s\S]*?-->/g, ''));
+    return decode(el.text.slice(from - el.startIndex, to - el.startIndex).replace(/<!--[\s\S]*?-->/g, ''), strict);
   };
   /* Where an element really ends: without an end tag (<img>, <input>…) the parser counts the spaces after it in too. */
   const endOf = (n) => { if (!isEl(n) || named(n).some(x => x.type === 'end_tag')) return n.endIndex; const k = named(n); return k.length ? k[k.length - 1].endIndex : n.endIndex; };
@@ -715,7 +782,8 @@
     o.say(0, lang ? `page language is ${lang.value}` : 'no page language');
     if (htmlA.some(a => a !== lang)) o.say(0, `html attributes: ${htmlA.filter(a => a !== lang).map(a => a.text).join(' ')}`);
     const title = p.headItems.find(x => isEl(x) && tagOf(x) === 'title');
-    o.say(0, title ? `page title is ${quote(htmlTrim(textOf(title)))}` : 'no title');
+    const titleRaw = title && decode(textOf(title), true).includes('\u0001');   // a character code IntuaCode doesn't know: the title stays as code
+    o.say(0, title && !titleRaw ? `page title is ${quote(htmlTrim(textOf(title)))}` : 'no title');
     // <head>: the usual settings are said by nothing; everything else is kept as head: lines, in order
     const ordered = p.headItems.filter(h => isEl(h) && tagOf(h) !== 'title' && !metaKind(h));
     const plainStyle = (h) => ownStyle(h) && attrsOf(h).every(a => a.name === 'href' || (a.name === 'rel' && /^stylesheet$/i.test(a.value)));
@@ -728,7 +796,7 @@
       if (isComment(h)) continue;
       const a = isEl(h) ? attrsOf(h) : [];
       const k = metaKind(h);
-      if (h === title || atEnd.has(h)) continue;
+      if ((h === title && !titleRaw) || atEnd.has(h)) continue;
       if (k === 'charset' && !usualCharset && a.length === 1 && String(a[0].value).toLowerCase() === 'utf-8') { usualCharset = true; continue; }
       if (k === 'viewport' && !usualViewport && a.length === 2 && viewportKey(getAttr(a, 'content')) === DEFAULT_VIEWPORT) { usualViewport = true; continue; }
       if (ownStyle(h)) {   // style files next to each other were joined into one Styling: one link says where
@@ -741,98 +809,276 @@
     }
     if (!p.headItems.some(h => metaKind(h) === 'charset')) o.say(0, 'leave out the character set');
     if (!p.headItems.some(h => metaKind(h) === 'viewport')) o.say(0, 'leave out the viewport setting');
-    const bodyAttrs = p.body ? attrsOf(p.body) : [];
+    let bodyAttrs = p.body ? attrsOf(p.body) : [];
+    const bodyClass = bodyAttrs.filter(x => x.name === 'class');   // the page's groups, said as such
+    if (bodyClass.length === 1 && bodyClass[0].value && bodyClass[0].value.split(' ').every(c => simpleName(c))) {
+      const gs = bodyClass[0].value.split(' ');
+      o.say(0, `the page is in group${gs.length > 1 ? 's' : ''} ${gs.join(', ')}`);
+      bodyAttrs = bodyAttrs.filter(x => x.name !== 'class');
+    }
     if (bodyAttrs.length) o.say(0, `body attributes: ${bodyAttrs.map(x => x.text).join(' ')}`);
 
     const insideForm = (n) => { for (let q = n.parent; q; q = q.parent) if (isEl(q) && tagOf(q) === 'form') return true; return false; };
     const lastItem = p.bodyItems.filter(x => !isComment(x)).pop();
-    // Inline things with nothing between them (<img><img>, </svg><b>) stay together on one html: line:
-    // each sentence gets a line of its own, and that line break would show as a space between them.
-    const inline = (n) => n.type === 'text' || n.type === 'entity' || (isEl(n) && !BLOCK.test(tagOf(n)));
-    const glue = (items) => {
-      const out = [];
-      for (const n of items) {
-        const prev = out[out.length - 1], last = prev && (prev.glued ? prev.glued[prev.glued.length - 1] : prev);
-        if (last && inline(last) && inline(n) && src.slice(endOf(last), n.startIndex) === '') {
-          const ns = prev.glued ? prev.glued.concat(n) : [prev, n];
-          out[out.length - 1] = { type: 'glued', glued: ns, startIndex: ns[0].startIndex, endIndex: endOf(n), startPosition: ns[0].startPosition, endPosition: n.endPosition,
-            nextSibling: null, namedChildCount: ns.length, namedChild: (i) => ns[i] };
-        } else out.push(n);
+    const WEB = env.WEB;
+    // ids of the drawing parts that shapes are filled with: "filled with the gradient body"
+    const refs = {};
+    (function walk(n) {
+      if (isEl(n)) {
+        const t = tagOf(n), id = getAttr(attrsOf(n), 'id');
+        const kind = { lineargradient: 'gradient', radialgradient: 'gradient', pattern: 'pattern', clippath: 'clipping shape', mask: 'mask', marker: 'marker' }[t];
+        if (kind && id) refs[id] = kind;
       }
-      return out;
-    };
-    function one(n, depth) {
-      if (n.type === 'text' || n.type === 'glued') { o.rawLines(depth, 'html:', src, n); return true; }
+      for (const c of named(n)) walk(c);
+    })(tree.rootNode || tree);
+    /* Inside a drawing (<svg>), and not in a page area (<foreignObject>) in it? */
+    const inSvg = (n) => { for (let q = n.parent; q; q = q.parent) if (isEl(q)) { const t = tagOf(q); if (t === 'foreignobject') return false; if (t === 'svg') return true; } return false; };
+    const selfClosed = (n) => named(n).some(x => x.type === 'self_closing_tag');
+
+    /* An element's children as sentence items: text and character codes next to each other are one run of
+       text; each item knows whether it is glued to the one before it (two inline things with no space between
+       them: a line break there would show as a space). */
+    function items(list, svg) {
+      const out = [];
+      for (const n of list) {
+        if (n.type === 'text' || n.type === 'entity') {
+          const prev = out[out.length - 1];
+          if (prev && prev.type === 'run') { prev.nodes.push(n); prev.endIndex = n.endIndex; prev.endPosition = n.endPosition; continue; }   // (only spaces can be between them)
+          out.push({ type: 'run', nodes: [n], startIndex: n.startIndex, endIndex: n.endIndex, startPosition: n.startPosition, endPosition: n.endPosition, nextSibling: null, namedChildCount: 0, childCount: 0 });
+          continue;
+        }
+        out.push(n);
+      }
+      const kept = out.filter(n => !(n.type === 'run' && !htmlTrim(decode(src.slice(n.startIndex, n.endIndex)))));
+      const inl = (n) => n.type === 'run' || (isEl(n) && (svg ? SVG_TEXT.test(tagOf(n)) : !BLOCK.test(tagOf(n))));
+      let prev = null;
+      for (const n of kept) {
+        if (isComment(n)) { prev = null; continue; }
+        const text = n.type === 'run' ? src.slice(n.startIndex, n.endIndex) : null;
+        n.glued = !!(prev && inl(prev) && inl(n) && src.slice(endOf(prev), n.startIndex) === '' &&
+          !(prev.type === 'run' && /[ \t\n\f\r]$/.test(src.slice(prev.startIndex, prev.endIndex))) && !(text != null && /^[ \t\n\f\r]/.test(text)));
+        prev = n;
+      }
+      return kept;
+    }
+    /* A run of text as it reads: spaces as the browser shows them; a space at an edge of the element it is in
+       is kept only where it shows (inside a link, not inside a paragraph). null if it holds a character code
+       IntuaCode doesn't know. */
+    function runText(n, first, last, container) {
+      const raw = src.slice(n.startIndex, n.endIndex);
+      if (decode(raw, true).includes('\u0001')) return null;
+      const ctag = container ? tagOf(container) : 'body';
+      const edge = container && !inSvg(container) && ctag !== 'svg' && !BLOCK.test(ctag) && !OWN_BOX.test(ctag);
+      const st = container && named(container).find(x => x.type === 'start_tag'), et = container && named(container).find(x => x.type === 'end_tag');
+      // the spaces between the element's tags and the text count too, where they show
+      const before = first && edge && st ? src.slice(st.endIndex, n.startIndex) : '', after = last && edge && et ? src.slice(n.endIndex, et.startIndex) : '';
+      let t = htmlSpace(decode(before + raw + after));
+      if (!(first && edge)) t = t.replace(/^ /, '');
+      if (!(last && edge)) t = t.replace(/ $/, '');
+      return t;
+    }
+    /* Walk items, saying each one; a chain of glued items is said together or kept together as code. */
+    function walk(list, depth, parentKey, container) {
+      const svg = container ? inSvg(container) || tagOf(container) === 'svg' : false;
+      const its = items(list, svg);
+      let prevEnd = null;
+      for (let i = 0; i < its.length;) {
+        let j = i + 1;
+        while (j < its.length && its[j].glued) j++;
+        const chain = its.slice(i, j);
+        if (prevEnd != null && chain[0].startPosition.row > prevEnd + 1) o.blank();
+        prevEnd = chain[chain.length - 1].endPosition.row;
+        for (const n of chain) o.parents.set(n.startIndex, parentKey);
+        if (chain.length === 1 && isComment(chain[0])) { o.notes(depth, chain[0]); i = j; continue; }
+        const m = o.mark();
+        let ok = !force.has('ALL');
+        for (let k = 0; ok && k < chain.length; k++) {
+          const n = chain[k];
+          if ((force.get(n.startIndex) || 0) >= 2) { ok = false; break; }
+          o.keyStack.push(n.startIndex);
+          try { ok = one(n, depth, k > 0, its.indexOf(n) === 0, its.indexOf(n) === its.length - 1, container); } catch (e) { ok = false; }
+          o.keyStack.pop();
+        }
+        if (!ok) {
+          o.undo(m);
+          const first = chain[0], end = chain[chain.length - 1];
+          const node = chain.length === 1 && first.type !== 'run' ? first : { type: 'glued', startIndex: first.startIndex, endIndex: endOf(end), startPosition: first.startPosition, endPosition: end.endPosition, nextSibling: null, namedChildCount: chain.length, childCount: 0, namedChild: (q) => chain[q] };
+          o.rawLines(depth, 'html:', src, node);
+          for (const n of chain) o.parents.set(n.startIndex, parentKey);
+        }
+        i = j;
+      }
+    }
+
+    const nameSaid = (id) => (simpleName(id) ? id : quote(id));
+    /* The attributes as phrases after commas: ", hidden from screen readers, controls menu". Width and height
+       side by side are one phrase ("sized 320 by 180"), and so are a gradient's end. null if one can't be said. */
+    function phrases(list, ctx) {
+      let s = '';
+      for (let i = 0; i < list.length; i++) {
+        const x = list[i], y = list[i + 1];
+        const pair = y && [['width', 'height', (a, b) => `sized ${a} by ${b}`], ['x1', 'y1', (a, b) => `starting ${a} across and ${b} down`], ['x2', 'y2', (a, b) => `ending ${a} across and ${b} down`]].find(([p, q]) => x.name === p && y.name === q);
+        if (pair && x.value != null && y.value != null) {
+          const t = pair[2](x.value, y.value), r = WEB.readAttr(t, ctx);
+          if (Array.isArray(r) && r.length === 2 && r[0][0].toLowerCase() === x.name && r[0][1] === x.value && r[1][0].toLowerCase() === y.name && r[1][1] === y.value) { s += ', ' + t; i++; continue; }
+        }
+        const t = WEB.sayAttr(x.rawName, x.value, ctx);
+        if (t == null) return null;
+        s += ', ' + t;
+      }
+      return s;
+    }
+    const NUM_TOKEN = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?(?:%|px|em|rem)?$/i;
+    const num = (v) => (v == null ? null : NUM_TOKEN.test(v) ? v : /^[^"]*$/.test(v) && !/^\s|\s$/.test(v) && v !== '' ? `"${v}"` : null);
+    /* The head of a drawing shape after its word ("at 10, 20 with radius 5"), taking the attributes it says. */
+    function shapeHead(tag, a, used) {
+      const take = (k) => { const x = a.find(y => y.name === k && !used.has(y)); return x && x.value != null ? x : null; };
+      const parts = [];
+      const both = (k1, k2, fmt) => { const x = take(k1), y = take(k2); if (x && y && num(x.value) && num(y.value)) { parts.push(fmt(num(x.value), num(y.value))); used.add(x); used.add(y); } };
+      const q = (k, fmt) => { const x = take(k); if (x && !/["\\]/.test(x.value)) { parts.push(fmt(`"${x.value}"`)); used.add(x); } };
+      if (tag === 'line') { const xs = ['x1', 'y1', 'x2', 'y2'].map(take); if (xs.every(x => x && num(x.value))) { parts.push(`from ${num(xs[0].value)}, ${num(xs[1].value)} to ${num(xs[2].value)}, ${num(xs[3].value)}`); xs.forEach(x => used.add(x)); } }
+      if (tag === 'circle' || tag === 'ellipse') both('cx', 'cy', (x, y) => `at ${x}, ${y}`);
+      if (/^(?:rect|image|use|foreignobject|text|tspan|svg|pattern)$/.test(tag) && !(tag === 'svg' && !inSvgNow)) both('x', 'y', (x, y) => `at ${x}, ${y}`);
+      if (tag === 'circle') { const r = take('r'); if (r && num(r.value)) { parts.push(`with radius ${num(r.value)}`); used.add(r); } }
+      if (tag === 'ellipse') both('rx', 'ry', (x, y) => `with radii ${x} and ${y}`);
+      if (/^(?:rect|image|use|foreignobject|svg|pattern)$/.test(tag)) both('width', 'height', (w, h) => `sized ${w} by ${h}`);
+      if (tag === 'path') q('d', (d) => `following ${d}`);
+      if (tag === 'polyline' || tag === 'polygon') q('points', (p) => `through ${p}`);
+      if (tag === 'use') { const h = take('href') || take('xlink:href'); if (h && h.name === 'href' && /^#[\w-]+$/.test(h.value) && simpleName(h.value.slice(1))) { parts.push(`of ${h.value.slice(1)}`); used.add(h); } }
+      return parts.length ? ' ' + parts.join(' ') : '';
+    }
+    let inSvgNow = false;
+    /* A gradient's stops in one go: "from #873044 through #5b1426 at .4 to #350916 at 1". */
+    function stopsSaid(n) {
+      const kids = childNodes(n).filter(x => !isBlankText(x));
+      if (!kids.length || !kids.every(x => isEl(x) && tagOf(x) === 'stop' && !childNodes(x).length)) return null;
+      const parts = [];
+      for (const [i, s] of kids.entries()) {
+        const a = attrsOf(s);
+        if (!a.every(x => x.name === 'offset' || x.name === 'stop-color') || a.length !== new Set(a.map(x => x.name)).size) return null;
+        const c = getAttr(a, 'stop-color'), off = getAttr(a, 'offset');
+        if (c == null || !/^(?:#[0-9a-fA-F]{3,8}|[A-Za-z]+)$/.test(c) || (off != null && !NUM_TOKEN.test(off))) return null;
+        parts.push(`${i === 0 ? 'from' : i === kids.length - 1 ? 'to' : 'through'} ${c}${off != null ? ' at ' + off : ''}`);
+      }
+      if (kids.length === 1 && false) return null;
+      return ' ' + parts.join(' ');
+    }
+
+    function one(n, depth, glued, first, last, container) {
+      const gl = glued ? ', with no space before it' : '';
+      if (n.type === 'run') { const t = runText(n, first, last, container); if (t == null || t === '') return false; o.say(depth, quote(t) + gl); return true; }
+      if (n.type === 'text' || n.type === 'glued') return false;
       if (ownScript(n)) {   // said by nothing at the very end of the page, where Structure puts it
+        if (glued) return false;
         if (n === lastItem && attrsOf(n).length === 1) return true;
         o.rawLines(depth, 'html:', src, n, retarget(n, 'src', 'script.js'));
         return true;
       }
-      if (ownStyle(n)) { o.rawLines(depth, 'html:', src, n, retarget(n, 'href', 'style.css')); return true; }
-      if (n.type !== 'element') return false;
+      if (ownStyle(n)) { if (glued) return false; o.rawLines(depth, 'html:', src, n, retarget(n, 'href', 'style.css')); return true; }
+      if (n.type !== 'element' && !(n.type === 'script_element' && !textOf(n).trim() && getAttr(attrsOf(n), 'src') != null)) return false;
       const tag = tagOf(n);
+      const svg = n.type === 'element' && inSvg(n);
+      inSvgNow = svg;
+      if (/^(?:pre|textarea|listing|xmp|plaintext|template|noscript|style|title|head|body|html|frameset|frame|math)$/.test(tag) && tag !== 'textarea') return false;
+      if (!svg && tag !== 'svg' && selfClosed(n) && !/^(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/.test(tag)) return false;   // <div/> isn't closed in HTML
       const a = attrsOf(n);
       const get = (k) => getAttr(a, k);
       const id = get('id');
-      const cls = (get('class') || '').split(/\s+/).filter(Boolean);
-      if (id != null && !simpleName(id)) return false;
-      if (cls.some(c => !simpleName(c))) return false;
-      const others = (allowed) => a.every(x => ['id', 'class', ...allowed].includes(x.name));
-      const called = id ? ` called ${id}` : '';
-      const grp = cls.length ? ` in group${cls.length > 1 ? 's' : ''} ${cls.join(', ')}` : '';
+      const idOK = id != null && id !== '' && !/[\s"\\]/.test(id) && a.filter(x => x.name === 'id').length === 1;
+      const cls = get('class');
+      const cl = cls == null ? [] : cls.split(' ');
+      const grpOK = cls != null && cl.length > 0 && cl.every(c => simpleName(c)) && a.filter(x => x.name === 'class').length === 1;
+      const called = idOK ? ` called ${nameSaid(id)}` : '';
+      const grp = grpOK ? ` in group${cl.length > 1 ? 's' : ''} ${cl.join(', ')}` : '';
+      const ctx = { tag: n.type === 'script_element' ? 'script' : tag, svg: svg || tag === 'svg', refs };
+      const others = (allowed) => phrases(a.filter(x => !(x.name === 'id' && idOK) && !(x.name === 'class' && grpOK) && !allowed.includes(x.name)), ctx);
+      const kids = childNodes(n).filter(x => !isBlankText(x));
+      const textOnly = onlyText(n) && !decode(textOf(n), true).includes('\u0001');
       // a space at the start or end inside an inline element (a link, a label…) can show, so it is kept
-      const text = () => (onlyText(n) ? quote(BLOCK.test(tag) || OWN_BOX.test(tag) ? htmlTrim(textOf(n)) : htmlSpace(textOf(n))) : null);
-      const say = (t) => { o.say(depth, t + grp); return true; };
-      if (/^h[123]$/.test(tag) && others([])) { const t = text(); return t != null && say(`add a ${{ h1: 'big ', h2: '', h3: 'small ' }[tag]}heading ${t}${called}`); }
-      if (tag === 'p' && others([])) { const t = text(); return t != null && say(`add a paragraph${called} ${t}`); }
-      if (tag === 'span' && !id && others([])) { const t = text(); return t != null && say(`add text ${t}`); }
-      if (tag === 'li' && !id && others([])) { const t = text(); return t != null && say(`add a list item ${t}`); }
-      if (tag === 'button' && others(['type'])) {
-        const want = n.parent && isEl(n.parent) && tagOf(n.parent) === 'form' ? 'submit' : 'button';
-        const type = get('type');
-        if (type != null && type !== want && !(type === 'submit' && !insideForm(n))) return false;
-        if (want === 'button' && insideForm(n) && type !== 'button') return false;
-        const t = text(); return t != null && say(`add a button${called} saying ${t}`);
+      const text = () => (textOnly ? quote(BLOCK.test(tag) || OWN_BOX.test(tag) || svg ? htmlTrim(textOf(n)) : htmlSpace(textOf(n))) : null);
+      const say = (t, more) => { if (more == null) return false; o.say(depth, t + more + gl + grp); return true; };
+      const holds = () => { walk(childNodes(n), depth + 1, n.startIndex, n); return true; };
+
+      if (!svg) {
+        if (/^h[123]$/.test(tag) && textOnly) { const t = text(); return say(`add a ${{ h1: 'big ', h2: '', h3: 'small ' }[tag]}heading ${t}${called}`, others([])); }
+        if (tag === 'p' && textOnly) return say(`add a paragraph${called} ${text()}`, others([]));
+        if (tag === 'span' && textOnly && kids.length) return say(`add text${called} ${text()}`, others([]));
+        if (tag === 'li' && textOnly && kids.length) return say(`add a list item${called} ${text()}`, others([]));
+        if (tag === 'button') {
+          const want = n.parent && isEl(n.parent) && tagOf(n.parent) === 'form' ? 'submit' : 'button';
+          const type = get('type');
+          // the type Structure writes itself: button, or submit directly inside a form; anything else is said
+          const implied = type == null ? !(want === 'button' && insideForm(n)) : type === want || (type === 'submit' && !insideForm(n));
+          const extra0 = others(implied ? ['type'] : []);
+          const extra = extra0 == null ? null : extra0 + (!implied && type == null ? ', of type submit' : '');
+          if (textOnly && kids.length) return say(`add a button${called} saying ${text()}`, extra);
+          if (extra == null) return false;
+          o.say(depth, `add a button${called}${extra}${gl}${grp}`);
+          return kids.length ? holds() : true;
+        }
+        if (tag === 'a' && get('href') != null && a.filter(x => x.name === 'href').length === 1) {
+          const h = quote(get('href'));
+          if (textOnly && kids.length) return say(`add a link${called} to ${h} saying ${text()}`, others(['href']));
+          if (kids.length) { const extra = others(['href']); if (extra == null) return false; o.say(depth, `add a link${called} to ${h}${extra}${gl}${grp}`); return holds(); }
+        }
+        if (tag === 'img' && get('src') != null) {
+          const s = quote(get('src')), al = get('alt');
+          const extra = others(['src', 'alt']);
+          return say(`add a picture${called} of ${s}${al ? ' described as ' + quote(al) : ''}`, extra == null ? null : extra + (al == null ? ', with no description' : ''));
+        }
+        if (tag === 'input') {
+          const type = get('type');
+          if (type === 'range' || INPUT_WORD[type || 'text']) {
+            const used = type === 'text' ? [] : ['type'];   // (<input type="text"> is a text box with its type said: CSS can tell them apart)
+            let set = '';
+            const mn = get('min'), mx = get('max'), st = get('step'), ph = get('placeholder');
+            const isNum = (v) => v != null && /^-?\d+(?:\.\d+)?$/.test(v);
+            if (isNum(mn) && isNum(mx)) { set += ` from ${mn} to ${mx}`; used.push('min', 'max'); }
+            else if (isNum(mn)) { set += ` at least ${mn}`; used.push('min'); }
+            else if (isNum(mx)) { set += ` at most ${mx}`; used.push('max'); }
+            if (st === 'any') { set += ' allowing decimals'; used.push('step'); } else if (isNum(st)) { set += ` in steps of ${st}`; used.push('step'); }
+            if (ph != null && ph !== '' && type !== 'range') { set = ` with hint ${quote(ph)}` + set; used.push('placeholder'); }
+            const word = type === 'range' ? 'slider' : `${INPUT_WORD[type || 'text']} box`;
+            return say(`add ${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}${called}${set}`, others(used));
+          }
+          return say(`add an input${called}`, others([]));
+        }
+        if (tag === 'textarea' && !textOf(n)) {
+          const ph = get('placeholder');
+          if (ph === '') return false;
+          return say(`add a big text box${called}${ph != null ? ' with hint ' + quote(ph) : ''}`, others(['placeholder']));
+        }
+        if (tag === 'textarea') return false;
+        if (tag === 'select') {
+          const opts = kids;
+          if (opts.length && opts.every(x => isEl(x) && tagOf(x) === 'option' && !attrsOf(x).length && onlyText(x) && childNodes(x).length)) {
+            const qs = opts.map(x => quote(htmlTrim(textOf(x))));
+            if (say(`add a drop-down${called} with ${qs.join(', ')}`, others([]))) return true;
+          }
+        }
+        if (tag === 'label' && textOnly && kids.length && (get('for') == null || simpleName(get('for')))) return say(`add a label${called} ${text()}${get('for') ? ' for ' + get('for') : ''}`, others(['for']));
+        if (tag === 'video' && get('src') != null && a.some(x => x.name === 'controls' && !x.value) && !kids.length) return say(`add a video${called} of ${quote(get('src'))}`, others(['src', 'controls']));
+        if (tag === 'canvas' && !kids.length) {
+          const w = get('width'), h = get('height');
+          const both = w != null && h != null && /^\d+$/.test(w) && /^\d+$/.test(h) && a.findIndex(x => x.name === 'height') === a.findIndex(x => x.name === 'width') + 1;
+          return say(`add a drawing area${called}${both ? ` ${w} by ${h}` : ''}`, others(both ? ['width', 'height'] : []));
+        }
+        if (tag === 'hr' && !idOK) return say('add a line', others([]));
       }
-      if (tag === 'a' && others(['href']) && get('href') != null) { const t = text(), h = quote(get('href')); return t != null && h != null && say(`add a link${called} to ${h} saying ${t}`); }
-      if (tag === 'img' && others(['src', 'alt']) && get('src') != null && get('alt') != null) { const s = quote(get('src')), al = quote(get('alt')); return s != null && al != null && say(`add a picture${called} of ${s}${get('alt') ? ' described as ' + al : ''}`); }
-      // (a text box is written with no type, the browser's default; an <input type="text"> stays as exact code)
-      if (tag === 'input' && others(['type', 'placeholder']) && get('type') !== 'text' && INPUT_WORD[get('type') || 'text']) {
-        const hint = get('placeholder') != null ? quote(get('placeholder')) : '';
-        if (hint == null || (get('placeholder') === '')) return false;
-        return say(`add a ${INPUT_WORD[get('type') || 'text']} box${called}${hint ? ' with hint ' + hint : ''}`);
-      }
-      if (tag === 'textarea' && others(['placeholder']) && !textOf(n)) {
-        const hint = get('placeholder') != null ? quote(get('placeholder')) : '';
-        if (hint == null || get('placeholder') === '') return false;
-        return say(`add a big text box${called}${hint ? ' with hint ' + hint : ''}`);
-      }
-      if (tag === 'select' && others([])) {
-        const opts = childNodes(n).filter(x => !isBlankText(x));
-        if (!opts.length || !opts.every(x => isEl(x) && tagOf(x) === 'option' && !attrsOf(x).length && onlyText(x))) return false;
-        const qs = opts.map(x => quote(htmlTrim(textOf(x))));
-        return !qs.some(x => x == null) && say(`add a drop-down${called} with ${qs.join(', ')}`);
-      }
-      if (tag === 'label' && !id && others(['for']) && (get('for') == null || simpleName(get('for')))) { const t = text(); return t != null && say(`add a label ${t}${get('for') ? ' for ' + get('for') : ''}`); }
-      if (tag === 'video' && others(['src', 'controls']) && get('src') != null && a.some(x => x.name === 'controls' && !x.value) && !childNodes(n).some(x => !isBlankText(x))) { const s = quote(get('src')); return s != null && say(`add a video${called} of ${s}`); }
-      if (tag === 'canvas' && others(['width', 'height']) && !childNodes(n).some(x => !isBlankText(x))) {
-        const w = get('width'), h = get('height');
-        if ((w == null) !== (h == null) || (w != null && !/^\d+$/.test(w + h))) return false;
-        return say(`add a drawing area${called}${w != null ? ` ${w} by ${h}` : ''}`);
-      }
-      if (tag === 'hr' && !id && others([])) return say('add a line');
-      if (CONTAINER_WORD[tag] && others([])) {
-        const ch = childNodes(n);
-        if (ch.some(x => x.type === 'text' && x.text.trim()) && ch.some(isEl)) return false;   // mixed text and tags: keep exact
-        if (ch.some(x => x.type === 'text' && x.text.trim())) return false;
-        if (tag === 'div' && cls.includes('card') && false) return false;
-        say(`add a ${CONTAINER_WORD[tag]}${called}`);
-        walkBlock(o, glue(ch.filter(x => !isBlankText(x))), depth + 1, n.startIndex, force, 'html:', src, one);
-        return true;
-      }
-      return false;
+      // any other element, said the general way: its word, name, text or shape, then its attributes
+      const word = WEB.elementWord(svg ? (named(named(n).find(x => x.type === 'start_tag' || x.type === 'self_closing_tag')).find(x => x.type === 'tag_name') || {}).text || tag : tag, svg);
+      if (!word) return false;
+      const used = new Set();
+      if (/^(?:lineargradient|radialgradient)$/.test(tag)) { const s = stopsSaid(n); if (s) { const extra = phrases(a.filter(x => !(x.name === 'id' && idOK) && !(x.name === 'class' && grpOK)), ctx); return say(`add ${word}${called}${s}`, extra); } }
+      const head = svg || tag === 'svg' ? shapeHead(tag, a, used) : '';
+      const extra = phrases(a.filter(x => !(x.name === 'id' && idOK) && !(x.name === 'class' && grpOK) && !used.has(x)), ctx);
+      if (extra == null) return false;
+      if (n.type === 'script_element') return say(`add a script${called}`, extra);
+      if (textOnly && kids.length) return say(`add ${word}${called} ${text()}${head}`, extra);
+      o.say(depth, `add ${word}${called}${head}${extra}${gl}${grp}`);
+      return kids.length ? holds() : true;
     }
-    walkBlock(o, glue(p.bodyItems.filter(x => !isBlankText(x))), 0, null, force, 'html:', src, one);
+    walk(p.bodyItems, 0, null, p.body || null);
     return o;
   }
 
@@ -858,7 +1104,7 @@
     const el = (n, ctx) => {
       const tag = tagOf(n);
       const kind = ownKind(n);
-      let attrs = attrsOf(n).map(a => [a.name, a.value == null ? '' : a.value]);
+      let attrs = attrsOf(n, true).map(a => [a.name, a.value == null ? '' : a.value]);
       if (kind) {
         found[kind] = true;
         return { t: 'el', v: `(${kind}) ` + attrText(attrs.filter(a => a[0] !== (kind === 'style' ? 'href' : 'src'))), k: n.startIndex };
@@ -901,7 +1147,7 @@
       const out = [];
       segs.forEach((s, i) => {
         if (!s.seg) { out.push(el(s, ctx)); return; }
-        let v = decode(s.text);
+        let v = decode(s.text, true);
         const k = parentKey ?? s.key;
         if (ctx.exact) {   // every space counts (the browser drops one line break right after <pre> or <textarea>)
           if (i === 0 && /^(?:pre|textarea|listing)$/.test(ctag)) v = v.replace(/^\n/, '');
@@ -936,11 +1182,11 @@
     const doc = named(tree).find(x => x.type === 'doctype');
     return {
       doctype: doc ? collapse(doc.text).toLowerCase() : null,
-      htmlAttrs: p.html ? attrText(attrsOf(p.html).map(a => [a.name, a.value == null ? '' : a.value])) : '',
-      title: title ? htmlTrim(textOf(title)) : null,
+      htmlAttrs: p.html ? attrText(attrsOf(p.html, true).map(a => [a.name, a.value == null ? '' : a.value])) : '',
+      title: title ? htmlTrim(textOf(title, true)) : null,
       metas: metas.sort().join('\n'),
       head: { t: 'head', block: true, k: 'HEAD', c: head },
-      bodyAttrs: p.body ? attrText(attrsOf(p.body).map(a => [a.name, a.value == null ? '' : a.value])) : '',
+      bodyAttrs: p.body ? attrText(attrsOf(p.body, true).map(a => [a.name, a.value == null ? '' : a.value])) : '',
       body: { t: 'body', block: true, k: null, c: list(p.body, p.bodyItems, null, {}, 'body') },
       found,
     };
@@ -1342,7 +1588,9 @@
       if (a.bodyAttrs !== b.bodyAttrs) return { same: false, why: 'the <body> tag' };
       const h = cmp(a.head, b.head);
       if (h !== true) return { same: false, why: 'the <head>' };
-      const r = cmp(a.body, b.body);
+      blameNear = true;
+      let r;
+      try { r = cmp(a.body, b.body); } finally { blameNear = false; }
       return r === true ? { same: true } : { same: false, culprits: r === false ? null : r };
     }
     const lang = kind === 'arduino' ? 'cpp' : kind;

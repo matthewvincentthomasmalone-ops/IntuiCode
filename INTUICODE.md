@@ -113,7 +113,7 @@ check it; the language does, when the program runs or is compiled.
 | `python:`, `raw python:`, `raw:` | Python | as the line, at its indentation. Names it makes (`x = …`, `import`, `def`, `class`) become known; a line ending in `:` opens a block; text in triple quotes carries on over the next `python:` lines, copied exactly. |
 | `html:`, `raw:` | Structure | at that place in `<body>`. Spaces inside `<pre>`, `<textarea>`, `<script>` and `<style>` are kept. |
 | `head:`, `in the head:` | Structure | into `<head>`. A charset, viewport, `style.css` link or `script.js` tag there replaces the one IntuaCode writes. |
-| `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` |
+| `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` (the page's groups are said `the page is in group dark`: `<body class="dark">`) |
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
 | `css:`, `raw:` | Styling | as a line, inside the current `on screens …` block if any |
@@ -452,6 +452,100 @@ container-word = "section" | "header" | "footer" | "navigation bar" | "navigatio
             | "main" | "block" | "box" | "area" | "form" | "side panel" | "sidebar" | "article" | "card"
             | "numbered list" | "list" | "table" | "row" | "pop-up" | "dialog" ;
                 (* → section, header, footer, nav, main, div, form, aside, article, div class="card", ol, ul, table, tr, dialog *)
+                (* "box" alone, with no box-setting, is a block; with one ("with hint …") it is a box to type in *)
+chart       = "add" [ "a" | "an" ] [ "data" ] ( "chart" | "graph" | "plot" ) [ "called" name ] [ number "by" number ] ; (* → <canvas> *)
+text-line   = text ;                                    (* text on its own, inside the element above it *)
+element     = "add" [ "a" | "an" | "some" ] element-word [ "called" name ] [ text ] [ shape ] ;
+            | "add" ( "a" | "an" ) tag "element" [ "called" name ] [ text ] ;   (* any tag, as written: <my-widget> *)
+shape       = { "at" number "," number | "sized" number "by" number | "with radius" number | "with radii" number "and" number
+            | "from" number "," number "to" number "," number | "following" text | "through" text | "of" name } ;   (* drawings only *)
+gradient    = "add" "a" [ "radial" ] "gradient" [ "called" name ] "from" colour [ "at" number ]
+              { "through" colour "at" number } [ "to" colour [ "at" number ] ] ;  (* → <linearGradient> with its <stop>s *)
+settings    = { "," setting } ;                         (* after any element sentence, before "in group" *)
+setting     = "hidden from screen readers" | "labelled" text "for screen readers" | "labelled by" names | "described by" names
+            | "controls" names | "starts" ( "collapsed" | "expanded" | "pressed" | "not pressed" ) | "marked as" [ "the" ] "current" [ value ]
+            | "read out" [ "at once" ] "when it changes" | "with tooltip" text | "with hint" text | "opening in a new tab"
+            | "sent as" text | "sending to" text | "storing" word value | "running" text ( "when clicked" | "when changed" | … | "on" event )
+            | "linking to" text | "from" text | "described as" text | "with no description" | "for" names
+            | "sized" number "by" number | number "wide" | number "tall" | "of type" value | "drawn on a" number "by" number "grid"
+            | "filled with" ( value | "the" ( "gradient" | "pattern" ) name ) | "not filled" | "outlined in" value | "not outlined"
+            | "outline" number "wide" | "with rounded corners" number | ( "starting" | "ending" ) [ number "across" ] [ "and" ] [ number "down" ]
+            | "hidden" | "disabled" | "required" | "read-only" | "ticked" | "selected" | "focused at the start" | "allowing several"
+            | "with controls" | "loaded lazily" | "with no space before it" | "with" [ "attribute" ] attribute-name [ value ] ;
+names       = name { "and" name } ;                     (* a name in quotes is kept exactly: called "helpToggle" *)
+```
+
+The element words are: block (box, area), text, paragraph, big heading, heading, small heading, level 4/5/6 heading,
+section, header, footer, navigation bar, main area, side panel, article, form, list, numbered list, list item, table,
+table head, table body, table foot, table caption, row, cell, heading cell, dialog, figure, caption, collapsible
+section, summary, definition list, term, definition, quotation, short quotation, citation, address, heading group,
+menu, search area, field group, legend, link, button, label, picture, input, drop-down, option, option group, big text
+box, output, progress bar, meter, video, sound player, media source, captions track, embedded page, drawing area, line
+break, line, drawing, script, and the text words (strong text, emphasised text, bold text, italic text, underlined
+text, struck-out text, small text, highlighted text, deleted text, inserted text, subscript, superscript,
+abbreviation, code, key, sample output, variable, time). Inside a drawing (SVG) they are: set of shapes, reusable
+parts, circle, ellipse, rectangle, line, polyline, polygon, path, text, text piece, copy, picture, gradient, radial
+gradient, colour stop, pattern, clipping shape, mask, symbol, marker, title, description, link and page area. A
+plain value in a setting is one word or number as written (`.4`, `#873044`, `userSpaceOnUse`); anything else goes in
+quotes. A line break between two inline things (text, links, pictures, buttons) shows as a space, so a line that
+must touch the one before ends with `with no space before it`. Text, links and other inline elements that hold
+other things are written on one line.
+
+```intuicode html
+add a button called "helpToggle", starts collapsed, controls help
+    "Settings & guide"
+    add text "↗", hidden from screen readers
+add a paragraph
+    "Hold a chord and"
+    add strong text "strum"
+    ".", with no space before it
+add a side panel called help, hidden
+    add a button saying "C", storing chord "C" in group key
+```
+
+```html
+<button id="helpToggle" type="button" aria-expanded="false" aria-controls="help">
+  Settings &amp; guide
+  <span aria-hidden="true">↗</span>
+</button>
+<p>
+  Hold a chord and
+  <strong>strum</strong>.
+</p>
+<aside id="help" hidden>
+  <button class="key" type="button" data-chord="C">C</button>
+</aside>
+```
+
+```intuicode html
+add a drawing, drawn on a 100 by 60 grid, hidden from screen readers
+    add reusable parts
+        add a gradient called sky from #87ceeb through #b0e0ff at .6 to #ffffff at 1
+    add a rectangle at 0, 0 sized 100 by 60, filled with the gradient sky
+    add a circle at 80, 15 with radius 8, filled with gold
+    add a set of shapes, outlined in navy, outline 2 wide
+        add a line from 0, 50 to 100, 50
+        add a path following "M 10 50 Q 30 30 50 50", not filled
+    add text "Hi" at 10, 20
+```
+
+```html
+<svg viewBox="0 0 100 60" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky">
+      <stop stop-color="#87ceeb" />
+      <stop offset=".6" stop-color="#b0e0ff" />
+      <stop offset="1" stop-color="#ffffff" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="60" fill="url(#sky)" />
+  <circle cx="80" cy="15" r="8" fill="gold" />
+  <g stroke="navy" stroke-width="2">
+    <line x1="0" y1="50" x2="100" y2="50" />
+    <path d="M 10 50 Q 30 30 50 50" fill="none" />
+  </g>
+  <text x="10" y="20">Hi</text>
+</svg>
 ```
 
 Page-level lines (`head:`, `doctype:`, `no title` …) are in [Exact-code lines](#exact-code-lines).
@@ -465,8 +559,10 @@ dark        = "in dark mode" [ ":" ] ;                                (* → @me
 shared      = ( "shared" | "main" ) ( "colour" | "color" ) name "is" colour ;      (* → :root { --name: colour } *)
 join-group  = name ( "belongs to" | "is in" | "joins" ) "group" name ;             (* adds the class to that element in Structure *)
 group       = ( "create" | "make" ) [ "a" ] "group" name ":" styles ;             (* → .name { … } *)
-state       = "when" what "is" ( "hovered" | "pointed at" | "clicked" | "focused" | "selected" ) ":" styles ;
-                                                                          (* → :hover, :active, :focus, :checked *)
+state       = "when" what "is" ( "hovered" | "pointed at" | "clicked" | "focused" | "focused with the keyboard" | "selected"
+              | "disabled" | "visited" | "empty" ) ":" styles | "when" what "has focus inside:" styles ;
+                                    (* → :hover, :active, :focus, :focus-visible, :checked, :disabled, :visited, :empty, :focus-within *)
+add-style   = "add" [ "a" | "an" | "some" ] styles "to" what ;    (* the same as style; "add a 2 dashed navy border to card" *)
 piece       = ( "before" | "after" | "at the start of" | "at the end of" ) what ":" styles ; (* → ::before, ::after *)
 style       = ( "style" | "make" | "give" ) what ":" styles ;
 styles      = style-phrase { ( "," | "and" ) style-phrase } ;
@@ -489,14 +585,18 @@ and `#name`.
 | `text colour C`, `colour C`, `text C` | `color: C` |
 | `text size N`, `font size N`, `size of text N` | `font-size` |
 | `bold`, `italic`, `capitals` (`all capitals`, `uppercase`), each with an optional `text` | `font-weight`, `font-style`, `text-transform` |
-| `font F` | `font-family: "F", sans-serif` |
+| `font F`, `font F or any serif font` (sans-serif, monospace, cursive) | `font-family: "F", sans-serif` (or that kind) |
+| `text weight N` (600, normal…), `line height N`, `letter spacing N`, `text aligned left` (right, justify…) | `font-weight`, `line-height` (as written), `letter-spacing`, `text-align` |
+| `underlined`, `struck through`, `no underline` | `text-decoration` |
+| `background gradient [at Ndeg] from C through C … to C` | `background: linear-gradient(…)` |
+| `size includes padding plus border` | `box-sizing: border-box` |
 | `space inside V…`, `padding V…`, `inner space V…` | `padding` |
 | `space around V…`, `margin V…`, `outer space V…` | `margin` |
 | `centred`, `centered`, `in the middle` | `margin-left: auto; margin-right: auto` |
 | `centre the text`, `centred text` | `text-align: center` |
 | `rounded corners [N]` | `border-radius` (8px) |
 | `round`, `circle`, `circular` | `border-radius: 50%` |
-| `no border`; `border [W] [C]` | `border: none`; `border: W solid C` (1px, currentColor) |
+| `no border`, `no outline`; `[top \| bottom \| left \| right] border [W] [S] [C]`, `outline [W] [S] [C]` (any order) | `border: none`; `border: W S C` (1px, solid, currentColor; S is solid, dashed, dotted, double…), `border-bottom`…, `outline` |
 | `no shadow`; `[soft \| big \| strong] shadow [C] [with N% intensity]` | `box-shadow` |
 | `N% see-through`, `N% transparent` | `opacity` |
 | `hidden` | `display: none` |
@@ -567,7 +667,8 @@ screen      = "when" [ "the" ] ( "screen" | "page" | "mouse" | "pointer" | "fing
 moves       = "when" [ "the" ] ( "pointer" | "mouse" | "finger" ) ( "moves" | "is moved" )
               [ ( "over" | "on" | "across" | "in" | "inside" ) element ] ;           (* → pointermove *)
 tapped      = "when" element "is" ( "tapped" | "touched" | "released" | "let go" | "lifted" ) ;
-event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" ) ;
+event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" )
+              [ [ "," ] "with the event as" name ] ;   (* the event under its own name: (e) => … *)
                          (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault) *)
 frame       = "every frame" ;                                                       (* → requestAnimationFrame loop *)
 keys        = "keep track of" [ "the" ] "keys" ;                                    (* → keysDown, a Set *)
@@ -631,7 +732,8 @@ set-item    = ( "set" | "let" | "make" ) [ "the" ] ( ( "first" | "last" ) "item"
 set-path    = ( "set" | "let" | "make" ) path ( "to" | "be" ) value ;    (* a.b, a[i], meter-fill.style.width *)
 set-field   = ( "set" | "let" | "make" ) [ "the" ] ( name | text ) "of" owner ( "to" | "be" ) value ;  (* → owner.name = value *)
 set         = ( "set" | "let" | "make" ) name ( "to" | "be" ) value ;               (* → let name = value, or name = value *)
-run         = "run" path [ "with" items ] [ "and store" [ "it" | "the result" ] "in" name ] ; (* → [await] path(items) *)
+run         = "run" path [ "with" items ] [ "without waiting" ] [ "and store" [ "it" | "the result" ] "in" name ] ;
+                                    (* → [await] path(items); "without waiting": no await, even for a tool that waits *)
 show        = "show" items ;                                                        (* → console.log(items) *)
 ```
 
@@ -657,6 +759,19 @@ when name is typed in
 document.getElementById("name").addEventListener("input", () => {
   document.getElementById("greeting").textContent = `Hi ${document.getElementById("name").value}`;
 });
+```
+
+```intuicode js
+when name is typed in, with the event as e
+    set the text of greeting to e.target.value
+constant first is the element matching "p"
+```
+
+```js
+document.getElementById("name").addEventListener("input", (e) => {
+  document.getElementById("greeting").textContent = e.target.value;
+});
+const first = document.querySelector("p");
 ```
 
 ## Grammar: C++ and Arduino
@@ -898,28 +1013,29 @@ not an operand, so `length of (a plus b)` isn't read.
 |---|---|---|
 | 1 | `[key] "K" is held`, `is held down`, `is down` | `keysDown.has("K")` (needs `keep track of the keys`) |
 | 2 | `tap x`, `click x`, `pointer x` (and `y`) | `event.offsetX` / `event.offsetY` |
-| 3 | `width of E`, `height of E`; `text of E` (page elements) | `….width`, `….height`; `….value` for a box, `….textContent` otherwise |
-| 4 | `file in E` (`first file`; `in`, `of`, `from`, `picked in`), `files in E` | `….files[0]`, `….files` |
-| 5 | `first item of X`, `last item of X`, `item K of X`, innermost first | `X[0]`, `X[X.length - 1]`, `X[K]` |
-| 6 | `length of X`, `size of X`, `how many [items] in X` | `X.length` |
-| 7 | `random [whole] number from A to B` | `(Math.floor(Math.random() * (B - A + 1)) + A)`; an error when B is followed by maths |
-| 8 | `random item from X` (`of`, `in`) | `X[Math.floor(Math.random() * X.length)]` |
-| 9 | `X as [a] number` / `X as text` | `Number(X)` / `String(X)` |
-| 10 | `X in capitals`, `X in uppercase` / `X in lowercase` | `X.toUpperCase()` / `X.toLowerCase()` |
-| 11 | `X is not ticked` (`checked`) / `X is ticked` | `!X.checked` / `X.checked` |
-| 12 | `X is not in group G` / `X is in group G` | `!X.classList.contains("g")` / `X.classList.contains("g")` |
-| 13 | `X contains Y` | `X.includes(Y)` |
-| 14 | `X is not in Y` (`one of`) / `X is in Y` | `!Y.includes(X)` / `Y.includes(X)` |
-| 15 | `[an] empty list` / `empty text` | `[]` / `""` |
-| 16 | `is not nothing` / `is nothing` | `!= null` / `== null` |
-| 17 | `is not`, `isn't`, `is not equal to`, `is not the same as` | `!==` |
-| 18 | `is at least`, `is … than or equal to`; `is at most`, `is … than or equal to` | `>=`; `<=` |
-| 19 | `is greater than` (`more`, `bigger`, `higher`), `is over`; `is less than` (`smaller`, `lower`, `fewer`), `is under` | `>`; `<` |
-| 20 | `is empty` | `.length === 0` |
-| 21 | `is`, `equals`, `is equal to`, `is the same as` | `===` |
-| 22 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
-| 23 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
-| 24 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
+| 3 | `the element matching "S"`, `every element matching "S"` | `document.querySelector("S")`, `document.querySelectorAll("S")` |
+| 4 | `width of E`, `height of E`; `text of E` (page elements) | `….width`, `….height`; `….value` for a box, `….textContent` otherwise |
+| 5 | `file in E` (`first file`; `in`, `of`, `from`, `picked in`), `files in E` | `….files[0]`, `….files` |
+| 6 | `first item of X`, `last item of X`, `item K of X`, innermost first | `X[0]`, `X[X.length - 1]`, `X[K]` |
+| 7 | `length of X`, `size of X`, `how many [items] in X` | `X.length` |
+| 8 | `random [whole] number from A to B` | `(Math.floor(Math.random() * (B - A + 1)) + A)`; an error when B is followed by maths |
+| 9 | `random item from X` (`of`, `in`) | `X[Math.floor(Math.random() * X.length)]` |
+| 10 | `X as [a] number` / `X as text` | `Number(X)` / `String(X)` |
+| 11 | `X in capitals`, `X in uppercase` / `X in lowercase` | `X.toUpperCase()` / `X.toLowerCase()` |
+| 12 | `X is not ticked` (`checked`) / `X is ticked` | `!X.checked` / `X.checked` |
+| 13 | `X is not in group G` / `X is in group G` | `!X.classList.contains("g")` / `X.classList.contains("g")` |
+| 14 | `X contains Y` | `X.includes(Y)` |
+| 15 | `X is not in Y` (`one of`) / `X is in Y` | `!Y.includes(X)` / `Y.includes(X)` |
+| 16 | `[an] empty list` / `empty text` | `[]` / `""` |
+| 17 | `is not nothing` / `is nothing` | `!= null` / `== null` |
+| 18 | `is not`, `isn't`, `is not equal to`, `is not the same as` | `!==` |
+| 19 | `is at least`, `is … than or equal to`; `is at most`, `is … than or equal to` | `>=`; `<=` |
+| 20 | `is greater than` (`more`, `bigger`, `higher`), `is over`; `is less than` (`smaller`, `lower`, `fewer`), `is under` | `>`; `<` |
+| 21 | `is empty` | `.length === 0` |
+| 22 | `is`, `equals`, `is equal to`, `is the same as` | `===` |
+| 23 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
+| 24 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
+| 25 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
 
 JavaScript's precedence then applies, tightest first: `!` (on the operand right after it); `*` `/` `%`;
 `+` `-`; `<` `<=` `>` `>=`; `===` `!==` `==` `!=`; `&&`; `||`. Unlike Python, `not` binds to one
@@ -1325,11 +1441,9 @@ const items = await (await fetch("/api/items")).json();
 Fixed on 2026-11-04: a name you gave an element now wins over a selector word (`style header:` with an
 element called header is `#header`; `style every header:` is the tag), `border red` is a 1px red border, and
 a text box is written with no `type` (text is the browser's default), so reading a page back no longer
-counts `<input>` and `<input type="text">` as the same. Still wrong:
-
-| You write | You get | Why | Write instead |
-|---|---|---|---|
-| `note:` at the left edge after a container | the comment goes inside the container | notes are placed before the indentation is read | put it before the container |
+counts `<input>` and `<input type="text">` as the same. Fixed on 2026-11-09: a `note:` at the left edge after a
+container goes after the container (it used to go inside it), and `border` and `outline` take a line style
+(`border 2 dashed navy`; it used to give `2px solid dashed navy`).
 
 ```intuicode html
 add a section called header
@@ -1341,8 +1455,8 @@ add a block called links
 ```html
 <section id="header">
   <h2>Hello</h2>
-  <!-- this note sits at the left edge -->
 </section>
+<!-- this note sits at the left edge -->
 <div id="links"></div>
 ```
 
@@ -1655,13 +1769,40 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 | **Layout** | `add a section called ‹name›` | `<section id="name">` | Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel. |
 |  | `add a list called ‹name›` | `<ul id="name">` | Indent "add a list item "…"" under it. |
 |  | `… in group ‹name›` | `class="name"` | Add to the end of any line to put it in a group (a CSS class). |
+|  | `add a box called ‹name›` | `<div id="name">` | A box (a block) holds the lines indented under it. With a box setting ("with hint …") it is a box to type in. |
+|  | `add a figure` | `<figure>` | Indent a picture and add a caption "‹text›" under it. |
+|  | `add a collapsible section` | `<details>` | Indent add a summary "‹title›" (always shown), then what opens under it. |
+|  | `add a ‹my-widget› element` | `<my-widget>` | Any element that has no words of its own. |
+| **Text** | `"‹text›"` | `text` | Text on its own line, inside the element above it: text with other things in it ("add bold text …") is said a line at a time. |
+|  | `add bold text "‹text›"` | `<b>…</b>` | Also strong text, italic text, emphasised text, highlighted text, small text, code "…", a key "Ctrl", a line break. |
+| **Media** | `add a chart called ‹name› ‹600› by ‹300›` | `<canvas id="name" width="600" height="300">` | A chart is drawn on a drawing area, by Mechanics or a chart library. |
+| **Settings** | `…, hidden from screen readers` | `aria-hidden="true"` | Settings go after commas at the end of a line, before "in group". Also: labelled "‹text›" for screen readers, labelled by ‹name›, controls ‹name›, starts collapsed, marked as the current page, read out when it changes. |
+|  | `…, with tooltip "‹text›"` | `title="…"` | Shown when the pointer rests on it. |
+|  | `…, storing ‹chord› "‹C›"` | `data-chord="C"` | A value kept on the element for Mechanics (and for CSS: attr(data-chord)). |
+|  | `…, disabled` | `disabled` | Also hidden, required, read-only, ticked, selected, opening in a new tab, sent as "‹name›", sized ‹320› by ‹180›, with no description. |
+|  | `…, running "‹clearDone()›" when clicked` | `onclick="…"` | Code run from the tag itself. Mechanics ("when … is clicked") keeps it out of the page. |
+|  | `…, with ‹name› "‹value›"` | `name="value"` | Any other attribute, as it is written. |
+|  | `…, with no space before it` | `(no space)` | Joins it to the thing before: a line break between two pieces of text, links or pictures would show as a space. |
+| **Drawings** | `add a drawing sized ‹200› by ‹100›, drawn on a ‹200› by ‹100› grid` | `<svg width height viewBox>` | A picture made of shapes (SVG). Indent the shapes under it; the grid is what their positions count in. |
+|  | `add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›` | `<circle cx cy r fill>` | Also: an ellipse … with radii 20 and 10. Inside a drawing only. |
+|  | `add a rectangle at ‹10›, ‹10› sized ‹80› by ‹40›, with rounded corners ‹6›` | `<rect x y width height rx>` |  |
+|  | `add a line from ‹0›, ‹0› to ‹100›, ‹50›, outlined in ‹navy›, outline ‹2› wide` | `<line x1 y1 x2 y2 stroke stroke-width>` |  |
+|  | `add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›` | `<path d fill="none" stroke>` | The path data stays as written. Also: a polygon through "‹0,0 10,0 5,8›". |
+|  | `add text "‹label›" at ‹10›, ‹20›` | `<text x y>` | Text drawn in the drawing. |
+|  | `add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›` | `<linearGradient><stop>…` | Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts". |
+|  | `add a set of shapes, outlined in ‹navy›` | `<g stroke>` | Settings on it apply to the shapes indented under it. |
 
 #### HTML words inside sentences
 
 | Say | Becomes |
 |---|---|
 | `called save` | `id="save"` |
+| `called "helpToggle"` | `id="helpToggle" (exactly)` |
 | `in group card` | `class="card"` |
+| `hidden from screen readers` | `aria-hidden="true"` |
+| `storing chord "C"` | `data-chord="C"` |
+| `drawing` | `<svg>` |
+| `set of shapes` | `<g>` |
 | `big heading` | `<h1>` |
 | `heading` | `<h2>` |
 | `block` | `<div>` |
@@ -1684,6 +1825,8 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 |---|---|---|---|
 | **Styles** | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
+|  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
+|  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
 |  | `‹element› belongs to group ‹group›` | `class="group" in the HTML` | Adds the group to an element in Structure. |
 |  | `when ‹name› is hovered: ‹styles›` | `#name:hover { … }` |  |
 |  | `on screens narrower than ‹600›:` | `@media (max-width: 600px) {` | Indent styles under it for phones. |
@@ -1708,6 +1851,12 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `hand cursor` | `cursor: pointer` |
 | `centred` | `margin: 0 auto` |
 | `hidden` | `display: none` |
+| `border 2 dashed navy` | `border: 2px dashed navy` |
+| `underlined` | `text-decoration: underline` |
+| `line height 1.5` | `line-height: 1.5` |
+| `text weight 600` | `font-weight: 600` |
+| `background gradient from #fff to #000` | `background: linear-gradient(#fff, #000)` |
+| `the colour main` | `var(--main)` |
 
 #### CSS: words for what to style
 
@@ -1751,7 +1900,10 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | **Events** | `when ‹name› is clicked` | `name.addEventListener("click", …)` | Indent what should happen. |
 |  | `when ‹form› is sent` | `form.addEventListener("submit", …)` | The page won't reload. |
 |  | `when the page has loaded` | `DOMContentLoaded` |  |
-|  | `every ‹2› seconds` | `setInterval(…, 2000)` | The time can be a name too: "every gap seconds". |
+|  | `when ‹name› is clicked, with the event as ‹e›` | `name.addEventListener("click", (e) => …)` | Names what happened, for the indented lines: e.target is the element it happened to. |
+| **Page** | `constant ‹box› is the element matching "‹#list li›"` | `document.querySelector(…)` | The first element the CSS selector picks; "every element matching …" gives them all. |
+| **Logic** | `run ‹tool› without waiting` | `tool();` | Starts a tool that waits for something (a fetch) and goes straight on to the next line, without await. |
+| **Events** | `every ‹2› seconds` | `setInterval(…, 2000)` | The time can be a name too: "every gap seconds". |
 |  | `every ‹1› second as ‹ticker›` | `ticker = setInterval(…)` | Named, so "stop ‹ticker›" can stop it (clearInterval). Also "after 3 seconds as ‹reminder›". |
 | **Errors** | `try` | `try { … }` | Indent the lines that might fail; then "if it fails" at the same indent, with what to do instead. |
 |  | `if it fails` | `} catch { … }` | "if it fails as problem" keeps the error: problem.message says what went wrong. "in any case" runs either way. |

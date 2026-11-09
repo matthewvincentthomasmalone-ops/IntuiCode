@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rubychord</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 class="brand">Rubychord</h1>
+      <a class="back" href="/"
+        >Back to the shop</a
+      ><button
+        id="helpToggle"
+        aria-expanded="false"
+        aria-controls="helpPanel"
+      >
+        Settings &amp; playing guide <span aria-hidden="true">↗</span>
+      </button>
+    </header>
+    <section class="stage" aria-label="Rubychord instrument">
+      <div class="instrument-wrap">
+        <div id="instrument" class="instrument">
+          <svg class="body-art" viewBox="0 0 1100 600" aria-hidden="true">
+            <defs>
+              <linearGradient id="bodyColour" x2=".7" y2="1">
+                <stop stop-color="#873044" />
+                <stop offset=".4" stop-color="#5b1426" />
+                <stop offset="1" stop-color="#350916" />
+              </linearGradient>
+              <pattern id="grain" width="4" height="4" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r=".45" fill="#e9a2a0" opacity=".12" />
+              </pattern>
+            </defs>
+            <rect x="20" y="20" width="1060" height="560" rx="48" fill="url(#bodyColour)" />
+            <rect x="20" y="20" width="1060" height="560" rx="48" fill="url(#grain)" />
+            <g class="strings" stroke="#f3d9b1" stroke-width="2">
+              <line x1="80" y1="200" x2="1020" y2="200" />
+              <line x1="80" y1="240" x2="1020" y2="240" />
+            </g>
+            <path d="M 100 500 Q 550 420 1000 500" fill="none" stroke="#d4a373" />
+            <text x="550" y="560" text-anchor="middle" fill="#f3d9b1">RUBYCHORD</text>
+          </svg>
+          <div class="keys" role="group" aria-label="Chord buttons">
+            <button class="key" data-chord="C" type="button">C</button>
+            <button class="key" data-chord="G" type="button">G</button>
+            <button class="key" data-chord="Am" disabled>Am</button>
+          </div>
+        </div>
+      </div>
+      <nav class="modes" aria-label="Modes">
+        <a href="#play" aria-current="page">Play</a>
+        <a href="#learn">Learn</a>
+      </nav>
+    </section>
+    <aside id="helpPanel" class="help" hidden>
+      <h2>Playing guide</h2>
+      <p>Hold a chord button and <strong>strum</strong> the strings.</p>
+      <details>
+        <summary>Keyboard shortcuts</summary>
+        <ul>
+          <li><kbd>1</kbd> to <kbd>7</kbd> pick a chord</li>
+          <li>Space strums</li>
+        </ul>
+      </details>
+      <label for="volume">Volume</label>
+      <input id="volume" type="range" min="0" max="100" value="80" />
+      <input id="amount" type="number" placeholder="0" title="How many" />
+      <figure>
+        <img src="images/rubychord.png" alt="The Rubychord" width="320" height="180" loading="lazy" />
+        <figcaption>The Rubychord, from above.</figcaption>
+      </figure>
+    </aside>
+    <script src="script.js"></script>
+  </body>
+</html>

@@ -30,20 +30,23 @@ function pageNames(html) {
 
 const CASES = [
   // [file, kind, page it belongs to, pulled files, least share of lines that read as sentences]
-  ['tests/corpus_web/landing.html', 'html', null, ['styles.css', 'app.js'], 0.8],
-  ['tests/corpus_web/styles.css', 'css', 'tests/corpus_web/landing.html', null, 0.7],
+  ['tests/corpus_web/landing.html', 'html', null, ['styles.css', 'app.js'], 0.95],
+  ['tests/corpus_web/styles.css', 'css', 'tests/corpus_web/landing.html', null, 0.95],
   ['tests/corpus_web/app.js', 'js', 'tests/corpus_web/landing.html', null, 0.95],
   ['tests/corpus_web/scores.cpp', 'cpp', null, null, 0.95],
   ['tests/corpus_web/button_led.ino', 'arduino', null, null, 0.95],
-  ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.6],
+  // pages laid out the way Prettier writes them: attributes on lines of their own, ARIA, SVG, text with tags in it
+  ['tests/corpus_web/instrument.html', 'html', null, ['style.css', 'script.js'], 0.95],
+  ['tests/corpus_web/order.html', 'html', null, ['style.css', 'script.js'], 0.95],
+  ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.95],
   ['samples/taskboard/static/style.css', 'css', 'samples/taskboard/static/index.html', null, 0.8],
-  ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.5],
+  ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.75],
   ['samples/cpp/blink/blink.ino', 'arduino', null, null, 0.95],
   ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.3],
   // held out: written after the converter, in other styles (classes, switch, templates, SVG, tables)
-  ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.2],
-  ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.3],
-  ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.25],
+  ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.85],
+  ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.6],
+  ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.35],
   ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.3],
   ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 0.8],
 ];
@@ -80,11 +83,11 @@ test('code -> sentences: the sentences read naturally', () => {
   assert.match(ino, /^when the board starts\n    make pin BUTTON an input with pull-up$/m);
   assert.match(ino, /^    if pin BUTTON is off$/m);
   const css = convert('css', read('tests/corpus_web/styles.css'), pageNames(read('tests/corpus_web/landing.html'))).text;
-  assert.match(css, /^style group cta: background var\(--crust\), text colour white, no border, rounded corners 999, space inside 12 28, hand cursor$/m);
+  assert.match(css, /^style group cta: background the colour crust, text colour white, no border, rounded corners 999, space inside 12 28, hand cursor$/m);
   assert.match(css, /^on screens narrower than 600px:\n    style group hero: space inside 40 16$/m);
   const html = convert('html', read('tests/corpus_web/landing.html'), { pulled: ['styles.css', 'app.js'] }).text;
   assert.match(html, /^    add a button called order saying "Order ahead" in group cta$/m);
-  assert.match(html, /^        add a email box called email with hint "you@example.com"$/m);
+  assert.match(html, /^        add an email box called email with hint "you@example.com"$/m);
 });
 
 test('code -> sentences: anything that can\'t be said stays exact code', () => {
@@ -189,9 +192,9 @@ test('code -> sentences: exact where the checker used to look away', () => {
   exact('html', page('<script src="app.js" defer></script>\n<link rel="stylesheet" href="s.css">', '<nav>\n  <a href="/"> Home </a>\n  <a href="/b">B</a>\n</nav>', { viewport: 'width=1024' }), { pulled: ['s.css', 'app.js'] },
     /^head: <meta name="viewport" content="width=1024">\nhead: <script src="script\.js" defer><\/script>\nadd a navigation bar\n    add a link to "\/" saying " Home "$/m);
   exact('html', page('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">', '<p>x</p>'), null, /^page title is "T"\nhead: <meta http-equiv/m);
-  // inline things with nothing between them stay on one line (a line break would show as a space)
+  // inline things with nothing between them are said as glued (a line break would show as a space)
   exact('html', page('', '<h1>Hi</h1>\n<img src="a.png" alt="A"><img src="b.png" alt="B">\n<section>\n  <b>x</b><i>y</i>\n</section>'), null,
-    /^add a big heading "Hi"\nhtml: <img src="a\.png" alt="A"><img src="b\.png" alt="B">\nadd a section\n    html: <b>x<\/b><i>y<\/i>$/m);
+    /^add a big heading "Hi"\nadd a picture of "a\.png" described as "A"\nadd a picture of "b\.png" described as "B", with no space before it\nadd a section\n    add bold text "x"\n    add italic text "y", with no space before it$/m);
 });
 
 test('code -> sentences: C++ main with inputs is reported, not guessed', () => {
