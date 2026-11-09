@@ -112,7 +112,7 @@
   function meanings(text, isPattern) {
     let s = String(text || '').toLowerCase();
     if (isPattern) {
-      const also = ALSO.find(([start]) => s.startsWith(start));
+      const also = isPattern !== 'own' && ALSO.find(([start]) => s.startsWith(start));
       s = s.replace(/[‹›]/g, ' ') + (also ? ' ' + also[1] : '');
     } else s = s.replace(/‹[^›]*›?/g, ' ');
     s = s.replace(/"[^"]*"?|'[^']*'/g, ' ');
@@ -146,9 +146,10 @@
       let hit = 0;
       for (const m of want) if (have.includes(m)) hit += weightOf(m);
       if (!hit) return;
-      let score = hit / weight - Math.max(0, have.length - want.length - 2) * 0.02;
+      // a sentence that says much else counts a little less (its extra meanings aren't clutter, so they don't count)
+      let score = hit / weight - Math.max(0, meanings(t.pattern, 'own').length - want.length - 2) * 0.02;
       if (t.pattern.toLowerCase().startsWith(lowTyped)) score += 0.3;   // it also starts the same way
-      const words = new Set(t.pattern.toLowerCase().match(/[a-z]+/g) || []);
+      const words = new Set(t.pattern.toLowerCase().replace(/‹[^›]*›/g, ' ').match(/[a-z]+/g) || []);   // its own words, not its blanks'
       // "no border" is the opposite of "add a border": a "no" or "not" only fits when one was typed
       const neg = /\b(?:no|not|without|never)\b/;
       if (neg.test(t.pattern.toLowerCase()) !== neg.test(lowTyped)) score -= 0.2;

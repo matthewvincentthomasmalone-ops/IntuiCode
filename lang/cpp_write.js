@@ -97,15 +97,27 @@
     return masked.split(re).map(p => p.replace(/\u0001(\d+)\u0001/g, (m, i) => strs[+i]).trim()).filter(Boolean);
   }
 
-  const TYPE_WORDS = { number: 'int', numbers: 'int', 'whole number': 'int', 'whole numbers': 'int', decimal: 'double', decimals: 'double', text: 'std::string', words: 'std::string', 'yes/no': 'bool', character: 'char', characters: 'char' };
+  const TYPE_WORDS = { number: 'int', numbers: 'int', 'whole number': 'int', 'whole numbers': 'int', decimal: 'double', decimals: 'double', text: 'std::string', words: 'std::string', 'yes/no': 'bool', 'yes/no value': 'bool', 'yes/no values': 'bool', character: 'char', characters: 'char' };
+  /* What a list holds, as said after "list of": "whole numbers", "text", or a C++ type and "values" ("float values"). */
+  function itemType(word, x) {
+    const low = String(word || '').trim().toLowerCase();
+    if (TYPE_WORDS[low]) return fixText(TYPE_WORDS[low], x);
+    const v = String(word).trim().match(/^(.+?)\s+values$/i);
+    const t = v && typeOf(v[1], x);
+    return t && t !== 'void' && !/[&]$/.test(t) ? t : null;
+  }
   const CPP_TYPES = /^(?:const\s+)?(?:unsigned\s+)?(?:int|long|long long|short|double|float|bool|char|void|size_t|auto|std::string|string|String|byte|uint8_t|uint16_t|uint32_t|int8_t|int16_t|int32_t)(?:\s*[&*])?$/;
   const TYPE_WORD_RE = /^(whole numbers?|numbers?|decimals?|text|words|yes\/no|characters?|nothing|list of (?:whole numbers|numbers|decimals|text|words))\s+/i;
 
   /* A type written in a sentence -> C++ type. */
   function typeOf(word, x) {
-    const w = String(word || '').trim();
+    const w = String(word || '').trim().replace(/^an?\s+(?=\S)/i, '');   // "giving back a whole number"
     const low = w.toLowerCase();
     if (low === 'nothing') return 'void';
+    // "read-only list of whole numbers" is a const reference (the caller's value, not copied, can't be changed);
+    // "the caller's Item" a reference (changes reach the caller's own value)
+    const ref = w.match(/^(read-only|the caller's(?: own)?)\s+(.+)$/i);
+    if (ref) { const t = typeOf(ref[2], x); return t && t !== 'void' && !/[&*]$/.test(t) ? (/^read/i.test(ref[1]) ? `const ${t}&` : `${t}&`) : null; }
     const list = low.match(/^list of (.+)$/);
     if (list) { x.needs.add('vector'); return `std::vector<${fixText(TYPE_WORDS[list[1]] || list[1], x)}>`; }
     if (TYPE_WORDS[low]) return fixText(TYPE_WORDS[low], x);
@@ -133,7 +145,8 @@
     if (/^-?\d*\.\d+$/.test(t)) return 'double';
     if (/^(true|false)$/.test(t)) return 'bool';
     if (/^std::sto(i|l)\(|\.size\(\)$|^random_number\(|^random\(|^digitalRead\(|^analogRead\(|\.toInt\(\)$/.test(t)) return 'int';
-    if (/^millis\(\)$/.test(t)) return 'unsigned long';
+    if (/^millis\(\)$|^pulseIn\(/.test(t)) return 'unsigned long';
+    if (x.arduino && /^(?:map|constrain)\([^()]*(?:\([^()]*\)[^()]*)*\)$/.test(t)) return 'int';
     if (x.arduino && /^(?:LED_BUILTIN|A\d+|HIGH|LOW)$/.test(t)) return 'int';
     if (/^std::stod\(|\.toFloat\(\)$/.test(t)) return 'double';
     if (/^[A-Za-z_]\w*$/.test(t) && x.types[t]) return x.types[t];
@@ -232,9 +245,25 @@
       q = q.replace(/\bbuilt-?in (?:light|led)\b/gi, 'LED_BUILTIN');
       swap(String.raw`\bpin (OPD) is (on|off|high|low)\b`, (m, p, v) => { note(inf, '`digitalRead` checks whether a pin is on (HIGH) or off (LOW).'); return `digitalRead(${p}) == ${/on|high/i.test(v) ? 'HIGH' : 'LOW'}`; });
       swap(String.raw`\b(?:analog )?(?:reading|level) (?:of|on) pin (OPD)`, (m, p) => { note(inf, '`analogRead` measures the voltage on a pin as a number from 0 to 1023.'); return `analogRead(${p})`; });
+      // "how long pin echo stays on": pulseIn waits for the pin to turn on, then times how long it stays on (in microseconds)
+      swap(String.raw`\bhow long pin (OPD) stays (on|off|high|low)\b`, (m, p, v) => { note(inf, '`pulseIn` waits for the pin to change, then measures how long it stays that way, in microseconds (millionths of a second).'); return `pulseIn(${p}, ${/on|high/i.test(v) ? 'HIGH' : 'LOW'})`; });
       swap(String.raw`\bpin (OPD)`, '$1');
       q = q.replace(/\b(?:time|milliseconds) since (?:the )?start\b/gi, () => { note(inf, '`millis()` is how many milliseconds have passed since the board started.'); return 'millis()'; });
+      // "at least 500 milliseconds have passed since lastBlink": millis() - lastBlink >= 500 (the way to wait without stopping)
+      swap(String.raw`\b(at least|more than|less than|at most) (OPD) milliseconds? (?:have|has) passed since (OPD)`, (m, how, n, since, off, all) => {
+        note(inf, '`millis()` is the time since the board started, so `millis() - ' + since + '` is how long ago ' + since + ' was. Taking away (rather than adding to ' + since + ') keeps working when millis() wraps round to 0 after 49 days.');
+        const test = `millis() - ${since} ${{ 'at least': '>=', 'more than': '>', 'less than': '<', 'at most': '<=' }[how.toLowerCase()]} ${n}`;
+        return /\bnot\s*$/i.test(all.slice(0, off)) ? `(${test})` : test;   // "not at least …" tests the whole of it
+      });
+      // "reading scaled from 0–1023 to 0–255": map moves a value from one range to another
+      swap(String.raw`(OPD) scaled from (OPD)\s*[–—]\s*(OPD) to (OPD)\s*[–—]\s*(OPD)`, (m, v, a, b, c, d) => { note(inf, '`map` moves a value from one range to another, in whole numbers. It doesn\'t stop at the ends: "limited to" does that.'); return `map(${v}, ${a}, ${b}, ${c}, ${d})`; });
     }
+    // "level limited to 0–255": constrain (Arduino) or std::clamp (C++) keeps it from going past either end
+    swap(String.raw`(OPD) limited to (OPD)\s*[–—]\s*(OPD)`, (m, v, a, b) => {
+      if (!x.arduino) x.needs.add('algorithm');
+      note(inf, `${x.arduino ? '`constrain`' : '`std::clamp`'} keeps a value from going below the first number or above the second.`);
+      return `${x.arduino ? 'constrain' : 'std::clamp'}(${v}, ${a}, ${b})`;
+    });
     swap(String.raw`\bfirst item (?:of|in) (OPD)`, x.arduino ? '$1[0]' : '$1.front()');
     swap(String.raw`\blast item (?:of|in) (OPD)`, x.arduino ? '$1[(sizeof($1) / sizeof($1[0])) - 1]' : '$1.back()');
     swap(String.raw`\bitem (OPD) (?:of|in) (OPD)`, '$2[$1]');
@@ -368,8 +397,9 @@
       const s = l.trim();
       let m;
       if ((m = s.match(/^(?:set|let|make|increase|decrease|multiply|divide)\s+([A-Za-z_]\w*)\s+(?:to|be|by)\s+(.+)$/i)) && /\d\.\d|\bdivided by\b|\bas (?:a )?decimal\b|\bsquare root\b/i.test(m[2].replace(/"(?:[^"\\]|\\.)*"/g, '""'))) x.decimal.add(m[1]);
-      if ((m = s.match(/^define\s+(?:a\s+)?class\s+([A-Za-z_]\w*)/i))) x.classes.add(m[1]);
+      if ((m = s.match(/^define\s+(?:an?\s+)?(?:class|structure|struct)\s+([A-Za-z_]\w*)/i))) x.classes.add(m[1]);
       else if ((m = s.match(/^define\s+([A-Za-z_]\w*)/i))) x.fns.add(m[1]);
+      if ((m = s.match(/^let\s+([A-Za-z_]\w*)\s+stand for\s/i))) x.known.add(m[1]);
       if (/^start (?:the serial monitor|talking to the computer)|Serial\.begin/i.test(s)) serialStarted = true;
       if ((m = s.match(/^(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:(.*)$/i))) {   // names made in raw C++
         for (const d of m[1].matchAll(/\b(?:class|struct)\s+([A-Za-z_]\w*)/g)) { x.classes.add(d[1]); x.known.add(d[1]); }
@@ -401,13 +431,46 @@
       else note(inf, '`auto` lets C++ work out the kind of value from what is stored.');
       return `${T} ${name} = ${value};`;
     };
+    /* The end of "read pin A0 and call it level (a whole number)", "scale … and store it in level": "call it" makes
+       the name (its type in brackets, or dflt); "store it in" / "keep it as" changes the name, or makes it if it's new. */
+    const keep = (name, how, typeWords, inf, value, dflt = 'int') => {
+      const t = typeWords ? typeOf(typeWords, x) : null;
+      if (typeWords && (!t || t === 'void')) { inf.errs.push(`I don't know the type "${typeWords}". Use whole number, decimal, long, unsigned long, float, or another C++ type.`); return `auto ${name} = ${value};`; }
+      if (/call it/i.test(how)) {
+        if (scopes[scopes.length - 1].has(name)) inf.errs.push(`${code(name)} is already made here. To change it, say "… and store it in ${name}".`);
+        const T = fixText(t || dflt, x);
+        scopes[scopes.length - 1].add(name); x.types[name] = T;
+        note(inf, `This makes ${code(name)}, holding ${code(T)} values${t ? ', as the sentence says' : ''}.`);
+        return `${T} ${name} = ${value};`;
+      }
+      if (isDeclared(name)) { if (t) inf.warns.push(`${code(name)} was made before, so its type stays as it was: the type in brackets is only for "call it".`); return `${name} = ${value};`; }
+      return declare(name, t || dflt, inf, value);
+    };
     const cur = () => stack[stack.length - 1];
     const inside = (kind) => stack.some(b => b.kind === kind);
     const closeBlock = () => {
       const b = stack.pop();
-      scopes.pop();
+      const declared = scopes.pop();
       while (b.buf.length && b.buf[b.buf.length - 1].text === '') b.buf.pop();
-      b.buf.push({ text: '    '.repeat(b.depth) + b.close, src: b.src });
+      if (b.kind === 'case') {
+        // each case ends with break (C++ would otherwise carry on into the next case), unless it already
+        // leaves (give back, skip to next…) or the sentences say to carry on
+        const last = b.buf[b.buf.length - 1];
+        const leaves = last !== b.head && /^\s*(?:return\b|break;|continue;|std::exit\(|throw\b|goto\b)/.test(last.text);
+        if (!b.fall && !leaves) b.buf.push({ text: '    '.repeat(b.depth + 1) + 'break;', src: b.src });
+        b.end = b.buf[b.buf.length - 1];
+        b.declares = declared.size > 0;
+        b.sw.cases.push(b);
+      } else if (b.kind === 'switch') {
+        // a case that makes a new name needs braces round it, or the cases after it would jump past the name
+        b.cases.slice(0, -1).filter(c => c.declares).forEach(c => {
+          c.head.text += ' {';
+          b.buf.splice(b.buf.indexOf(c.end) + 1, 0, { text: '    '.repeat(c.depth) + '}', src: c.src });
+          note(info[c.src], 'This case makes a new name, so its steps go in braces: without them, C++ would refuse the cases after it (they would jump past the name being made).');
+        });
+        if (!b.cases.length) info[b.src].errs.push('"depending on" needs its cases under it: "when it is 1", "when it is 2", "otherwise".');
+        b.buf.push({ text: '    '.repeat(b.depth) + b.close, src: b.src });
+      } else b.buf.push({ text: '    '.repeat(b.depth) + b.close, src: b.src });
       if (!stack.length) out = home;
     };
     lines.forEach((raw, i) => {
@@ -435,6 +498,7 @@
       if ((m = trimmed.match(RAW))) {
         note(inf, 'Raw C++: copied exactly as written.');
         learnRaw(m[1]);
+        if (cur() && cur().kind === 'class') cur().members++;
         if (stack.length) return say(m[1]);
         // outside every sentence block: its own indentation is kept (code written as code, as Unity mode does),
         // and a sketch that writes its own setup() or loop() isn't given an empty one
@@ -449,7 +513,7 @@
         // at the left edge, a note stays with what follows it: above main for a tool, class or include
         if (!stack.length && !A) {
           const next = lines.slice(i + 1).find(l => l.trim() && !/^\s*(?:note|comment)\s*:/i.test(l));
-          if (next && /^(?:define|above main\s*:|include|use the library)\b/i.test(next)) { topOut.push({ text: '// ' + m[1], src: i }); return; }
+          if (next && /^(?:define|above main\s*:|include|use the library|let\s+\w+\s+stand for)\b/i.test(next)) { topOut.push({ text: '// ' + m[1], src: i }); return; }
         }
         return say('// ' + m[1]);
       }
@@ -474,16 +538,27 @@
         if (!includes.some(e => e.h === h)) includes.push({ h, src: i });
         return;
       }
+      // "let LED stand for 13": #define, a name the compiler swaps for its text before anything else
+      if ((m = M(/^let\s+([A-Za-z_]\w*)\s+stand for\s+(-?\d+(?:\.\d+)?|[A-Za-z_]\w*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)')$/i))) {
+        if (stack.length) inf.errs.push('"let … stand for …" goes at the left edge.');
+        x.known.add(m[1]);
+        note(inf, `\`#define\` makes ${code(m[1])} stand for ${code(m[2])}: before compiling, every ${m[1]} in the code is swapped for it. (A constant, "constant ${m[1]} is ${m[2]}", does the same job and has a type.)`);
+        topOut.push({ text: `#define ${m[1]} ${m[2]}`, src: i });
+        return;
+      }
       if (/^use (?:namespace std|the standard names(?: directly)?|std names directly)$/i.test(s)) { usingStd = i; note(inf, '`using namespace std;` lets the code write `cout` instead of `std::cout`. Fine in small programs; big ones avoid it so names don\'t clash.'); return; }
       // --- classes
-      if ((m = M(/^define\s+(?:a\s+)?class\s+([A-Za-z_]\w*)(?:\s+based on\s+([A-Za-z_][\w:]*))?$/i))) {
-        if (stack.length) inf.errs.push('Classes must be defined at the left edge, not inside another block.');
+      if ((m = M(/^define\s+(?:an?\s+)?(class|structure|struct)\s+([A-Za-z_]\w*)(?:\s+based on\s+([A-Za-z_][\w:]*))?$/i))) {
+        const struct = !/^class$/i.test(m[1]), [, , name, base] = m;
+        if (stack.length) inf.errs.push(`${struct ? 'Structures' : 'Classes'} must be defined at the left edge, not inside another block.`);
         out = topOut;
-        x.classes.add(m[1]); x.known.add(m[1]);
-        note(inf, `A class is a blueprint for objects. Each object made from ${code(m[1])} keeps its own values (its fields) and can use the tools defined inside it.` + (m[2] ? ` It builds on ${code(m[2])} (\`public\` inheritance: everything public in ${m[2]} stays public).` : '') + ' Classes are placed above `main`.');
-        topOut.push({ text: `class ${m[1]}${m[2] ? ' : public ' + m[2] : ''} {`, src: i });
-        topOut.push({ text: 'public:', src: i });
-        stack.push({ ind, close: '};', kind: 'class', src: i, buf: topOut, depth: 0, cls: m[1] });
+        x.classes.add(name); x.known.add(name);
+        if (struct) note(inf, `A structure (\`struct\`) bundles named values into one kind of thing: each ${code(name)} has its own fields. Everything in it can be used from anywhere (it is public), unless the sentences say otherwise.`);
+        else note(inf, `A class is a blueprint for objects. Each object made from ${code(name)} keeps its own values (its fields) and can use the tools defined inside it.` + (base ? ` It builds on ${code(base)} (\`public\` inheritance: everything public in ${base} stays public).` : '') + ' Classes are placed above `main`.');
+        topOut.push({ text: `${struct ? 'struct' : 'class'} ${name}${base ? ' : public ' + base : ''} {`, src: i });
+        const autoPublic = struct ? null : { text: 'public:', src: i };
+        if (autoPublic) topOut.push(autoPublic);
+        stack.push({ ind, close: '};', kind: 'class', src: i, buf: topOut, depth: 0, cls: name, autoPublic, members: 0 });
         scopes.push(new Set());
         return;
       }
@@ -493,14 +568,20 @@
           const t = typeOf(typeWord, x);
           if (!t) { inf.errs.push(`I don't know the type "${typeWord}". Use whole number, decimal, text, yes/no, list of …, or a C++ type.`); return; }
           x.types[name] = t; x.known.add(name);
+          scopes[scopes.length - 1].add(name);   // so "set name to …" in the class's own tools changes the field
+          cur().members++;
           note(inf, `Every ${cur().cls} object has its own ${code(name)} (${code(t)}).` + (init ? ` It starts as ${code(init.trim())}.` : ''));
           return say(`${t} ${name}${init ? ' = ' + E(init, inf) : ''};`);
         }
         if (/^(?:the rest is|from here on,?) (private|public)$/i.test(s) || /^(private|public) parts?$/i.test(s)) {
           const which = (s.match(/private|public/i) || ['public'])[0].toLowerCase();
           note(inf, which === 'private' ? '`private:` members can only be used by the class\'s own tools. It protects values from being changed by accident.' : '`public:` members can be used from anywhere.');
+          // said before anything else in the class: it replaces the public: every class starts with
+          if (cur().autoPublic && !cur().members) { cur().autoPublic.text = which + ':'; cur().autoPublic.src = i; cur().autoPublic = null; return; }
+          cur().autoPublic = null;
           return out.push({ text: '    '.repeat(depth - 1) + which + ':', src: i });
         }
+        cur().members++;
         if ((m = M(/^when (?:made|created|built)(?:\s+(?:using|with)\s+(.+))?$/i))) {
           const ps = m[1] ? splitItems(m[1]).map(p => param(p, x)) : [];
           ps.forEach(p => { x.types[p.name] = p.type || 'auto'; });
@@ -548,9 +629,9 @@
         hasLoop = true;
         note(inf, '`loop()` runs again and again, forever, after setup: it is the heart of the sketch.');
         out = topOut;
-        return open('void loop()', 'fn');
+        return open('void loop()', 'fn', { loopFn: true });
       }
-      if (A && !stack.length && !/^(?:(?:set|let)\s+(?!pin\b|the (?:brightness|level|power)\b)[\w\s/:<>&*]+?\s+(?:to|be)\b|constant\s|(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\b|make\s+(?:a\s+)?new\b)/i.test(s)) {
+      if (A && !stack.length && !/^(?:(?:set|let)\s+(?!pin\b|the (?:brightness|level|power)\b)[\w\s/:<>&*']+?\s+(?:to|be)\b|constant\s|(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\b|make\s+(?:a\s+)?new\b|(?:create|make)\s+.+?\s+called\s+[A-Za-z_]\w*)/i.test(s)) {
         inf.errs.push('In a sketch, steps go inside "when the board starts" (once) or "over and over" (forever). Only settings like "set led to 13" go at the left edge.');
         return;
       }
@@ -561,28 +642,101 @@
         if (parts.length > 1 && !/,/.test(m[1].replace(/"(?:[^"\\]|\\.)*"/g, '""')) && parts.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p))) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. A C++ tool gives back one value: give back each from its own tool, or put them in a list.`);
         return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
       }
+      // return; said for what it does: in loop() the board starts the next round; in a tool, it leaves the tool
+      if (/^skip the rest of this round$/i.test(s)) {
+        if (!stack.some(b => b.loopFn)) inf.errs.push('"skip the rest of this round" only works inside "over and over".');
+        note(inf, '`return;` leaves `loop()` here; the board then runs it again from the top, so the rest of this round is skipped.');
+        return say('return;');
+      }
+      if (/^leave the tool now$/i.test(s)) {
+        if (!inside('fn')) inf.errs.push('"leave the tool now" only works inside a tool (a define block).');
+        note(inf, '`return;` leaves the tool here, giving nothing back; the steps after it in the tool are skipped.');
+        return say('return;');
+      }
+      // --- switch: "depending on x" with "when it is 1" (or "1 or 2") and "otherwise" under it
+      if ((m = M(/^depending on\s+(.+)$/i))) {
+        note(inf, '`switch` picks the case that matches the value. Each case ends with `break;`, so only its own steps run.');
+        return open(`switch (${E(m[1], inf)})`, 'switch', { cases: [] });
+      }
+      const inSwitch = cur() && cur().kind === 'switch';
+      if ((m = M(/^when it(?:'s|\s+is)\s+(.+)$/i)) || (inSwitch && /^(?:otherwise|else)$/i.test(s))) {
+        if (!inSwitch) { inf.errs.push('"when it is …" goes right under "depending on …", one step further in.'); return; }
+        const sw = cur(), d = depthNow();
+        const any = !m || /^anything else$/i.test(m[1].trim());
+        const heads = any ? ['default:'] : splitPhrase(m[1], /\s+or\s+/i).map(v => `case ${E(v, inf)}:`);
+        if (any && sw.hasDefault) inf.errs.push('There is already an "otherwise" here. A "depending on" has only one.');
+        if (any) sw.hasDefault = true;
+        heads.forEach(h => out.push({ text: '    '.repeat(d) + h, src: i }));
+        stack.push({ ind, close: null, kind: 'case', src: i, buf: out, depth: d, head: out[out.length - 1], sw });
+        scopes.push(new Set());
+        return;
+      }
+      if (/^(?:go on|carry on) into the next case$/i.test(s)) {
+        if (!cur() || cur().kind !== 'case') { inf.errs.push('"go on into the next case" goes last in a case ("when it is …").'); return; }
+        cur().fall = true;
+        note(inf, 'No `break;` at the end of this case, so C++ carries on with the steps of the next case.');
+        return;
+      }
+      if (inSwitch) { inf.errs.push('Under "depending on …", each step goes in a case: "when it is …" or "otherwise".'); return; }
       if ((m = M(/^(?:otherwise if|else if)\s+(.+)$/i))) { out.push({ text: '    '.repeat(depth - 1) + `} else if (${EC(m[1], inf)}) {`, src: i }); return; }
       if (/^(?:otherwise|else)$/i.test(s)) { out.push({ text: '    '.repeat(depth - 1) + '} else {', src: i }); return; }
       if ((m = M(/^if\s+(.+)$/i))) return open(`if (${EC(m[1], inf)})`, 'if');
       if (/^(?:repeat forever|forever|keep repeating)$/i.test(s)) { note(inf, '`while (true)` repeats forever; "stop the loop" (break) gets out.'); return open('while (true)', 'loop'); }
-      if ((m = M(/^repeat\s+(.+?)\s+times?(?:\s+counting with\s+([A-Za-z_]\w*))?$/i))) { const v = m[2] || 'i'; x.types[v] = 'int'; note(inf, `\`for (int ${v} = 0; ${v} < N; ${v}++)\` counts ${v} from 0 up to one less than N.`); open(`for (int ${v} = 0; ${v} < ${E(m[1], inf)}; ${v}++)`, 'loop'); scopes[scopes.length - 1].add(v); return; }
-      // "count i from 1 to 10", "count down from 10 to 1" (the count is n), "… in steps of 2"
-      if ((m = M(/^count(?:\s+(up|down))?(?:\s+(?!from\b)([A-Za-z_]\w*))?\s+from\s+(.+?)\s+(down\s+)?to\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i))) {
-        const v = m[2] || 'n', a = m[3].trim(), b = m[5].trim(), num = (t) => /^-?\d+$/.test(t);
-        const down = /down/i.test(m[1] || '') || !!m[4] || (num(a) && num(b) && +a > +b);
-        // which way? only numbers written here say; otherwise ask (never count the wrong way)
-        if (!m[1] && !m[4] && !num(a) && num(b)) inf.errs.push(`IntuaCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up ${v} from …" or "count down ${v} from …".`);
-        if (!m[2]) note(inf, 'No name was given for the count, so it is called `n`. Write "count i from …" to choose a name.');
+      // a count that names a name made before it counts with that name (for (pos = 0; …)), and leaves it at the end value
+      const counter = (v, named, inf2) => {
+        if (named && isDeclared(v)) { note(inf2, `${code(v)} was made before, so the count uses it (no new \`int\`), and after the loop it keeps the value it ended on.`); return v; }
         x.types[v] = 'int';
-        const step = m[6] ? E(m[6], inf) : null;
-        note(inf, `Counts ${down ? 'down' : 'up'}${step ? ` in steps of ${step}` : ''} and includes ${b} (the ${down ? '>=' : '<='}).`);
-        open(`for (int ${v} = ${E(a, inf)}; ${v} ${down ? '>=' : '<='} ${E(b, inf)}; ${step ? `${v} ${down ? '-' : '+'}= ${step}` : `${v}${down ? '--' : '++'}`})`, 'loop');
+        return `int ${v}`;
+      };
+      if ((m = M(/^repeat\s+(.+?)\s+times?(?:,?\s+counting with\s+([A-Za-z_]\w*))?$/i))) { const v = m[2] || 'i', n = E(m[1], inf), init = counter(v, !!m[2], inf); note(inf, `\`for (int ${v} = 0; ${v} < N; ${v}++)\` counts ${v} from 0 up to one less than N.`); open(`for (${init} = 0; ${v} < ${n}; ${v}++)`, 'loop'); scopes[scopes.length - 1].add(v); return; }
+      // "count i from 1 up to but not including 10": i < 10
+      if ((m = M(/^count(?:\s+up)?(?:\s+(?!from\b)([A-Za-z_]\w*))?\s+from\s+(.+?)\s+up to but not including\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i))) {
+        const v = m[1] || 'n', a = E(m[2], inf), b = E(m[3], inf), step = m[4] ? E(m[4], inf) : null, init = counter(v, !!m[1], inf);
+        note(inf, `Counts up from ${a}${step ? ` in steps of ${step}` : ''} and stops before ${b} (the \`<\`).`);
+        open(`for (${init} = ${a}; ${v} < ${b}; ${step ? `${v} += ${step}` : `${v}++`})`, 'loop');
         scopes[scopes.length - 1].add(v);
         return;
       }
-      if ((m = M(/^for each\s+([A-Za-z_]\w*)\s+in\s+(.+)$/i))) { const list = E(m[2], inf); x.types[m[1]] = (x.types[list] || '').replace(/^std::vector<(.+)>$/, '$1').replace(/\[\]$/, '') || 'auto'; note(inf, '`for (const auto& item : list)` takes each item in turn. `const auto&` reads it without copying.'); open(`for (const auto& ${m[1]} : ${list})`, 'loop'); scopes[scopes.length - 1].add(m[1]); return; }
+      // "count i from 1 to 10", "count down from 10 to 1" (the count is n), "… in steps of 2"
+      if ((m = M(/^count(?:\s+(up|down))?(?:\s+(?!from\b)([A-Za-z_]\w*))?\s+from\s+(.+?)\s+(down\s+)?to\s+(.+?)(?:\s+(?:in steps of|by|step|stepping by)\s+(.+))?$/i))) {
+        const v = m[2] || 'n', a = m[3].trim(), b = m[5].trim(), num = (t) => /^-?\d+$/.test(t);
+        const down = /down/i.test(m[1] || '') || !!m[4] || (!m[1] && num(a) && num(b) && +a > +b);   // "count up" always counts up
+        // which way? only numbers written here say; otherwise ask (never count the wrong way)
+        if (!m[1] && !m[4] && !num(a) && num(b)) inf.errs.push(`IntuaCode can't tell which way this counts, because ${code(a)} isn't a number written here. Say "count up ${v} from …" or "count down ${v} from …".`);
+        if (!m[2]) note(inf, 'No name was given for the count, so it is called `n`. Write "count i from …" to choose a name.');
+        const step = m[6] ? E(m[6], inf) : null, init = counter(v, !!m[2], inf);
+        note(inf, `Counts ${down ? 'down' : 'up'}${step ? ` in steps of ${step}` : ''} and includes ${b} (the ${down ? '>=' : '<='}).`);
+        open(`for (${init} = ${E(a, inf)}; ${v} ${down ? '>=' : '<='} ${E(b, inf)}; ${step ? `${v} ${down ? '-' : '+'}= ${step}` : `${v}${down ? '--' : '++'}`})`, 'loop');
+        scopes[scopes.length - 1].add(v);
+        return;
+      }
+      // "for each s in scores" reads each item (const auto&); "for each whole number s in scores" copies it into an int;
+      // ", so it can be changed" works on the list's own item (auto&); ", as a copy" copies it (auto)
+      if ((m = M(/^for each\s+(?:(.+?)\s+)?([A-Za-z_]\w*)\s+in\s+(.+?)(?:,\s*(so it can be changed|as a copy))?$/i))) {
+        const [, typeWord, name, listWords, how] = m;
+        const list = E(listWords, inf);
+        let t = typeWord ? typeOf(typeWord, x) : null;
+        if (typeWord && (!t || t === 'void')) { inf.errs.push(`I don't know the type "${typeWord}". Use whole number, decimal, text, yes/no, character, or a C++ type.`); t = 'auto'; }
+        if (t && how && /copy/i.test(how)) inf.errs.push('Each item is already a copy when its type is said: leave out ", as a copy".');
+        const decl = t ? (how && /changed/i.test(how) && !/&$/.test(t) ? `${t}&` : t) : how ? (/changed/i.test(how) ? 'auto&' : 'auto') : 'const auto&';
+        x.types[name] = t ? t.replace(/^const\s+|&$/g, '') : (x.types[list] || '').replace(/^std::vector<(.+)>$/, '$1').replace(/\[\]$/, '') || 'auto';
+        note(inf, decl === 'const auto&' ? '`for (const auto& item : list)` takes each item in turn. `const auto&` reads it without copying.'
+          : /&$/.test(decl) ? `\`for (${decl} item : list)\` takes each item in turn, itself: changing it changes the list.` : `\`for (${decl} item : list)\` takes a copy of each item in turn: changing it doesn't change the list.`);
+        open(`for (${decl} ${name} : ${list})`, 'loop');
+        scopes[scopes.length - 1].add(name);
+        return;
+      }
       if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${EC(m[1], inf)})`, 'loop');
-      if (/^stop the loop$/i.test(s)) return say('break;');
+      // do … while: the steps run once before the test
+      if ((m = M(/^do this,?\s+then repeat (?:while|as long as)\s+(.+)$/i))) {
+        note(inf, '`do { … } while (…);` runs the steps once, then tests: they repeat while the test is true.');
+        return open('do', 'loop', { close: `} while (${EC(m[1], inf)});` });
+      }
+      if (/^stop the loop$/i.test(s)) {
+        const near = [...stack].reverse().find(b => b.kind === 'loop' || b.kind === 'case');
+        if (near && near.kind === 'case') inf.errs.push('Inside "depending on", C++\'s `break` only leaves the case, not the loop around it. To stop the loop from here, set a yes/no value and test it after "depending on".');
+        return say('break;');
+      }
       if (/^skip to next$/i.test(s)) return say('continue;');
       // --- Arduino: pins, time, sound, serial monitor
       if (A) {
@@ -592,21 +746,44 @@
           note(inf, `\`pinMode\` sets a pin up as ${mode === 'OUTPUT' ? 'an output (the board sends power out, e.g. to an LED)' : mode === 'INPUT_PULLUP' ? 'an input with the built-in pull-up: it reads HIGH until a button connects it to ground' : 'an input (the board reads it, e.g. a button)'}.`);
           return say(`pinMode(${pin(m[1])}, ${mode});`);
         }
+        // "turn pin LED on if lit, otherwise off": digitalWrite(LED, lit ? HIGH : LOW)
+        if ((m = M(/^turn\s+(.+?)\s+(on|off)\s+if\s+(.+?),?\s+otherwise\s+(on|off)$/i))) {
+          if (m[2].toLowerCase() === m[4].toLowerCase()) inf.warns.push(`It turns ${m[2].toLowerCase()} either way, so the test makes no difference.`);
+          note(inf, '`digitalWrite` turns the pin on (HIGH) or off (LOW); `test ? HIGH : LOW` picks which, by the test.');
+          const [yes, no] = [m[2], m[4]].map(w => (/on/i.test(w) ? 'HIGH' : 'LOW'));
+          return say(`digitalWrite(${pin(m[1])}, ${EC(m[3], inf)} ? ${yes} : ${no});`);
+        }
+        if ((m = M(/^turn\s+servo\s+(.+?)\s+to\s+(.+?)\s+degrees?$/i))) {
+          note(inf, '`write` turns a servo to an angle, from 0 to 180 degrees.');
+          return say(`${E(m[1], inf)}.write(${E(m[2], inf)});`);
+        }
         if ((m = M(/^turn\s+(on|off)\s+(.+)$/i)) || (m = M(/^turn\s+(.+?)\s+(on|off)$/i))) {
           const [on, p] = /^(on|off)$/i.test(m[1]) ? [m[1], m[2]] : [m[2], m[1]];
           note(inf, '`digitalWrite` turns a pin on (HIGH, 5 or 3.3 volts) or off (LOW, 0 volts).');
           return say(`digitalWrite(${pin(p)}, ${/on/i.test(on) ? 'HIGH' : 'LOW'});`);
         }
         if ((m = M(/^set\s+pin\s+(.+?)\s+to\s+(high|low|on|off)$/i))) return say(`digitalWrite(${pin(m[1])}, ${/high|on/i.test(m[2]) ? 'HIGH' : 'LOW'});`);
+        // "set pin LED to ledState": on or off by a value (HIGH or LOW)
+        if ((m = M(/^set\s+pin\s+(.+?)\s+to\s+(.+)$/i))) {
+          if (/^\d+$/.test(m[2].trim()) && !/^[01]$/.test(m[2].trim())) inf.warns.push(`A pin set this way is only on or off (\`digitalWrite\`): any number but 0 turns it on. For a level from 0 to 255, say "set the brightness of pin ${m[1].trim()} to ${m[2].trim()}".`);
+          note(inf, '`digitalWrite` turns the pin on (HIGH) or off (LOW), whichever the value is.');
+          return say(`digitalWrite(${pin(m[1])}, ${E(m[2], inf)});`);
+        }
         if ((m = M(/^(?:set the (?:brightness|level|power) of|dim)\s+(.+?)\s+to\s+(.+)$/i)) || (m = M(/^write\s+(.+?)\s+to\s+pin\s+(.+)$/i))) {
           const [p, v] = /^write/i.test(s) ? [m[2], m[1]] : [m[1], m[2]];
           note(inf, '`analogWrite` sets a level from 0 (off) to 255 (full), by switching the pin on and off very fast (PWM). Only pins marked ~ can do it.');
           return say(`analogWrite(${pin(p)}, ${E(v, inf)});`);
         }
-        if ((m = M(/^read\s+(analog\s+)?(?:pin\s+)?(.+?)\s+and store (?:it )?in\s+([A-Za-z_]\w*)$/i))) {
-          const analog = !!m[1] || /^A\d+$/.test(m[2].trim());
+        // "read pin A0 and call it level (a whole number)" makes level; "… and store it in level" can also change one made before
+        if ((m = M(/^read\s+(analog\s+|digital\s+)?(?:pin\s+)?(.+?)\s+and\s+(store (?:it )?in|keep it as|call it)\s+([A-Za-z_]\w*)(?:\s+\(([^()]+)\))?$/i))) {
+          const analog = /analog/i.test(m[1] || '') || (!m[1] && /^A\d+$/.test(m[2].trim()));
           note(inf, analog ? '`analogRead` measures the voltage on a pin as a number from 0 to 1023.' : '`digitalRead` reads a pin: HIGH (on) or LOW (off).');
-          return say(declare(m[3], 'int', inf, `${analog ? 'analogRead' : 'digitalRead'}(${pin(m[2])})`));
+          const call = `${analog ? 'analogRead' : 'digitalRead'}(${pin(m[2])})`;
+          return say(keep(m[4], m[3], m[5], inf, call));
+        }
+        if ((m = M(/^attach\s+(.+?)\s+to\s+pin\s+(.+)$/i))) {
+          note(inf, '`attach` connects a servo to the pin its signal wire is on.');
+          return say(`${E(m[1], inf)}.attach(${pin(m[2])});`);
         }
         if ((m = M(/^wait\s+(?:for\s+)?(.+?)\s+(?:microseconds?|us|µs)$/i))) {
           note(inf, '`delayMicroseconds` pauses for millionths of a second: for timing a sensor\'s pulse. Up to about 16000; use "wait … milliseconds" for longer.');
@@ -629,8 +806,56 @@
         }
         if ((m = M(/^stop the (?:tone|note|sound) on\s+(?:pin\s+)?(.+)$/i))) return say(`noTone(${pin(m[1])});`);
         if (/^ask\b/i.test(s)) { inf.errs.push('An Arduino board has no keyboard to type answers on. Read a pin (a button or a sensor) instead: "read pin 2 and store in pressed".'); return; }
+        // "scale reading from 0–1023 to 0–255 and store it in level": map(reading, 0, 1023, 0, 255)
+        if ((m = M(/^scale\s+(.+?)\s+from\s+(.+?)\s*[–—]\s*(.+?)\s+to\s+(.+?)\s*[–—]\s*(.+?)\s+and\s+(store (?:it )?in|keep it as|call it)\s+([A-Za-z_]\w*)(?:\s+\(([^()]+)\))?$/i))) {
+          note(inf, '`map` moves a value from one range to another: here from ' + `${m[2].trim()}–${m[3].trim()} to ${m[4].trim()}–${m[5].trim()}. It works in whole numbers, and doesn't stop at the ends (see "limited to").`);
+          return say(keep(m[7], m[6], m[8], inf, `map(${[m[1], m[2], m[3], m[4], m[5]].map(v => E(v, inf)).join(', ')})`));
+        }
       }
-      if ((m = M(/^show\s+(.+?)(\s+on the same line)?$/i))) {
+      // "keep level between 0 and 255": constrain (Arduino) or std::clamp (C++) stores it back
+      if ((m = M(/^keep\s+(self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*)\s+between\s+(.+?)\s+and\s+(.+)$/i))) {
+        const t = E(m[1], inf);
+        if (!A) x.needs.add('algorithm');
+        note(inf, `${A ? '`constrain`' : '`std::clamp`'} keeps ${code(t)} from going below the first number or above the second.`);
+        return say(`${t} = ${A ? 'constrain' : 'std::clamp'}(${t}, ${E(m[2], inf)}, ${E(m[3], inf)});`);
+      }
+      // the keyboard: "read age from the keyboard" (std::cin >> age), "read a line from the keyboard into name"
+      if ((m = M(/^read\s+(.+?)\s+from the keyboard$/i)) || (m = M(/^read a line from the keyboard into\s+(.+)$/i))) {
+        if (A) { inf.errs.push('An Arduino board has no keyboard to type answers on. Read a pin (a button or a sensor) instead: "read pin 2 and store in pressed".'); return; }
+        if (/^read a line/i.test(s)) { note(inf, '`std::getline` reads a whole line of typed text, spaces and all.'); return say(`std::getline(std::cin, ${E(m[1], inf)});`); }
+        note(inf, '`std::cin >>` reads what the person types, up to a space or the end of the line, as the kind of value the name holds.');
+        return say(`std::cin >> ${splitItems(m[1]).map(v => E(v, inf)).join(' >> ')};`);
+      }
+      if (/^end the line$/i.test(s)) {
+        note(inf, A ? '`Serial.println()` with nothing in it ends the line on the serial monitor.' : '`std::endl` ends the line (and sends what was shown so far).');
+        return say(A ? 'Serial.println();' : 'std::cout << std::endl;');
+      }
+      // printf: "show "%d tries\n" filled in with tries" (the % codes are filled in, in order)
+      if ((m = M(/^show\s+("(?:[^"\\]|\\.)*")\s+filled in with\s+(.+)$/i))) {
+        if (!A) x.needs.add('cstdio');
+        note(inf, `\`${A ? 'Serial.printf' : 'printf'}\` fills in the % codes in the text, in order: %d a whole number, %f a decimal, %s text.` + (A ? ' Not every board has it (ESP32 boards do; an Uno doesn\'t).' : ''));
+        return say(`${A ? 'Serial.printf' : 'printf'}(${m[1]}, ${splitItems(m[2]).map(v => E(v, inf)).join(', ')});`);
+      }
+      // a screen or another object that prints: "show "Hi" on lcd" (lcd.print), "…, then start a new line" (println)
+      if ((m = M(/^show\s+(.+?)\s+on\s+([A-Za-z_]\w*)(,?\s+then start a new line)?$/i))) {
+        const items = splitItems(m[1]);
+        if (items.length > 1 && items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')))) inf.errs.push(`Show one thing at a time on ${m[2]}: one "show … on ${m[2]}" for each.`);
+        note(inf, `\`${m[2]}.${m[3] ? 'println' : 'print'}\` shows the value on ${code(m[2])}` + (m[3] ? ', then moves to a new line.' : '.'));
+        return say(`${m[2]}.${m[3] ? 'println' : 'print'}(${E(m[1], inf)});`);
+      }
+      if ((m = M(/^move\s+([A-Za-z_]\w*)'s cursor to\s+(.+)$/i))) {
+        const at = splitItems(m[2], false);
+        if (at.length !== 2) inf.errs.push(`Say where, as two numbers: "move ${m[1]}'s cursor to 0, 1".`);
+        note(inf, `\`setCursor\` says where on ${code(m[1])} the next thing shown goes (a column and a row on a text screen, x and y on a pixel screen).`);
+        return say(`${m[1]}.setCursor(${at.map(v => E(v, inf)).join(', ')});`);
+      }
+      if ((m = M(/^clear\s+([A-Za-z_]\w*)$/i))) { note(inf, `\`clear\` wipes ${code(m[1])}.`); return say(`${m[1]}.clear();`); }
+      // "start lcd with 16, 2": begin (a library's own start-up, usually in "when the board starts")
+      if ((m = M(/^start\s+(?!the\b|talking\b)([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
+        note(inf, `\`begin\` starts ${code(m[1])} up${m[2] ? ', with the settings it needs' : ''}.`);
+        return say(`${m[1]}.begin(${m[2] ? splitItems(m[2]).map(v => E(v, inf)).join(', ') : ''});`);
+      }
+      if ((m = M(/^show\s+(.+?)(\s+on the same line|\s+without ending the line)?$/i))) {
         const joined = splitPhrase(m[1], /\s+followed by\s+/i);
         // "show a is 1 and b is 2" is one test: "and" only separates plain values
         const items = splitItems(m[1]);
@@ -644,9 +869,9 @@
           pieces.forEach((p, k) => { if (k && gap) calls.push('Serial.print(" ");'); calls.push(`Serial.${k === pieces.length - 1 && !m[2] ? 'println' : 'print'}(${p});`); });
           return say(calls.join(' '));
         }
-        note(inf, '`std::cout <<` writes to the terminal' + (pieces.length > 1 ? (gap ? ', with a space between the pieces' : ', one piece straight after another') : '') + (m[2] ? '.' : '; `std::endl` ends the line.'));
+        note(inf, '`std::cout <<` writes to the terminal' + (pieces.length > 1 ? (gap ? ', with a space between the pieces' : ', one piece straight after another') : '') + (m[2] ? (/same line/i.test(m[2]) ? ', then a space, and the line goes on.' : '. The line goes on: nothing ends it.') : '; `std::endl` ends the line.'));
         // a comparison shown goes in brackets: std::cout << n == 3 doesn't build (<< comes first)
-        return say('std::cout << ' + pieces.map(afterShift).join(gap ? ' << " " << ' : ' << ') + (m[2] ? ' << " ";' : ' << std::endl;'));
+        return say('std::cout << ' + pieces.map(afterShift).join(gap ? ' << " " << ' : ' << ') + (!m[2] ? ' << std::endl;' : /same line/i.test(m[2]) ? ' << " ";' : ';'));
       }
       if ((m = M(/^ask(?:\s+for\s+(?:an?\s+)?(whole number|number|decimal))?\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_]\w*)$/i))) {
         const kind = (m[1] || '').toLowerCase();
@@ -657,23 +882,47 @@
         note(inf, type === 'std::string' ? '`std::getline` reads a whole line of typed text. `std::cin >> std::ws` first skips the end of any line left by an earlier number, which would otherwise read as an empty answer.' : '`std::cin >>` reads a number typed by the person.');
         return say(type === 'std::string' ? `std::getline(std::cin >> std::ws, ${m[3]});` : `std::cin >> ${m[3]};`);
       }
-      if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list(?:\s+of\s+(numbers|whole numbers|decimals|text|words))?\s+(?:called\s+)?([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
-        const items = m[3] ? splitItems(m[3]).map(v => E(v, inf)) : [];
-        const t0 = m[1] ? TYPE_WORDS[m[1].toLowerCase()] : items.length ? exprType(items[0], x) : null;
-        if (!t0) { inf.errs.push('C++ needs to know what the list will hold. Say "create list of numbers …" or "list of text …".'); return; }
+      // "make a list of whole numbers called scores with 7, 9"; "… of 4 whole numbers …" has a fixed size (a plain array)
+      if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(empty\s+)?list(?:\s+of\s+(.+?))?\s+(?:called\s+)?([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
+        const [, empty, of, name, said] = m;
+        // "of 4 whole numbers": a size first (digits, or a CONSTANT in capitals), then what it holds
+        const sized = of && of.match(/^(\d+|[A-Z_][A-Z0-9_]*)\s+(.+)$/);
+        const [size, what] = sized && itemType(sized[2], x) ? [sized[1], sized[2]] : [null, of];
+        const items = said ? splitItems(said).map(v => E(v, inf)) : [];
+        const t0 = what ? itemType(what, x) : items.length ? exprType(items[0], x) : null;
+        if (!t0) { inf.errs.push(what ? `I don't know the type "${what}". Say "list of whole numbers", "list of text", or a C++ type and "values", like "list of float values".` : 'C++ needs to know what the list will hold. Say "create list of numbers …" or "list of text …".'); return; }
+        if (empty && items.length) inf.errs.push('An empty list has no items: leave out "empty", or the "with …".');
         const t = fixText(t0 === 'auto' ? 'int' : t0, x);
-        scopes[scopes.length - 1].add(m[2]);
-        if (A) {
-          if (!items.length) { inf.errs.push('An Arduino list has a fixed size, so give it its items: "create list of numbers called pins with 2, 3, 4".'); return; }
-          x.types[m[2]] = t + '[]';
-          note(inf, `A list on Arduino is a plain array: a fixed number of ${code(t)} values. It can't grow, which saves the board's small memory.`);
-          return say(`${t} ${m[2]}[] = {${items.join(', ')}};`);
+        scopes[scopes.length - 1].add(name);
+        if (size || A) {
+          if (!size && !items.length) { inf.errs.push('An Arduino list has a fixed size, so give it its items: "create list of numbers called pins with 2, 3, 4", or its size: "make a list of 4 whole numbers called readings".'); return; }
+          if (size && /^\d+$/.test(size) && items.length > +size) inf.errs.push(`${items.length} items don't fit in a list of ${size}.`);
+          x.types[name] = t + '[]';
+          note(inf, `A list ${A ? 'on Arduino ' : 'with a size '}is a plain array: a fixed number of ${code(t)} values. It can't grow${A ? ', which saves the board\'s small memory' : ''}.` + (size && !items.length ? ' Its items are whatever was in memory (0 for a list made outside every block) until set.' : ''));
+          return say(`${t} ${name}[${size || ''}]${items.length ? ` = {${items.join(', ')}}` : ''};`);
         }
         const type = `std::vector<${t}>`;
         x.needs.add('vector');
-        x.types[m[2]] = type;
-        note(inf, `A list in C++ is a \`std::vector\`, and every item has the same kind: ${code(t)}.`);
-        return say(`${type} ${m[2]} = {${items.join(', ')}};`);
+        x.types[name] = type;
+        note(inf, `A list in C++ is a \`std::vector\`, and every item has the same kind: ${code(t)}.` + (items.length ? '' : ' It starts empty.'));
+        return say(items.length ? `${type} ${name} = {${items.join(', ')}};` : `${type} ${name};`);
+      }
+      // "make a whole number called count", "make empty text called name", "make a Servo called arm", "make a LiquidCrystal called lcd with 12, 11"
+      if ((m = M(/^(?:create|make)\s+(?:an?\s+|some\s+)?(empty\s+)?(?:new\s+)?(.+?)\s+called\s+([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
+        const [, empty, typeWords, name, said] = m;
+        // a type word, or a class: one defined here, or a library's (Servo, LiquidCrystal…), which starts with a capital or has ::
+        const word = typeOf(typeWords, x), cls = !word && /^(?:[A-Z][\w]*|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+)(?:<.+>)?$/.test(typeWords.trim()) ? typeWords.trim() : null;
+        const t = word || cls;
+        if (!t || t === 'void') { inf.errs.push(`I don't know the type "${typeWords}". Use whole number, decimal, text, yes/no, character, a C++ type, or a class.`); return; }
+        const isText = /^(?:std::string|String)$/.test(t);
+        const plainValue = /^(?:(?:unsigned|signed)\s+)?(?:int|long|long long|short|double|float|bool|char|size_t|byte|u?int\d+_t|unsigned)$/.test(t);
+        if (empty && !isText) inf.errs.push(`Only text and lists start out "empty": say "make a ${typeWords} called ${name}".`);
+        if (said && plainValue) inf.errs.push(`A ${typeWords} is given its value with "set": "set ${name} to …".`);
+        if (scopes[scopes.length - 1].has(name)) inf.errs.push(`${code(name)} is already made here.`);
+        const args = said ? splitItems(said).map(v => E(v, inf)) : [];
+        scopes[scopes.length - 1].add(name); x.types[name] = t; x.known.add(name);
+        note(inf, !plainValue && !isText ? `Makes a ${code(t)} called ${code(name)}` + (args.length ? ', passing the values to it as it is made.' : '.') : isText ? `${code(name)} holds text (${code(t)}), starting empty.` : `${code(name)} holds ${code(t)} values. It has no value until one is set (outside every block, it starts at 0).`);
+        return say(`${t} ${name}${args.length ? `(${args.join(', ')})` : ''};`);
       }
       if ((m = M(/^add\s+(.+?)\s+to\s+([A-Za-z_]\w*)$/i))) {
         if (/^std::vector/.test(x.types[m[2]] || '')) {
@@ -763,6 +1012,8 @@
       if (x.needs.has('random')) hdr('#include <random>', 'Random numbers.');
       if (x.needs.has('text')) hdr('#include <sstream>', 'Builds text from pieces.');
       if (x.needs.has('exit')) hdr('#include <cstdlib>', 'Lets a tool stop the whole program (std::exit).');
+      if (x.needs.has('algorithm')) hdr('#include <algorithm>', 'Ready-made steps for values and lists (std::clamp).');
+      if (x.needs.has('cstdio')) hdr('#include <cstdio>', 'printf: text with % codes filled in.');
     }
     const auto = new Set(all.map(o => o.text.slice(9)));
     for (const inc of includes) if (!auto.has(inc.h)) hdr(`#include ${inc.h}`, null, inc.src);
@@ -811,39 +1062,74 @@
     T('Values', 'set ‹decimal› ‹name› to ‹value›', 'double name = value;', 'Name the kind yourself: whole number, decimal, text, yes/no.', ['program', 'sketch']),
     T('Values', 'increase ‹name› by ‹amount›', 'name += amount;', '', ['program', 'sketch']),
     T('Values', 'multiply ‹name› by ‹amount›', 'name *= amount;', 'Also "divide ‹name› by ‹amount›" (/=).', ['program', 'sketch']),
+    T('Values', 'make a ‹whole number› called ‹count›', 'int count;', 'A name with no value yet. Also "make empty text called name", "make a yes/no value called done".', ['program', 'sketch']),
+    T('Values', 'make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›', 'LiquidCrystal lcd(12, 11, 5, 4, 3, 2);', 'An object of a class or a library, given what it needs to start. Leave off "with …" if it needs nothing: "make a Servo called arm".', ['program', 'sketch']),
+    T('Values', 'keep ‹level› between ‹0› and ‹255›', 'level = std::clamp(level, 0, 255);', 'Stops it going below the first number or above the second.'),
+    T('Values', 'keep ‹level› between ‹0› and ‹255›', 'level = constrain(level, 0, 255);', 'Stops it going below the first number or above the second.', ['sketch']),
+    T('Values', 'let ‹LED› stand for ‹13›', '#define LED 13', 'A name swapped for its value before compiling. "constant LED is 13" does the same, with a type.', ['program', 'sketch']),
     T('Show & ask', 'show ‹value›', 'std::cout << value << std::endl;', 'Join several things with "and" (a space between) or "followed by" (no space).'),
+    T('Show & ask', 'show ‹value› without ending the line', 'std::cout << value;', 'What is shown next carries on the same line. "end the line" ends it.'),
+    T('Show & ask', 'end the line', 'std::cout << std::endl;', ''),
+    T('Show & ask', 'show "‹%d tries›" filled in with ‹tries›', 'printf("%d tries", tries);', 'The % codes are filled in, in order: %d a whole number, %f a decimal, %s text.'),
     T('Show & ask', 'ask for a number "‹question›" and store in ‹name›', 'std::cin >> name;', 'Or "ask … and store in …" for text.'),
+    T('Show & ask', 'read ‹age› from the keyboard', 'std::cin >> age;', 'What the person types, up to a space. "read a line from the keyboard into ‹name›" reads a whole line.'),
+    T('Show & ask', 'read a line from the keyboard into ‹name›', 'std::getline(std::cin, name);', 'A whole line of typed text, spaces and all.'),
     T('Decisions', 'if ‹condition›', 'if (condition) {', '', ['program', 'sketch']),
     T('Decisions', 'otherwise', '} else {', '', ['program', 'sketch']),
+    T('Decisions', 'depending on ‹value›', 'switch (value) {', 'Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise".', ['program', 'sketch']),
+    T('Decisions', 'when it is ‹1›', 'case 1:', 'Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead.', ['program', 'sketch']),
     T('Loops', 'repeat ‹number› times', 'for (int i = 0; i < number; i++) {', '', ['program', 'sketch']),
-    T('Loops', 'count ‹i› from ‹1› to ‹10›', 'for (int i = 1; i <= 10; i++) {', '', ['program', 'sketch']),
-    T('Loops', 'for each ‹item› in ‹list›', 'for (const auto& item : list) {', '', ['program', 'sketch']),
+    T('Loops', 'repeat ‹10› times, counting with ‹i›', 'for (int i = 0; i < 10; i++) {', 'i goes from 0 to 9. A name made before is used as the count.', ['program', 'sketch']),
+    T('Loops', 'count ‹i› from ‹1› to ‹10›', 'for (int i = 1; i <= 10; i++) {', 'Add "in steps of 2" to skip. "count down i from 10 to 1" counts down.', ['program', 'sketch']),
+    T('Loops', 'count ‹i› from ‹0› up to but not including ‹n›', 'for (int i = 0; i < n; i++) {', '', ['program', 'sketch']),
+    T('Loops', 'for each ‹item› in ‹list›', 'for (const auto& item : list) {', 'Add ", so it can be changed" to change the items themselves.', ['program', 'sketch']),
+    T('Loops', 'for each ‹whole number› ‹v› in ‹list›', 'for (int v : list) {', 'Each item copied into a name of that type.', ['program', 'sketch']),
     T('Loops', 'while ‹condition›', 'while (condition) {', '', ['program', 'sketch']),
+    T('Loops', 'do this, then repeat while ‹condition›', 'do { … } while (condition);', 'The steps run once before the test.', ['program', 'sketch']),
     T('Loops', 'repeat forever', 'while (true) {', 'Pair with "stop the loop".'),
-    T('Lists', 'create list of ‹numbers› called ‹name› with ‹1, 2, 3›', 'std::vector<int> name = {1, 2, 3};', 'Also "list of text", "list of decimals".', ['program', 'sketch']),
+    T('Lists', 'make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›', 'std::vector<int> name = {1, 2, 3};', 'Also "list of text", "list of decimals". Leave off "with …" for an empty list.'),
+    T('Lists', 'make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›', 'int name[] = {1, 2, 3};', 'Also "list of text", "list of decimals".', ['sketch']),
+    T('Lists', 'make a list of ‹4› ‹whole numbers› called ‹readings›', 'int readings[4];', 'A fixed number of items. Add "with 0, 0, 0, 0" to give them.', ['program', 'sketch']),
     T('Lists', 'add ‹value› to ‹list›', 'list.push_back(value);', ''),
     T('Lists', 'set item ‹0› of ‹list› to ‹value›', 'list[0] = value;', 'Positions start at 0. Also "set the last item of ‹list› to ‹value›".', ['program', 'sketch']),
     T('Tools', 'define ‹name› using ‹inputs›', 'auto name(auto inputs) {', 'Tools go above main automatically.', ['program', 'sketch']),
-    T('Tools', 'define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›', 'double name(double w, double h) {', 'Name the kinds: whole number, decimal, text, yes/no, nothing.', ['program', 'sketch']),
+    T('Tools', 'define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›', 'double name(double w, double h) {', 'Name the kinds: whole number, decimal, text, yes/no, nothing.', ['program', 'sketch']),
+    T('Tools', 'define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›', 'double average(const std::vector<int>& values) {', '"read-only" looks at the caller\'s value without copying it; "the caller\'s" lets the tool change it.'),
     T('Tools', 'give back ‹value›', 'return value;', '', ['program', 'sketch']),
+    T('Tools', 'leave the tool now', 'return;', 'Leaves a tool that gives nothing back.', ['program', 'sketch']),
     T('Tools', 'run ‹tool› with ‹inputs› and store in ‹name›', 'auto name = tool(inputs);', '', ['program', 'sketch']),
     T('Classes', 'define class ‹Name›', 'class Name { public: … };', 'A blueprint for objects. Indent its fields and tools under it.', ['program', 'sketch']),
+    T('Classes', 'define structure ‹Point›', 'struct Point { … };', 'Named values bundled together, all public. Fields go under it.', ['program', 'sketch']),
     T('Classes', 'field ‹name›: ‹text›', 'std::string name;', 'Inside a class. Also "has whole number count starting at 0".', ['program', 'sketch']),
     T('Classes', 'when made using ‹text name›', 'Name(std::string name) {', 'Inside a class: runs when a new object is made. Use "set self.name to name".', ['program', 'sketch']),
-    T('Classes', 'make a new ‹Class› with ‹inputs› and store in ‹name›', 'Class name(inputs);', 'Creates an object from a class.', ['program', 'sketch']),
+    T('Classes', 'make a new ‹Class› with ‹inputs› and store in ‹name›', 'Class name(inputs);', 'Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›".', ['program', 'sketch']),
     T('Program', 'include ‹cmath›', '#include <cmath>', 'Brings in a library.', ['program', 'sketch']),
     T('Program', 'above main: ‹C++ code›', 'code (outside main)', 'C++ copied exactly, outside main.'),
     T('Other', 'c++: ‹code›', 'code', 'Write C++ directly.', ['program', 'sketch']),
     T('Board', 'when the board starts', 'void setup() {', 'Runs once, when the board powers on.', ['sketch']),
     T('Board', 'over and over', 'void loop() {', 'Runs again and again, forever.', ['sketch']),
+    T('Board', 'skip the rest of this round', 'return;', 'In "over and over": the board starts the next round from the top.', ['sketch']),
     T('Pins', 'make pin ‹13› an output', 'pinMode(13, OUTPUT);', 'Also "an input", "an input with pull-up".', ['sketch']),
     T('Pins', 'turn pin ‹13› on', 'digitalWrite(13, HIGH);', 'And "turn pin 13 off". "the built-in light" is LED_BUILTIN.', ['sketch']),
+    T('Pins', 'set pin ‹led› to ‹state›', 'digitalWrite(led, state);', 'On or off by a value (HIGH or LOW).', ['sketch']),
+    T('Pins', 'turn pin ‹led› on if ‹lit›, otherwise off', 'digitalWrite(led, lit ? HIGH : LOW);', '', ['sketch']),
     T('Pins', 'set the brightness of pin ‹9› to ‹128›', 'analogWrite(9, 128);', '0 to 255, on pins marked ~.', ['sketch']),
-    T('Pins', 'read pin ‹2› and store in ‹pressed›', 'int pressed = digitalRead(2);', 'Or "read analog pin A0 …" for 0 to 1023.', ['sketch']),
+    T('Pins', 'read pin ‹A0› and call it ‹level› (a whole number)', 'int level = analogRead(A0);', 'A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). "read analog pin SENSOR" for a named analog pin; "… and store it in level" changes a name made before.', ['sketch']),
+    T('Pins', 'scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›', 'level = map(reading, 0, 1023, 0, 255);', 'Moves a value from one range to another. Also "… and call it level (a whole number)".', ['sketch']),
+    T('Pins', 'set ‹duration› to how long pin ‹echo› stays on', 'duration = pulseIn(echo, HIGH);', 'In microseconds: for distance sensors.', ['sketch']),
     T('Time', 'wait ‹500› milliseconds', 'delay(500);', 'Or "wait 2 seconds".', ['sketch']),
     T('Time', 'wait ‹10› microseconds', 'delayMicroseconds(10);', 'Millionths of a second, for timing a sensor\'s pulse.', ['sketch']),
+    T('Time', 'if at least ‹500› milliseconds have passed since ‹last›', 'if (millis() - last >= 500) {', 'On time without stopping the board. Also "more than", "less than", "at most".', ['sketch']),
     T('Serial', 'start the serial monitor at ‹9600›', 'Serial.begin(9600);', 'Put it in "when the board starts".', ['sketch']),
-    T('Serial', 'show ‹value›', 'Serial.println(value);', 'Shows in the serial monitor.', ['sketch']),
+    T('Serial', 'show ‹value›', 'Serial.println(value);', 'Shows in the serial monitor. "show a followed by b" shows them on one line.', ['sketch']),
+    T('Serial', 'show ‹value› on the same line', 'Serial.print(value);', 'What is shown next carries on the line. "end the line" ends it.', ['sketch']),
+    T('Serial', 'end the line', 'Serial.println();', '', ['sketch']),
+    T('Screens', 'start ‹lcd› with ‹16, 2›', 'lcd.begin(16, 2);', 'A library\'s start-up, in "when the board starts". "start pixels" if it needs nothing.', ['sketch']),
+    T('Screens', 'show ‹value› on ‹lcd›', 'lcd.print(value);', 'Add ", then start a new line" to move down a line (println).', ['sketch']),
+    T('Screens', 'move ‹lcd›\'s cursor to ‹0, 1›', 'lcd.setCursor(0, 1);', 'Where the next thing shown goes: column and row on a text screen.', ['sketch']),
+    T('Screens', 'clear ‹lcd›', 'lcd.clear();', '', ['sketch']),
+    T('Motors', 'attach ‹arm› to pin ‹9›', 'arm.attach(9);', 'Make the servo first: "make a Servo called arm".', ['sketch']),
+    T('Motors', 'turn servo ‹arm› to ‹90› degrees', 'arm.write(90);', '0 to 180.', ['sketch']),
     T('Sound', 'play a tone of ‹440› on pin ‹8› for ‹200› milliseconds', 'tone(8, 440, 200);', '', ['sketch']),
   ];
   const GUIDE = {
@@ -856,9 +1142,9 @@
     purpose: 'Arduino is C++ for small boards that switch lights, read buttons and sensors, drive motors and make sounds. A sketch has two parts: setup(), which runs once when the board powers on, and loop(), which runs again and again until the power goes off.',
     rules: [['Two parts', 'setup() runs once; loop() repeats forever. There is no main.'], ['Pins', 'Each pin is set up as an input or an output first, then turned on (HIGH) or off (LOW), or read.'], ['Waiting', 'delay() pauses everything. For doing two things at once, compare millis() instead.'], ['Tiny memory', 'An Uno has 2 KB of memory. Lists have a fixed size, and text is kept short.'], ['Upload, then watch', 'The sketch is compiled and copied onto the board. show sends lines back to the serial monitor.']],
   };
-  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b']];
-  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name']];
-  const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board)|over and over|again and again|at the start)/i;
+  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)']];
+  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name']];
+  const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board|it is |it's )|over and over|again and again|at the start|depending on |do this)/i;
 
   const api = { compileCppProject, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -788,45 +788,75 @@ note        = ( "note" | "comment" ) ":" text ;                                 
 (* Program set-up *)
 include     = ( "include" | "use the library" ) ( "<" … ">" | text | header-name ) ;  (* → #include <…> *)
 std         = "use namespace std" | "use the standard names" [ "directly" ] | "use std names directly" ; (* → using namespace std; *)
+stand-for   = "let" NAME "stand for" ( number | name | text ) ;                     (* → #define NAME value, above main *)
 
 (* Classes: at the left edge, placed above main *)
-class       = "define" [ "a" ] "class" Name [ "based on" Name ] ;                  (* → class Name : public Base { public: … }; *)
+class       = "define" [ "a" | "an" ] "class" Name [ "based on" Name ] ;           (* → class Name : public Base { public: … }; *)
+structure   = "define" [ "a" ] ( "structure" | "struct" ) Name ;                  (* → struct Name { … }; everything in it public *)
 field       = "field" name ":" type [ ( "=" | "starting at" | "starting as" ) value ]
             | "has" [ "a" | "an" ] type name [ ( "starting at" | "starting as" | "=" ) value ] ;  (* → type name = value; *)
 access      = ( "the rest is" | "from here on" ) ( "private" | "public" ) | ( "private" | "public" ) [ "part" | "parts" ] ;
+                (* said first in a class, it takes the place of the public: every class starts with *)
 made        = "when" ( "made" | "created" | "built" ) [ ( "using" | "with" ) params ] ; (* → the constructor; every input needs a type *)
 
 (* Tools: at the left edge or in a class, placed above main *)
-define      = "define" name [ "using" params ] [ "giving back" type ] ;            (* → type name(params) { … }, auto when unsaid *)
+define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] ;  (* → type name(params) { … }, auto when unsaid *)
 param       = [ type ] name ;
-type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" | "character" | "nothing"
-            | "list of" type | c++-type | class-name ;  (* → int, double, std::string (Arduino String), bool, char, void, std::vector<…> *)
+type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" [ "value" ] | "character" | "nothing"
+            | "list of" type | c++-type | class-name
+            | "read-only" type | "the caller's" [ "own" ] type ;
+                (* → int, double, std::string (Arduino String), bool, char, void, std::vector<…>;
+                   read-only → const type& (the caller's value, not copied, not changed); the caller's → type& *)
 
 (* Arduino: the two parts *)
 setup       = "when the board" ( "starts" | "turns on" | "powers on" | "wakes up" ) | "at the start" | "setup" ;  (* → void setup() *)
 loop        = "over and over" [ "again" ] | "again and again" | "repeat forever" | "forever" | "keep repeating" | "loop" ;
                                                        (* at the left edge → void loop() *)
-(* At the left edge of a sketch, besides these two, define, define class, include and exact code, only set, constant,
-   create list and make a new are allowed; anything else is an error. *)
+(* At the left edge of a sketch, besides these two, define, define class, define structure, include, let … stand for
+   and exact code, only set, constant, create list, make a … called and make a new are allowed; anything else is an error. *)
 
 (* Logic *)
 return      = ( "give back" | "return" ) [ value ] ;
+return-now  = "skip the rest of this round" | "leave the tool now" ;   (* → return;  the first only in "over and over" *)
 elif        = ( "otherwise if" | "else if" ) cond ;   else = "otherwise" | "else" ;   if = "if" cond ;
+switch      = "depending on" value ;                                               (* → switch (value) { … } *)
+case        = "when it" ( "is" | "'s" ) ( value { "or" value } | "anything else" ) | "otherwise" ;
+                (* one step in from "depending on" → case a: case b: … break;  "otherwise" → default:
+                   each case ends with break, unless it ends by giving back, skipping to next, or with: *)
+fall        = ( "go on" | "carry on" ) "into the next case" ;                      (* no break: the next case's steps run too *)
+                (* a case that makes a name, and isn't the last, goes in braces: case a: { … break; } *)
 forever     = "repeat forever" | "forever" | "keep repeating" ;                    (* → while (true) *)
-times       = "repeat" value ( "time" | "times" ) [ "counting with" name ] ;      (* → for (int i = 0; i < value; i++) *)
-count       = "count" name "from" value "to" value ;      (* → for (int name = a; name <= b; name++); down when both are numbers and a > b *)
-for-each    = "for each" name "in" value ;                                          (* → for (const auto& name : value) *)
+times       = "repeat" value ( "time" | "times" ) [ [ "," ] "counting with" name ] ; (* → for (int i = 0; i < value; i++) *)
+count       = "count" [ "up" | "down" ] [ name ] "from" value [ "down" ] "to" value
+              [ ( "in steps of" | "by" | "step" | "stepping by" ) value ] ;
+                (* → for (int name = a; name <= b; name++); down when both are numbers and a > b, or it says down *)
+count-below = "count" [ "up" ] [ name ] "from" value "up to but not including" value [ "in steps of" value ] ;
+                (* → for (int name = a; name < b; …) *)
+                (* a count (or "counting with") that names a name made before uses it: for (pos = a; …) *)
+for-each    = "for each" [ type ] name "in" value [ "," ( "so it can be changed" | "as a copy" ) ] ;
+                (* → for (const auto& name : value);  a type → for (type name : value);
+                   so it can be changed → auto& (or type&);  as a copy → auto *)
 while       = ( "while" | "as long as" ) cond ;
-break       = "stop the loop" ;   continue = "skip to next" ;
+do-while    = "do this" [ "," ] "then repeat" ( "while" | "as long as" ) cond ;     (* → do { … } while (cond); *)
+break       = "stop the loop" ;   continue = "skip to next" ;   (* stop the loop in a case of "depending on" is an error *)
 
 (* Arduino: pins, time, sound *)
 pin-mode    = ( "make" | "set" ) [ "pin" ] pin ( "a" | "an" | "as" [ "a" | "an" ] ) ( "output" | "input" ) [ "with" [ "a" ] "pull-up" ] ;
                                                                           (* → pinMode(pin, OUTPUT | INPUT | INPUT_PULLUP) *)
 turn        = "turn" ( "on" | "off" ) pin | "turn" pin ( "on" | "off" ) | "set pin" pin "to" ( "high" | "low" | "on" | "off" ) ;
                                                                           (* → digitalWrite(pin, HIGH | LOW) *)
+turn-if     = "turn" pin ( "on" | "off" ) "if" cond [ "," ] "otherwise" ( "on" | "off" ) ;  (* → digitalWrite(pin, cond ? HIGH : LOW) *)
+set-pin     = "set pin" pin "to" value ;                                  (* → digitalWrite(pin, value); a number but 0 or 1 warns *)
 level       = ( "set the" ( "brightness" | "level" | "power" ) "of" | "dim" ) pin "to" value | "write" value "to pin" pin ;
                                                                           (* → analogWrite(pin, value) *)
-read        = "read" [ "analog" ] [ "pin" ] pin "and store" [ "it" ] "in" name ;    (* → int name = digitalRead / analogRead(pin) *)
+read        = "read" [ "analog" | "digital" ] [ "pin" ] pin "and" keep-as name [ "(" type ")" ] ;
+                (* → digitalRead(pin), or analogRead for "analog" and A0, A1…; "call it" makes name (int, or the type
+                   in brackets); "store it in" and "keep it as" change a name made before, or make an int *)
+keep-as     = "store" [ "it" ] "in" | "keep it as" | "call it" ;
+scale       = "scale" value "from" value "–" value "to" value "–" value "and" keep-as name [ "(" type ")" ] ;
+                                                                          (* → map(value, a, b, c, d); – is an en dash *)
+servo       = "attach" name "to pin" pin | "turn servo" name "to" value ( "degree" | "degrees" ) ;
+                                                                          (* → name.attach(pin), name.write(value) *)
 wait        = "wait" [ "for" ] value ( "millisecond" | "milliseconds" | "ms" | "second" | "seconds" | "sec" | "secs" ) ;
                                                                           (* → delay(ms) *)
 serial      = "start" ( "the serial monitor" | "talking to the computer" ) [ "at" number ] ; (* → Serial.begin(9600) *)
@@ -835,16 +865,32 @@ stop-tone   = "stop the" ( "tone" | "note" | "sound" ) "on" [ "pin" ] pin ;     
 pin         = value | "the built-in light" | "the built-in led" ;                   (* → LED_BUILTIN *)
 
 (* Showing and asking *)
-show        = "show" ( value { "followed by" value } | items ) [ "on the same line" ] ;
+show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" ] ;
                 (* "and" or "," put a space between the pieces, "followed by" none
-                   → std::cout << a << " " << b << std::endl;  Arduino: Serial.print / Serial.println *)
+                   → std::cout << a << " " << b << std::endl;  on the same line adds << " ", without ending the line
+                   adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said *)
+end-line    = "end the line" ;                                    (* → std::cout << std::endl;  Arduino: Serial.println(); *)
+printf      = "show" text "filled in with" items ;                (* → printf(text, items);  Arduino: Serial.printf *)
 ask         = "ask" [ "for" [ "a" | "an" ] ( "whole number" | "number" | "decimal" ) ] value "and store" [ "it" ] "in" name ;
                 (* → std::cout << value; then std::cin >> name or std::getline; an error on Arduino *)
+keyboard    = "read" items "from the keyboard" | "read a line from the keyboard into" name ;
+                (* → std::cin >> a >> b;  std::getline(std::cin, name);  an error on Arduino *)
+
+(* Screens and other objects that print *)
+show-on     = "show" value "on" name [ [ "," ] "then start a new line" ] ;    (* → name.print(value) / name.println(value) *)
+cursor      = "move" name "'s cursor to" value "," value ;                    (* → name.setCursor(a, b) *)
+clear       = "clear" name ;                                                  (* → name.clear() *)
+start       = "start" name [ "with" items ] ;                                 (* → name.begin(items) *)
 
 (* Values *)
-make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "empty" ] "list"
-              [ "of" ( "numbers" | "whole numbers" | "decimals" | "text" | "words" ) ] [ "called" ] name [ "with" items ] ;
-                (* → std::vector<T> name = {…};  Arduino: T name[] = {…}, items required *)
+make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "empty" ] "list" [ "of" [ size ] holds ] [ "called" ] name [ "with" items ] ;
+holds       = "numbers" | "whole numbers" | "decimals" | "text" | "words" | "characters" | "yes/no values" | c++-type "values" ;
+size        = number | CONSTANT ;
+                (* → std::vector<T> name = {…}; (no items: std::vector<T> name;)  with a size → T name[size] = {…};
+                   Arduino: T name[] = {…}, items or a size required *)
+make-called = ( "make" | "create" ) [ "a" | "an" | "some" ] [ "empty" ] [ "new" ] ( type | Class ) "called" name [ "with" items ] ;
+                (* → type name;  Class name(items);  "empty" only for text;  a Class is one defined here, or starts with a capital *)
+keep        = "keep" path "between" value "and" value ;           (* → path = std::clamp(path, a, b);  Arduino: constrain *)
 add         = "add" value "to" name ;                    (* → push_back for a list, an error for an Arduino list, += otherwise *)
 increase    = ( "increase" | "decrease" ) target [ "by" value ] ;                   (* → +=, -=, ++, -- *)
 new-object  = "make" [ "a" ] "new" Class [ "with" items ] "and store" [ "it" ] "in" name ; (* → Class name(items); *)
@@ -906,6 +952,124 @@ void loop() {
     digitalWrite(LED, LOW);
     delay(500);
     Serial.println("blink");
+}
+```
+
+A knob that points a servo, checked twice a second without stopping the board, and a choice by mode:
+
+```intuicode arduino
+let BUZZER stand for 8
+make a Servo called arm
+make a whole number called mode
+set unsigned long last to 0
+when the board starts
+    start the serial monitor at 9600
+    attach arm to pin 9
+over and over
+    read pin A0 and call it reading (a whole number)
+    scale reading from 0–1023 to 0–180 and call it angle (a whole number)
+    keep angle between 10 and 170
+    if less than 500 milliseconds have passed since last
+        skip the rest of this round
+    set last to time since start
+    depending on mode
+        when it is 0
+            turn servo arm to angle degrees
+        when it is 1 or 2
+            play a tone of 440 on pin BUZZER for 100 milliseconds
+        otherwise
+            turn the built-in light on if angle is more than 90, otherwise off
+    show "Angle: " followed by angle followed by " degrees"
+```
+
+```cpp
+#define BUZZER 8
+Servo arm;
+int mode;
+unsigned long last = 0;
+void setup() {
+    Serial.begin(9600);
+    arm.attach(9);
+}
+void loop() {
+    int reading = analogRead(A0);
+    int angle = map(reading, 0, 1023, 0, 180);
+    angle = constrain(angle, 10, 170);
+    if (millis() - last < 500) {
+        return;
+    }
+    last = millis();
+    switch (mode) {
+        case 0:
+            arm.write(angle);
+            break;
+        case 1:
+        case 2:
+            tone(BUZZER, 440, 100);
+            break;
+        default:
+            digitalWrite(LED_BUILTIN, angle > 90 ? HIGH : LOW);
+            break;
+    }
+    Serial.print("Angle: "); Serial.print(angle); Serial.println(" degrees");
+}
+```
+
+Typed inputs, a list made empty, the keyboard and a choice:
+
+```intuicode cpp
+define average using read-only list of whole numbers values giving back a decimal
+    set decimal total to 0
+    for each whole number v in values
+        increase total by v
+    give back total divided by length of values
+make an empty list of whole numbers called scores
+make a whole number called count
+show "How many? " without ending the line
+read count from the keyboard
+repeat count times, counting with i
+    make a whole number called s
+    read s from the keyboard
+    add s to scores
+depending on count
+    when it is 0
+        show "No scores"
+    otherwise
+        show "Average: " followed by average(scores)
+```
+
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+
+double average(const std::vector<int>& values) {
+    double total = 0;
+    for (int v : values) {
+        total += v;
+    }
+    return total / values.size();
+}
+
+int main() {
+    std::vector<int> scores;
+    int count;
+    std::cout << "How many? ";
+    std::cin >> count;
+    for (int i = 0; i < count; i++) {
+        int s;
+        std::cin >> s;
+        scores.push_back(s);
+    }
+    switch (count) {
+        case 0:
+            std::cout << "No scores" << std::endl;
+            break;
+        default:
+            std::cout << "Average: " << average(scores) << std::endl;
+            break;
+    }
+    return 0;
 }
 ```
 
@@ -1058,12 +1222,14 @@ let c = (Math.floor(Math.random() * (6 - 1 + 1)) + 1);
 ### C++ and Arduino values
 
 An operand is a quoted text, a number or a name with any `.name`, `::name` or `->name`, followed by any
-`( … )` or `[ … ]`. In order:
+`( … )` or `[ … ]`. The phrases with `–` (an en dash) and the time phrases take operands only, so in
+`x scaled from 0–1023 to 0–255 plus 1` the `plus 1` is added to the result. In order:
 
 | # | Phrase | C++ | Arduino |
 |---|---|---|---|
 | 1 | `self.` | `this->` | `this->` |
-| 2 | `the built-in light`, `pin P is on` (`off`, `high`, `low`), `reading of pin P` (`[analog] level`; `of`, `on`), `pin P`, `time since start` | | `LED_BUILTIN`, `digitalRead(P) == HIGH`, `analogRead(P)`, `P`, `millis()` |
+| 2 | `the built-in light`, `pin P is on` (`off`, `high`, `low`), `reading of pin P` (`[analog] level`; `of`, `on`), `how long pin P stays on` (`off`), `pin P`, `time since start`, `at least N milliseconds have passed since T` (`more than`, `less than`, `at most`; `not` before it tests all of it), `X scaled from A–B to C–D` | | `LED_BUILTIN`, `digitalRead(P) == HIGH`, `analogRead(P)`, `pulseIn(P, HIGH)`, `P`, `millis()`, `millis() - T >= N` (`>`, `<`, `<=`; `!(…)`), `map(X, A, B, C, D)` |
+| 2b | `X limited to A–B` | `std::clamp(X, A, B)` (and `<algorithm>`) | `constrain(X, A, B)` |
 | 3 | `first item of X` / `last item of X` | `X.front()` / `X.back()` | `X[0]` / `X[(sizeof(X) / sizeof(X[0])) - 1]` |
 | 4 | `item K of X` | `X[K]` | `X[K]` |
 | 5 | `length of X`, `size of X` | `X.size()` | `X.length()` for text, `(sizeof(X) / sizeof(X[0]))` for a list |
@@ -1246,11 +1412,12 @@ for (const item of [1, 2]) {
 | Question | How it is decided |
 |---|---|
 | A name's type | From the first `set`: text → `std::string` (`String` on Arduino), a whole number → `int`, a decimal → `double`, yes/no → `bool`, a comparison → `bool`, `std::stoi` and `size()` → `int`, `millis()` → `unsigned long`, arithmetic of known numbers → `int` or `double`, a known name → its type; otherwise `auto`. A type word says it outright: `set decimal price to 3`. |
-| Declare or assign? | The first `set` of a name in a block declares it (`int x = 1;`); later ones assign. As in C++, a name declared inside a block is gone after it. |
+| Declare or assign? | The first `set` of a name in a block declares it (`int x = 1;`); later ones assign. As in C++, a name declared inside a block is gone after it. `make a … called x` and `… and call it x` always declare (twice in one block is an error); `… and store it in x` assigns a name made before. A count that names a name made before (`count pos from 0 to 180`, `counting with pos`) counts with it. |
+| Cases | Each case of `depending on` ends with `break;` unless its last step leaves (`give back`, `skip to next`, a `return` or `break` in exact code) or it says `go on into the next case`. A case that makes a name and isn't the last goes in braces. |
 | `add V to L` | `L.push_back(V)` for a list; an error for an Arduino list (fixed size); `L += V` otherwise. |
 | Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool is an error; making an unknown class is a warning. |
 | Arduino tools | Inputs without a type are `int`; the result is `int` when the block gives something back, `void` otherwise. |
-| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, when a sentence needs them. |
+| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, when a sentence needs them. |
 | Arduino checks | Steps at the left edge are an error; only one `setup` and one `loop`; `show` before `start the serial monitor` is a warning. |
 
 ### Unknown names, errors and warnings
@@ -1377,8 +1544,8 @@ direction, with the limits below.
   value is at run time, so where that decides the code and can't be seen, Python says so with a warning.
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
   `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above`, number words or names with
-  spaces. C++ has no `description:`, names with spaces, `count down`, `in steps of`, `contains`, `is in`
-  or `nothing`. These are errors or warnings, not silent.
+  spaces. C++ has no names with spaces, `contains`, `is in` or `nothing`. These are errors or warnings,
+  not silent.
 
 ## Known wrong translations
 
@@ -1973,26 +2140,45 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
 |  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
+|  | `make a ‹whole number› called ‹count›` | `int count;` | A name with no value yet. Also "make empty text called name", "make a yes/no value called done". |
+|  | `make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›` | `LiquidCrystal lcd(12, 11, 5, 4, 3, 2);` | An object of a class or a library, given what it needs to start. Leave off "with …" if it needs nothing: "make a Servo called arm". |
+|  | `keep ‹level› between ‹0› and ‹255›` | `level = std::clamp(level, 0, 255);` | Stops it going below the first number or above the second. |
+|  | `let ‹LED› stand for ‹13›` | `#define LED 13` | A name swapped for its value before compiling. "constant LED is 13" does the same, with a type. |
 | **Show & ask** | `show ‹value›` | `std::cout << value << std::endl;` | Join several things with "and" (a space between) or "followed by" (no space). |
+|  | `show ‹value› without ending the line` | `std::cout << value;` | What is shown next carries on the same line. "end the line" ends it. |
+|  | `end the line` | `std::cout << std::endl;` |  |
+|  | `show "‹%d tries›" filled in with ‹tries›` | `printf("%d tries", tries);` | The % codes are filled in, in order: %d a whole number, %f a decimal, %s text. |
 |  | `ask for a number "‹question›" and store in ‹name›` | `std::cin >> name;` | Or "ask … and store in …" for text. |
+|  | `read ‹age› from the keyboard` | `std::cin >> age;` | What the person types, up to a space. "read a line from the keyboard into ‹name›" reads a whole line. |
+|  | `read a line from the keyboard into ‹name›` | `std::getline(std::cin, name);` | A whole line of typed text, spaces and all. |
 | **Decisions** | `if ‹condition›` | `if (condition) {` |  |
 |  | `otherwise` | `} else {` |  |
+|  | `depending on ‹value›` | `switch (value) {` | Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise". |
+|  | `when it is ‹1›` | `case 1:` | Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead. |
 | **Loops** | `repeat ‹number› times` | `for (int i = 0; i < number; i++) {` |  |
-|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` |  |
-|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` |  |
+|  | `repeat ‹10› times, counting with ‹i›` | `for (int i = 0; i < 10; i++) {` | i goes from 0 to 9. A name made before is used as the count. |
+|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` | Add "in steps of 2" to skip. "count down i from 10 to 1" counts down. |
+|  | `count ‹i› from ‹0› up to but not including ‹n›` | `for (int i = 0; i < n; i++) {` |  |
+|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` | Add ", so it can be changed" to change the items themselves. |
+|  | `for each ‹whole number› ‹v› in ‹list›` | `for (int v : list) {` | Each item copied into a name of that type. |
 |  | `while ‹condition›` | `while (condition) {` |  |
+|  | `do this, then repeat while ‹condition›` | `do { … } while (condition);` | The steps run once before the test. |
 |  | `repeat forever` | `while (true) {` | Pair with "stop the loop". |
-| **Lists** | `create list of ‹numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". |
+| **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". Leave off "with …" for an empty list. |
+|  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
 |  | `add ‹value› to ‹list›` | `list.push_back(value);` |  |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
-|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›` | `double average(const std::vector<int>& values) {` | "read-only" looks at the caller's value without copying it; "the caller's" lets the tool change it. |
 |  | `give back ‹value›` | `return value;` |  |
+|  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
+|  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
-|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. |
+|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 |  | `above main: ‹C++ code›` | `code (outside main)` | C++ copied exactly, outside main. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
@@ -2015,6 +2201,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `"Hi {name}"` | `text("Hi ", name)` |
 | `self.name` | `this->name` |
 | `a followed by b` | `a << b` |
+| `x limited to 0–255` | `std::clamp(x, 0, 255)` |
 
 ### Arduino
 
@@ -2031,34 +2218,61 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
 |  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
+|  | `make a ‹whole number› called ‹count›` | `int count;` | A name with no value yet. Also "make empty text called name", "make a yes/no value called done". |
+|  | `make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›` | `LiquidCrystal lcd(12, 11, 5, 4, 3, 2);` | An object of a class or a library, given what it needs to start. Leave off "with …" if it needs nothing: "make a Servo called arm". |
+|  | `keep ‹level› between ‹0› and ‹255›` | `level = constrain(level, 0, 255);` | Stops it going below the first number or above the second. |
+|  | `let ‹LED› stand for ‹13›` | `#define LED 13` | A name swapped for its value before compiling. "constant LED is 13" does the same, with a type. |
 | **Decisions** | `if ‹condition›` | `if (condition) {` |  |
 |  | `otherwise` | `} else {` |  |
+|  | `depending on ‹value›` | `switch (value) {` | Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise". |
+|  | `when it is ‹1›` | `case 1:` | Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead. |
 | **Loops** | `repeat ‹number› times` | `for (int i = 0; i < number; i++) {` |  |
-|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` |  |
-|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` |  |
+|  | `repeat ‹10› times, counting with ‹i›` | `for (int i = 0; i < 10; i++) {` | i goes from 0 to 9. A name made before is used as the count. |
+|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` | Add "in steps of 2" to skip. "count down i from 10 to 1" counts down. |
+|  | `count ‹i› from ‹0› up to but not including ‹n›` | `for (int i = 0; i < n; i++) {` |  |
+|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` | Add ", so it can be changed" to change the items themselves. |
+|  | `for each ‹whole number› ‹v› in ‹list›` | `for (int v : list) {` | Each item copied into a name of that type. |
 |  | `while ‹condition›` | `while (condition) {` |  |
-| **Lists** | `create list of ‹numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". |
+|  | `do this, then repeat while ‹condition›` | `do { … } while (condition);` | The steps run once before the test. |
+| **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `int name[] = {1, 2, 3};` | Also "list of text", "list of decimals". |
+|  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
-|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
 |  | `give back ‹value›` | `return value;` |  |
+|  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
+|  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
-|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. |
+|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
 | **Board** | `when the board starts` | `void setup() {` | Runs once, when the board powers on. |
 |  | `over and over` | `void loop() {` | Runs again and again, forever. |
+|  | `skip the rest of this round` | `return;` | In "over and over": the board starts the next round from the top. |
 | **Pins** | `make pin ‹13› an output` | `pinMode(13, OUTPUT);` | Also "an input", "an input with pull-up". |
 |  | `turn pin ‹13› on` | `digitalWrite(13, HIGH);` | And "turn pin 13 off". "the built-in light" is LED_BUILTIN. |
+|  | `set pin ‹led› to ‹state›` | `digitalWrite(led, state);` | On or off by a value (HIGH or LOW). |
+|  | `turn pin ‹led› on if ‹lit›, otherwise off` | `digitalWrite(led, lit ? HIGH : LOW);` |  |
 |  | `set the brightness of pin ‹9› to ‹128›` | `analogWrite(9, 128);` | 0 to 255, on pins marked ~. |
-|  | `read pin ‹2› and store in ‹pressed›` | `int pressed = digitalRead(2);` | Or "read analog pin A0 …" for 0 to 1023. |
+|  | `read pin ‹A0› and call it ‹level› (a whole number)` | `int level = analogRead(A0);` | A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). "read analog pin SENSOR" for a named analog pin; "… and store it in level" changes a name made before. |
+|  | `scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›` | `level = map(reading, 0, 1023, 0, 255);` | Moves a value from one range to another. Also "… and call it level (a whole number)". |
+|  | `set ‹duration› to how long pin ‹echo› stays on` | `duration = pulseIn(echo, HIGH);` | In microseconds: for distance sensors. |
 | **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds". |
 |  | `wait ‹10› microseconds` | `delayMicroseconds(10);` | Millionths of a second, for timing a sensor's pulse. |
+|  | `if at least ‹500› milliseconds have passed since ‹last›` | `if (millis() - last >= 500) {` | On time without stopping the board. Also "more than", "less than", "at most". |
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
-|  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. |
+|  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. "show a followed by b" shows them on one line. |
+|  | `show ‹value› on the same line` | `Serial.print(value);` | What is shown next carries on the line. "end the line" ends it. |
+|  | `end the line` | `Serial.println();` |  |
+| **Screens** | `start ‹lcd› with ‹16, 2›` | `lcd.begin(16, 2);` | A library's start-up, in "when the board starts". "start pixels" if it needs nothing. |
+|  | `show ‹value› on ‹lcd›` | `lcd.print(value);` | Add ", then start a new line" to move down a line (println). |
+|  | `move ‹lcd›'s cursor to ‹0, 1›` | `lcd.setCursor(0, 1);` | Where the next thing shown goes: column and row on a text screen. |
+|  | `clear ‹lcd›` | `lcd.clear();` |  |
+| **Motors** | `attach ‹arm› to pin ‹9›` | `arm.attach(9);` | Make the servo first: "make a Servo called arm". |
+|  | `turn servo ‹arm› to ‹90› degrees` | `arm.write(90);` | 0 to 180. |
 | **Sound** | `play a tone of ‹440› on pin ‹8› for ‹200› milliseconds` | `tone(8, 440, 200);` |  |
 
 #### Arduino words inside sentences
@@ -2068,6 +2282,10 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `pin 2 is on` | `digitalRead(2) == HIGH` |
 | `reading of pin A0` | `analogRead(A0)` |
 | `time since start` | `millis()` |
+| `at least 500 milliseconds have passed since last` | `millis() - last >= 500` |
+| `x scaled from 0–1023 to 0–255` | `map(x, 0, 1023, 0, 255)` |
+| `x limited to 0–255` | `constrain(x, 0, 255)` |
+| `how long pin 7 stays on` | `pulseIn(7, HIGH)` |
 | `the built-in light` | `LED_BUILTIN` |
 | `random number from 1 to 6` | `random(1, 7)` |
 | `x as number` | `x.toInt()` |

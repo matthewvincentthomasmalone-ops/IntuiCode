@@ -226,6 +226,185 @@ test('C++: one item of a list is set by position; a decimal as a whole number is
   assert.match(ino.text, /delayMicroseconds\(10\);/);
 });
 
+// ---- 2026-11-09: sentences that say what the code does (the converter writes these; the old ones still work) ----
+const ino = (text) => CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 's', file: 'sketch', text }] }).results.s;
+const noProblems = (r) => assert.deepEqual(plain(r.info.flatMap((inf, i) => inf.errs.map(e => `${i + 1}: ${e}`))), []);
+
+test('Arduino: declarations, objects, #define, fixed-size lists, reading and scaling a pin, keeping a value in range', () => {
+  const r = ino([
+    'include <Servo.h>',
+    'let FAN stand for 5',
+    'make a Servo called vent',
+    'make a LiquidCrystal called lcd with 12, 11, 5, 4, 3, 2',
+    'make a whole number called state',
+    'make a long called duration',
+    'make a list of 4 whole numbers called readings with 0, 0, 0, 0',
+    'make a list of 8 characters called label',
+    'make a list of whole numbers called melody with 262, 196',
+    'set unsigned long last to 0',
+    'when the board starts',
+    '    start the serial monitor at 9600',
+    '    attach vent to pin 9',
+    '    start lcd with 16, 2',
+    '    show "hello" on lcd',
+    'over and over',
+    '    read pin A0 and call it reading (a whole number)',
+    '    read analog pin FAN and store it in state',
+    '    read digital pin A1 and call it b',
+    '    read pin 2 and call it big (a long)',
+    '    scale reading from 0–1023 to 0–255 and call it level',
+    '    scale reading from 0–1023 to 0–180 and store it in state',
+    '    keep level between 0 and 255',
+    '    set level to reading scaled from 0–1023 to 0–255 limited to 0–200',
+    '    set duration to how long pin 7 stays on',
+  ].join('\n'));
+  noProblems(r);
+  assert.match(r.text, /^#include <Servo\.h>\n\n#define FAN 5\nServo vent;\nLiquidCrystal lcd\(12, 11, 5, 4, 3, 2\);\nint state;\nlong duration;\nint readings\[4\] = \{0, 0, 0, 0\};\nchar label\[8\];\nint melody\[\] = \{262, 196\};\n/);
+  assert.match(r.text, /    vent\.attach\(9\);\n    lcd\.begin\(16, 2\);\n    lcd\.print\("hello"\);/);
+  assert.match(r.text, /    int reading = analogRead\(A0\);\n    state = analogRead\(FAN\);\n    int b = digitalRead\(A1\);\n    long big = digitalRead\(2\);\n/);
+  assert.match(r.text, /    int level = map\(reading, 0, 1023, 0, 255\);\n    state = map\(reading, 0, 1023, 0, 180\);\n    level = constrain\(level, 0, 255\);\n    level = constrain\(map\(reading, 0, 1023, 0, 255\), 0, 200\);\n    duration = pulseIn\(7, HIGH\);/);
+});
+
+test('Arduino: time without waiting, pins set by a value, servos, screens, Serial runs, switch and do-while', () => {
+  const r = ino([
+    'make a Servo called arm',
+    'make a LiquidCrystal called lcd with 12, 11, 5, 4, 3, 2',
+    'set unsigned long last to 0',
+    'set pos to 0',
+    'set level to 0',
+    'when the board starts',
+    '    start the serial monitor at 9600',
+    'over and over',
+    '    if at least 1000 milliseconds have passed since last',
+    '        set last to time since start',
+    '    if not more than 50 milliseconds have passed since last',
+    '        skip the rest of this round',
+    '    count pos from 0 to 180 in steps of 1',
+    '        turn servo arm to pos degrees',
+    '    repeat 3 times, counting with i',
+    '        show i',
+    '    turn pin 4 on if level is at least 100, otherwise off',
+    '    set pin 4 to level',
+    '    show "Distance: " followed by level followed by " cm"',
+    '    show "x" without ending the line',
+    '    end the line',
+    '    show "Speed %d\\n" filled in with level',
+    '    show level on lcd, then start a new line',
+    '    move lcd\'s cursor to 0, 1',
+    '    clear lcd',
+    '    depending on level',
+    '        when it is 1 or 2',
+    '            turn pin 13 on',
+    '        when it is 3',
+    '            turn pin 13 off',
+    '            go on into the next case',
+    '        otherwise',
+    '            wait 5 milliseconds',
+    '    do this, then repeat while pos is less than 5',
+    '        increase pos',
+  ].join('\n'));
+  noProblems(r);
+  assert.match(r.text, /    if \(millis\(\) - last >= 1000\) \{\n        last = millis\(\);\n    \}\n    if \(!\(millis\(\) - last > 50\)\) \{\n        return;\n    \}/);
+  assert.match(r.text, /    for \(pos = 0; pos <= 180; pos \+= 1\) \{\n        arm\.write\(pos\);\n    \}\n    for \(int i = 0; i < 3; i\+\+\) \{/);   // pos was made before, so the count uses it
+  assert.match(r.text, /    digitalWrite\(4, level >= 100 \? HIGH : LOW\);\n    digitalWrite\(4, level\);/);
+  assert.match(r.text, /    Serial\.print\("Distance: "\); Serial\.print\(level\); Serial\.println\(" cm"\);\n    Serial\.print\("x"\);\n    Serial\.println\(\);\n    Serial\.printf\("Speed %d\\n", level\);\n    lcd\.println\(level\);\n    lcd\.setCursor\(0, 1\);\n    lcd\.clear\(\);/);
+  assert.match(r.text, /    switch \(level\) \{\n        case 1:\n        case 2:\n            digitalWrite\(13, HIGH\);\n            break;\n        case 3:\n            digitalWrite\(13, LOW\);\n        default:\n            delay\(5\);\n            break;\n    \}/);
+  assert.match(r.text, /    do \{\n        pos\+\+;\n    \} while \(pos < 5\);/);
+});
+
+test('C++: structures, a class that starts private, read-only and the caller\'s inputs, lists, the keyboard, printf', () => {
+  const r = cpp([
+    'let LIMIT stand for 10',
+    'define structure Point',
+    '    field x: decimal',
+    'define class Counter',
+    '    the rest is private',
+    '    field count: whole number = 0',
+    '    the rest is public',
+    '    define add giving back nothing',
+    '        set count to count plus 1',
+    'define total using read-only list of whole numbers values giving back a whole number',
+    '    set sum to 0',
+    '    for each whole number v in values',
+    '        increase sum by v',
+    '    give back sum',
+    'define bump using the caller\'s whole number n giving back nothing',
+    '    increase n',
+    '    leave the tool now',
+    'make an empty list of whole numbers called scores',
+    'make empty text called name',
+    'make a list of 4 decimals called weights with 1.5, 2.5',
+    'make a whole number called count',
+    'make a yes/no value called done',
+    'make a Counter called counter',
+    'show "Your name: " without ending the line',
+    'read a line from the keyboard into name',
+    'read count and done from the keyboard',
+    'for each s in scores, so it can be changed',
+    '    multiply s by 2',
+    'for each s in scores, as a copy',
+    '    show s on the same line',
+    'end the line',
+    'keep count between 0 and LIMIT',
+    'set capped to count limited to 1–5',
+    'count i from 1 up to but not including 10 in steps of 3',
+    '    show i',
+    'depending on count',
+    '    when it is 1',
+    '        show "one"',
+    '    when it is 3',
+    '        set extra to 1',
+    '        show extra',
+    '    otherwise',
+    '        show "many"',
+    'show "Total %d\\n" filled in with total(scores)',
+  ].join('\n'));
+  noProblems(r);
+  assert.match(r.text, /#include <algorithm>\n#include <cstdio>\n\n#define LIMIT 10\nstruct Point \{\n    double x;\n\};\nclass Counter \{\nprivate:\n    int count = 0;\npublic:\n    void add\(\) \{\n        count = count \+ 1;\n    \}\n\};/);
+  assert.match(r.text, /int total\(const std::vector<int>& values\) \{\n    int sum = 0;\n    for \(int v : values\) \{/);
+  assert.match(r.text, /void bump\(int& n\) \{\n    n\+\+;\n    return;\n\}/);
+  assert.match(r.text, /    std::vector<int> scores;\n    std::string name;\n    double weights\[4\] = \{1\.5, 2\.5\};\n    int count;\n    bool done;\n    Counter counter;\n    std::cout << "Your name: ";\n    std::getline\(std::cin, name\);\n    std::cin >> count >> done;/);
+  assert.match(r.text, /    for \(auto& s : scores\) \{\n        s \*= 2;\n    \}\n    for \(auto s : scores\) \{\n        std::cout << s << " ";\n    \}\n    std::cout << std::endl;\n    count = std::clamp\(count, 0, LIMIT\);\n    auto capped = std::clamp\(count, 1, 5\);\n    for \(int i = 1; i < 10; i \+= 3\) \{/);
+  // a case that makes a name (and isn't the last) gets braces, so the cases after it build
+  assert.match(r.text, /        case 3: \{\n            int extra = 1;\n            std::cout << extra << std::endl;\n            break;\n        \}\n        default:/);
+  assert.match(r.text, /    printf\("Total %d\\n", total\(scores\)\);/);
+  assertValidCpp(r.text, 'new C++ sentences');
+});
+
+for (const [sentences, re, arduino] of [
+  ['set x to 1\nrepeat forever\n    depending on x\n        when it is 1\n            stop the loop', /only leaves the case, not the loop/],
+  ['when it is 1\n    show 1', /goes right under "depending on/],
+  ['set x to 1\ndepending on x\n    show x', /each step goes in a case/],
+  ['set x to 1\ndepending on x\n    otherwise\n        show 1\n    otherwise\n        show 2', /already an "otherwise"/],
+  ['set x to 1\nif x is 1\n    go on into the next case', /goes last in a case/],
+  ['define f giving back nothing\n    skip the rest of this round', /only works inside "over and over"/, true],
+  ['when the board starts\n    read x from the keyboard', /no keyboard/, true],
+  ['make an empty whole number called n', /Only text and lists start out "empty"/],
+  ['make a whole number called n with 5', /given its value with "set"/],
+  ['make a thing called t', /I don't know the type "thing"/],
+  ['make a whole number called n\nmake a whole number called n', /already made here/],
+  ['over and over\n    read pin A0 and call it x\n    read pin A0 and call it x', /already made here. To change it/, true],
+  ['make a list of 2 whole numbers called xs with 1, 2, 3', /3 items don't fit in a list of 2/],
+  ['make a list of float things called xs', /I don't know the type "float things"/],
+]) {
+  test(`C++ and Arduino: explains a problem with a new sentence: ${sentences.split('\n').pop().trim()}`, () => {
+    const r = arduino ? ino(sentences) : cpp(sentences);
+    const said = plain(r.info.flatMap(i => i.errs));
+    assert.ok(said.some(e => re.test(e)), said.join('\n'));
+  });
+}
+
+test('C++ and Arduino: the sentences used before still say the same code', () => {
+  const r = ino('set lit to false\nwhen the board starts\n    start the serial monitor at 9600\nover and over\n    read analog pin A0 and store in level\n    read pin 2 and store in pressed\n    make a new Servo and store in arm\n    count up i from 10 to 1\n        show i\n    set dice to random number from 1 to 6');
+  noProblems(r);
+  assert.match(r.text, /    int level = analogRead\(A0\);\n    int pressed = digitalRead\(2\);\n    Servo arm;\n    for \(int i = 10; i <= 1; i\+\+\) \{/);   // "count up" always counts up
+  const c = cpp('define area using decimal w, decimal h giving back decimal\n    give back w times h\ncreate list of numbers called xs with 1, 2\ncreate list of text called names\nrepeat 3 times counting with k\n    show k');
+  noProblems(c);
+  assert.match(c.text, /double area\(double w, double h\) \{/);
+  assert.match(c.text, /    std::vector<int> xs = \{1, 2\};\n    std::vector<std::string> names;\n    for \(int k = 0; k < 3; k\+\+\) \{/);
+  assertValidCpp(c.text, 'old sentences');
+});
+
 test('C++: a shown piece with an operator weaker than << goes in brackets; names, calls, sums and text don\'t', () => {
   const r = cpp('define class Item\n    field name: text\n    when made using text name\n        set self.name to name\n    define describe\n        show self.name\nmake a new Item with "pen" and store in pen\nrun pen.describe\nset n to 1\nset m to 2\nshow n is at least 1\nshow (n + 1) is (n + 2)\nshow n & 1 and n | 2\nshow n ^ 3\nshow n > 0 ? 1 : 2\nshow n << 2\nshow n and m plus 1 and "n: {n}"\nshow "a > b" followed by \'<\' followed by static_cast<double>(n)\nask n is 1 and store in reply');
   assert.deepEqual(plain(r.info.flatMap(i => [...i.errs, ...i.warns])), []);

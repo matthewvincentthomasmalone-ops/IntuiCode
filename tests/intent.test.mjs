@@ -37,7 +37,7 @@ test('a border is styling: offered from the page, marked as going in Styling, an
 
 test('Python and Arduino by meaning', () => {
   assert.equal(top('ask the user their name', PY.TEMPLATES, {})[0], 'ask "‹question›" and store in ‹name›');
-  assert.equal(top('read the sensor', CPP.TEMPLATES, {})[0], 'read pin ‹2› and store in ‹pressed›');
+  assert.match(top('read the sensor', CPP.TEMPLATES, {})[0], /^read (?:analog )?pin/);
   assert.match(top('blink the led', CPP.TEMPLATES, {})[0], /^turn pin|^make pin/);
 });
 
