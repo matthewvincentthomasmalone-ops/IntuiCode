@@ -84,7 +84,7 @@ test('code -> sentences: the sentences read naturally', () => {
   assert.match(css, /^on screens narrower than 600px:\n    style group hero: space inside 40 16$/m);
   const html = convert('html', read('tests/corpus_web/landing.html'), { pulled: ['styles.css', 'app.js'] }).text;
   assert.match(html, /^    add a button called order saying "Order ahead" in group cta$/m);
-  assert.match(html, /^        add a email box called email with hint "you@example.com"$/m);
+  assert.match(html, /^        add an email box called email with hint "you@example.com"$/m);
 });
 
 test('code -> sentences: anything that can\'t be said stays exact code', () => {
@@ -189,9 +189,9 @@ test('code -> sentences: exact where the checker used to look away', () => {
   exact('html', page('<script src="app.js" defer></script>\n<link rel="stylesheet" href="s.css">', '<nav>\n  <a href="/"> Home </a>\n  <a href="/b">B</a>\n</nav>', { viewport: 'width=1024' }), { pulled: ['s.css', 'app.js'] },
     /^head: <meta name="viewport" content="width=1024">\nhead: <script src="script\.js" defer><\/script>\nadd a navigation bar\n    add a link to "\/" saying " Home "$/m);
   exact('html', page('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">', '<p>x</p>'), null, /^page title is "T"\nhead: <meta http-equiv/m);
-  // inline things with nothing between them stay on one line (a line break would show as a space)
+  // inline things with nothing between them are said as glued (a line break would show as a space)
   exact('html', page('', '<h1>Hi</h1>\n<img src="a.png" alt="A"><img src="b.png" alt="B">\n<section>\n  <b>x</b><i>y</i>\n</section>'), null,
-    /^add a big heading "Hi"\nhtml: <img src="a\.png" alt="A"><img src="b\.png" alt="B">\nadd a section\n    html: <b>x<\/b><i>y<\/i>$/m);
+    /^add a big heading "Hi"\nadd a picture of "a\.png" described as "A"\nadd a picture of "b\.png" described as "B", with no space before it\nadd a section\n    add bold text "x"\n    add italic text "y", with no space before it$/m);
 });
 
 test('code -> sentences: C++ main with inputs is reported, not guessed', () => {

@@ -127,6 +127,287 @@
   const KEYPADS = { number: 'numeric', numbers: 'numeric', decimal: 'decimal', phone: 'tel', email: 'email', search: 'search', url: 'url', web: 'url' };
   const PICKS = { picture: 'image/*', pictures: 'image/*', photo: 'image/*', photos: 'image/*', image: 'image/*', images: 'image/*', sound: 'audio/*', sounds: 'audio/*', song: 'audio/*', songs: 'audio/*', audio: 'audio/*', music: 'audio/*', video: 'video/*', videos: 'video/*', 'text file': '.txt,text/plain', 'text files': '.txt,text/plain' };
 
+  /* Every element in plain words: [tag, the word said for it, other words accepted]. Words for text
+     ("bold text") take no "a". Inside a drawing (<svg>) the drawing's own words are used. Any other tag
+     is "add a ‹tag› element". */
+  const ELEMENT_WORDS = [
+    ['div', 'block', 'box', 'area'], ['span', 'text'], ['p', 'paragraph'], ['h1', 'big heading'], ['h2', 'heading'], ['h3', 'small heading'],
+    ['h4', 'level 4 heading'], ['h5', 'level 5 heading'], ['h6', 'level 6 heading'], ['section', 'section'], ['header', 'header'], ['footer', 'footer'],
+    ['nav', 'navigation bar', 'navigation', 'nav'], ['main', 'main area', 'main content', 'main'], ['aside', 'side panel', 'sidebar'], ['article', 'article'],
+    ['form', 'form'], ['ul', 'list'], ['ol', 'numbered list'], ['li', 'list item', 'item'], ['table', 'table'], ['tr', 'row'], ['td', 'cell'], ['th', 'heading cell'],
+    ['thead', 'table head'], ['tbody', 'table body'], ['tfoot', 'table foot'], ['caption', 'table caption'], ['dialog', 'dialog', 'pop-up'],
+    ['figure', 'figure'], ['figcaption', 'caption'], ['details', 'collapsible section'], ['summary', 'summary'], ['dl', 'definition list'], ['dt', 'term'],
+    ['dd', 'definition'], ['blockquote', 'quotation'], ['q', 'short quotation'], ['cite', 'citation'], ['address', 'address'], ['hgroup', 'heading group'],
+    ['menu', 'menu'], ['search', 'search area'], ['fieldset', 'field group'], ['legend', 'legend'], ['a', 'link'], ['button', 'button'], ['label', 'label'],
+    ['img', 'picture', 'image', 'photo'], ['input', 'input'], ['select', 'drop-down', 'dropdown'], ['option', 'option'], ['optgroup', 'option group'],
+    ['textarea', 'big text box'], ['output', 'output'], ['progress', 'progress bar'], ['meter', 'meter'], ['video', 'video'], ['audio', 'sound player'],
+    ['source', 'media source'], ['track', 'captions track'], ['iframe', 'embedded page'], ['canvas', 'drawing area', 'canvas'], ['br', 'line break'], ['hr', 'line'],
+    ['svg', 'drawing'], ['script', 'script'], ['strong', 'strong text'], ['em', 'emphasised text', 'emphasized text'], ['b', 'bold text'], ['i', 'italic text'],
+    ['u', 'underlined text'], ['s', 'struck-out text'], ['small', 'small text'], ['mark', 'highlighted text'], ['sub', 'subscript'], ['sup', 'superscript'],
+    ['abbr', 'abbreviation'], ['code', 'code'], ['kbd', 'key'], ['samp', 'sample output'], ['var', 'variable'], ['time', 'time'], ['del', 'deleted text'],
+    ['ins', 'inserted text'],
+  ];
+  const SVG_WORDS = [
+    ['svg', 'drawing'], ['g', 'set of shapes'], ['defs', 'reusable parts'], ['circle', 'circle'], ['ellipse', 'ellipse'], ['rect', 'rectangle'], ['line', 'line'],
+    ['polyline', 'polyline'], ['polygon', 'polygon'], ['path', 'path'], ['text', 'text'], ['tspan', 'text piece'], ['use', 'copy'], ['image', 'picture', 'image'],
+    ['linearGradient', 'gradient'], ['radialGradient', 'radial gradient'], ['stop', 'colour stop', 'color stop'], ['pattern', 'pattern'], ['clipPath', 'clipping shape'],
+    ['mask', 'mask'], ['symbol', 'symbol'], ['marker', 'marker'], ['title', 'title'], ['desc', 'description'], ['a', 'link'], ['foreignObject', 'page area'],
+  ];
+  const wordTable = (rows) => { const m = new Map(); for (const [tag, ...ws] of rows) for (const w of ws) if (!m.has(w)) m.set(w, tag); return m; };
+  const HTML_WORD_TAG = wordTable(ELEMENT_WORDS), SVG_WORD_TAG = wordTable(SVG_WORDS);
+  const wordRe = (m) => new RegExp(`^add\\s+(?:(?:a|an|some)\\s+)?(${[...m.keys()].sort((x, y) => y.length - x.length).map(w => w.replace(/[-]/g, '\\-')).join('|')})(?=[\\s,]|$)(.*)$`, 'i');
+  const HTML_WORD_RE = wordRe(HTML_WORD_TAG), SVG_WORD_RE = wordRe(SVG_WORD_TAG);
+  /* The word for an element, as the reader says it: "a block", "bold text", "a gradient", or "a my-widget element". */
+  function elementWord(tag, svg) {
+    const row = (svg ? SVG_WORDS : ELEMENT_WORDS).find(r => r[0].toLowerCase() === tag.toLowerCase());
+    const w = row ? row[1] : /^[A-Za-z][\w-]*$/.test(tag) ? `${tag} element` : null;
+    if (!w) return null;
+    return /(?:^|\s)text$|^code$|^reusable parts$/.test(w) ? w : `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`;
+  }
+  const VOID_TAGS = new Set(['img', 'input', 'hr', 'br', 'meta', 'link', 'source', 'track', 'wbr', 'col', 'area', 'embed', 'base', 'param']);
+  // as the browser lays them out: spaces next to these, or at their inner edges, don't show (see convert.js)
+  const BLOCK_TAGS = /^(?:html|head|body|address|article|aside|blockquote|center|details|dialog|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|ol|p|pre|search|section|table|tbody|thead|tfoot|tr|td|th|caption|colgroup|col|ul|summary|legend|menu|optgroup|option|br|title|meta|link|base|listing)$/;
+  const OWN_BOX_TAGS = /^(?:button|select|textarea|input|img|video|audio|canvas|iframe|object|embed|meter|progress|svg|math)$/;
+
+  /* Names in sentences: a plain name (called save) is made into an id the way "called" always has; a name
+     in quotes (called "helpToggle") is kept exactly. Several are joined with "and". */
+  const NAME_TOKEN = `"(?:[^"\\\\]|\\\\.)*"|[\\w-]+`;
+  const nameOf = (t) => { const q = strOf(t); return q != null ? q : toId(t); };
+  const namesOf = (t) => { const parts = outsideQuotes(t, (s) => s.replace(/\s+and\s+/gi, '\u0002')).split('\u0002').map(s => s.trim()); return parts.every(p => new RegExp(`^(?:${NAME_TOKEN})$`).test(p)) ? parts.map(nameOf).join(' ') : null; };
+  /* A value in a phrase: text in quotes, or one word or number as it is (#873044, .4, userSpaceOnUse). */
+  const valueOf = (t) => { t = String(t).trim(); const q = strOf(t); return q != null ? q : /^[^\s"',]+$/.test(t) ? t : null; };
+  const NUM = `-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[-+]?\\d+)?(?:%|px|em|rem)?|"[^"]*"`;
+  const EVENT_WORDS = { click: 'when clicked', change: 'when changed', input: 'when typed in', submit: 'when sent', load: 'when loaded' };
+
+  /* One attribute phrase ("hidden from screen readers", "controls help-panel", "storing chord "C"") ->
+     [[name, value], …] (a value of null takes the attribute away), { glued: true } for "with no space before
+     it", or null when it isn't one. ctx: { tag, svg } of the element it is on. */
+  function readAttr(seg, ctx = {}) {
+    const s = String(seg).trim();
+    let m;
+    const one = (n, v) => (v == null ? null : [[n, v]]);
+    if (/^with no space before it$/i.test(s)) return { glued: true };
+    if (/^hidden from screen readers$/i.test(s)) return [['aria-hidden', 'true']];
+    if ((m = s.match(/^labell?ed\s+(.+?)\s+for screen readers$/i))) return one('aria-label', strOf(m[1]));
+    if ((m = s.match(/^labell?ed by\s+(.+)$/i))) return one('aria-labelledby', namesOf(m[1]));
+    if ((m = s.match(/^described by\s+(.+)$/i))) return one('aria-describedby', namesOf(m[1]));
+    if ((m = s.match(/^controls\s+(.+)$/i))) return one('aria-controls', namesOf(m[1]));
+    if ((m = s.match(/^starts (collapsed|expanded)$/i))) return [['aria-expanded', /^expanded$/i.test(m[1]) ? 'true' : 'false']];
+    if ((m = s.match(/^starts (not )?pressed$/i))) return [['aria-pressed', m[1] ? 'false' : 'true']];
+    if ((m = s.match(/^marked as (?:the )?current(?:\s+(.+))?$/i))) return one('aria-current', m[1] ? valueOf(m[1]) : 'true');
+    if ((m = s.match(/^read out (at once )?when it changes$/i))) return [['aria-live', m[1] ? 'assertive' : 'polite']];
+    if ((m = s.match(/^with (?:a )?tooltip\s+(.+)$/i))) return one('title', strOf(m[1]));
+    if ((m = s.match(/^with (?:a )?hint\s+(.+)$/i))) return one('placeholder', strOf(m[1]));
+    if (/^opening in a new tab$/i.test(s)) return [['target', '_blank']];
+    if ((m = s.match(/^sent as\s+(.+)$/i))) return one('name', strOf(m[1]));
+    if ((m = s.match(/^sending to\s+(.+)$/i))) return one('action', strOf(m[1]));
+    if ((m = s.match(/^storing\s+([a-z][\w.-]*)\s+(.+)$/i))) return one('data-' + m[1], valueOf(m[2]));
+    if ((m = s.match(/^running\s+(.+?)\s+(when clicked|when changed|when typed in|when sent|when loaded|on [a-z]+)$/i))) {
+      const ev = Object.keys(EVENT_WORDS).find(k => EVENT_WORDS[k] === m[2].toLowerCase()) || m[2].replace(/^on\s+/i, '').toLowerCase();
+      return one('on' + ev, strOf(m[1]));
+    }
+    if ((m = s.match(/^linking to\s+(.+)$/i))) return one('href', strOf(m[1]));
+    if ((m = s.match(/^from\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i))) return one('src', strOf(m[1]));
+    if ((m = s.match(/^described as\s+(.+)$/i))) return one('alt', strOf(m[1]));
+    if (/^with no description$/i.test(s)) return [['alt', null]];
+    if ((m = s.match(/^for\s+(.+)$/i))) return one('for', namesOf(m[1]));
+    if ((m = s.match(new RegExp(`^sized\\s+(${NUM})\\s+by\\s+(${NUM})$`, 'i')))) return [['width', valueOf(m[1])], ['height', valueOf(m[2])]];
+    if ((m = s.match(new RegExp(`^(${NUM})\\s+wide$`, 'i')))) return [['width', valueOf(m[1])]];
+    if ((m = s.match(new RegExp(`^(${NUM})\\s+tall$`, 'i')))) return [['height', valueOf(m[1])]];
+    if ((m = s.match(/^of type\s+(.+)$/i))) return one('type', valueOf(m[1]));
+    if ((m = s.match(new RegExp(`^drawn on a\\s+(${NUM})\\s+by\\s+(${NUM})\\s+grid$`, 'i')))) return [['viewBox', `0 0 ${valueOf(m[1])} ${valueOf(m[2])}`]];
+    if (/^with the svg namespace$/i.test(s)) return [['xmlns', 'http://www.w3.org/2000/svg']];
+    if (ctx.svg) {
+      const paint = (t) => { const g = t.match(/^the (?:gradient|pattern|clipping shape|mask|marker)\s+(.+)$/i); if (g) { const n = new RegExp(`^(?:${NAME_TOKEN})$`).test(g[1].trim()) ? nameOf(g[1].trim()) : null; return n == null ? null : `url(#${n})`; } return valueOf(t); };
+      if ((m = s.match(/^filled with\s+(.+)$/i))) return one('fill', paint(m[1]));
+      if (/^not filled$/i.test(s)) return [['fill', 'none']];
+      if ((m = s.match(/^outlined in\s+(.+)$/i))) return one('stroke', paint(m[1]));
+      if (/^not outlined$/i.test(s)) return [['stroke', 'none']];
+      if ((m = s.match(new RegExp(`^outline\\s+(${NUM})\\s+wide$`, 'i')))) return [['stroke-width', valueOf(m[1])]];
+      if ((m = s.match(new RegExp(`^with rounded corners\\s+(${NUM})$`, 'i')))) return [['rx', valueOf(m[1])]];
+      if ((m = s.match(new RegExp(`^with radius\\s+(${NUM})$`, 'i')))) return [['r', valueOf(m[1])]];
+      if ((m = s.match(new RegExp(`^with radii\\s+(${NUM})\\s+and\\s+(${NUM})$`, 'i')))) return [['rx', valueOf(m[1])], ['ry', valueOf(m[2])]];
+      if ((m = s.match(new RegExp(`^(starting|ending)(?:\\s+(${NUM})\\s+across)?(?:\\s+and)?(?:\\s+(${NUM})\\s+down)?$`, 'i'))) && (m[2] || m[3])) {
+        const [x, y] = /^starting$/i.test(m[1]) ? ['x1', 'y1'] : ['x2', 'y2'];
+        return [...(m[2] ? [[x, valueOf(m[2])]] : []), ...(m[3] ? [[y, valueOf(m[3])]] : [])];
+      }
+    }
+    const FLAGS = { hidden: 'hidden', disabled: 'disabled', required: 'required', 'read-only': 'readonly', ticked: 'checked', selected: 'selected', 'focused at the start': 'autofocus', 'allowing several': 'multiple', 'with controls': 'controls', 'playing by itself': 'autoplay', 'on a loop': 'loop', muted: 'muted', 'open at the start': 'open' };
+    if (FLAGS[s.toLowerCase()]) return [[FLAGS[s.toLowerCase()], '']];
+    if (/^loaded lazily$/i.test(s)) return [['loading', 'lazy']];
+    // any other attribute: with name "value", with name value, or just with name
+    if ((m = s.match(/^with (?:attribute )?([A-Za-z_:][\w:.-]*)(?:\s+(.+))?$/))) {
+      const v = m[2] == null ? '' : valueOf(m[2]);
+      return v == null ? null : [[m[1], v]];
+    }
+    return null;
+  }
+  /* The phrase for one attribute (or null): the shortest that reads back as exactly it. */
+  function sayAttr(name, value, ctx = {}) {
+    const n = String(name), low = n.toLowerCase(), v = value == null ? '' : String(value);
+    const q = (t) => quoteText(t), val = (t) => (/^[^\s"',\\]+$/.test(t) && t !== '' ? t : quoteText(t));
+    const names = (t) => { const ps = t.trim().split(/\s+/); return t.trim() && ps.every(p => toId(p) === p && /^[a-z]/.test(p)) ? ps.join(' and ') : q(t); };
+    const tries = [];
+    const ev = low.match(/^on([a-z]+)$/);
+    switch (low) {
+      case 'aria-hidden': if (v === 'true') tries.push('hidden from screen readers'); break;
+      case 'aria-label': tries.push(`labelled ${q(v)} for screen readers`); break;
+      case 'aria-labelledby': tries.push(`labelled by ${names(v)}`); break;
+      case 'aria-describedby': tries.push(`described by ${names(v)}`); break;
+      case 'aria-controls': tries.push(`controls ${names(v)}`); break;
+      case 'aria-expanded': if (v === 'false') tries.push('starts collapsed'); if (v === 'true') tries.push('starts expanded'); break;
+      case 'aria-pressed': if (v === 'false') tries.push('starts not pressed'); if (v === 'true') tries.push('starts pressed'); break;
+      case 'aria-current': tries.push(v === 'true' ? 'marked as current' : `marked as the current ${val(v)}`); break;
+      case 'aria-live': if (v === 'polite') tries.push('read out when it changes'); if (v === 'assertive') tries.push('read out at once when it changes'); break;
+      case 'title': tries.push(`with tooltip ${q(v)}`); break;
+      case 'placeholder': tries.push(`with hint ${q(v)}`); break;
+      case 'target': if (v === '_blank') tries.push('opening in a new tab'); break;
+      case 'name': if (/^(?:input|select|textarea|button)$/.test(ctx.tag || '')) tries.push(`sent as ${q(v)}`); break;
+      case 'action': tries.push(`sending to ${q(v)}`); break;
+      case 'href': if (ctx.tag !== 'a') tries.push(`linking to ${q(v)}`); break;
+      case 'src': tries.push(`from ${q(v)}`); break;
+      case 'alt': tries.push(`described as ${q(v)}`); break;
+      case 'for': tries.push(`for ${names(v)}`); break;
+      case 'width': tries.push(`${val(v)} wide`); break;
+      case 'height': tries.push(`${val(v)} tall`); break;
+      case 'type': tries.push(`of type ${val(v)}`); break;
+      case 'viewbox': { const g = v.match(/^0 0 (\S+) (\S+)$/); if (g && /^\d+(?:\.\d+)?$/.test(g[1] + g[2]) && /^\d+(?:\.\d+)?$/.test(g[2])) tries.push(`drawn on a ${g[1]} by ${g[2]} grid`); break; }
+      case 'xmlns': tries.push('with the svg namespace'); break;
+      case 'fill': case 'stroke': {
+        const word = low === 'fill' ? 'filled with' : 'outlined in';
+        if (v === 'none') tries.push(low === 'fill' ? 'not filled' : 'not outlined');
+        const u = v.match(/^url\(#([^)\s"']+)\)$/);
+        if (u && ctx.refs && ctx.refs[u[1]]) tries.push(`${word} the ${ctx.refs[u[1]]} ${names(u[1]) === u[1] ? u[1] : q(u[1])}`);
+        tries.push(`${word} ${val(v)}`);
+        break;
+      }
+      case 'stroke-width': tries.push(`outline ${val(v)} wide`); break;
+      case 'rx': if (ctx.tag === 'rect') tries.push(`with rounded corners ${val(v)}`); break;
+      case 'loading': if (v === 'lazy') tries.push('loaded lazily'); break;
+      default: {
+        if (ev) tries.push(`running ${q(v)} ${EVENT_WORDS[ev[1]] || 'on ' + ev[1]}`);
+        if (/^data-[a-z][\w.-]*$/.test(low) && n === low) tries.push(`storing ${n.slice(5)} ${/^-?\d*\.?\d+$/.test(v) ? v : q(v)}`);
+      }
+    }
+    const FLAG_SAY = { hidden: 'hidden', disabled: 'disabled', required: 'required', readonly: 'read-only', checked: 'ticked', selected: 'selected', autofocus: 'focused at the start', multiple: 'allowing several', controls: 'with controls', autoplay: 'playing by itself', loop: 'on a loop', muted: 'muted', open: 'open at the start' };
+    if (v === '' && FLAG_SAY[low]) tries.push(FLAG_SAY[low]);
+    tries.push(v === '' ? `with ${n}` : `with ${n} ${val(v)}`, v === '' ? `with attribute ${n}` : `with attribute ${n} ${val(v)}`);
+    for (const t of tries) {
+      const r = readAttr(t, ctx);
+      if (Array.isArray(r) && r.length === 1 && r[0][0].toLowerCase() === low && (r[0][1] ?? '') === v) return t;
+    }
+    return null;
+  }
+  /* Text in quotes for a sentence: \" \' and \\ stand for the character itself. */
+  const quoteText = (t) => { const s = String(t).replace(/\\/g, '\\\\'); return !s.includes('"') ? `"${s}"` : !s.includes("'") ? `'${s}'` : `"${s.replace(/"/g, '\\"')}"`; };
+
+  /* The phrases at the end of a Structure sentence, after commas: "…, hidden from screen readers, controls menu".
+     Takes them off the end (last first) and gives back what's left, the attributes in order, and the glue. */
+  function takePhrases(s, ctx) {
+    const cuts = [];
+    for (let k = 1; ; k++) { const at = nthTopComma(s, k); if (at >= s.length) break; cuts.push(at); }
+    const attrs = [];
+    let glued = false, end = s.length;
+    for (let k = cuts.length - 1; k >= 0; k--) {
+      const r = readAttr(s.slice(cuts[k] + 1, end), ctx);
+      if (!r) break;
+      if (r.glued) glued = true; else attrs.unshift(...r);
+      end = cuts[k];
+    }
+    return { rest: s.slice(0, end).trim(), attrs, glued };
+  }
+  /* Where the nth top-level comma is (outside quotes and brackets), counting from 1. */
+  function nthTopComma(s, nth) {
+    let depth = 0, quote = null, count = 0;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+      if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+      if ('([{'.includes(c)) depth++;
+      if (')]}'.includes(c)) depth--;
+      if (depth === 0 && c === ',' && ++count === nth) return i;
+    }
+    return s.length;
+  }
+
+  /* The head of a drawing shape, after its word: "at 10, 20 sized 30 by 40", "with radius 5", "from 0, 0 to 9, 9",
+     "following "M 0 0 L 9 9"", "through "0,0 9,9"". Gives back the attributes in order, or null. */
+  function shapeHead(tag, t) {
+    const attrs = [];
+    let rest = t.trim(), m;
+    const pos = /^(?:circle|ellipse|radialGradient)$/.test(tag) ? ['cx', 'cy'] : ['x', 'y'];
+    const take = (re, fn) => { const r = rest.match(re); if (!r) return false; fn(r); rest = rest.slice(r[0].length).trim(); return true; };
+    for (let guard = 0; guard < 8 && rest; guard++) {
+      const ok =
+        (tag === 'line' && take(new RegExp(`^from\\s+(${NUM}),\\s*(${NUM})\\s+to\\s+(${NUM}),\\s*(${NUM})`, 'i'), (r) => attrs.push(['x1', valueOf(r[1])], ['y1', valueOf(r[2])], ['x2', valueOf(r[3])], ['y2', valueOf(r[4])]))) ||
+        take(new RegExp(`^at\\s+(${NUM}),\\s*(${NUM})`, 'i'), (r) => attrs.push([pos[0], valueOf(r[1])], [pos[1], valueOf(r[2])])) ||
+        take(new RegExp(`^sized\\s+(${NUM})\\s+by\\s+(${NUM})`, 'i'), (r) => attrs.push(['width', valueOf(r[1])], ['height', valueOf(r[2])])) ||
+        take(new RegExp(`^with radius\\s+(${NUM})`, 'i'), (r) => attrs.push(['r', valueOf(r[1])])) ||
+        take(new RegExp(`^with radii\\s+(${NUM})\\s+and\\s+(${NUM})`, 'i'), (r) => attrs.push(['rx', valueOf(r[1])], ['ry', valueOf(r[2])])) ||
+        (tag === 'path' && take(/^following\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/i, (r) => attrs.push(['d', strOf(r[1])]))) ||
+        (/^(?:polyline|polygon)$/.test(tag) && take(/^through\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/i, (r) => attrs.push(['points', strOf(r[1])]))) ||
+        (tag === 'use' && take(new RegExp(`^of\\s+(${NAME_TOKEN})`, 'i'), (r) => attrs.push(['href', '#' + nameOf(r[1])])));
+      if (!ok) return null;
+    }
+    return attrs;
+  }
+  /* A gradient's colours: "from #fff through #888 at .4 to #000 at 1" -> its <stop>s. */
+  function gradientStops(t) {
+    const COL = `#[0-9a-fA-F]{3,8}|[A-Za-z]+|"[^"]*"`;
+    const re = new RegExp(`^(from|through|to)\\s+(${COL})(?:\\s+at\\s+(${NUM}))?(?:\\s+|$)`, 'i');
+    const stops = [];
+    let rest = t.trim(), m, want = 'from';
+    while (rest && (m = rest.match(re))) {
+      const w = m[1].toLowerCase();
+      if (w !== want && !(want === 'through' && w === 'to')) return null;
+      stops.push([...(m[3] != null ? [['offset', valueOf(m[3])]] : []), ['stop-color', valueOf(m[2])]]);
+      rest = rest.slice(m[0].length).trim();
+      if (w === 'to') { want = null; break; }
+      want = 'through';
+    }
+    return rest || !stops.length || (stops.length > 1 && want !== null) ? null : stops;
+  }
+
+  /* "add a caption "…"", "add bold text called x", "add a circle at 10, 10 with radius 8", "add a my-widget element":
+     any element, said generically. ctx: { svg } when inside a drawing. */
+  function genericElement(s, inf, ctx) {
+    let m = s.match(ctx.svg ? SVG_WORD_RE : HTML_WORD_RE), tag;
+    if (m) tag = (ctx.svg ? SVG_WORD_TAG : HTML_WORD_TAG).get(m[1].toLowerCase());
+    else if ((m = s.match(/^add\s+(?:a|an)\s+([A-Za-z][\w-]*)\s+element(?=[\s,]|$)(.*)$/i))) tag = m[1];
+    else return null;
+    let rest = m[2];
+    const r = rest.match(new RegExp(`^(?:\\s+(?:called|named)\\s+(${NAME_TOKEN}))?(?:\\s+("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'))?(.*)$`, 'i'));
+    const id = r[1] ? nameOf(r[1]) : null;
+    const text = r[2] ? strOf(r[2]) : null;
+    rest = r[3].trim().replace(/^,\s*/, '');
+    let attrs = [], children = null;
+    if (/^(?:linearGradient|radialGradient)$/.test(tag) && /^from\s/i.test(rest)) {
+      const stops = gradientStops(rest);
+      if (!stops) { inf.errs.push('Say a gradient\'s colours like: from #ffffff through #888888 at .5 to #000000'); return null; }
+      children = stops.map(a => ({ tag: 'stop', attrs: Object.fromEntries(a), groups: [], id: null, svg: true }));
+      rest = '';
+    }
+    if (rest) {
+      const head = ctx.svg || tag === 'svg' ? shapeHead(tag, rest) : null;
+      if (!head) return null;
+      attrs = head;
+    }
+    const el = { tag, id, groups: [], attrs: Object.fromEntries(attrs), text, container: !VOID_TAGS.has(tag.toLowerCase()) || ctx.svg, svg: ctx.svg || tag === 'svg', generic: true };
+    if (children) el.children = children, el.fixed = true;
+    if (tag === 'button') el.attrs = { type: 'button', ...el.attrs };
+    return el;
+  }
+
+  /* Things that belong in Styling or Mechanics, said in Structure: where to write them instead. */
+  const ELSEWHERE = [
+    [/^add\s+(?:a\s+|an\s+|some\s+)?(border|outline|background(?: colou?r)?|colou?r|shadow|rounded corners|round corners|padding|margin|space(?: inside| around)?|font|gap)\b/i,
+      (w) => `A ${w.toLowerCase()} is how something looks, so it goes in Styling (style.css), like: style ‹name›: ${/border|outline/i.test(w) ? 'border 2 solid navy' : /shadow/i.test(w) ? 'shadow' : /corner/i.test(w) ? 'rounded corners 8' : /padding|inside/i.test(w) ? 'space inside 12' : /margin|around/i.test(w) ? 'space around 12' : /font/i.test(w) ? 'font Inter' : /gap/i.test(w) ? 'gap 12' : /colou?r$/i.test(w) && !/background/i.test(w) ? 'text colour navy' : 'background navy'}. Give the element a name here first ("called ‹name›").`],
+    [/^add\s+(?:a\s+|an\s+)?(click|animation|timer|sound)\b/i, (w) => `A ${w.toLowerCase()} is something the page does, so it goes in Mechanics (script.js), like: when ‹name› is clicked.`],
+    [/^add\s+(?:a\s+|the\s+)?(?:page\s+)?title\b/i, () => 'The page\'s title (in the browser tab) is written: page title is "…". A title shown on the page is a heading: add a big heading "…".'],
+    [new RegExp(`^add\\s+(?:a\\s+|an\\s+|some\\s+)?(${SVG_WORDS.flatMap(r => r.slice(1)).filter(w => !HTML_WORD_TAG.has(w) && !/^(?:title|description|page area)$/.test(w)).join('|')})\\b`, 'i'),
+      (w) => `A ${w.toLowerCase()} is drawn inside a drawing: write "add a drawing sized 200 by 100" first and indent this under it.`],
+  ];
+
   /* The settings after a box's name, in any order: "with hint "4.50", allowing decimals, from 0 to 100".
      Takes them off the end of t (quotes are kept whole) and gives back the attributes and what's left. */
   function inputSettings(t, inf) {
@@ -164,8 +445,10 @@
     let groups = [];
     const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
     if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groups = g[1].split(/\s*,\s*|\s+and\s+/).map(toId).filter(Boolean); s = s.slice(0, g.index); }
-    const called = (t) => { const c = t.match(/\s+(?:called|named)\s+([\w-]+(?:\s+[\w-]+)?)(?=\s+(?:saying|with|of|described|showing)\b|$)/i); return c ? toId(c[1]) : null; };
-    const cut = (t) => t.replace(/\s+(?:called|named)\s+[\w-]+(?:\s+[\w-]+)?(?=\s+(?:saying|with|of|described|showing)\b|$)/i, '');
+    // a name: called save, called main area (two words become main-area), or called "helpToggle" (kept exactly)
+    const CALLED = /\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+(?:\s+[\w-]+)?)(?=\s+(?:saying|with|of|described|showing|to)\b|\s+["']|$)/i;
+    const called = (t) => { const c = t.match(CALLED); return c ? nameOf(c[1]) : null; };
+    const cut = (t) => t.replace(CALLED, '');
     const el = (tag, extra = {}) => ({ tag, id: extra.id || null, groups, attrs: extra.attrs || {}, text: extra.text ?? null, container: !!extra.container });
 
     if ((m = s.match(/^(?:set the page title to|page title is|the page is called|title)\s+(.+)$/i))) {
@@ -180,10 +463,11 @@
       note(inf, `${code('<' + tag + '>')} is a heading. Use one big heading (h1) per page; screen readers and search engines use headings to understand the page.`);
       return el(tag, { text: t || '', id: called(m[2]) });
     }
-    if ((m = s.match(/^add\s+(?:a\s+)?paragraph(?:\s+(?:called|named)\s+([\w-]+))?\s+(.+)$/i))) {
+    if ((m = s.match(/^add\s+(?:a\s+)?paragraph(?:\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+))?\s+(.+)$/i))) {
       const t = strOf(m[2]); if (t == null) inf.errs.push('Put the paragraph text in quotes.');
-      return el('p', { text: t || '', id: m[1] ? toId(m[1]) : null });
+      return el('p', { text: t || '', id: m[1] ? nameOf(m[1]) : null });
     }
+    if ((m = s.match(/^add\s+text\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the text in quotes.'); return el('span', { text: t || '', id: nameOf(m[1]) }); }
     if ((m = s.match(/^add\s+text\s+(.+)$/i))) return el('span', { text: strOf(m[1]) ?? m[1] });
     if ((m = s.match(/^add\s+(?:a\s+)?button(.*?)\s+(?:saying|that says|labelled|labeled)\s+(.+)$/i))) {
       const t = strOf(m[2]); if (t == null) inf.errs.push('Put the button text in quotes.');
@@ -194,12 +478,16 @@
     if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+("[^"]*"|'[^']*')\s+(?:saying|showing)\s+(.+)$/i))) {
       return el('a', { text: strOf(m[3]) ?? '', id: called(m[1]), attrs: { href: strOf(m[2]) } });
     }
+    // a link with other things in it, indented under it
+    if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+("[^"]*"|'[^']*')$/i)) && !/\S/.test(cut(m[1]))) return el('a', { id: called(m[1]), attrs: { href: strOf(m[2]) }, container: true });
     if ((m = s.match(/^add\s+(?:a\s+)?(?:picture|image|photo)(.*?)\s+of\s+("[^"]*"|'[^']*')(?:\s+described as\s+(.+))?$/i))) {
       const alt = m[3] ? strOf(m[3]) : null;
       if (alt == null) inf.warns.push('Add "described as "…"" so people using screen readers know what the picture shows.');
       return el('img', { id: called(m[1]), attrs: { src: strOf(m[2]), alt: alt ?? '' } });
     }
-    if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big\s+)?(?:(text|number|password|email|date|time|search|colou?r)\s+)?(?:text\s+)?(?:box|field|input)\b(.*)$/i))) {
+    if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big\s+)?(?:(text|number|password|email|date|time|search|colou?r)\s+)?(text\s+)?(box|field|input)\b(.*)$/i)) &&
+        !(/^box$/i.test(m[4]) && !m[1] && !m[2] && !m[3] && !Object.keys(inputSettings(m[5], { errs: [], notes: [], warns: [] }).attrs).length)) {   // "add a box called amount" alone is a block
+      m = [m[0], m[1], m[2], m[5]];
       const { attrs, rest } = inputSettings(m[3], inf);
       const id = called(rest);
       if (/\S/.test(cut(rest))) inf.errs.push(`I don't understand "${cut(rest).trim()}" here. A box can have: a name ("called amount"), with hint "…", allowing decimals, in steps of 5, from 1 to 10, with a number keypad.`);
@@ -237,10 +525,16 @@
       const opts = splitItems(m[2]).map(o => strOf(o) ?? o);
       return { ...el('select', { id: called(m[1]) }), children: opts.map(o => ({ tag: 'option', text: o, attrs: {}, groups: [], id: null })) };
     }
+    if ((m = s.match(/^add\s+(?:a\s+)?(?:list )?item\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the list item\'s text in quotes.'); return el('li', { text: t || '', id: nameOf(m[1]) }); }
     if ((m = s.match(/^add\s+(?:a\s+)?(?:list )?item\s+(.+)$/i))) return el('li', { text: strOf(m[1]) ?? m[1] });
+    if ((m = s.match(/^add\s+(?:a\s+)?label\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the label\'s text in quotes.'); return el('label', { id: nameOf(m[1]), text: t || '', attrs: m[3] ? { for: toId(m[3]) } : {} }); }
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) return el('label', { text: strOf(m[1]) ?? m[1], attrs: m[2] ? { for: toId(m[2]) } : {} });
     if ((m = s.match(/^add\s+(?:a\s+)?video(.*?)\s+of\s+("[^"]*")$/i))) return el('video', { id: called(m[1]), attrs: { src: strOf(m[2]), controls: '' } });
     if ((m = s.match(/^add\s+(?:a\s+)?(?:drawing area|canvas)(.*?)(?:\s+(\d+)\s*(?:by|x)\s*(\d+))?$/i))) return el('canvas', { id: called(m[1]), attrs: m[2] ? { width: m[2], height: m[3] } : {} });
+    if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(?:data\s+)?(?:chart|graph|plot)(.*?)(?:\s+(\d+)\s*(?:by|x)\s*(\d+))?$/i)) && !/\S/.test(cut(m[1]))) {
+      note(inf, 'A chart is drawn on a drawing area (`<canvas>`): Mechanics draws its bars and lines with "draw a rectangle …" and "draw a line …", or a chart library draws on it.');
+      return el('canvas', { id: called(m[1]), attrs: m[2] ? { width: m[2], height: m[3] } : {} });
+    }
     if ((m = s.match(/^add\s+(?:a\s+)?line$/i))) return el('hr');
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(section|header|footer|navigation bar|navigation|nav|main area|main content|main|block|box|area|form|side panel|sidebar|article|card|numbered list|list|table|row|pop-up|dialog)\b(.*)$/i))) {
       const kind = m[1].toLowerCase();
@@ -252,6 +546,51 @@
     }
     if ((m = s.match(/^(?:html|raw)\s*:\s?(.*)$/i))) return { raw: m[1] };
     return null;
+  }
+
+  /* One Structure line: text on its own ("…"), a sentence for a kind of element, or any element said the
+     generic way, each with its attribute phrases after commas and its groups at the end. */
+  function parseLine(s, inf, ctx) {
+    let groupPart = '';
+    const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
+    if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groupPart = g[0]; s = s.slice(0, g.index); }
+    const { rest, attrs, glued } = takePhrases(s, ctx);
+    let el = null;
+    if (/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/.test(rest) && !groupPart) el = { textNode: strOf(rest) };
+    else {
+      const scratch = () => ({ notes: [], warns: [], errs: [] });
+      const tries = [];
+      const specific = () => { const x = scratch(); const e = parseHtmlLine(rest + groupPart, x); if (e) tries.push([e, x]); };
+      const generic = () => {
+        const x = scratch(); const e = genericElement(rest, x, ctx);
+        if (e) { const gr = groupPart ? parseHtmlLine('add a block' + groupPart, scratch()) : null; e.groups = gr ? gr.groups : []; tries.push([e, x]); }
+      };
+      if (ctx.svg) { generic(); specific(); } else { specific(); generic(); }
+      const pick = tries.find(([, x]) => !x.errs.length) || tries[0];
+      if (!pick) return null;
+      el = pick[0];
+      for (const k of ['notes', 'warns', 'errs']) for (const v of pick[1][k]) if (!inf[k].includes(v)) inf[k].push(v);
+    }
+    if (el.title != null || el.lang || el.raw != null) {
+      if (attrs.length || glued) inf.errs.push('This line can\'t have the settings after its commas.');
+      return el;
+    }
+    if (el.textNode != null) {
+      if (attrs.length) inf.errs.push('Text on its own can\'t have settings: put it in an element ("add text "…", hidden from screen readers").');
+    } else {
+      el.attrs = { ...(el.attrs || {}) };
+      for (const [k, v] of attrs) {
+        if (v == null) delete el.attrs[k];
+        else if (k === 'id' && !el.id) el.id = v;
+        else { delete el.attrs[k]; el.attrs[k] = v; }
+        if (k === 'type') el.typeSaid = true;
+        if (k === 'alt' && v == null) inf.warns = inf.warns.filter(w => !/described as/.test(w));
+      }
+      if (el.tag && !VOID_TAGS.has(el.tag) && !/^(?:textarea|select)$/.test(el.tag) && !el.container && !el.children) el.container = true;   // anything can hold other things
+    }
+    if (glued) el.glued = true;
+    if (el.tag === 'svg') el.svg = true;
+    return el;
   }
 
   /* Raw HTML inside <pre>, <textarea>, <script> or <style> keeps its own spaces (the page shows or runs
@@ -309,15 +648,21 @@
       if (/^leave out the viewport(?: setting)?$/i.test(t)) { noViewport = true; note(inf, 'Leaves out the viewport setting, so phones show the page zoomed out, like on a big screen.'); return; }
       const rawLine = exact.match(/^(?:html|raw)\s*:\s?(.*)$/i);
       let s = rawLine ? exact : t.replace(/[.:]$/, '');
-      if (/^(?:note|comment)\s*:/i.test(s)) { stack[stack.length - 1].el.children.push({ comment: s.replace(/^(?:note|comment)\s*:\s*/i, ''), src: i }); return; }
+      if (/^(?:note|comment)\s*:/i.test(s)) {   // a note goes where its indentation puts it, like any line
+        while (stack.length > 1 && ind <= stack[stack.length - 1].ind) stack.pop();
+        stack[stack.length - 1].el.children.push({ comment: s.replace(/^(?:note|comment)\s*:\s*/i, ''), src: i });
+        return;
+      }
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
       while (stack.length > 1 && ind <= stack[stack.length - 1].ind) stack.pop();
       const parent = stack[stack.length - 1];
       if (parent.el !== rootEl && !parent.el.container) inf.errs.push('This line is indented under something that can\'t hold other things. Only sections, blocks, lists, forms and similar can.');
-      const el = rawLine ? { raw: rawLine[1] } : parseHtmlLine(s, inf);
+      const ctx = { svg: !!parent.el.svg && parent.el.tag !== 'foreignObject' };
+      const el = rawLine ? { raw: rawLine[1] } : parseLine(s, inf, ctx);
       if (!el) {
-        inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Structure understands, or start the line with html: to write HTML directly.');
+        const away = ELSEWHERE.map(([re, say]) => { const w = s.match(re); return w && say(w[1]); }).find(Boolean);
+        inf.errs.push(away || 'I don\'t recognise this sentence. Open the Index to see what Structure understands, or start the line with html: to write HTML directly.');
         return;
       }
       if (el.title != null) { title = el.title; inf.target = 'title'; return; }
@@ -330,10 +675,10 @@
       }
       for (const g of el.groups || []) { shared.groups[g] = true; note(inf, `In group ${code(g)} (an HTML class), so styles for that group apply to it.`); }
       if (el.tag === 'li' && !/^(ul|ol)$/.test(parent.el.tag)) inf.warns.push('List items belong inside a list. Indent this under "add a list".');
-      if (el.tag === 'button' && parent.el.tag === 'form') { el.attrs.type = 'submit'; note(inf, 'Inside a form, this button sends the form (type="submit"). Handle it in Mechanics with "when … is sent".'); }
+      if (el.tag === 'button' && parent.el.tag === 'form' && !el.typeSaid) { el.attrs.type = 'submit'; note(inf, 'Inside a form, this button sends the form (type="submit"). Handle it in Mechanics with "when … is sent".'); }
       parent.el.children.push(el);
-      all.push(el);
-      if (el.container) { el.children = []; stack.push({ ind, el }); }
+      if (el.textNode == null) all.push(el);
+      if (el.container) { el.children = el.children || []; stack.push({ ind, el }); }
     });
     // groups added from Styling ("save belongs to group primary")
     for (const [id, gs] of Object.entries(shared.addGroups)) {
@@ -366,21 +711,49 @@
       for (const [k, v] of Object.entries(e.attrs || {})) a += v === '' && k !== 'alt' ? ` ${k}` : ` ${k}="${escAttr(v)}"`;
       return a;
     };
-    const VOID = new Set(['img', 'input', 'hr', 'br', 'meta', 'link']);
     open = null;
-    const render = (e, depth) => {
-      const pad = '  '.repeat(depth);
-      if (e.comment != null) return push(`${pad}<!-- ${esc(e.comment)} -->`, e.src);
-      if (e.raw != null) { const keep = open; open = rawOpen(e.raw, open); return push(keep ? e.raw : pad + e.raw, e.src); }
-      if (VOID.has(e.tag)) return push(`${pad}<${e.tag}${attrs(e)}>`, e.src);
-      if (e.children && e.children.length && (e.container || e.tag === 'label' || e.tag === 'select')) {
-        push(`${pad}<${e.tag}${attrs(e)}>`, e.src);
-        for (const c of e.children) render({ ...c, src: c.src ?? e.src }, depth + 1);
-        if (e.after) push(`${pad}  ${esc(e.after)}`, e.src);
-        push(`${pad}</${e.tag}>`, e.src);
-      } else push(`${pad}<${e.tag}${attrs(e)}>${esc(e.text ?? '')}</${e.tag}>`, e.src);
+    const empty = (e) => (e.svg && !e.text ? `<${e.tag}${attrs(e)} />` : `<${e.tag}${attrs(e)}>${esc(e.text ?? '')}</${e.tag}>`);
+    /* An inline element with text and other things in it goes on one line: a line break inside it would show
+       as a space at its edges. Children are joined by a space, or by nothing when glued. null if it can't. */
+    const oneLine = (e) => {
+      if (e.comment != null) return `<!-- ${esc(e.comment)} -->`;
+      if (e.raw != null) return rawOpen(e.raw, null) ? null : e.raw;
+      if (e.textNode != null) return esc(e.textNode);
+      if (VOID_TAGS.has(e.tag) && !e.svg) return `<${e.tag}${attrs(e)}>`;
+      const kids = e.children || [];
+      if (!kids.length) return empty(e);
+      if (BLOCK_TAGS.test(e.tag) || e.after) return null;
+      let inner = e.text ? esc(e.text) : '';
+      for (const c of kids) { const s = oneLine({ ...c, src: c.src ?? e.src }); if (s == null) return null; inner += (inner && !c.glued ? ' ' : '') + s; }
+      return `<${e.tag}${attrs(e)}>${inner}</${e.tag}>`;
     };
-    for (const c of rootEl.children) render(c, 1);
+    const render = (e, depth) => {   // -> [{ text, src }]
+      const pad = '  '.repeat(depth), one = (text) => [{ text: pad + text, src: e.src }];
+      if (e.comment != null) return one(`<!-- ${esc(e.comment)} -->`);
+      if (e.raw != null) { const keep = open; open = rawOpen(e.raw, open); return [{ text: keep ? e.raw : pad + e.raw, src: e.src }]; }
+      if (e.textNode != null) return one(esc(e.textNode));
+      if (VOID_TAGS.has(e.tag) && !e.svg) return one(`<${e.tag}${attrs(e)}>`);
+      const kids = e.children || [];
+      if (!(kids.length && (e.container || e.tag === 'label' || e.tag === 'select'))) return one(empty(e));
+      if (!e.svg && !BLOCK_TAGS.test(e.tag) && !OWN_BOX_TAGS.test(e.tag) && !e.after) { const s = oneLine(e); if (s != null) return one(s); }
+      const res = one(`<${e.tag}${attrs(e)}>`);
+      if (e.text) res.push({ text: `${pad}  ${esc(e.text)}`, src: e.src });
+      for (const c of kids) {
+        const ls = render({ ...c, src: c.src ?? e.src }, depth + 1);
+        if (c.glued) { res[res.length - 1] = { ...res[res.length - 1], text: res[res.length - 1].text + ls[0].text.replace(/^ +/, '') }; res.push(...ls.slice(1)); }
+        else res.push(...ls);
+      }
+      if (e.after) res.push({ text: `${pad}  ${esc(e.after)}`, src: e.src });
+      res.push({ text: `${pad}</${e.tag}>`, src: e.src });
+      return res;
+    };
+    let lastTop = null;
+    for (const c of rootEl.children) {
+      const ls = render(c, 1);
+      if (c.glued && lastTop) { out[out.length - 1].text += ls[0].text.replace(/^ +/, ''); ls.slice(1).forEach(l => push(l.text, l.src)); }
+      else ls.forEach(l => push(l.text, l.src));
+      lastTop = c;
+    }
     if (!raws.some(r => SCRIPT_TAG.test(r))) push('  <script src="script.js"></script>', -1);   // unless a head: or html: line places it
     push('</body>', -1);
     push('</html>', -1);
@@ -444,8 +817,32 @@
      isn't a style of its own ("font-family: Georgia, serif"). */
   const COMMA_LISTS = new Set(['transition', 'transition-property', 'transition-duration', 'transition-timing-function', 'transition-delay', 'animation', 'animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay', 'box-shadow', 'text-shadow', 'font-family', 'background', 'background-image', 'background-position', 'background-size', 'background-repeat', 'grid-template-areas', 'will-change', 'mask', 'mask-image', 'font-feature-settings', 'font-variation-settings', 'cursor', 'src']);
   const ONE_WORD_STYLES = /^(?:bold|italic|capitals|uppercase|hidden|centred|centered|round|circle|circular|smooth|stacked|fixed|shadow)$/i;
+  // (a style phrase after the list, like "background var(--x)", starts a new style even though it has brackets)
+  const STARTS_STYLE = /^(?:background|text colou?r|colou?r|text size|font size|font|space inside|space around|padding|margin|rounded corners|border|outline|(?:top|bottom|left|right) border|width|height|gap|at most|at least)\s/i;
   const carriesOn = (part) => !/^-{0,2}[a-z][a-z0-9-]*\s*:\s/i.test(part) && !/^\d+%\s+(?:see-through|transparent)$/i.test(part) &&
-    (/^[-\d.#"']|\(|^inset\b/i.test(part) || /^[a-z-]+\s+-?[\d.]+m?s\b/i.test(part) || (/^[\w-]+$/.test(part) && !ONE_WORD_STYLES.test(part)));
+    (/^[a-z-]+\s+-?[\d.]+m?s\b/i.test(part) || (!STARTS_STYLE.test(part) && (/^[-\d.#"']|\(|^inset\b/i.test(part) || (/^[\w-]+$/.test(part) && !ONE_WORD_STYLES.test(part)))));
+
+  /* A border or outline's words, in any order: a width (2, 2px, thin…), a line style (dashed…) and a colour.
+     Left out: 1px, solid, the text colour. "none" alone is no border. */
+  const LINE_STYLES = /^(?:solid|dashed|dotted|double|groove|ridge|inset|outset|none|hidden)$/i;
+  function borderValue(text, inf) {
+    const words = [];
+    let depth = 0, cur = '';
+    for (const c of text.trim()) {   // split at spaces outside brackets: rgba(0, 0, 0, .5) is one word
+      if (c === '(') depth++; else if (c === ')') depth--;
+      if (/\s/.test(c) && !depth) { if (cur) words.push(cur); cur = ''; } else cur += c;
+    }
+    if (cur) words.push(cur);
+    let width = null, style = null;
+    const rest = [];
+    for (const w of words) {
+      if (width == null && /^(?:-?[\d.]+(?:px|em|rem|%)?|thin|medium|thick)$/i.test(w) && /\d|^[a-z]+$/i.test(w)) width = /^[a-z]+$/i.test(w) ? w.toLowerCase() : unit(w, inf);
+      else if (style == null && LINE_STYLES.test(w)) style = w.toLowerCase();
+      else rest.push(w);
+    }
+    if (style === 'none' && width == null && !rest.length) return 'none';
+    return `${width || '1px'} ${style || 'solid'} ${rest.length ? color(rest.join(' '), inf) : 'currentColor'}`;
+  }
 
   /* "background navy, rounded corners 8, shadow" -> [[prop, value], ...] */
   function cssProps(text, inf) {
@@ -484,12 +881,11 @@
       if (/^(?:centre|center) the text|^(?:centred|centered) text$/i.test(part)) { out.push(['text-align', 'center']); continue; }
       if ((m = part.match(/^rounded corners?(?:\s+(.+))?$/i))) { out.push(['border-radius', m[1] ? unit(m[1], inf) : '8px']); continue; }
       if (/^(?:round|circle|circular)$/i.test(part)) { out.push(['border-radius', '50%']); continue; }
-      if (/^no border$/i.test(part)) { out.push(['border', 'none']); continue; }
-      if ((m = part.match(/^border(?:\s+(\S+))?(?:\s+(.+))?$/i))) {
-        // "border 2 red", "border red" (a colour alone is 1px wide), "border 3"
-        const width = m[1] && !m[2] && !/^[\d.]+(?:px|em|rem|%)?$/i.test(m[1]) ? null : m[1];
-        const colour = width === m[1] ? m[2] : m[1];
-        out.push(['border', `${width ? unit(width, inf) : '1px'} solid ${colour ? color(colour, inf) : 'currentColor'}`]);
+      if ((m = part.match(/^no (border|outline)$/i))) { out.push([m[1].toLowerCase(), 'none']); continue; }
+      if ((m = part.match(/^(?:(top|bottom|left|right) )?(border|outline)(?:\s+(.+))?$/i)) && !(m[1] && /^outline$/i.test(m[2]))) {
+        // "border 2 dashed red", "border dashed red", "border red" (1px, solid), "border 3"; "bottom border 1 #ccc"
+        const prop = m[2].toLowerCase() + (m[1] ? '-' + m[1].toLowerCase() : '');
+        out.push([prop, borderValue(m[3] || '', inf)]);
         continue;
       }
       if (/^no shadow$/i.test(part)) { out.push(['box-shadow', 'none']); continue; }
@@ -1568,6 +1964,7 @@
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog)\b|on screens |in dark mode)/i;
 
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
+    readAttr, sayAttr, elementWord,
     cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWeb = api;

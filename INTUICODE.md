@@ -1325,11 +1325,9 @@ const items = await (await fetch("/api/items")).json();
 Fixed on 2026-11-04: a name you gave an element now wins over a selector word (`style header:` with an
 element called header is `#header`; `style every header:` is the tag), `border red` is a 1px red border, and
 a text box is written with no `type` (text is the browser's default), so reading a page back no longer
-counts `<input>` and `<input type="text">` as the same. Still wrong:
-
-| You write | You get | Why | Write instead |
-|---|---|---|---|
-| `note:` at the left edge after a container | the comment goes inside the container | notes are placed before the indentation is read | put it before the container |
+counts `<input>` and `<input type="text">` as the same. Fixed on 2026-11-09: a `note:` at the left edge after a
+container goes after the container (it used to go inside it), and `border` and `outline` take a line style
+(`border 2 dashed navy`; it used to give `2px solid dashed navy`).
 
 ```intuicode html
 add a section called header
@@ -1341,8 +1339,8 @@ add a block called links
 ```html
 <section id="header">
   <h2>Hello</h2>
-  <!-- this note sits at the left edge -->
 </section>
+<!-- this note sits at the left edge -->
 <div id="links"></div>
 ```
 
