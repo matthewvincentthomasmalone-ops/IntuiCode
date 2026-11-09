@@ -20,7 +20,7 @@
  *   toFile(lang, lines, regions)                   -> the project file again: regions as they are, code as exact lines
  *
  * Unity edits the project's own files, line for line: what it shows as code is the file's exact lines, so the
- * writer's own wrapping (a C++ main, a page's head) isn't shown, as in Write mode.
+ * writer's own wrapping (a C++ main, a page's head) isn't shown, as in Split Mode.
  *
  * A region is { from, to, original: [code lines] or null, words: [the sentences as made], base: indentation,
  * needs?: [lines its code needs at the top] }. original is null while its sentences can't be code yet.
@@ -358,7 +358,7 @@
     // code from there can't be written back as exact lines: that part stays as sentences
     const mainAt = lang === 'cpp' ? res.lines.findIndex(o => o.src < 0 && /^int main\(\)\s*\{$/.test(o.text)) : -1;
     if (mainAt >= 0 && res.lines.some((o, k) => k < mainAt && mine.has(o.src) && o.text.trim())) {
-      problems.push({ line: r.from, errs: ['This part makes a tool, a class or an include, which C++ puts above main. In a C++ file those are written in sentences, so it stays as sentences here (its code is in Write mode, on the right).'], warns: [] });
+      problems.push({ line: r.from, errs: ['This part makes a tool, a class or an include, which C++ puts above main. In a C++ file those are written in sentences, so it stays as sentences here (its code is in Split Mode, on the right).'], warns: [] });
     }
     // sentences that write nothing of their own here (an include IntuaCode adds anyway) would just disappear
     else if (!code.some(l => l.trim()) && lines.slice(r.from, r.to + 1).some(l => !blank(l)) && !problems.some(p => p.errs.length)) {

@@ -160,7 +160,7 @@ code { font-family: var(--f-py); font-size: .92em; }
 .new-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .new-save { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-top: 2px; }
 
-.workspace { position: relative; display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 0; }
+.workspace { position: relative; display: grid; grid-template-columns: 256px minmax(0, 1fr); min-height: 0; }
 
 /* ---------- Sidebar: folders + problems ---------- */
 .side {
@@ -205,7 +205,6 @@ code { font-family: var(--f-py); font-size: .92em; }
 .work { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto var(--term-row, minmax(130px, 24%)); min-width: 0; min-height: 0; }
 /* folded away: the terminal keeps only its header; the help strip, a slim bar */
 .work.term-shut { grid-template-rows: minmax(0, 1fr) auto auto; }
-.work.reading.term-shut { grid-template-rows: minmax(0, 1fr) auto; }
 .term-shut .term-body, .term-shut .preview-wrap, .term-shut .term-grip { display: none !important; }
 .panes { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); min-height: 0; }
 .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
@@ -390,11 +389,8 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .modes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .side-pad { padding: 4px 16px 0; }
 .side-note { padding: 2px 16px; color: var(--ink-3); font-size: 12.5px; margin: 0; }
-.work.reading { grid-template-rows: minmax(0, 1fr) var(--term-row, minmax(130px, 24%)); }
 /* Unity: the code reaches three quarters of the way down; the terminal has the rest (its own height, dragged
    apart from Write's), and none of it when it's folded away */
-.work.unity { grid-template-rows: minmax(0, 1fr) var(--unity-row, minmax(110px, 21%)); }
-.work.unity.term-shut { grid-template-rows: minmax(0, 1fr) auto; }
 .p-dec { color: var(--fn); }
 .bad-text { color: var(--bad); }
 
@@ -1224,20 +1220,12 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .u-float { position: absolute; right: 18px; z-index: 3; border: 0; cursor: pointer; padding: 3px 10px; border-radius: 3px; font: 600 12px var(--f-ui);
   color: #D9FBE6; background: rgba(16, 92, 52, .92); box-shadow: 0 0 10px rgba(72, 214, 134, .35), inset 0 1px 0 rgba(160, 255, 200, .25), 0 0 0 1px #000; }
 .u-float:hover { background: rgba(22, 116, 66, .95); }
-.u-strip { flex: none; max-height: 7.5em; overflow: auto; margin: 0 7px 7px; padding: 8px 12px; border-radius: 3px; font-size: 13px; color: var(--ink-2); background: var(--field); box-shadow: var(--sunken); }
 .u-code { margin: 4px 0 0; font: 12.5px/1.5 var(--f-py); white-space: pre; overflow-x: auto; }
 .u-msg { margin-top: 4px; }
 .u-msg.err { color: var(--bad); }
 .u-msg.warn { color: var(--warn); }
-.u-side { display: flex; flex-direction: column; gap: 6px; }
-/* Unity shows the project's files and Problems; the images and the project map stay in Write mode */
+/* Unity shows the project's files, its parts and Problems; the images and the project map stay in Split Mode */
 #writeSide.in-unity #imgWrap, #writeSide.in-unity #planWrap { display: none; }
-.u-acts { display: flex; flex-wrap: wrap; gap: 6px; }
-.u-regions { list-style: none; margin: 0; padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
-.u-regions li { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.u-reg { border: 0; background: none; color: #9FEFC2; cursor: pointer; padding: 4px 6px; font: 13px var(--f-ui); text-align: left; border-radius: 3px; }
-.u-reg:hover { background: rgba(16, 92, 52, .35); }
-.u-how { padding: 0 12px; }
 
 /* Read mode: the language a file is read as */
 .rd-as { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--metal-ink-2); }
@@ -1280,3 +1268,132 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 @media (prefers-reduced-motion: no-preference) {
   .btn, .tree-item, .tpl { transition: background-color .12s, border-color .12s; }
 }
+
+/* ======================================================================
+   Unity and Split Mode, parts by type, Project Link
+   ====================================================================== */
+:root {
+  --t-display: #7CC6F0;     /* Interface & Display: sky */
+  --t-mechanics: #F0B25A;   /* Backend & Mechanics: brass */
+  --t-setup: #B9A3EE;       /* Setup & Settings: lavender */
+  --t-data: #9DAAB6;        /* Data & Notes: slate */
+  --link-pink: #FFB6D3;
+  --link-wash: rgba(255, 170, 205, .17);
+}
+.t-display { --tc: var(--t-display); }
+.t-mechanics { --tc: var(--t-mechanics); }
+.t-setup { --tc: var(--t-setup); }
+.t-data { --tc: var(--t-data); }
+
+/* The header: brand and modes, the two sides of the project in the middle, actions on the right */
+.bar { gap: 14px; }
+.groups { display: flex; gap: 3px; padding: 3px; margin: 0 auto; border-radius: 5px; background: #050506; box-shadow: var(--sunken); flex: none; }
+.grp-btn { display: inline-flex; align-items: center; gap: 7px; border: 0; background: none; color: var(--ink-3); font: 600 13px var(--f-ui); padding: 5px 12px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+.grp-btn:hover { color: var(--ink); }
+.grp-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+#grpDisplay { --tc: var(--t-display); }
+#grpMechanics { --tc: var(--t-mechanics); }
+.grp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc); opacity: .6; flex: none; }
+.grp-btn[aria-pressed="true"] { color: #0B0C0E; background: var(--tc); box-shadow: 0 0 14px color-mix(in srgb, var(--tc) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, .35), 0 0 0 1px #000; }
+.grp-btn[aria-pressed="true"] .grp-dot { background: #0B0C0E; opacity: .65; }
+.modes button { white-space: nowrap; }
+
+/* Type colours: chips and dots */
+.tchip { display: inline-block; vertical-align: 1px; font: 700 9.5px/1 var(--f-ui); letter-spacing: .07em; text-transform: uppercase; padding: 3px 6px; border-radius: 3px; color: var(--tc); background: color-mix(in srgb, var(--tc) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tc) 34%, transparent); }
+.pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--tc); flex: none; box-shadow: 0 0 5px color-mix(in srgb, var(--tc) 55%, transparent); }
+
+/* The side: Project, then Parts by type or by language */
+.seg { display: inline-flex; padding: 2px; border-radius: 4px; background: #050506; box-shadow: var(--sunken); }
+.seg button { border: 0; background: none; color: var(--ink-3); font: 600 10.5px var(--f-ui); letter-spacing: .02em; padding: 2px 7px; border-radius: 3px; cursor: pointer; text-transform: none; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-selected="true"] { background: var(--metal); color: var(--metal-ink); text-shadow: var(--engrave); box-shadow: var(--machined); }
+.parts { padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
+details.pg > summary { list-style: none; display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12.5px; color: var(--ink-2); min-width: 0; }
+details.pg > summary::-webkit-details-marker { display: none; }
+details.pg > summary::before { content: ""; width: 0; height: 0; border-left: 4px solid var(--ink-3); border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; transition: transform .12s; flex: none; }
+details.pg[open] > summary::before { transform: rotate(90deg); }
+details.pg > summary:hover { background: var(--panel-2); }
+.pg-name { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.pg-role { color: var(--ink-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+details.pg > summary .count { margin-left: auto; }
+.part-list { list-style: none; margin: 0 0 4px; padding: 0 0 0 12px; display: flex; flex-direction: column; gap: 1px; }
+.part-row { width: 100%; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 3px 6px 3px 8px; border-radius: 3px; cursor: pointer; color: var(--ink-2); }
+.part-row:hover { background: var(--panel-2); color: var(--ink); }
+.pr-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--f-py); }
+.pr-where { font: 11px var(--f-py); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.part-row.here { color: var(--ink); background: rgba(255, 255, 255, .045); }
+.part-row.linked, .tree-item.linked { background: var(--link-wash); box-shadow: inset 3px 0 0 var(--link-pink); color: #FFE6F0; }
+.tree-row.folder.linked .tree-folder { color: #FFD2E3; }
+.tree-row.folder.linked .tree-folder svg { color: var(--link-pink); }
+.ti-types { grid-column: 3; grid-row: 2; display: flex; gap: 3px; align-self: center; justify-self: end; }
+
+/* One side of the project: the rest of the code steps back */
+.u-hl .ul.off, .pycode .pl.off { opacity: .2; }
+.u-hl .ul.ctx, .pycode .pl.ctx { opacity: .55; }
+.u-region:not(:has(.ul:not(.off))) { opacity: .4; }
+.marks { position: absolute; left: 0; right: 0; top: 0; z-index: 1; pointer-events: none; will-change: transform; }
+.mk { position: absolute; left: 0; right: 0; }
+.mk.off { background: rgba(14, 15, 17, .78); }
+.mk.ctx { background: rgba(14, 15, 17, .45); }
+.mk.lk, .mk.off.lk, .mk.ctx.lk { background: var(--link-wash); box-shadow: inset 3px 0 0 var(--link-pink); }
+
+/* Project Link: the code behind what's in use, light pink */
+.u-hl .ul.lk { background: var(--link-wash); box-shadow: inset 3px 0 0 var(--link-pink); opacity: 1; }
+.u-region .ul.lk { background: rgba(255, 170, 205, .22); }
+.pycode .pl.lk { background: var(--link-wash); box-shadow: inset 3px 0 0 var(--link-pink); opacity: 1; }
+.link-btn { display: inline-flex; align-items: center; gap: 6px; }
+.link-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.link-btn[aria-pressed="true"] { color: #FFE0EC; }
+.link-btn[aria-pressed="true"] .link-dot { background: var(--link-pink); box-shadow: 0 0 7px rgba(255, 182, 211, .9); }
+.preview-wrap { display: flex; flex-direction: column; }
+.preview-wrap iframe { flex: 1; min-height: 0; height: auto; }
+.link-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 5px 12px; font: 12.5px var(--f-ui); color: var(--ink-2); background: #1A1015; box-shadow: inset 0 -1px 0 #000, inset 0 1px 0 rgba(255, 182, 211, .12); }
+.link-bar .link-dot { background: var(--link-pink); box-shadow: 0 0 7px rgba(255, 182, 211, .9); }
+.link-bar code { color: #FFD6E6; background: rgba(255, 170, 205, .1); padding: 0 4px; border-radius: 3px; }
+.lb-where { display: inline-flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
+.lb-where .linklike { color: #FFC9DD; font: 600 12.5px var(--f-ui); }
+
+/* Unity: its pane, then the help (as in Split Mode), then the terminal or the preview */
+.work.unity { grid-template-rows: minmax(0, 1fr) auto var(--unity-row, minmax(110px, 21%)); }
+.work.unity.term-shut, .work.unity.web.term-shut { grid-template-rows: minmax(0, 1fr) auto auto; }
+.work.unity.web { grid-template-rows: minmax(0, 1fr) auto var(--web-row, minmax(220px, 40%)); }
+#uGhost { z-index: 1; }
+.ex-part { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+.lib-side { margin: 6px 4px 2px; }
+
+@media (max-width: 1240px) {
+  .grp-btn { padding: 5px 9px; font-size: 12px; }
+  .bar-actions .btn { padding-left: 10px; padding-right: 10px; }
+}
+@media (max-width: 900px) {
+  .groups { order: 3; width: 100%; justify-content: center; margin: 0; }
+  .grp-btn { flex: 1; justify-content: center; }
+  .work.unity, .work.unity.web { grid-template-rows: auto auto 320px; }
+  .u-editor { height: 56vh; min-height: 300px; flex: none; }
+}
+.side-acts .btn.tiny { white-space: nowrap; padding: 2px 6px; }
+.side-h::after { min-width: 6px; }
+.side { overflow-x: hidden; }
+
+/* A narrower window: shorter names first, then the two sides on a row of their own */
+@media (max-width: 1360px) { .grp-more { display: none; } }
+@media (max-width: 1200px) { .bt-more { display: none; } .lang-chip { display: none; } }
+@media (max-width: 1080px) {
+  .bar { flex-wrap: wrap; row-gap: 6px; }
+  .groups { order: 3; flex: 1 1 100%; justify-content: center; margin: 0; background: none; box-shadow: none; padding: 0; }
+  .grp-more { display: inline; }
+}
+@media (max-width: 900px) {
+  .pane-h .pane-tools { flex: 1 1 100%; flex-wrap: wrap; }
+  .grp-more { display: none; }
+}
+@media (max-width: 900px) {
+  .term-h { flex-wrap: wrap; row-gap: 6px; }
+  .py-status { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+/* Unity's code comes first: the help takes at most a sixth of the height (it scrolls), the editor at least a few lines */
+.work.unity { grid-template-rows: minmax(150px, 1fr) auto var(--unity-row, minmax(110px, 21%)); }
+.work.unity.web { grid-template-rows: minmax(150px, 1fr) auto var(--web-row, minmax(180px, 34%)); }
+.work.unity.term-shut, .work.unity.web.term-shut { grid-template-rows: minmax(150px, 1fr) auto auto; }
+.work.unity .explain { max-height: 17vh; }
+@media (max-height: 760px) { .explain { max-height: 18vh; } .work.unity .explain { max-height: 14vh; } }

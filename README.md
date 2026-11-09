@@ -242,8 +242,7 @@ the code, a balloon points out how the language likes things said the first time
 behind it, and **✎ Write it yourself** covers the code and asks you to write it, checked with the same exact
 comparison that proves round trips: right or wrong, never a guess. Once you've written a habit right three
 times, its notes step back, and **Write this line as Python** turns the sentence into the code you now
-know (checked to make exactly the same program). In Read mode, **Style tour** walks through the habits of
-any Python or C++ file, in reading order, so code an AI wrote for you becomes code you can read and take over.
+know (checked to make exactly the same program).
 
 The tutor speaks **C++ and Arduino** too: kinds before names (`int guesses = 0;`), `std::`, `const`,
 the `;` and the braces, `cout <<`, references, classes with `public:` and `this->`, and on a board
@@ -256,70 +255,77 @@ C++'s with tree-sitter's (`cppStylePoints` in `lang/tutor.js`, where all the not
 
 **Unity: the project in one pane, any part of it in sentences**
 
-**Unity** (beside Write and Read) is the same project as Write mode, in one pane instead of two: the file
-picked in the project's tree (on the left, with Problems), its sentences in translucent dark green and its exact
-lines (`python: …`, `c++: …`) as plain code. Parts added from the Library, new files and other projects show
-up in it straight away, and Write mode always shows the same file. Select some code and press **Translate to Plain Language Syntax** (Ctrl+Shift+D, or the button that appears
-over the selection): those lines turn into sentences right where they are, shown in translucent dark
-green. The selection grows to whole statements (an `if` takes its `else`; a `{` takes its `}`), and it
-can take in green parts (even Select all): they stay as they are, and only the code around them is
-translated. Change
-the sentences, and **Original Code** (Ctrl+Shift+B) turns them back into code in the same place:
+IntuaCode opens in **Unity** (Split Mode is the other mode, and the one used last is remembered). Unity
+shows the file picked in the project's tree as real code, its sentences in translucent dark green and its exact
+lines (`python: …`, `c++: …`) as plain code. Parts added from the Library, new files and imported code show
+up in it straight away, and Split Mode always shows the same file. Select some code and press **Translate to
+Plain Language Syntax** (Ctrl+Shift+D, or the button that appears over the selection): those lines turn into
+sentences right where they are, in green. The selection grows to whole statements (an `if` takes its `else`;
+a `{` takes its `}`), and it can take in green parts (even Select all): they stay as they are, and only the
+code around them is translated. Change the sentences, and **Original Code** (Ctrl+Shift+B) turns them back into
+code in the same place:
 
 - a part nobody changed comes back **exactly** as it was;
 - a changed part is written in the context of the code around it, so the names and kinds there are
   known, and it comes back in the file's own indentation, with any `import` or `#include` it now needs
   added at the top;
-- a part with a problem stays as sentences until it's fixed, and the strip under the pane says why
-  (and shows the code it will write while you type).
+- a part with a problem stays as sentences until it's fixed, and the help says why (and shows the code
+  it will write while you type).
+
+The **help** under the pane is Split Mode's help: on a green line, the sentence and the code it makes, its
+shape and its words; on a line of code, the terms in it and the part it belongs to. **Hide help** folds it
+away. **Predictive Mode** works in green parts as it does in Split Mode: the rest of the sentence shows dim
+after the cursor (→ takes it, Ctrl+→ one word). **Copy** copies the file's code, what Run uses.
 
 What turns into code is the file's own code, so the code IntuaCode writes around a file (a C++ `main` and its
-includes, a page's head) isn't shown, as in Write mode. A C++ file's tools, classes and includes stay as
-sentences, because their code goes above `main`; each statement in it is its own green part. **Open a file…**
-adds a code file from your computer to the project: Python, CSS and JavaScript come in as code, a whole C++
-program, Arduino sketch or HTML page as sentences (IntuaCode writes its `main`, `setup` and `loop`, or head).
-Notes and other files open as they are.
+includes, a page's head) isn't shown, as in Split Mode. A C++ file's tools, classes and includes stay as
+sentences, because their code goes above `main`; each statement in it is its own green part.
 
-The code takes the top three quarters of the window, the terminal the rest; fold the terminal away and the
-code takes its room too, or press the corner button for full screen (Esc comes back). **Copy the code** copies
-the file's code, what Run uses. It's what IntuaCode does everywhere, a piece at a time: the symbols of a
-language said as words, and back.
+**Import: code from anywhere becomes the project's own files**
 
-**Read: existing code → sections → plain English**
+**File → Import code…** (or **Import** beside + File) brings in a single file, pasted code, a whole folder, a
+`.zip` or the example project, such as code an AI wrote for you. A folder, `.zip` or example becomes a new
+project (the one before is kept: type `restore` to swap back); single files join the open project. Python,
+CSS and JavaScript come in as their exact lines, ready to translate any part in Unity; HTML pages, C++ programs
+and Arduino sketches are read into sentences (checked against the original), because IntuaCode writes the
+page, `main` or `setup` and `loop` around them. Every other language (TypeScript and React, C, Rust, Go, C#,
+Java, Kotlin, Swift, PHP, Ruby, Bash, Lua, Dart, SQL, Vue…), and data and notes (JSON, YAML, TOML, CSV,
+Markdown), comes in as it is, and the help reads it to you part by part (`lang/code_read.js`). A `.env`
+secrets file is never brought in. Pasted code and files whose name doesn't say are **auto-detected** from
+their text, with the reason shown.
 
-Import a whole project (a folder, a `.zip`, or drag and drop) or a single file, such as
-code an AI wrote for you. Python, JavaScript (including React and TypeScript), HTML,
-CSS and C++ (including Arduino sketches) are read in depth, and can be opened as sentences. Every
-other language in the file list is read too: C, Rust, Go, Zig, C#, Java, Kotlin, Swift, Scala,
-Objective-C, PHP, Ruby, Bash, Elixir, Lua, Dart, Elm, OCaml, Solidity, SQL, Vue, and data and notes
-(JSON, YAML, TOML, CSV, Markdown), each split into its parts (tools, types, tests, starting points…)
-and said in plain English (`lang/code_read.js`). The language comes from the file's name; pasted code
-and files whose name doesn't say are **auto-detected** from their text (with the reason shown), and
-**Read as** above the code picks another language for a file. For a project, IntuaCode shows:
+**Parts: the project by what each piece is for**
 
-- what kind of app it looks like, and which file to start reading;
-- a reading order, and a map of which files use which;
-- a role for every file (starting point, web routes, data models, settings, helpers, tests);
-- outside libraries, and any that `requirements.txt` forgets to list;
-- a `.env` secrets file if one was included (its contents are never read);
-- everything worth checking across all files, each linked to the exact place.
+Every file is split into **parts** (a function, a page section, a style rule, a block of settings, a sentence
+and the sentences under it), and each part has a type (`lang/parts.js`):
 
-Summaries link across files and languages: "uses `get_db` from db.py", "the page's
-script uses `#task-list` in index.html", "styled by `.card` in style.css", and
-"`fetch('/api/tasks')` is answered by `list_tasks` in routes/tasks.py".
-Inside each file, IntuaCode will:
+| Type | What it covers |
+|---|---|
+| **Interface & Display** | what people see and use: pages, screens, layout, styles, text, buttons, lights, sound |
+| **Backend & Mechanics** | what works behind the scenes: logic, calculations, data, saving, timing, other programs |
+| **Setup & Settings** | what gets things ready: imports, settings, pins, configuration and build files |
+| **Data & Notes** | data files, content and notes |
 
-- split it into sections (toolkits, settings, tools, web routes, classes, main steps);
-- summarise each section: what it takes, what it gives back, what it touches (files,
-  internet, databases, secrets), and what it's for when it recognises a pattern
-  (counting, adding up, building a list, searching, asking until valid);
-- flag things worth checking: hard-coded secrets, SQL built from text, errors silently
-  ignored, `debug=True`, `eval`, shell commands, TODOs, very long functions;
-- summarise any lines you highlight;
-- open the file as sentences, in any of these languages, and check that the sentences rebuild
-  exactly the same code. Anything that can't be said in words stays as exact code on its own
-  line (`python:`, `html:`, `css:`, `js:`, `c++:`), so nothing is lost or guessed. A web page
-  comes with its own style sheet and script, as a website project.
+**Parts**, under Project, lists every part of every file, **by Type** or **by Language** (each language with
+what it does in the project: "HTML: the page", "CSS: how it looks"). Click one to open it. Each file in the tree
+shows a dot for Interface and one for Mechanics if it has them.
+
+The two buttons at the top, **Interface & Display** and **Backend & Mechanics**, show one side of the project:
+the tree keeps only the files and folders with that kind of code, Parts only those parts, the Library only
+parts with that kind of code, and in the editor (Unity and both panes of Split Mode) everything else steps
+back, with the lines of a shown part that do something else (the `delay` in a loop that lights an LED) half
+dimmed. Press the button again to show everything. Most people reading code an AI wrote start with
+**Interface & Display**: it's the part you can see change.
+
+**Project Link: what you're using, in the code**
+
+With a website open in the **Preview**, **Project Link** (on by default, beside Pick from the page) lights up the
+code behind whatever you're using in the page, in light pink: pointing at an element marks its sentence and the
+ones inside it, the style rules that match it and the script lines that name it; clicking or typing marks the
+handler that answered. It shows in Unity's pane and in both panes of Split Mode, and on the files, folders and
+parts in the side. A bar over the preview says what's in use and where its code is; click a file there to open
+it. Pointing never scrolls; a click brings the code into view. Predictive Mode and Project Link take turns:
+turning one on turns the other off, so clicking around a running page never brings up predictions.
 
 ## Desktop app
 
@@ -330,8 +336,9 @@ The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can'
   files. Your code files are the project;
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
-  program or an Arduino sketch that wasn't made with IntuaCode opens as sentences; anything
-  else opens in Read mode. Files, folders and `.zip` files dropped on the window open in Read mode.
+  program or an Arduino sketch that wasn't made with IntuaCode opens as sentences; any other
+  folder of code comes in as a new project, as Import does. Folders and `.zip` files dropped on the window
+  come in as projects; single files join the open one.
 - **Real Python.** Programs run with the Python installed on the computer, with live
   output, typed input and a Stop button, so web servers and packages work. Without Python
   installed, the built-in one is used. Stop, or closing IntuaCode, ends a program and anything it
@@ -452,8 +459,8 @@ npm install && npm run vendor
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
 | `lang/library.js`, `lang/library/` | The Library: kinds of project and the parts they're made of, in plain-text packs |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
-| `app.js`, `app.css`, `index.html` | The editor: folders, sentence editor, Python view, explain strip, Read mode, terminal, Index |
-| `samples/` | Example code for Read mode, including a small multi-file project (`samples/taskboard`) |
+| `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
+| `samples/` | Example code to import, including a small multi-file project (`samples/taskboard`) |
 | `run.py` | Small local server (adds the `<html>` wrapper that `index.html` leaves out) |
 | `src-tauri/` | The desktop app: folders, running programs, the native window (Rust) |
 | `tools/build_desktop.mjs` | Gathers the app's files into `dist/` for the desktop build |

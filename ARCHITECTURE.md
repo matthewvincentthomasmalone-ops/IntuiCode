@@ -8,11 +8,11 @@ the desktop app.
 
 | Engine file | Job |
 |---|---|
-| `lang/python.js` | Sentences → Python (Write mode) |
-| `lang/python_reader.py` | Python → sections, summaries, sentences; project analysis (Read mode) |
+| `lang/python.js` | Sentences → Python |
+| `lang/python_reader.py` | Python → sections, summaries, sentences (checked exact) |
 | `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects); the preview document |
 | `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, links; loads any tree-sitter grammar named in `lang/languages.js` |
-| `lang/code_read.js` | Read mode for every other language: which language a file (or pasted code) is in, and sections, summaries, facts, warnings and steps for it |
+| `lang/code_read.js` | Reading every other language: which language a file (or pasted code) is in, and sections, summaries, facts, warnings and steps for it |
 | `lang/languages.js` | The languages a project's files can be in: names, file endings, grammars |
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files (`compileAll`), Markdown, CSV and JSON shown as what they are |
 | `lang/unity.js` | Unity mode: a project file shown line for line (exact lines as code, sentences as regions) and written back; a selection grown to whole statements, turned into sentences in place, and back into code in the context of the code around it (the rest given to the writer as exact lines) |
@@ -24,6 +24,7 @@ the desktop app.
 | `lang/glossary_terms.js` | The glossary itself: terms for Python, C++, Arduino, HTML, CSS, JavaScript and the sentences, as plain data |
 | `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
+| `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
 | `lang/library.js` | The Library: kinds of project (the languages they use, open-source projects to learn from) and the parts they're made of, each in one or more languages, from the plain-text packs in `lang/library/`; Coding integration parts give both sides of a link between two languages |
 | `lang/ts_patch.js` | Fixes to the tree-sitter runtime: C library functions some grammars' scanners need (HTML with SVG or custom elements, Ruby, PHP, Bash, Vue, YAML) |
@@ -132,16 +133,59 @@ taken back. Exact lines teach the writers the names they make (a `def`'s inputs,
 
 *Decided 2026-11-05.*
 
-Unity is Write mode's project in one pane, not a workspace of its own. It shows the open file line for line
+Unity is Split Mode's project in one pane, not a workspace of its own. It shows the open file line for line
 (`fromFile` in `lang/unity.js`): an exact line (`python: …`) as its code, sentence lines as green regions. Every
-change is written straight back (`toFile`: regions as they are, every other line as an exact line), so Write mode,
+change is written straight back (`toFile`: regions as they are, every other line as an exact line), so Split Mode,
 Run, Problems and the Library work on the same text, and compiling happens in the project's context. The writer's
-own wrapping (a C++ `main`, a page's head) is never shown, as in Write mode. Regions read from sentences get the
+own wrapping (a C++ `main`, a page's head) is never shown, as in Split Mode. Regions read from sentences get the
 code they make as their original; regions made in Unity keep the code they came from (kept per file in
 `intuicode.unity.v2` while the file is still what Unity made), so looking still never changes code. In C++ a
 file's exact lines go inside `main`, so a part whose code goes above it (a tool, a class, an include) stays as
 sentences, and C++ regions are one statement each. The Arduino writer keeps exact lines' own indentation and
 doesn't add an empty `setup()` or `loop()` to a sketch whose exact lines write one.
+
+## Decision: two modes, Unity first; imported code is the project's own
+
+*Decided 2026-11-09.*
+
+IntuaCode has two modes on one project: **Unity** (one pane of real code, any part said in sentences in place,
+where it opens) and **Split Mode** (sentences on the left, the code they make on the right; it was called Write
+mode). The mode used last is remembered (`intuicode.mode.v1`). Read mode is gone: importing a file, a folder, a
+`.zip` or the example makes them the project's files (`importProject` / `addFiles` in `app.js`), so both modes,
+Run, Problems, Parts and the Library work on imported code as on any other. Python, CSS and JavaScript come in as
+exact lines (Unity shows them as code, ready to translate); HTML, C++ and Arduino are converted to sentences,
+because their writers wrap the file (a page's head, `main`, `setup` and `loop`); other languages, notes and data
+come in as they are, and the code reader (`lang/code_read.js`) explains them in the help. Paths are made safe
+(`pathProblem`), at most 200 files come in, and `.env` files never do. Both modes share the help under the pane,
+the side (the tree, Parts, Problems), Predictive Mode and the Preview.
+
+## Decision: parts, and the two sides of a project
+
+*Decided 2026-11-09.*
+
+`lang/parts.js` splits a file into parts: top-level runs of lines (by brackets for code, by indentation for
+sentences and Python; a sentence file's exact lines are read as their code) and gives each a type by the words and
+calls its lines use, the same lists for code and sentences, the first line counting double. Each line has its own
+type too, so a part can *involve* another side (an Arduino loop that lights an LED is display with mechanics in
+it). Notes, data and settings files are one part each. It's a reading, not a proof: good enough to find the code
+that puts things on screen, which is where most people reading code an AI wrote start. Because it works line for
+line on the file's own text, the same parts serve Unity and Split Mode. The buttons at the top filter the tree,
+Parts and the Library and dim the rest of the code (`lineLooks` in `app.js`); they never hide lines of a file
+being edited, so editing still works on the whole text.
+
+## Decision: Project Link follows the Preview
+
+*Decided 2026-11-09.*
+
+Project Link works on the website preview IntuaCode runs itself, so it needs nothing added to the user's page. The
+preview's helper script reports the element under the pointer, in focus, clicked or typed in (its sentence line,
+`data-ic-line`, which the web writer already sets, and the CSS rules it matches), and wraps `addEventListener`
+for the page's own input handlers so each one says, when it runs, which function it is (its text). The editor
+maps those to the project's lines: the element's sentence and the ones under it, the style rules' sentences (by
+selector, in the compiled CSS), the script lines that name the element, and the handler's lines (its text found
+in the compiled script). Pointing never scrolls; a click or a handler brings the code into view. Predictive Mode
+and Project Link take turns (turning one on turns the other off), so a running page can be clicked through without
+predictions popping up.
 
 ## Testing
 
