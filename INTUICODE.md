@@ -452,6 +452,100 @@ container-word = "section" | "header" | "footer" | "navigation bar" | "navigatio
             | "main" | "block" | "box" | "area" | "form" | "side panel" | "sidebar" | "article" | "card"
             | "numbered list" | "list" | "table" | "row" | "pop-up" | "dialog" ;
                 (* → section, header, footer, nav, main, div, form, aside, article, div class="card", ol, ul, table, tr, dialog *)
+                (* "box" alone, with no box-setting, is a block; with one ("with hint …") it is a box to type in *)
+chart       = "add" [ "a" | "an" ] [ "data" ] ( "chart" | "graph" | "plot" ) [ "called" name ] [ number "by" number ] ; (* → <canvas> *)
+text-line   = text ;                                    (* text on its own, inside the element above it *)
+element     = "add" [ "a" | "an" | "some" ] element-word [ "called" name ] [ text ] [ shape ] ;
+            | "add" ( "a" | "an" ) tag "element" [ "called" name ] [ text ] ;   (* any tag, as written: <my-widget> *)
+shape       = { "at" number "," number | "sized" number "by" number | "with radius" number | "with radii" number "and" number
+            | "from" number "," number "to" number "," number | "following" text | "through" text | "of" name } ;   (* drawings only *)
+gradient    = "add" "a" [ "radial" ] "gradient" [ "called" name ] "from" colour [ "at" number ]
+              { "through" colour "at" number } [ "to" colour [ "at" number ] ] ;  (* → <linearGradient> with its <stop>s *)
+settings    = { "," setting } ;                         (* after any element sentence, before "in group" *)
+setting     = "hidden from screen readers" | "labelled" text "for screen readers" | "labelled by" names | "described by" names
+            | "controls" names | "starts" ( "collapsed" | "expanded" | "pressed" | "not pressed" ) | "marked as" [ "the" ] "current" [ value ]
+            | "read out" [ "at once" ] "when it changes" | "with tooltip" text | "with hint" text | "opening in a new tab"
+            | "sent as" text | "sending to" text | "storing" word value | "running" text ( "when clicked" | "when changed" | … | "on" event )
+            | "linking to" text | "from" text | "described as" text | "with no description" | "for" names
+            | "sized" number "by" number | number "wide" | number "tall" | "of type" value | "drawn on a" number "by" number "grid"
+            | "filled with" ( value | "the" ( "gradient" | "pattern" ) name ) | "not filled" | "outlined in" value | "not outlined"
+            | "outline" number "wide" | "with rounded corners" number | ( "starting" | "ending" ) [ number "across" ] [ "and" ] [ number "down" ]
+            | "hidden" | "disabled" | "required" | "read-only" | "ticked" | "selected" | "focused at the start" | "allowing several"
+            | "with controls" | "loaded lazily" | "with no space before it" | "with" [ "attribute" ] attribute-name [ value ] ;
+names       = name { "and" name } ;                     (* a name in quotes is kept exactly: called "helpToggle" *)
+```
+
+The element words are: block (box, area), text, paragraph, big heading, heading, small heading, level 4/5/6 heading,
+section, header, footer, navigation bar, main area, side panel, article, form, list, numbered list, list item, table,
+table head, table body, table foot, table caption, row, cell, heading cell, dialog, figure, caption, collapsible
+section, summary, definition list, term, definition, quotation, short quotation, citation, address, heading group,
+menu, search area, field group, legend, link, button, label, picture, input, drop-down, option, option group, big text
+box, output, progress bar, meter, video, sound player, media source, captions track, embedded page, drawing area, line
+break, line, drawing, script, and the text words (strong text, emphasised text, bold text, italic text, underlined
+text, struck-out text, small text, highlighted text, deleted text, inserted text, subscript, superscript,
+abbreviation, code, key, sample output, variable, time). Inside a drawing (SVG) they are: set of shapes, reusable
+parts, circle, ellipse, rectangle, line, polyline, polygon, path, text, text piece, copy, picture, gradient, radial
+gradient, colour stop, pattern, clipping shape, mask, symbol, marker, title, description, link and page area. A
+plain value in a setting is one word or number as written (`.4`, `#873044`, `userSpaceOnUse`); anything else goes in
+quotes. A line break between two inline things (text, links, pictures, buttons) shows as a space, so a line that
+must touch the one before ends with `with no space before it`. Text, links and other inline elements that hold
+other things are written on one line.
+
+```intuicode html
+add a button called "helpToggle", starts collapsed, controls help
+    "Settings & guide"
+    add text "↗", hidden from screen readers
+add a paragraph
+    "Hold a chord and"
+    add strong text "strum"
+    ".", with no space before it
+add a side panel called help, hidden
+    add a button saying "C", storing chord "C" in group key
+```
+
+```html
+<button id="helpToggle" type="button" aria-expanded="false" aria-controls="help">
+  Settings &amp; guide
+  <span aria-hidden="true">↗</span>
+</button>
+<p>
+  Hold a chord and
+  <strong>strum</strong>.
+</p>
+<aside id="help" hidden>
+  <button class="key" type="button" data-chord="C">C</button>
+</aside>
+```
+
+```intuicode html
+add a drawing, drawn on a 100 by 60 grid, hidden from screen readers
+    add reusable parts
+        add a gradient called sky from #87ceeb through #b0e0ff at .6 to #ffffff at 1
+    add a rectangle at 0, 0 sized 100 by 60, filled with the gradient sky
+    add a circle at 80, 15 with radius 8, filled with gold
+    add a set of shapes, outlined in navy, outline 2 wide
+        add a line from 0, 50 to 100, 50
+        add a path following "M 10 50 Q 30 30 50 50", not filled
+    add text "Hi" at 10, 20
+```
+
+```html
+<svg viewBox="0 0 100 60" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky">
+      <stop stop-color="#87ceeb" />
+      <stop offset=".6" stop-color="#b0e0ff" />
+      <stop offset="1" stop-color="#ffffff" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="60" fill="url(#sky)" />
+  <circle cx="80" cy="15" r="8" fill="gold" />
+  <g stroke="navy" stroke-width="2">
+    <line x1="0" y1="50" x2="100" y2="50" />
+    <path d="M 10 50 Q 30 30 50 50" fill="none" />
+  </g>
+  <text x="10" y="20">Hi</text>
+</svg>
 ```
 
 Page-level lines (`head:`, `doctype:`, `no title` …) are in [Exact-code lines](#exact-code-lines).
@@ -496,7 +590,7 @@ and `#name`.
 | `centre the text`, `centred text` | `text-align: center` |
 | `rounded corners [N]` | `border-radius` (8px) |
 | `round`, `circle`, `circular` | `border-radius: 50%` |
-| `no border`; `border [W] [C]` | `border: none`; `border: W solid C` (1px, currentColor) |
+| `no border`, `no outline`; `[top \| bottom \| left \| right] border [W] [S] [C]`, `outline [W] [S] [C]` (any order) | `border: none`; `border: W S C` (1px, solid, currentColor; S is solid, dashed, dotted, double…), `border-bottom`…, `outline` |
 | `no shadow`; `[soft \| big \| strong] shadow [C] [with N% intensity]` | `box-shadow` |
 | `N% see-through`, `N% transparent` | `opacity` |
 | `hidden` | `display: none` |
@@ -1653,13 +1747,40 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 | **Layout** | `add a section called ‹name›` | `<section id="name">` | Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel. |
 |  | `add a list called ‹name›` | `<ul id="name">` | Indent "add a list item "…"" under it. |
 |  | `… in group ‹name›` | `class="name"` | Add to the end of any line to put it in a group (a CSS class). |
+|  | `add a box called ‹name›` | `<div id="name">` | A box (a block) holds the lines indented under it. With a box setting ("with hint …") it is a box to type in. |
+|  | `add a figure` | `<figure>` | Indent a picture and add a caption "‹text›" under it. |
+|  | `add a collapsible section` | `<details>` | Indent add a summary "‹title›" (always shown), then what opens under it. |
+|  | `add a ‹my-widget› element` | `<my-widget>` | Any element that has no words of its own. |
+| **Text** | `"‹text›"` | `text` | Text on its own line, inside the element above it: text with other things in it ("add bold text …") is said a line at a time. |
+|  | `add bold text "‹text›"` | `<b>…</b>` | Also strong text, italic text, emphasised text, highlighted text, small text, code "…", a key "Ctrl", a line break. |
+| **Media** | `add a chart called ‹name› ‹600› by ‹300›` | `<canvas id="name" width="600" height="300">` | A chart is drawn on a drawing area, by Mechanics or a chart library. |
+| **Settings** | `…, hidden from screen readers` | `aria-hidden="true"` | Settings go after commas at the end of a line, before "in group". Also: labelled "‹text›" for screen readers, labelled by ‹name›, controls ‹name›, starts collapsed, marked as the current page, read out when it changes. |
+|  | `…, with tooltip "‹text›"` | `title="…"` | Shown when the pointer rests on it. |
+|  | `…, storing ‹chord› "‹C›"` | `data-chord="C"` | A value kept on the element for Mechanics (and for CSS: attr(data-chord)). |
+|  | `…, disabled` | `disabled` | Also hidden, required, read-only, ticked, selected, opening in a new tab, sent as "‹name›", sized ‹320› by ‹180›, with no description. |
+|  | `…, running "‹clearDone()›" when clicked` | `onclick="…"` | Code run from the tag itself. Mechanics ("when … is clicked") keeps it out of the page. |
+|  | `…, with ‹name› "‹value›"` | `name="value"` | Any other attribute, as it is written. |
+|  | `…, with no space before it` | `(no space)` | Joins it to the thing before: a line break between two pieces of text, links or pictures would show as a space. |
+| **Drawings** | `add a drawing sized ‹200› by ‹100›, drawn on a ‹200› by ‹100› grid` | `<svg width height viewBox>` | A picture made of shapes (SVG). Indent the shapes under it; the grid is what their positions count in. |
+|  | `add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›` | `<circle cx cy r fill>` | Also: an ellipse … with radii 20 and 10. Inside a drawing only. |
+|  | `add a rectangle at ‹10›, ‹10› sized ‹80› by ‹40›, with rounded corners ‹6›` | `<rect x y width height rx>` |  |
+|  | `add a line from ‹0›, ‹0› to ‹100›, ‹50›, outlined in ‹navy›, outline ‹2› wide` | `<line x1 y1 x2 y2 stroke stroke-width>` |  |
+|  | `add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›` | `<path d fill="none" stroke>` | The path data stays as written. Also: a polygon through "‹0,0 10,0 5,8›". |
+|  | `add text "‹label›" at ‹10›, ‹20›` | `<text x y>` | Text drawn in the drawing. |
+|  | `add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›` | `<linearGradient><stop>…` | Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts". |
+|  | `add a set of shapes, outlined in ‹navy›` | `<g stroke>` | Settings on it apply to the shapes indented under it. |
 
 #### HTML words inside sentences
 
 | Say | Becomes |
 |---|---|
 | `called save` | `id="save"` |
+| `called "helpToggle"` | `id="helpToggle" (exactly)` |
 | `in group card` | `class="card"` |
+| `hidden from screen readers` | `aria-hidden="true"` |
+| `storing chord "C"` | `data-chord="C"` |
+| `drawing` | `<svg>` |
+| `set of shapes` | `<g>` |
 | `big heading` | `<h1>` |
 | `heading` | `<h2>` |
 | `block` | `<div>` |
@@ -1682,6 +1803,7 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 |---|---|---|---|
 | **Styles** | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
+|  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
 |  | `‹element› belongs to group ‹group›` | `class="group" in the HTML` | Adds the group to an element in Structure. |
 |  | `when ‹name› is hovered: ‹styles›` | `#name:hover { … }` |  |
 |  | `on screens narrower than ‹600›:` | `@media (max-width: 600px) {` | Indent styles under it for phones. |

@@ -140,6 +140,24 @@ test('structure: the preview still marks every element with its sentence line', 
   assert.match(html, /<circle data-ic-line="4" cx="1"/);
 });
 
+test('templates: the new Structure and Styling templates, filled in with their own words, have no problems', () => {
+  const fill = (p) => p.replace(/‹([^›]*)›/g, '$1');
+  const NEW = /^(?:add a box called|add a figure|add a collapsible section|add a ‹my-widget› element|"‹text›"|add bold text|add a chart|style ‹name›: border)/;
+  for (const t of WEB.TEMPLATES) {
+    if (!['Settings', 'Drawings'].includes(t.group) && !NEW.test(t.pattern)) continue;
+    let line = fill(t.pattern);
+    if (/^…/.test(line)) line = (t.sections.includes('styling') ? 'x' : 'add a block called x') + line.slice(1);
+    if (t.group === 'Drawings' && !/^add a drawing\b/.test(line)) line = 'add a drawing\n    ' + line.replace(/^add a gradient/, 'add reusable parts\n        add a gradient');
+    if (t.sections.includes('structure')) {
+      const b = body(line.replace(/^add a list item "item"$/, 'add a list\n    $&'));
+      assert.deepEqual(b.errs, [], `${t.pattern}\n${line}`);
+    } else {
+      const r = WEB.compileCss({ id: 'x', file: 'x', text: /:/.test(line) || /^(?:on screens|in dark mode)/.test(line) ? line + (/:$/.test(line) ? '\n    style x: bold' : '') : line }, { ids: { name: { tag: 'div' }, x: { tag: 'div' }, element: { tag: 'div' } }, groups: { group: true, name: true }, cssGroups: {}, addGroups: {} });
+      assert.deepEqual(plain(r.info.flatMap(i => i.errs)), [], `${t.pattern}\n${line}`);
+    }
+  }
+});
+
 test('checker: a character code IntuaCode does not know never counts as the same as its letters', () => {
   const same = (a, b) => C.check('html', page(a), page(b), { parse: W.parse, WEB }).same;
   assert.equal(same('<p>&nearr;</p>', '<p>&amp;nearr;</p>'), false);
