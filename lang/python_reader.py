@@ -271,12 +271,26 @@ class Words:
     """Turns expressions into words. strict=True refuses anything that might not round-trip exactly;
     `expr` then falls back to plain Python inside the sentence when that is safe."""
 
-    def __init__(self, strict, tools=(), lists=(), alias=None, modules=()):
+    # what web frameworks and os keep as dictionaries: request.args.get(…) is a lookup, session.get(url) isn't
+    DICT_ATTRS = re.compile(r"(?:^|\.)(?:args|form|headers|cookies|values|files|environ|json|data|params|query_params|config|settings|kwargs|options|meta|attrs)$")
+
+    def __init__(self, strict, tools=(), lists=(), alias=None, modules=(), dicts=(), texts=(), imported=()):
         self.strict = strict
         self.tools = set(tools)
         self.lists = set(lists)
         self.alias = alias or {}          # name -> the module it comes from
         self.modules = set(modules)       # modules imported under their own name (import os), so phrases can use them
+        self.dicts = set(dicts)           # names (and a.b) set to a dictionary somewhere in the file
+        self.texts = set(texts)           # names set to text somewhere in the file (sep = ", ")
+        self.imported = set(imported)     # names bound by import: a module's own tools (os.remove) aren't list tools
+
+    def is_dict(self, e):
+        d = dotted_name(e)
+        return bool(d) and (d in self.dicts or (self.DICT_ATTRS.search(d) is not None and d.split(".")[0] not in self.imported) or d == "os.environ")
+
+    def of_module(self, e):
+        d = dotted_name(e)
+        return bool(d) and d.split(".")[0] in self.imported and d != "os.environ"
 
     def sub(self, e):
         return self.w(e, False)
@@ -292,10 +306,11 @@ class Words:
             return text
         try:
             code_ = self.raw(e)
-            if one_operand(code_):
-                return code_
         except Unwordable:
-            pass
+            code_ = None
+        # a phrase reads better than its code: (title split into words) joined by " "
+        if code_ is not None and one_operand(code_) and (text is None or text == code_ or not self.strict):
+            return code_
         if text is None or not self.strict:
             raise Unwordable()
         return f"({text})"
@@ -384,11 +399,14 @@ class Words:
                         return f"{self.opd(f.value)} doesn't {f.attr[:-5]} with {self.opd(a[0])}"
                     if isinstance(f, ast.Attribute) and f.attr in self.ALL and not a:
                         return f"{self.opd(f.value)} is not all {self.ALL[f.attr]}"
-                return f"not {self.wrap(e.operand)}"
+                return f"not {self.tight(e.operand)}"
             return self.raw(e)
         if isinstance(e, ast.BoolOp):
             word = " and " if isinstance(e.op, ast.And) else " or "
-            return word.join(self.wrap(v) for v in e.values)
+            # "x is 1 or 2" is read as x == 1 or x == 2, so a bare value after a comparison stays code
+            if self.strict and any(isinstance(b, ast.Constant) and isinstance(a, ast.Compare) for a, b in zip(e.values, e.values[1:])):
+                raise Unwordable()
+            return word.join(self.tight(v) for v in e.values)
         if isinstance(e, ast.Compare):
             if len(e.ops) != 1:
                 return self.raw(e)
@@ -402,7 +420,9 @@ class Words:
                      ast.LtE: "is at most", ast.GtE: "is at least", ast.In: "is in", ast.NotIn: "is not in"}
             return f"{self.wrap(e.left)} {words[op]} {self.wrap(right)}"
         if isinstance(e, ast.IfExp):
-            return f"{self.wrap(e.body)} if {self.wrap(e.test)} otherwise {self.wrap(e.orelse)}"
+            # comparisons, not, and, or all bind tighter than … if … else …, so they need no brackets there
+            loose = lambda x: self.sub(x) if self.strict and isinstance(x, (ast.Compare, ast.BoolOp, ast.UnaryOp)) and not isinstance(x, ast.IfExp) else self.wrap(x)
+            return f"{loose(e.body)} if {loose(e.test)} otherwise {loose(e.orelse)}"
         if isinstance(e, ast.Await):
             return f"wait for {self.expr(e.value)}"
         if isinstance(e, ast.Call):
@@ -416,6 +436,34 @@ class Words:
                 return f"last item of {coll}"
             if isinstance(s, (ast.Constant, ast.Name)):
                 return f"item {self.sub(s)} of {coll}"
+            return self.raw(e)
+        # lists, tuples and dictionaries written out: their values said the sentence way ("text", yes, nothing)
+        if self.strict and isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+            def item(x):
+                if x is None or isinstance(x, ast.Starred):
+                    raise Unwordable()
+                try:
+                    text = self.sub(x)
+                    if one_operand(text):
+                        return text
+                except Unwordable:
+                    pass
+                text = self.raw(x)
+                if not one_operand(text):
+                    raise Unwordable()
+                return text
+            try:
+                if isinstance(e, ast.Dict):
+                    return "{" + ", ".join(f"{item(k)}: {item(v)}" for k, v in zip(e.keys, e.values)) + "}"
+                parts = [item(x) for x in e.elts]
+                if isinstance(e, ast.Set) and parts:
+                    return "{" + ", ".join(parts) + "}"
+                if isinstance(e, ast.Tuple) and len(parts) > 1:
+                    return "(" + ", ".join(parts) + ")"
+                if isinstance(e, ast.List):
+                    return "[" + ", ".join(parts) + "]"
+            except Unwordable:
+                pass
             return self.raw(e)
         if self.strict and isinstance(e, ast.ListComp):
             return self.comprehension(e, top, "a list of ")
@@ -476,6 +524,12 @@ class Words:
             return self.raw(e)
         return text
 
+    def tight(self, e):
+        """An operand of not / and / or: a comparison binds tighter than those, so it needs no brackets."""
+        if self.strict and isinstance(e, ast.Compare):
+            return self.sub(e)
+        return self.wrap(e)
+
     def wrap(self, e):
         text = self.w(e, False)
         if isinstance(e, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp)):
@@ -524,6 +578,8 @@ class Words:
             return f"smallest in {self.simple(args[0])}"
         if fname == "random.randint" and len(args) == 2 and all(isinstance(a, (ast.Constant, ast.Name)) for a in args):
             return f"random number from {self.w(args[0])} to {self.w(args[1])}"
+        if fname == "random.randint" and len(args) == 2 and self.strict:
+            return f"random number from {self.opd(args[0])} to {self.opd(args[1])}"
         if fname == "random.choice" and one:
             return f"random item from {self.simple(args[0])}"
         if fname == "math.sqrt" and one and isinstance(args[0], (ast.Constant, ast.Name)):
@@ -565,9 +621,13 @@ class Words:
             return f"{self.opd(args[0])} as JSON text"
         if fname == "jsonify" and n == 1 and self.alias.get("jsonify") == "flask":
             return f"{self.opd(args[0])} as a JSON reply"
-        if not isinstance(f, ast.Attribute):
+        if not isinstance(f, ast.Attribute) or self.of_module(f.value):
             return self.raw(e)
         what, m = f.value, f.attr
+        if m == "get" and not self.is_dict(what):
+            return self.raw(e)   # session.get(url) fetches a page; only a dictionary's get looks an item up
+        if m == "join" and not ((isinstance(what, ast.Constant) and isinstance(what.value, str)) or dotted_name(what) in self.texts):
+            return self.raw(e)   # thread.join(5) waits for a thread; text.join(items) joins
         if m == "get" and n in (1, 2):
             text = f"item {self.opd(args[0])} of {self.opd(what)}"
             return text + (f" or {self.opd(args[1])} if there isn't one" if n == 2 else " if there is one")
@@ -609,13 +669,14 @@ HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
 class Sentences:
     """Writes statements as IntuaCode sentences. Anything that can't be said exactly becomes a `python:` line."""
 
-    def __init__(self, strict, tools=(), lists=(), known=(), comments=None, force_raw=(), classes=(), alias=None, modules=(), sets=()):
+    def __init__(self, strict, tools=(), lists=(), known=(), comments=None, force_raw=(), classes=(), alias=None, modules=(), sets=(),
+                 dicts=(), texts=(), imported=()):
         self.strict = strict
         self.classes = set(classes)
         self.alias = alias or {}
         self.modules = set(modules)
         self.sets = set(sets)   # names that hold a set (x = set()), so x.add(v) is "add v to the set x"
-        self.words = Words(strict, tools, lists, self.alias, self.modules)
+        self.words = Words(strict, tools, lists, self.alias, self.modules, dicts, texts, imported)
         self.tools = set(tools)
         self.lists = set(lists)
         self.known = set(tools) | set(known) | BUILTIN_CALLS
@@ -865,6 +926,8 @@ class Sentences:
                     return S(level, "give back " + ", ".join(self.arg(x) for x in v.elts))
                 except Unwordable:
                     pass
+            if isinstance(v, ast.BoolOp) and isinstance(v.op, ast.And) and not any(isinstance(x, (ast.Compare, ast.UnaryOp, ast.BoolOp)) for x in v.values):
+                raise Unwordable()   # "give back total and count" is asked about: two values, or both true?
             return S(level, "give back" + (f" {self.value(v, calls=False)}" if v is not None else ""))
         if isinstance(n, ast.Raise):
             if n.cause is not None:
@@ -918,7 +981,9 @@ class Sentences:
             defaults = [None] * (len(names) - len(a.defaults)) + list(a.defaults)
             params = []
             for x_, d in zip(a.args, defaults):
-                ann = f": {self.arg(x_.annotation)}" if x_.annotation is not None else ""
+                # a type is read as code (Optional[bool], not "item bool of Optional")
+                an = x_.annotation
+                ann = "" if an is None else f": {self.words.raw(an) if self.strict and not isinstance(an, ast.Name) and safe_code(an) else self.arg(an)}"
                 params.append(x_.arg + ann + ("" if d is None else (" = " if ann else "=") + self.arg(d)))
             out = []
             for d in n.decorator_list:
@@ -1071,8 +1136,8 @@ class Sentences:
                 how = {"pack": ", packed" if kws else "", "grid": ", put in the grid", "place": ", placed"}[f.attr]
                 return f"add a{'n' if cname[0] in 'AEIOU' else ''} {cname}" + (f" saying {saying}" if saying else "") + f" to {parent}" \
                     + (f" that runs {runs}" if runs else "") + (f" with {extra}" if extra else "") + how + (f" with {place}" if place else "")
-        if not isinstance(f, ast.Attribute):
-            return None
+        if not isinstance(f, ast.Attribute) or self.words.of_module(f.value):
+            return None   # os.remove(path) deletes a file: a module's own tools aren't list tools
         m, n = f.attr, len(args)
         obj = self.words.opd(f.value)
         if re.search(r"\s", _STR.sub("''", obj)):
@@ -1891,10 +1956,17 @@ def to_sentences(source, force_raw=()):
     # because the writer then sees the import and adds none of its own
     modules = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import)
                for a in n.names if (a.asname or a.name.split(".")[0]) == a.name.split(".")[0]}
-    sets = {dotted_name(t) for n in ast.walk(tree) if isinstance(n, ast.Assign) and (isinstance(n.value, (ast.Set, ast.SetComp)) or (isinstance(n.value, ast.Call) and dotted(n.value.func) == "set"))
-            for t in n.targets if dotted_name(t)}
+    # what names hold, as far as their assignments show: sets, dictionaries and text
+    assigns = [(dotted_name(t), n.value) for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets if dotted_name(t)]
+    calls = lambda v: dotted(v.func) if isinstance(v, ast.Call) else ""
+    sets = {t for t, v in assigns if isinstance(v, (ast.Set, ast.SetComp)) or calls(v) == "set"}
+    dicts = {t for t, v in assigns if isinstance(v, (ast.Dict, ast.DictComp)) or calls(v) in ("dict", "defaultdict", "Counter", "OrderedDict",
+             "collections.defaultdict", "collections.Counter", "json.load", "json.loads", "vars")
+             or re.search(r"\.(?:get_json|json)$", calls(v))}
+    texts = {t for t, v in assigns if isinstance(v, (ast.Constant, ast.JoinedStr)) and isinstance(getattr(v, "value", ""), str)}
+    imported = {(a.asname or a.name).split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     sent = Sentences(True, tools, [], known=set(alias) | classes, comments=full_line_comments(source),
-                     force_raw=force_raw, classes=classes, alias=alias, modules=modules, sets=sets)
+                     force_raw=force_raw, classes=classes, alias=alias, modules=modules, sets=sets, dicts=dicts, texts=texts, imported=imported)
     out = []
     for g in group_sections(tree):
         label = {"about": "About", "imports": "Toolkits", "settings": "Settings", "tool": "Tool", "route": "Web route",
