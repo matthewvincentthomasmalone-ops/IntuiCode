@@ -1486,13 +1486,17 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 | **Lists** | `create list ‹name› with ‹a, b, c›` | `name = [a, b, c]` | Settings, Tools, Main program | Leave off "with …" for an empty list. |
 |  | `add ‹value› to ‹list›` | `list.append(value)` | Tools, Main program | On a number, "add" increases it instead. |
 |  | `remove ‹value› from ‹list›` | `list.remove(value)` | Tools, Main program | Or "remove item 0 from list" to remove by position. |
-|  | `sort ‹list›` | `list.sort()` | Tools, Main program | Add "biggest first" to reverse the order. |
+|  | `append ‹value› to ‹list›` | `list.append(value)` | Tools, Main program | Always puts the value on the end, whatever can be seen of the list. |
+|  | `insert ‹value› into ‹list› at position ‹n›` | `list.insert(n, value)` | Tools, Main program | Positions start at 0. |
+|  | `take ‹value› out of ‹list›` | `list.remove(value)` | Tools, Main program | "take the last item out of ‹list›" is list.pop(); "take item 0 out of ‹list›" is list.pop(0). |
+|  | `set ‹name› to a list of ‹value› for each ‹item› in ‹list›` | `name = [value for item in list]` | Settings, Tools, Main program | Add "if ‹condition›" at the end to keep only some. "a set of", "a dictionary of k: v" work the same way. |
+|  | `sort ‹list›` | `list.sort()` | Tools, Main program | Add "biggest first" to reverse the order, "by ‹tool›" to sort by what the tool gives for each item. |
 |  | `shuffle ‹list›` | `random.shuffle(list)` | Tools, Main program |  |
 | **Tools** | `define ‹name› using ‹inputs›` | `def name(inputs):` | Tools, Main program | Leave off "using …" if the tool needs no inputs. |
 |  | `give back ‹value›` | `return value` | Tools | Only inside a define block. |
 |  | `description: ‹what it does›` | `"""what it does"""` | Tools, Main program | The first line under define or define class: help text Python keeps (a docstring). Several lines in a row make one text. |
 |  | `run ‹tool› with ‹inputs›` | `tool(inputs)` | Tools, Main program |  |
-|  | `run ‹tool› with ‹inputs› and store in ‹name›` | `name = tool(inputs)` | Tools, Main program | Keeps what the tool gives back. |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `name = tool(inputs)` | Tools, Main program | Keeps what the tool gives back. ("run ‹tool› with ‹inputs› and store in ‹name›" says the same.) |
 | **Dictionaries** | `create dictionary ‹name›` | `name = {}` | Settings, Tools, Main program | Stores values under keys, like prices of items. |
 |  | `set item ‹key› of ‹dictionary› to ‹value›` | `dictionary[key] = value` | Settings, Tools, Main program |  |
 |  | `for each ‹key›, ‹value› in pairs of ‹dictionary›` | `for key, value in dictionary.items():` | Settings, Tools, Main program | Goes through every key together with its value. |
@@ -1500,7 +1504,8 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 | **Objects** | `define class ‹Name›` | `class Name:` | Tools, Main program | A blueprint for objects. Tools defined inside it take `self` first. |
 |  | `define class ‹Name› based on ‹Parent›` | `class Name(Parent):` | Tools, Main program | Builds on another class and adds to it. |
 |  | `set self.‹value› to ‹value›` | `self.value = value` | Tools, Main program | Inside a class: a value each object keeps for itself. |
-|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `name = Class(inputs)` | Tools, Main program | Creates an object from a class. |
+|  | `set ‹name› to a new ‹Class› with ‹inputs›` | `name = Class(inputs)` | Tools, Main program | Creates an object from a class. ("make a new ‹Class› with ‹inputs› and store in ‹name›" says the same.) |
+|  | `when a new ‹Class› is made with ‹inputs›` | `def __init__(self, inputs):` | Tools, Main program | Inside "define class": the steps that set up each new object. Its own values are self.something. |
 |  | `run ‹object›.‹tool› with ‹inputs›` | `object.tool(inputs)` | Tools, Main program | Runs a tool that belongs to an object or module, e.g. run conn.commit. |
 |  | `field ‹name›: ‹type›` | `name: type` | Tools, Main program | Inside a data class: a value every object has. The type can be whole number, decimal, text, yes/no or a Python type. |
 | **Errors** | `try` | `try:` | Tools, Main program | Indent the lines that might fail under it. |
@@ -1511,12 +1516,18 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 | **Files** | `open the file ‹path› as ‹f›` | `with open(path) as f:` | Tools, Main program | Reads the file. The file closes itself after the indented lines. |
 |  | `open the file ‹path› for writing as ‹f›` | `with open(path, "w") as f:` | Tools, Main program | Replaces what was in the file. Use "for adding" to add to the end. |
 |  | `using ‹something› as ‹name›` | `with something as name:` | Tools, Main program | Sets something up and tidies it away afterwards. |
-| **Program** | `if this file is run directly` | `if __name__ == "__main__":` | Main program | The starting point of a program made of several files. |
+|  | `write ‹text› into ‹f›` | `f.write(text)` | Tools, Main program | Writes into a file opened for writing. No new line is added. |
+|  | `save ‹value› as JSON in ‹f›` | `json.dump(value, f)` | Tools, Main program | Writes lists, dictionaries, numbers and text into the file as JSON. Read it back with "the JSON read from ‹f›". |
+|  | `run the SQL "‹command›" on ‹connection› with the values ‹a, b›` | `connection.execute("command", (a, b))` | Tools, Main program | The values fill in the command's ? marks, in order. Then "save the changes to ‹connection›" (commit). |
+| **Program** | `bring in ‹module›` | `import module` | Settings, Tools, Main program | Several at once: "bring in os and sys". Another name: "bring in tkinter as tk". |
+|  | `bring in ‹name› from ‹module›` | `from module import name` | Settings, Tools, Main program | "bring in everything from ‹module›" is import *. |
+|  | `if this file is run directly` | `if __name__ == "__main__":` | Main program | The starting point of a program made of several files. |
 |  | `when ‹app› gets ‹GET› at "‹/path›"` | `@app.route("/path", methods=["GET"])` | Tools, Main program | A Flask web route. Put "define …" on the next line. |
 |  | `when ‹app› handles ‹GET› at "‹/path›"` | `@app.get("/path")` | Tools, Main program | A FastAPI (or Flask 2) web route. Put "define …" on the next line. |
 |  | `decorate with ‹decorator›` | `@decorator` | Tools, Main program | Adds behaviour to the next tool or class. |
 |  | `use the shared ‹name›` | `global name` | Tools | Inside a tool: change a value that lives outside it. |
-| **Other** | `wait ‹number› seconds` | `time.sleep(number)` | Tools, Main program |  |
+| **Other** | `add a ‹tk.Button› saying "‹text›" to ‹window› that runs ‹tool›` | `tk.Button(window, text="text", command=tool).pack()` | Tools, Main program | A window part (tkinter), made and placed in one line. Add ", packed with pady=5" or ", put in the grid with row=0 and column=1". |
+|  | `wait ‹number› seconds` | `time.sleep(number)` | Tools, Main program |  |
 |  | `do nothing` | `pass` | Tools, Main program | A placeholder for a block you will fill in later. |
 |  | `stop the program` | `sys.exit()` | Tools, Main program |  |
 |  | `note: ‹text›` | `# text` | Settings, Tools, Main program | A note for people. Python ignores it. |
@@ -1566,6 +1577,28 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 | `a if check otherwise b` | `a if check else b` |
 | `pairs of d` | `d.items()` |
 | `wait for fetch(url)` | `await fetch(url)` |
+| `item "k" of d or 0 if there isn't one` | `d.get("k", 0)` |
+| `item "k" of d if there is one` | `d.get("k")` |
+| `the result of f with a and b` | `f(a, b)` |
+| `a new Point with 1 and 2` | `Point(1, 2)` |
+| `a list of x times 2 for each x in xs` | `[x * 2 for x in xs]` |
+| `x is more than 0 for every x in xs` | `all(x > 0 for x in xs)` |
+| `x trimmed` | `x.strip()` |
+| `x split into words` | `x.split()` |
+| `x split at ","` | `x.split(",")` |
+| `words joined by " "` | `" ".join(words)` |
+| `x with "a" replaced by "b"` | `x.replace("a", "b")` |
+| `x starts with "a"` | `x.startswith("a")` |
+| `x is all letters` | `x.isalpha()` |
+| `xs sorted by len biggest first` | `sorted(xs, key=len, reverse=True)` |
+| `the last item taken out of xs` | `xs.pop()` |
+| `an empty set` | `set()` |
+| `the environment variable "HOME"` | `os.getenv("HOME")` |
+| `there is a file or folder at p` | `os.path.exists(p)` |
+| `the JSON read from f` | `json.load(f)` |
+| `x as JSON text` | `json.dumps(x)` |
+| `x as a JSON reply` | `jsonify(x)` |
+| `the JSON sent with the request` | `request.get_json()` |
 
 #### Python examples (the Index's how-tos)
 

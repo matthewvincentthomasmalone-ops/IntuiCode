@@ -267,13 +267,54 @@
         },
         {
           "topic": "Lists",
+          "say": "append ‹value› to ‹list›",
+          "becomes": "list.append(value)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Always puts the value on the end, whatever can be seen of the list."
+        },
+        {
+          "topic": "Lists",
+          "say": "insert ‹value› into ‹list› at position ‹n›",
+          "becomes": "list.insert(n, value)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Positions start at 0."
+        },
+        {
+          "topic": "Lists",
+          "say": "take ‹value› out of ‹list›",
+          "becomes": "list.remove(value)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "\"take the last item out of ‹list›\" is list.pop(); \"take item 0 out of ‹list›\" is list.pop(0)."
+        },
+        {
+          "topic": "Lists",
+          "say": "set ‹name› to a list of ‹value› for each ‹item› in ‹list›",
+          "becomes": "name = [value for item in list]",
+          "folders": [
+            "settings",
+            "tools",
+            "main"
+          ],
+          "tip": "Add \"if ‹condition›\" at the end to keep only some. \"a set of\", \"a dictionary of k: v\" work the same way."
+        },
+        {
+          "topic": "Lists",
           "say": "sort ‹list›",
           "becomes": "list.sort()",
           "folders": [
             "tools",
             "main"
           ],
-          "tip": "Add \"biggest first\" to reverse the order."
+          "tip": "Add \"biggest first\" to reverse the order, \"by ‹tool›\" to sort by what the tool gives for each item."
         },
         {
           "topic": "Lists",
@@ -326,13 +367,13 @@
         },
         {
           "topic": "Tools",
-          "say": "run ‹tool› with ‹inputs› and store in ‹name›",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
           "becomes": "name = tool(inputs)",
           "folders": [
             "tools",
             "main"
           ],
-          "tip": "Keeps what the tool gives back."
+          "tip": "Keeps what the tool gives back. (\"run ‹tool› with ‹inputs› and store in ‹name›\" says the same.)"
         },
         {
           "topic": "Dictionaries",
@@ -410,13 +451,23 @@
         },
         {
           "topic": "Objects",
-          "say": "make a new ‹Class› with ‹inputs› and store in ‹name›",
+          "say": "set ‹name› to a new ‹Class› with ‹inputs›",
           "becomes": "name = Class(inputs)",
           "folders": [
             "tools",
             "main"
           ],
-          "tip": "Creates an object from a class."
+          "tip": "Creates an object from a class. (\"make a new ‹Class› with ‹inputs› and store in ‹name›\" says the same.)"
+        },
+        {
+          "topic": "Objects",
+          "say": "when a new ‹Class› is made with ‹inputs›",
+          "becomes": "def __init__(self, inputs):",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Inside \"define class\": the steps that set up each new object. Its own values are self.something."
         },
         {
           "topic": "Objects",
@@ -519,6 +570,58 @@
           "tip": "Sets something up and tidies it away afterwards."
         },
         {
+          "topic": "Files",
+          "say": "write ‹text› into ‹f›",
+          "becomes": "f.write(text)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Writes into a file opened for writing. No new line is added."
+        },
+        {
+          "topic": "Files",
+          "say": "save ‹value› as JSON in ‹f›",
+          "becomes": "json.dump(value, f)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Writes lists, dictionaries, numbers and text into the file as JSON. Read it back with \"the JSON read from ‹f›\"."
+        },
+        {
+          "topic": "Files",
+          "say": "run the SQL \"‹command›\" on ‹connection› with the values ‹a, b›",
+          "becomes": "connection.execute(\"command\", (a, b))",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "The values fill in the command's ? marks, in order. Then \"save the changes to ‹connection›\" (commit)."
+        },
+        {
+          "topic": "Program",
+          "say": "bring in ‹module›",
+          "becomes": "import module",
+          "folders": [
+            "settings",
+            "tools",
+            "main"
+          ],
+          "tip": "Several at once: \"bring in os and sys\". Another name: \"bring in tkinter as tk\"."
+        },
+        {
+          "topic": "Program",
+          "say": "bring in ‹name› from ‹module›",
+          "becomes": "from module import name",
+          "folders": [
+            "settings",
+            "tools",
+            "main"
+          ],
+          "tip": "\"bring in everything from ‹module›\" is import *."
+        },
+        {
           "topic": "Program",
           "say": "if this file is run directly",
           "becomes": "if __name__ == \"__main__\":",
@@ -565,6 +668,16 @@
             "tools"
           ],
           "tip": "Inside a tool: change a value that lives outside it."
+        },
+        {
+          "topic": "Other",
+          "say": "add a ‹tk.Button› saying \"‹text›\" to ‹window› that runs ‹tool›",
+          "becomes": "tk.Button(window, text=\"text\", command=tool).pack()",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "A window part (tkinter), made and placed in one line. Add \", packed with pady=5\" or \", put in the grid with row=0 and column=1\"."
         },
         {
           "topic": "Other",
@@ -779,6 +892,94 @@
         {
           "say": "wait for fetch(url)",
           "becomes": "await fetch(url)"
+        },
+        {
+          "say": "item \"k\" of d or 0 if there isn't one",
+          "becomes": "d.get(\"k\", 0)"
+        },
+        {
+          "say": "item \"k\" of d if there is one",
+          "becomes": "d.get(\"k\")"
+        },
+        {
+          "say": "the result of f with a and b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "a new Point with 1 and 2",
+          "becomes": "Point(1, 2)"
+        },
+        {
+          "say": "a list of x times 2 for each x in xs",
+          "becomes": "[x * 2 for x in xs]"
+        },
+        {
+          "say": "x is more than 0 for every x in xs",
+          "becomes": "all(x > 0 for x in xs)"
+        },
+        {
+          "say": "x trimmed",
+          "becomes": "x.strip()"
+        },
+        {
+          "say": "x split into words",
+          "becomes": "x.split()"
+        },
+        {
+          "say": "x split at \",\"",
+          "becomes": "x.split(\",\")"
+        },
+        {
+          "say": "words joined by \" \"",
+          "becomes": "\" \".join(words)"
+        },
+        {
+          "say": "x with \"a\" replaced by \"b\"",
+          "becomes": "x.replace(\"a\", \"b\")"
+        },
+        {
+          "say": "x starts with \"a\"",
+          "becomes": "x.startswith(\"a\")"
+        },
+        {
+          "say": "x is all letters",
+          "becomes": "x.isalpha()"
+        },
+        {
+          "say": "xs sorted by len biggest first",
+          "becomes": "sorted(xs, key=len, reverse=True)"
+        },
+        {
+          "say": "the last item taken out of xs",
+          "becomes": "xs.pop()"
+        },
+        {
+          "say": "an empty set",
+          "becomes": "set()"
+        },
+        {
+          "say": "the environment variable \"HOME\"",
+          "becomes": "os.getenv(\"HOME\")"
+        },
+        {
+          "say": "there is a file or folder at p",
+          "becomes": "os.path.exists(p)"
+        },
+        {
+          "say": "the JSON read from f",
+          "becomes": "json.load(f)"
+        },
+        {
+          "say": "x as JSON text",
+          "becomes": "json.dumps(x)"
+        },
+        {
+          "say": "x as a JSON reply",
+          "becomes": "jsonify(x)"
+        },
+        {
+          "say": "the JSON sent with the request",
+          "becomes": "request.get_json()"
         }
       ],
       "examples": [
