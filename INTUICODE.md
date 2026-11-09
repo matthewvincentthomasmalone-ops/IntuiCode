@@ -113,7 +113,7 @@ check it; the language does, when the program runs or is compiled.
 | `python:`, `raw python:`, `raw:` | Python | as the line, at its indentation. Names it makes (`x = …`, `import`, `def`, `class`) become known; a line ending in `:` opens a block; text in triple quotes carries on over the next `python:` lines, copied exactly. |
 | `html:`, `raw:` | Structure | at that place in `<body>`. Spaces inside `<pre>`, `<textarea>`, `<script>` and `<style>` are kept. |
 | `head:`, `in the head:` | Structure | into `<head>`. A charset, viewport, `style.css` link or `script.js` tag there replaces the one IntuaCode writes. |
-| `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` |
+| `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` (the page's groups are said `the page is in group dark`: `<body class="dark">`) |
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
 | `css:`, `raw:` | Styling | as a line, inside the current `on screens …` block if any |
@@ -452,6 +452,100 @@ container-word = "section" | "header" | "footer" | "navigation bar" | "navigatio
             | "main" | "block" | "box" | "area" | "form" | "side panel" | "sidebar" | "article" | "card"
             | "numbered list" | "list" | "table" | "row" | "pop-up" | "dialog" ;
                 (* → section, header, footer, nav, main, div, form, aside, article, div class="card", ol, ul, table, tr, dialog *)
+                (* "box" alone, with no box-setting, is a block; with one ("with hint …") it is a box to type in *)
+chart       = "add" [ "a" | "an" ] [ "data" ] ( "chart" | "graph" | "plot" ) [ "called" name ] [ number "by" number ] ; (* → <canvas> *)
+text-line   = text ;                                    (* text on its own, inside the element above it *)
+element     = "add" [ "a" | "an" | "some" ] element-word [ "called" name ] [ text ] [ shape ] ;
+            | "add" ( "a" | "an" ) tag "element" [ "called" name ] [ text ] ;   (* any tag, as written: <my-widget> *)
+shape       = { "at" number "," number | "sized" number "by" number | "with radius" number | "with radii" number "and" number
+            | "from" number "," number "to" number "," number | "following" text | "through" text | "of" name } ;   (* drawings only *)
+gradient    = "add" "a" [ "radial" ] "gradient" [ "called" name ] "from" colour [ "at" number ]
+              { "through" colour "at" number } [ "to" colour [ "at" number ] ] ;  (* → <linearGradient> with its <stop>s *)
+settings    = { "," setting } ;                         (* after any element sentence, before "in group" *)
+setting     = "hidden from screen readers" | "labelled" text "for screen readers" | "labelled by" names | "described by" names
+            | "controls" names | "starts" ( "collapsed" | "expanded" | "pressed" | "not pressed" ) | "marked as" [ "the" ] "current" [ value ]
+            | "read out" [ "at once" ] "when it changes" | "with tooltip" text | "with hint" text | "opening in a new tab"
+            | "sent as" text | "sending to" text | "storing" word value | "running" text ( "when clicked" | "when changed" | … | "on" event )
+            | "linking to" text | "from" text | "described as" text | "with no description" | "for" names
+            | "sized" number "by" number | number "wide" | number "tall" | "of type" value | "drawn on a" number "by" number "grid"
+            | "filled with" ( value | "the" ( "gradient" | "pattern" ) name ) | "not filled" | "outlined in" value | "not outlined"
+            | "outline" number "wide" | "with rounded corners" number | ( "starting" | "ending" ) [ number "across" ] [ "and" ] [ number "down" ]
+            | "hidden" | "disabled" | "required" | "read-only" | "ticked" | "selected" | "focused at the start" | "allowing several"
+            | "with controls" | "loaded lazily" | "with no space before it" | "with" [ "attribute" ] attribute-name [ value ] ;
+names       = name { "and" name } ;                     (* a name in quotes is kept exactly: called "helpToggle" *)
+```
+
+The element words are: block (box, area), text, paragraph, big heading, heading, small heading, level 4/5/6 heading,
+section, header, footer, navigation bar, main area, side panel, article, form, list, numbered list, list item, table,
+table head, table body, table foot, table caption, row, cell, heading cell, dialog, figure, caption, collapsible
+section, summary, definition list, term, definition, quotation, short quotation, citation, address, heading group,
+menu, search area, field group, legend, link, button, label, picture, input, drop-down, option, option group, big text
+box, output, progress bar, meter, video, sound player, media source, captions track, embedded page, drawing area, line
+break, line, drawing, script, and the text words (strong text, emphasised text, bold text, italic text, underlined
+text, struck-out text, small text, highlighted text, deleted text, inserted text, subscript, superscript,
+abbreviation, code, key, sample output, variable, time). Inside a drawing (SVG) they are: set of shapes, reusable
+parts, circle, ellipse, rectangle, line, polyline, polygon, path, text, text piece, copy, picture, gradient, radial
+gradient, colour stop, pattern, clipping shape, mask, symbol, marker, title, description, link and page area. A
+plain value in a setting is one word or number as written (`.4`, `#873044`, `userSpaceOnUse`); anything else goes in
+quotes. A line break between two inline things (text, links, pictures, buttons) shows as a space, so a line that
+must touch the one before ends with `with no space before it`. Text, links and other inline elements that hold
+other things are written on one line.
+
+```intuicode html
+add a button called "helpToggle", starts collapsed, controls help
+    "Settings & guide"
+    add text "↗", hidden from screen readers
+add a paragraph
+    "Hold a chord and"
+    add strong text "strum"
+    ".", with no space before it
+add a side panel called help, hidden
+    add a button saying "C", storing chord "C" in group key
+```
+
+```html
+<button id="helpToggle" type="button" aria-expanded="false" aria-controls="help">
+  Settings &amp; guide
+  <span aria-hidden="true">↗</span>
+</button>
+<p>
+  Hold a chord and
+  <strong>strum</strong>.
+</p>
+<aside id="help" hidden>
+  <button class="key" type="button" data-chord="C">C</button>
+</aside>
+```
+
+```intuicode html
+add a drawing, drawn on a 100 by 60 grid, hidden from screen readers
+    add reusable parts
+        add a gradient called sky from #87ceeb through #b0e0ff at .6 to #ffffff at 1
+    add a rectangle at 0, 0 sized 100 by 60, filled with the gradient sky
+    add a circle at 80, 15 with radius 8, filled with gold
+    add a set of shapes, outlined in navy, outline 2 wide
+        add a line from 0, 50 to 100, 50
+        add a path following "M 10 50 Q 30 30 50 50", not filled
+    add text "Hi" at 10, 20
+```
+
+```html
+<svg viewBox="0 0 100 60" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky">
+      <stop stop-color="#87ceeb" />
+      <stop offset=".6" stop-color="#b0e0ff" />
+      <stop offset="1" stop-color="#ffffff" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="60" fill="url(#sky)" />
+  <circle cx="80" cy="15" r="8" fill="gold" />
+  <g stroke="navy" stroke-width="2">
+    <line x1="0" y1="50" x2="100" y2="50" />
+    <path d="M 10 50 Q 30 30 50 50" fill="none" />
+  </g>
+  <text x="10" y="20">Hi</text>
+</svg>
 ```
 
 Page-level lines (`head:`, `doctype:`, `no title` …) are in [Exact-code lines](#exact-code-lines).
@@ -465,8 +559,10 @@ dark        = "in dark mode" [ ":" ] ;                                (* → @me
 shared      = ( "shared" | "main" ) ( "colour" | "color" ) name "is" colour ;      (* → :root { --name: colour } *)
 join-group  = name ( "belongs to" | "is in" | "joins" ) "group" name ;             (* adds the class to that element in Structure *)
 group       = ( "create" | "make" ) [ "a" ] "group" name ":" styles ;             (* → .name { … } *)
-state       = "when" what "is" ( "hovered" | "pointed at" | "clicked" | "focused" | "selected" ) ":" styles ;
-                                                                          (* → :hover, :active, :focus, :checked *)
+state       = "when" what "is" ( "hovered" | "pointed at" | "clicked" | "focused" | "focused with the keyboard" | "selected"
+              | "disabled" | "visited" | "empty" ) ":" styles | "when" what "has focus inside:" styles ;
+                                    (* → :hover, :active, :focus, :focus-visible, :checked, :disabled, :visited, :empty, :focus-within *)
+add-style   = "add" [ "a" | "an" | "some" ] styles "to" what ;    (* the same as style; "add a 2 dashed navy border to card" *)
 piece       = ( "before" | "after" | "at the start of" | "at the end of" ) what ":" styles ; (* → ::before, ::after *)
 style       = ( "style" | "make" | "give" ) what ":" styles ;
 styles      = style-phrase { ( "," | "and" ) style-phrase } ;
@@ -489,14 +585,18 @@ and `#name`.
 | `text colour C`, `colour C`, `text C` | `color: C` |
 | `text size N`, `font size N`, `size of text N` | `font-size` |
 | `bold`, `italic`, `capitals` (`all capitals`, `uppercase`), each with an optional `text` | `font-weight`, `font-style`, `text-transform` |
-| `font F` | `font-family: "F", sans-serif` |
+| `font F`, `font F or any serif font` (sans-serif, monospace, cursive) | `font-family: "F", sans-serif` (or that kind) |
+| `text weight N` (600, normal…), `line height N`, `letter spacing N`, `text aligned left` (right, justify…) | `font-weight`, `line-height` (as written), `letter-spacing`, `text-align` |
+| `underlined`, `struck through`, `no underline` | `text-decoration` |
+| `background gradient [at Ndeg] from C through C … to C` | `background: linear-gradient(…)` |
+| `size includes padding plus border` | `box-sizing: border-box` |
 | `space inside V…`, `padding V…`, `inner space V…` | `padding` |
 | `space around V…`, `margin V…`, `outer space V…` | `margin` |
 | `centred`, `centered`, `in the middle` | `margin-left: auto; margin-right: auto` |
 | `centre the text`, `centred text` | `text-align: center` |
 | `rounded corners [N]` | `border-radius` (8px) |
 | `round`, `circle`, `circular` | `border-radius: 50%` |
-| `no border`; `border [W] [C]` | `border: none`; `border: W solid C` (1px, currentColor) |
+| `no border`, `no outline`; `[top \| bottom \| left \| right] border [W] [S] [C]`, `outline [W] [S] [C]` (any order) | `border: none`; `border: W S C` (1px, solid, currentColor; S is solid, dashed, dotted, double…), `border-bottom`…, `outline` |
 | `no shadow`; `[soft \| big \| strong] shadow [C] [with N% intensity]` | `box-shadow` |
 | `N% see-through`, `N% transparent` | `opacity` |
 | `hidden` | `display: none` |
@@ -567,7 +667,8 @@ screen      = "when" [ "the" ] ( "screen" | "page" | "mouse" | "pointer" | "fing
 moves       = "when" [ "the" ] ( "pointer" | "mouse" | "finger" ) ( "moves" | "is moved" )
               [ ( "over" | "on" | "across" | "in" | "inside" ) element ] ;           (* → pointermove *)
 tapped      = "when" element "is" ( "tapped" | "touched" | "released" | "let go" | "lifted" ) ;
-event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" ) ;
+event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" )
+              [ [ "," ] "with the event as" name ] ;   (* the event under its own name: (e) => … *)
                          (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault) *)
 frame       = "every frame" ;                                                       (* → requestAnimationFrame loop *)
 keys        = "keep track of" [ "the" ] "keys" ;                                    (* → keysDown, a Set *)
@@ -631,7 +732,8 @@ set-item    = ( "set" | "let" | "make" ) [ "the" ] ( ( "first" | "last" ) "item"
 set-path    = ( "set" | "let" | "make" ) path ( "to" | "be" ) value ;    (* a.b, a[i], meter-fill.style.width *)
 set-field   = ( "set" | "let" | "make" ) [ "the" ] ( name | text ) "of" owner ( "to" | "be" ) value ;  (* → owner.name = value *)
 set         = ( "set" | "let" | "make" ) name ( "to" | "be" ) value ;               (* → let name = value, or name = value *)
-run         = "run" path [ "with" items ] [ "and store" [ "it" | "the result" ] "in" name ] ; (* → [await] path(items) *)
+run         = "run" path [ "with" items ] [ "without waiting" ] [ "and store" [ "it" | "the result" ] "in" name ] ;
+                                    (* → [await] path(items); "without waiting": no await, even for a tool that waits *)
 show        = "show" items ;                                                        (* → console.log(items) *)
 ```
 
@@ -659,6 +761,19 @@ document.getElementById("name").addEventListener("input", () => {
 });
 ```
 
+```intuicode js
+when name is typed in, with the event as e
+    set the text of greeting to e.target.value
+constant first is the element matching "p"
+```
+
+```js
+document.getElementById("name").addEventListener("input", (e) => {
+  document.getElementById("greeting").textContent = e.target.value;
+});
+const first = document.querySelector("p");
+```
+
 ## Grammar: C++ and Arduino
 
 C++ and Arduino share one writer. Arduino adds the board sentences and changes some outputs (marked).
@@ -673,45 +788,75 @@ note        = ( "note" | "comment" ) ":" text ;                                 
 (* Program set-up *)
 include     = ( "include" | "use the library" ) ( "<" … ">" | text | header-name ) ;  (* → #include <…> *)
 std         = "use namespace std" | "use the standard names" [ "directly" ] | "use std names directly" ; (* → using namespace std; *)
+stand-for   = "let" NAME "stand for" ( number | name | text ) ;                     (* → #define NAME value, above main *)
 
 (* Classes: at the left edge, placed above main *)
-class       = "define" [ "a" ] "class" Name [ "based on" Name ] ;                  (* → class Name : public Base { public: … }; *)
+class       = "define" [ "a" | "an" ] "class" Name [ "based on" Name ] ;           (* → class Name : public Base { public: … }; *)
+structure   = "define" [ "a" ] ( "structure" | "struct" ) Name ;                  (* → struct Name { … }; everything in it public *)
 field       = "field" name ":" type [ ( "=" | "starting at" | "starting as" ) value ]
             | "has" [ "a" | "an" ] type name [ ( "starting at" | "starting as" | "=" ) value ] ;  (* → type name = value; *)
 access      = ( "the rest is" | "from here on" ) ( "private" | "public" ) | ( "private" | "public" ) [ "part" | "parts" ] ;
+                (* said first in a class, it takes the place of the public: every class starts with *)
 made        = "when" ( "made" | "created" | "built" ) [ ( "using" | "with" ) params ] ; (* → the constructor; every input needs a type *)
 
 (* Tools: at the left edge or in a class, placed above main *)
-define      = "define" name [ "using" params ] [ "giving back" type ] ;            (* → type name(params) { … }, auto when unsaid *)
+define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] ;  (* → type name(params) { … }, auto when unsaid *)
 param       = [ type ] name ;
-type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" | "character" | "nothing"
-            | "list of" type | c++-type | class-name ;  (* → int, double, std::string (Arduino String), bool, char, void, std::vector<…> *)
+type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" [ "value" ] | "character" | "nothing"
+            | "list of" type | c++-type | class-name
+            | "read-only" type | "the caller's" [ "own" ] type ;
+                (* → int, double, std::string (Arduino String), bool, char, void, std::vector<…>;
+                   read-only → const type& (the caller's value, not copied, not changed); the caller's → type& *)
 
 (* Arduino: the two parts *)
 setup       = "when the board" ( "starts" | "turns on" | "powers on" | "wakes up" ) | "at the start" | "setup" ;  (* → void setup() *)
 loop        = "over and over" [ "again" ] | "again and again" | "repeat forever" | "forever" | "keep repeating" | "loop" ;
                                                        (* at the left edge → void loop() *)
-(* At the left edge of a sketch, besides these two, define, define class, include and exact code, only set, constant,
-   create list and make a new are allowed; anything else is an error. *)
+(* At the left edge of a sketch, besides these two, define, define class, define structure, include, let … stand for
+   and exact code, only set, constant, create list, make a … called and make a new are allowed; anything else is an error. *)
 
 (* Logic *)
 return      = ( "give back" | "return" ) [ value ] ;
+return-now  = "skip the rest of this round" | "leave the tool now" ;   (* → return;  the first only in "over and over" *)
 elif        = ( "otherwise if" | "else if" ) cond ;   else = "otherwise" | "else" ;   if = "if" cond ;
+switch      = "depending on" value ;                                               (* → switch (value) { … } *)
+case        = "when it" ( "is" | "'s" ) ( value { "or" value } | "anything else" ) | "otherwise" ;
+                (* one step in from "depending on" → case a: case b: … break;  "otherwise" → default:
+                   each case ends with break, unless it ends by giving back, skipping to next, or with: *)
+fall        = ( "go on" | "carry on" ) "into the next case" ;                      (* no break: the next case's steps run too *)
+                (* a case that makes a name, and isn't the last, goes in braces: case a: { … break; } *)
 forever     = "repeat forever" | "forever" | "keep repeating" ;                    (* → while (true) *)
-times       = "repeat" value ( "time" | "times" ) [ "counting with" name ] ;      (* → for (int i = 0; i < value; i++) *)
-count       = "count" name "from" value "to" value ;      (* → for (int name = a; name <= b; name++); down when both are numbers and a > b *)
-for-each    = "for each" name "in" value ;                                          (* → for (const auto& name : value) *)
+times       = "repeat" value ( "time" | "times" ) [ [ "," ] "counting with" name ] ; (* → for (int i = 0; i < value; i++) *)
+count       = "count" [ "up" | "down" ] [ name ] "from" value [ "down" ] "to" value
+              [ ( "in steps of" | "by" | "step" | "stepping by" ) value ] ;
+                (* → for (int name = a; name <= b; name++); down when both are numbers and a > b, or it says down *)
+count-below = "count" [ "up" ] [ name ] "from" value "up to but not including" value [ "in steps of" value ] ;
+                (* → for (int name = a; name < b; …) *)
+                (* a count (or "counting with") that names a name made before uses it: for (pos = a; …) *)
+for-each    = "for each" [ type ] name "in" value [ "," ( "so it can be changed" | "as a copy" ) ] ;
+                (* → for (const auto& name : value);  a type → for (type name : value);
+                   so it can be changed → auto& (or type&);  as a copy → auto *)
 while       = ( "while" | "as long as" ) cond ;
-break       = "stop the loop" ;   continue = "skip to next" ;
+do-while    = "do this" [ "," ] "then repeat" ( "while" | "as long as" ) cond ;     (* → do { … } while (cond); *)
+break       = "stop the loop" ;   continue = "skip to next" ;   (* stop the loop in a case of "depending on" is an error *)
 
 (* Arduino: pins, time, sound *)
 pin-mode    = ( "make" | "set" ) [ "pin" ] pin ( "a" | "an" | "as" [ "a" | "an" ] ) ( "output" | "input" ) [ "with" [ "a" ] "pull-up" ] ;
                                                                           (* → pinMode(pin, OUTPUT | INPUT | INPUT_PULLUP) *)
 turn        = "turn" ( "on" | "off" ) pin | "turn" pin ( "on" | "off" ) | "set pin" pin "to" ( "high" | "low" | "on" | "off" ) ;
                                                                           (* → digitalWrite(pin, HIGH | LOW) *)
+turn-if     = "turn" pin ( "on" | "off" ) "if" cond [ "," ] "otherwise" ( "on" | "off" ) ;  (* → digitalWrite(pin, cond ? HIGH : LOW) *)
+set-pin     = "set pin" pin "to" value ;                                  (* → digitalWrite(pin, value); a number but 0 or 1 warns *)
 level       = ( "set the" ( "brightness" | "level" | "power" ) "of" | "dim" ) pin "to" value | "write" value "to pin" pin ;
                                                                           (* → analogWrite(pin, value) *)
-read        = "read" [ "analog" ] [ "pin" ] pin "and store" [ "it" ] "in" name ;    (* → int name = digitalRead / analogRead(pin) *)
+read        = "read" [ "analog" | "digital" ] [ "pin" ] pin "and" keep-as name [ "(" type ")" ] ;
+                (* → digitalRead(pin), or analogRead for "analog" and A0, A1…; "call it" makes name (int, or the type
+                   in brackets); "store it in" and "keep it as" change a name made before, or make an int *)
+keep-as     = "store" [ "it" ] "in" | "keep it as" | "call it" ;
+scale       = "scale" value "from" value "–" value "to" value "–" value "and" keep-as name [ "(" type ")" ] ;
+                                                                          (* → map(value, a, b, c, d); – is an en dash *)
+servo       = "attach" name "to pin" pin | "turn servo" name "to" value ( "degree" | "degrees" ) ;
+                                                                          (* → name.attach(pin), name.write(value) *)
 wait        = "wait" [ "for" ] value ( "millisecond" | "milliseconds" | "ms" | "second" | "seconds" | "sec" | "secs" ) ;
                                                                           (* → delay(ms) *)
 serial      = "start" ( "the serial monitor" | "talking to the computer" ) [ "at" number ] ; (* → Serial.begin(9600) *)
@@ -720,16 +865,32 @@ stop-tone   = "stop the" ( "tone" | "note" | "sound" ) "on" [ "pin" ] pin ;     
 pin         = value | "the built-in light" | "the built-in led" ;                   (* → LED_BUILTIN *)
 
 (* Showing and asking *)
-show        = "show" ( value { "followed by" value } | items ) [ "on the same line" ] ;
+show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" ] ;
                 (* "and" or "," put a space between the pieces, "followed by" none
-                   → std::cout << a << " " << b << std::endl;  Arduino: Serial.print / Serial.println *)
+                   → std::cout << a << " " << b << std::endl;  on the same line adds << " ", without ending the line
+                   adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said *)
+end-line    = "end the line" ;                                    (* → std::cout << std::endl;  Arduino: Serial.println(); *)
+printf      = "show" text "filled in with" items ;                (* → printf(text, items);  Arduino: Serial.printf *)
 ask         = "ask" [ "for" [ "a" | "an" ] ( "whole number" | "number" | "decimal" ) ] value "and store" [ "it" ] "in" name ;
                 (* → std::cout << value; then std::cin >> name or std::getline; an error on Arduino *)
+keyboard    = "read" items "from the keyboard" | "read a line from the keyboard into" name ;
+                (* → std::cin >> a >> b;  std::getline(std::cin, name);  an error on Arduino *)
+
+(* Screens and other objects that print *)
+show-on     = "show" value "on" name [ [ "," ] "then start a new line" ] ;    (* → name.print(value) / name.println(value) *)
+cursor      = "move" name "'s cursor to" value "," value ;                    (* → name.setCursor(a, b) *)
+clear       = "clear" name ;                                                  (* → name.clear() *)
+start       = "start" name [ "with" items ] ;                                 (* → name.begin(items) *)
 
 (* Values *)
-make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "empty" ] "list"
-              [ "of" ( "numbers" | "whole numbers" | "decimals" | "text" | "words" ) ] [ "called" ] name [ "with" items ] ;
-                (* → std::vector<T> name = {…};  Arduino: T name[] = {…}, items required *)
+make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "empty" ] "list" [ "of" [ size ] holds ] [ "called" ] name [ "with" items ] ;
+holds       = "numbers" | "whole numbers" | "decimals" | "text" | "words" | "characters" | "yes/no values" | c++-type "values" ;
+size        = number | CONSTANT ;
+                (* → std::vector<T> name = {…}; (no items: std::vector<T> name;)  with a size → T name[size] = {…};
+                   Arduino: T name[] = {…}, items or a size required *)
+make-called = ( "make" | "create" ) [ "a" | "an" | "some" ] [ "empty" ] [ "new" ] ( type | Class ) "called" name [ "with" items ] ;
+                (* → type name;  Class name(items);  "empty" only for text;  a Class is one defined here, or starts with a capital *)
+keep        = "keep" path "between" value "and" value ;           (* → path = std::clamp(path, a, b);  Arduino: constrain *)
 add         = "add" value "to" name ;                    (* → push_back for a list, an error for an Arduino list, += otherwise *)
 increase    = ( "increase" | "decrease" ) target [ "by" value ] ;                   (* → +=, -=, ++, -- *)
 new-object  = "make" [ "a" ] "new" Class [ "with" items ] "and store" [ "it" ] "in" name ; (* → Class name(items); *)
@@ -791,6 +952,124 @@ void loop() {
     digitalWrite(LED, LOW);
     delay(500);
     Serial.println("blink");
+}
+```
+
+A knob that points a servo, checked twice a second without stopping the board, and a choice by mode:
+
+```intuicode arduino
+let BUZZER stand for 8
+make a Servo called arm
+make a whole number called mode
+set unsigned long last to 0
+when the board starts
+    start the serial monitor at 9600
+    attach arm to pin 9
+over and over
+    read pin A0 and call it reading (a whole number)
+    scale reading from 0–1023 to 0–180 and call it angle (a whole number)
+    keep angle between 10 and 170
+    if less than 500 milliseconds have passed since last
+        skip the rest of this round
+    set last to time since start
+    depending on mode
+        when it is 0
+            turn servo arm to angle degrees
+        when it is 1 or 2
+            play a tone of 440 on pin BUZZER for 100 milliseconds
+        otherwise
+            turn the built-in light on if angle is more than 90, otherwise off
+    show "Angle: " followed by angle followed by " degrees"
+```
+
+```cpp
+#define BUZZER 8
+Servo arm;
+int mode;
+unsigned long last = 0;
+void setup() {
+    Serial.begin(9600);
+    arm.attach(9);
+}
+void loop() {
+    int reading = analogRead(A0);
+    int angle = map(reading, 0, 1023, 0, 180);
+    angle = constrain(angle, 10, 170);
+    if (millis() - last < 500) {
+        return;
+    }
+    last = millis();
+    switch (mode) {
+        case 0:
+            arm.write(angle);
+            break;
+        case 1:
+        case 2:
+            tone(BUZZER, 440, 100);
+            break;
+        default:
+            digitalWrite(LED_BUILTIN, angle > 90 ? HIGH : LOW);
+            break;
+    }
+    Serial.print("Angle: "); Serial.print(angle); Serial.println(" degrees");
+}
+```
+
+Typed inputs, a list made empty, the keyboard and a choice:
+
+```intuicode cpp
+define average using read-only list of whole numbers values giving back a decimal
+    set decimal total to 0
+    for each whole number v in values
+        increase total by v
+    give back total divided by length of values
+make an empty list of whole numbers called scores
+make a whole number called count
+show "How many? " without ending the line
+read count from the keyboard
+repeat count times, counting with i
+    make a whole number called s
+    read s from the keyboard
+    add s to scores
+depending on count
+    when it is 0
+        show "No scores"
+    otherwise
+        show "Average: " followed by average(scores)
+```
+
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+
+double average(const std::vector<int>& values) {
+    double total = 0;
+    for (int v : values) {
+        total += v;
+    }
+    return total / values.size();
+}
+
+int main() {
+    std::vector<int> scores;
+    int count;
+    std::cout << "How many? ";
+    std::cin >> count;
+    for (int i = 0; i < count; i++) {
+        int s;
+        std::cin >> s;
+        scores.push_back(s);
+    }
+    switch (count) {
+        case 0:
+            std::cout << "No scores" << std::endl;
+            break;
+        default:
+            std::cout << "Average: " << average(scores) << std::endl;
+            break;
+    }
+    return 0;
 }
 ```
 
@@ -898,28 +1177,29 @@ not an operand, so `length of (a plus b)` isn't read.
 |---|---|---|
 | 1 | `[key] "K" is held`, `is held down`, `is down` | `keysDown.has("K")` (needs `keep track of the keys`) |
 | 2 | `tap x`, `click x`, `pointer x` (and `y`) | `event.offsetX` / `event.offsetY` |
-| 3 | `width of E`, `height of E`; `text of E` (page elements) | `….width`, `….height`; `….value` for a box, `….textContent` otherwise |
-| 4 | `file in E` (`first file`; `in`, `of`, `from`, `picked in`), `files in E` | `….files[0]`, `….files` |
-| 5 | `first item of X`, `last item of X`, `item K of X`, innermost first | `X[0]`, `X[X.length - 1]`, `X[K]` |
-| 6 | `length of X`, `size of X`, `how many [items] in X` | `X.length` |
-| 7 | `random [whole] number from A to B` | `(Math.floor(Math.random() * (B - A + 1)) + A)`; an error when B is followed by maths |
-| 8 | `random item from X` (`of`, `in`) | `X[Math.floor(Math.random() * X.length)]` |
-| 9 | `X as [a] number` / `X as text` | `Number(X)` / `String(X)` |
-| 10 | `X in capitals`, `X in uppercase` / `X in lowercase` | `X.toUpperCase()` / `X.toLowerCase()` |
-| 11 | `X is not ticked` (`checked`) / `X is ticked` | `!X.checked` / `X.checked` |
-| 12 | `X is not in group G` / `X is in group G` | `!X.classList.contains("g")` / `X.classList.contains("g")` |
-| 13 | `X contains Y` | `X.includes(Y)` |
-| 14 | `X is not in Y` (`one of`) / `X is in Y` | `!Y.includes(X)` / `Y.includes(X)` |
-| 15 | `[an] empty list` / `empty text` | `[]` / `""` |
-| 16 | `is not nothing` / `is nothing` | `!= null` / `== null` |
-| 17 | `is not`, `isn't`, `is not equal to`, `is not the same as` | `!==` |
-| 18 | `is at least`, `is … than or equal to`; `is at most`, `is … than or equal to` | `>=`; `<=` |
-| 19 | `is greater than` (`more`, `bigger`, `higher`), `is over`; `is less than` (`smaller`, `lower`, `fewer`), `is under` | `>`; `<` |
-| 20 | `is empty` | `.length === 0` |
-| 21 | `is`, `equals`, `is equal to`, `is the same as` | `===` |
-| 22 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
-| 23 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
-| 24 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
+| 3 | `the element matching "S"`, `every element matching "S"` | `document.querySelector("S")`, `document.querySelectorAll("S")` |
+| 4 | `width of E`, `height of E`; `text of E` (page elements) | `….width`, `….height`; `….value` for a box, `….textContent` otherwise |
+| 5 | `file in E` (`first file`; `in`, `of`, `from`, `picked in`), `files in E` | `….files[0]`, `….files` |
+| 6 | `first item of X`, `last item of X`, `item K of X`, innermost first | `X[0]`, `X[X.length - 1]`, `X[K]` |
+| 7 | `length of X`, `size of X`, `how many [items] in X` | `X.length` |
+| 8 | `random [whole] number from A to B` | `(Math.floor(Math.random() * (B - A + 1)) + A)`; an error when B is followed by maths |
+| 9 | `random item from X` (`of`, `in`) | `X[Math.floor(Math.random() * X.length)]` |
+| 10 | `X as [a] number` / `X as text` | `Number(X)` / `String(X)` |
+| 11 | `X in capitals`, `X in uppercase` / `X in lowercase` | `X.toUpperCase()` / `X.toLowerCase()` |
+| 12 | `X is not ticked` (`checked`) / `X is ticked` | `!X.checked` / `X.checked` |
+| 13 | `X is not in group G` / `X is in group G` | `!X.classList.contains("g")` / `X.classList.contains("g")` |
+| 14 | `X contains Y` | `X.includes(Y)` |
+| 15 | `X is not in Y` (`one of`) / `X is in Y` | `!Y.includes(X)` / `Y.includes(X)` |
+| 16 | `[an] empty list` / `empty text` | `[]` / `""` |
+| 17 | `is not nothing` / `is nothing` | `!= null` / `== null` |
+| 18 | `is not`, `isn't`, `is not equal to`, `is not the same as` | `!==` |
+| 19 | `is at least`, `is … than or equal to`; `is at most`, `is … than or equal to` | `>=`; `<=` |
+| 20 | `is greater than` (`more`, `bigger`, `higher`), `is over`; `is less than` (`smaller`, `lower`, `fewer`), `is under` | `>`; `<` |
+| 21 | `is empty` | `.length === 0` |
+| 22 | `is`, `equals`, `is equal to`, `is the same as` | `===` |
+| 23 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
+| 24 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
+| 25 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
 
 JavaScript's precedence then applies, tightest first: `!` (on the operand right after it); `*` `/` `%`;
 `+` `-`; `<` `<=` `>` `>=`; `===` `!==` `==` `!=`; `&&`; `||`. Unlike Python, `not` binds to one
@@ -942,12 +1222,14 @@ let c = (Math.floor(Math.random() * (6 - 1 + 1)) + 1);
 ### C++ and Arduino values
 
 An operand is a quoted text, a number or a name with any `.name`, `::name` or `->name`, followed by any
-`( … )` or `[ … ]`. In order:
+`( … )` or `[ … ]`. The phrases with `–` (an en dash) and the time phrases take operands only, so in
+`x scaled from 0–1023 to 0–255 plus 1` the `plus 1` is added to the result. In order:
 
 | # | Phrase | C++ | Arduino |
 |---|---|---|---|
 | 1 | `self.` | `this->` | `this->` |
-| 2 | `the built-in light`, `pin P is on` (`off`, `high`, `low`), `reading of pin P` (`[analog] level`; `of`, `on`), `pin P`, `time since start` | | `LED_BUILTIN`, `digitalRead(P) == HIGH`, `analogRead(P)`, `P`, `millis()` |
+| 2 | `the built-in light`, `pin P is on` (`off`, `high`, `low`), `reading of pin P` (`[analog] level`; `of`, `on`), `how long pin P stays on` (`off`), `pin P`, `time since start`, `at least N milliseconds have passed since T` (`more than`, `less than`, `at most`; `not` before it tests all of it), `X scaled from A–B to C–D` | | `LED_BUILTIN`, `digitalRead(P) == HIGH`, `analogRead(P)`, `pulseIn(P, HIGH)`, `P`, `millis()`, `millis() - T >= N` (`>`, `<`, `<=`; `!(…)`), `map(X, A, B, C, D)` |
+| 2b | `X limited to A–B` | `std::clamp(X, A, B)` (and `<algorithm>`) | `constrain(X, A, B)` |
 | 3 | `first item of X` / `last item of X` | `X.front()` / `X.back()` | `X[0]` / `X[(sizeof(X) / sizeof(X[0])) - 1]` |
 | 4 | `item K of X` | `X[K]` | `X[K]` |
 | 5 | `length of X`, `size of X` | `X.size()` | `X.length()` for text, `(sizeof(X) / sizeof(X[0]))` for a list |
@@ -1130,11 +1412,12 @@ for (const item of [1, 2]) {
 | Question | How it is decided |
 |---|---|
 | A name's type | From the first `set`: text → `std::string` (`String` on Arduino), a whole number → `int`, a decimal → `double`, yes/no → `bool`, a comparison → `bool`, `std::stoi` and `size()` → `int`, `millis()` → `unsigned long`, arithmetic of known numbers → `int` or `double`, a known name → its type; otherwise `auto`. A type word says it outright: `set decimal price to 3`. |
-| Declare or assign? | The first `set` of a name in a block declares it (`int x = 1;`); later ones assign. As in C++, a name declared inside a block is gone after it. |
+| Declare or assign? | The first `set` of a name in a block declares it (`int x = 1;`); later ones assign. As in C++, a name declared inside a block is gone after it. `make a … called x` and `… and call it x` always declare (twice in one block is an error); `… and store it in x` assigns a name made before. A count that names a name made before (`count pos from 0 to 180`, `counting with pos`) counts with it. |
+| Cases | Each case of `depending on` ends with `break;` unless its last step leaves (`give back`, `skip to next`, a `return` or `break` in exact code) or it says `go on into the next case`. A case that makes a name and isn't the last goes in braces. |
 | `add V to L` | `L.push_back(V)` for a list; an error for an Arduino list (fixed size); `L += V` otherwise. |
 | Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool is an error; making an unknown class is a warning. |
 | Arduino tools | Inputs without a type are `int`; the result is `int` when the block gives something back, `void` otherwise. |
-| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, when a sentence needs them. |
+| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, when a sentence needs them. |
 | Arduino checks | Steps at the left edge are an error; only one `setup` and one `loop`; `show` before `start the serial monitor` is a warning. |
 
 ### Unknown names, errors and warnings
@@ -1261,8 +1544,8 @@ direction, with the limits below.
   value is at run time, so where that decides the code and can't be seen, Python says so with a warning.
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
   `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above`, number words or names with
-  spaces. C++ has no `description:`, names with spaces, `count down`, `in steps of`, `contains`, `is in`
-  or `nothing`. These are errors or warnings, not silent.
+  spaces. C++ has no names with spaces, `contains`, `is in` or `nothing`. These are errors or warnings,
+  not silent.
 
 ## Known wrong translations
 
@@ -1325,11 +1608,9 @@ const items = await (await fetch("/api/items")).json();
 Fixed on 2026-11-04: a name you gave an element now wins over a selector word (`style header:` with an
 element called header is `#header`; `style every header:` is the tag), `border red` is a 1px red border, and
 a text box is written with no `type` (text is the browser's default), so reading a page back no longer
-counts `<input>` and `<input type="text">` as the same. Still wrong:
-
-| You write | You get | Why | Write instead |
-|---|---|---|---|
-| `note:` at the left edge after a container | the comment goes inside the container | notes are placed before the indentation is read | put it before the container |
+counts `<input>` and `<input type="text">` as the same. Fixed on 2026-11-09: a `note:` at the left edge after a
+container goes after the container (it used to go inside it), and `border` and `outline` take a line style
+(`border 2 dashed navy`; it used to give `2px solid dashed navy`).
 
 ```intuicode html
 add a section called header
@@ -1341,8 +1622,8 @@ add a block called links
 ```html
 <section id="header">
   <h2>Hello</h2>
-  <!-- this note sits at the left edge -->
 </section>
+<!-- this note sits at the left edge -->
 <div id="links"></div>
 ```
 
@@ -1688,13 +1969,40 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 | **Layout** | `add a section called ‹name›` | `<section id="name">` | Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel. |
 |  | `add a list called ‹name›` | `<ul id="name">` | Indent "add a list item "…"" under it. |
 |  | `… in group ‹name›` | `class="name"` | Add to the end of any line to put it in a group (a CSS class). |
+|  | `add a box called ‹name›` | `<div id="name">` | A box (a block) holds the lines indented under it. With a box setting ("with hint …") it is a box to type in. |
+|  | `add a figure` | `<figure>` | Indent a picture and add a caption "‹text›" under it. |
+|  | `add a collapsible section` | `<details>` | Indent add a summary "‹title›" (always shown), then what opens under it. |
+|  | `add a ‹my-widget› element` | `<my-widget>` | Any element that has no words of its own. |
+| **Text** | `"‹text›"` | `text` | Text on its own line, inside the element above it: text with other things in it ("add bold text …") is said a line at a time. |
+|  | `add bold text "‹text›"` | `<b>…</b>` | Also strong text, italic text, emphasised text, highlighted text, small text, code "…", a key "Ctrl", a line break. |
+| **Media** | `add a chart called ‹name› ‹600› by ‹300›` | `<canvas id="name" width="600" height="300">` | A chart is drawn on a drawing area, by Mechanics or a chart library. |
+| **Settings** | `…, hidden from screen readers` | `aria-hidden="true"` | Settings go after commas at the end of a line, before "in group". Also: labelled "‹text›" for screen readers, labelled by ‹name›, controls ‹name›, starts collapsed, marked as the current page, read out when it changes. |
+|  | `…, with tooltip "‹text›"` | `title="…"` | Shown when the pointer rests on it. |
+|  | `…, storing ‹chord› "‹C›"` | `data-chord="C"` | A value kept on the element for Mechanics (and for CSS: attr(data-chord)). |
+|  | `…, disabled` | `disabled` | Also hidden, required, read-only, ticked, selected, opening in a new tab, sent as "‹name›", sized ‹320› by ‹180›, with no description. |
+|  | `…, running "‹clearDone()›" when clicked` | `onclick="…"` | Code run from the tag itself. Mechanics ("when … is clicked") keeps it out of the page. |
+|  | `…, with ‹name› "‹value›"` | `name="value"` | Any other attribute, as it is written. |
+|  | `…, with no space before it` | `(no space)` | Joins it to the thing before: a line break between two pieces of text, links or pictures would show as a space. |
+| **Drawings** | `add a drawing sized ‹200› by ‹100›, drawn on a ‹200› by ‹100› grid` | `<svg width height viewBox>` | A picture made of shapes (SVG). Indent the shapes under it; the grid is what their positions count in. |
+|  | `add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›` | `<circle cx cy r fill>` | Also: an ellipse … with radii 20 and 10. Inside a drawing only. |
+|  | `add a rectangle at ‹10›, ‹10› sized ‹80› by ‹40›, with rounded corners ‹6›` | `<rect x y width height rx>` |  |
+|  | `add a line from ‹0›, ‹0› to ‹100›, ‹50›, outlined in ‹navy›, outline ‹2› wide` | `<line x1 y1 x2 y2 stroke stroke-width>` |  |
+|  | `add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›` | `<path d fill="none" stroke>` | The path data stays as written. Also: a polygon through "‹0,0 10,0 5,8›". |
+|  | `add text "‹label›" at ‹10›, ‹20›` | `<text x y>` | Text drawn in the drawing. |
+|  | `add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›` | `<linearGradient><stop>…` | Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts". |
+|  | `add a set of shapes, outlined in ‹navy›` | `<g stroke>` | Settings on it apply to the shapes indented under it. |
 
 #### HTML words inside sentences
 
 | Say | Becomes |
 |---|---|
 | `called save` | `id="save"` |
+| `called "helpToggle"` | `id="helpToggle" (exactly)` |
 | `in group card` | `class="card"` |
+| `hidden from screen readers` | `aria-hidden="true"` |
+| `storing chord "C"` | `data-chord="C"` |
+| `drawing` | `<svg>` |
+| `set of shapes` | `<g>` |
 | `big heading` | `<h1>` |
 | `heading` | `<h2>` |
 | `block` | `<div>` |
@@ -1717,6 +2025,8 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 |---|---|---|---|
 | **Styles** | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
+|  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
+|  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
 |  | `‹element› belongs to group ‹group›` | `class="group" in the HTML` | Adds the group to an element in Structure. |
 |  | `when ‹name› is hovered: ‹styles›` | `#name:hover { … }` |  |
 |  | `on screens narrower than ‹600›:` | `@media (max-width: 600px) {` | Indent styles under it for phones. |
@@ -1741,6 +2051,12 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `hand cursor` | `cursor: pointer` |
 | `centred` | `margin: 0 auto` |
 | `hidden` | `display: none` |
+| `border 2 dashed navy` | `border: 2px dashed navy` |
+| `underlined` | `text-decoration: underline` |
+| `line height 1.5` | `line-height: 1.5` |
+| `text weight 600` | `font-weight: 600` |
+| `background gradient from #fff to #000` | `background: linear-gradient(#fff, #000)` |
+| `the colour main` | `var(--main)` |
 
 #### CSS: words for what to style
 
@@ -1784,7 +2100,10 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | **Events** | `when ‹name› is clicked` | `name.addEventListener("click", …)` | Indent what should happen. |
 |  | `when ‹form› is sent` | `form.addEventListener("submit", …)` | The page won't reload. |
 |  | `when the page has loaded` | `DOMContentLoaded` |  |
-|  | `every ‹2› seconds` | `setInterval(…, 2000)` | The time can be a name too: "every gap seconds". |
+|  | `when ‹name› is clicked, with the event as ‹e›` | `name.addEventListener("click", (e) => …)` | Names what happened, for the indented lines: e.target is the element it happened to. |
+| **Page** | `constant ‹box› is the element matching "‹#list li›"` | `document.querySelector(…)` | The first element the CSS selector picks; "every element matching …" gives them all. |
+| **Logic** | `run ‹tool› without waiting` | `tool();` | Starts a tool that waits for something (a fetch) and goes straight on to the next line, without await. |
+| **Events** | `every ‹2› seconds` | `setInterval(…, 2000)` | The time can be a name too: "every gap seconds". |
 |  | `every ‹1› second as ‹ticker›` | `ticker = setInterval(…)` | Named, so "stop ‹ticker›" can stop it (clearInterval). Also "after 3 seconds as ‹reminder›". |
 | **Errors** | `try` | `try { … }` | Indent the lines that might fail; then "if it fails" at the same indent, with what to do instead. |
 |  | `if it fails` | `} catch { … }` | "if it fails as problem" keeps the error: problem.message says what went wrong. "in any case" runs either way. |
@@ -1854,26 +2173,45 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
 |  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
+|  | `make a ‹whole number› called ‹count›` | `int count;` | A name with no value yet. Also "make empty text called name", "make a yes/no value called done". |
+|  | `make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›` | `LiquidCrystal lcd(12, 11, 5, 4, 3, 2);` | An object of a class or a library, given what it needs to start. Leave off "with …" if it needs nothing: "make a Servo called arm". |
+|  | `keep ‹level› between ‹0› and ‹255›` | `level = std::clamp(level, 0, 255);` | Stops it going below the first number or above the second. |
+|  | `let ‹LED› stand for ‹13›` | `#define LED 13` | A name swapped for its value before compiling. "constant LED is 13" does the same, with a type. |
 | **Show & ask** | `show ‹value›` | `std::cout << value << std::endl;` | Join several things with "and" (a space between) or "followed by" (no space). |
+|  | `show ‹value› without ending the line` | `std::cout << value;` | What is shown next carries on the same line. "end the line" ends it. |
+|  | `end the line` | `std::cout << std::endl;` |  |
+|  | `show "‹%d tries›" filled in with ‹tries›` | `printf("%d tries", tries);` | The % codes are filled in, in order: %d a whole number, %f a decimal, %s text. |
 |  | `ask for a number "‹question›" and store in ‹name›` | `std::cin >> name;` | Or "ask … and store in …" for text. |
+|  | `read ‹age› from the keyboard` | `std::cin >> age;` | What the person types, up to a space. "read a line from the keyboard into ‹name›" reads a whole line. |
+|  | `read a line from the keyboard into ‹name›` | `std::getline(std::cin, name);` | A whole line of typed text, spaces and all. |
 | **Decisions** | `if ‹condition›` | `if (condition) {` |  |
 |  | `otherwise` | `} else {` |  |
+|  | `depending on ‹value›` | `switch (value) {` | Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise". |
+|  | `when it is ‹1›` | `case 1:` | Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead. |
 | **Loops** | `repeat ‹number› times` | `for (int i = 0; i < number; i++) {` |  |
-|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` |  |
-|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` |  |
+|  | `repeat ‹10› times, counting with ‹i›` | `for (int i = 0; i < 10; i++) {` | i goes from 0 to 9. A name made before is used as the count. |
+|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` | Add "in steps of 2" to skip. "count down i from 10 to 1" counts down. |
+|  | `count ‹i› from ‹0› up to but not including ‹n›` | `for (int i = 0; i < n; i++) {` |  |
+|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` | Add ", so it can be changed" to change the items themselves. |
+|  | `for each ‹whole number› ‹v› in ‹list›` | `for (int v : list) {` | Each item copied into a name of that type. |
 |  | `while ‹condition›` | `while (condition) {` |  |
+|  | `do this, then repeat while ‹condition›` | `do { … } while (condition);` | The steps run once before the test. |
 |  | `repeat forever` | `while (true) {` | Pair with "stop the loop". |
-| **Lists** | `create list of ‹numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". |
+| **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". Leave off "with …" for an empty list. |
+|  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
 |  | `add ‹value› to ‹list›` | `list.push_back(value);` |  |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
-|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›` | `double average(const std::vector<int>& values) {` | "read-only" looks at the caller's value without copying it; "the caller's" lets the tool change it. |
 |  | `give back ‹value›` | `return value;` |  |
+|  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
+|  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
-|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. |
+|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 |  | `above main: ‹C++ code›` | `code (outside main)` | C++ copied exactly, outside main. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
@@ -1896,6 +2234,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `"Hi {name}"` | `text("Hi ", name)` |
 | `self.name` | `this->name` |
 | `a followed by b` | `a << b` |
+| `x limited to 0–255` | `std::clamp(x, 0, 255)` |
 
 ### Arduino
 
@@ -1912,34 +2251,61 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
 |  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
+|  | `make a ‹whole number› called ‹count›` | `int count;` | A name with no value yet. Also "make empty text called name", "make a yes/no value called done". |
+|  | `make a ‹LiquidCrystal› called ‹lcd› with ‹12, 11, 5, 4, 3, 2›` | `LiquidCrystal lcd(12, 11, 5, 4, 3, 2);` | An object of a class or a library, given what it needs to start. Leave off "with …" if it needs nothing: "make a Servo called arm". |
+|  | `keep ‹level› between ‹0› and ‹255›` | `level = constrain(level, 0, 255);` | Stops it going below the first number or above the second. |
+|  | `let ‹LED› stand for ‹13›` | `#define LED 13` | A name swapped for its value before compiling. "constant LED is 13" does the same, with a type. |
 | **Decisions** | `if ‹condition›` | `if (condition) {` |  |
 |  | `otherwise` | `} else {` |  |
+|  | `depending on ‹value›` | `switch (value) {` | Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise". |
+|  | `when it is ‹1›` | `case 1:` | Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead. |
 | **Loops** | `repeat ‹number› times` | `for (int i = 0; i < number; i++) {` |  |
-|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` |  |
-|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` |  |
+|  | `repeat ‹10› times, counting with ‹i›` | `for (int i = 0; i < 10; i++) {` | i goes from 0 to 9. A name made before is used as the count. |
+|  | `count ‹i› from ‹1› to ‹10›` | `for (int i = 1; i <= 10; i++) {` | Add "in steps of 2" to skip. "count down i from 10 to 1" counts down. |
+|  | `count ‹i› from ‹0› up to but not including ‹n›` | `for (int i = 0; i < n; i++) {` |  |
+|  | `for each ‹item› in ‹list›` | `for (const auto& item : list) {` | Add ", so it can be changed" to change the items themselves. |
+|  | `for each ‹whole number› ‹v› in ‹list›` | `for (int v : list) {` | Each item copied into a name of that type. |
 |  | `while ‹condition›` | `while (condition) {` |  |
-| **Lists** | `create list of ‹numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". |
+|  | `do this, then repeat while ‹condition›` | `do { … } while (condition);` | The steps run once before the test. |
+| **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `int name[] = {1, 2, 3};` | Also "list of text", "list of decimals". |
+|  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
-|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
 |  | `give back ‹value›` | `return value;` |  |
+|  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
+|  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
-|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. |
+|  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
 | **Board** | `when the board starts` | `void setup() {` | Runs once, when the board powers on. |
 |  | `over and over` | `void loop() {` | Runs again and again, forever. |
+|  | `skip the rest of this round` | `return;` | In "over and over": the board starts the next round from the top. |
 | **Pins** | `make pin ‹13› an output` | `pinMode(13, OUTPUT);` | Also "an input", "an input with pull-up". |
 |  | `turn pin ‹13› on` | `digitalWrite(13, HIGH);` | And "turn pin 13 off". "the built-in light" is LED_BUILTIN. |
+|  | `set pin ‹led› to ‹state›` | `digitalWrite(led, state);` | On or off by a value (HIGH or LOW). |
+|  | `turn pin ‹led› on if ‹lit›, otherwise off` | `digitalWrite(led, lit ? HIGH : LOW);` |  |
 |  | `set the brightness of pin ‹9› to ‹128›` | `analogWrite(9, 128);` | 0 to 255, on pins marked ~. |
-|  | `read pin ‹2› and store in ‹pressed›` | `int pressed = digitalRead(2);` | Or "read analog pin A0 …" for 0 to 1023. |
+|  | `read pin ‹A0› and call it ‹level› (a whole number)` | `int level = analogRead(A0);` | A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). "read analog pin SENSOR" for a named analog pin; "… and store it in level" changes a name made before. |
+|  | `scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›` | `level = map(reading, 0, 1023, 0, 255);` | Moves a value from one range to another. Also "… and call it level (a whole number)". |
+|  | `set ‹duration› to how long pin ‹echo› stays on` | `duration = pulseIn(echo, HIGH);` | In microseconds: for distance sensors. |
 | **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds". |
 |  | `wait ‹10› microseconds` | `delayMicroseconds(10);` | Millionths of a second, for timing a sensor's pulse. |
+|  | `if at least ‹500› milliseconds have passed since ‹last›` | `if (millis() - last >= 500) {` | On time without stopping the board. Also "more than", "less than", "at most". |
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
-|  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. |
+|  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. "show a followed by b" shows them on one line. |
+|  | `show ‹value› on the same line` | `Serial.print(value);` | What is shown next carries on the line. "end the line" ends it. |
+|  | `end the line` | `Serial.println();` |  |
+| **Screens** | `start ‹lcd› with ‹16, 2›` | `lcd.begin(16, 2);` | A library's start-up, in "when the board starts". "start pixels" if it needs nothing. |
+|  | `show ‹value› on ‹lcd›` | `lcd.print(value);` | Add ", then start a new line" to move down a line (println). |
+|  | `move ‹lcd›'s cursor to ‹0, 1›` | `lcd.setCursor(0, 1);` | Where the next thing shown goes: column and row on a text screen. |
+|  | `clear ‹lcd›` | `lcd.clear();` |  |
+| **Motors** | `attach ‹arm› to pin ‹9›` | `arm.attach(9);` | Make the servo first: "make a Servo called arm". |
+|  | `turn servo ‹arm› to ‹90› degrees` | `arm.write(90);` | 0 to 180. |
 | **Sound** | `play a tone of ‹440› on pin ‹8› for ‹200› milliseconds` | `tone(8, 440, 200);` |  |
 
 #### Arduino words inside sentences
@@ -1949,6 +2315,10 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `pin 2 is on` | `digitalRead(2) == HIGH` |
 | `reading of pin A0` | `analogRead(A0)` |
 | `time since start` | `millis()` |
+| `at least 500 milliseconds have passed since last` | `millis() - last >= 500` |
+| `x scaled from 0–1023 to 0–255` | `map(x, 0, 1023, 0, 255)` |
+| `x limited to 0–255` | `constrain(x, 0, 255)` |
+| `how long pin 7 stays on` | `pulseIn(7, HIGH)` |
 | `the built-in light` | `LED_BUILTIN` |
 | `random number from 1 to 6` | `random(1, 7)` |
 | `x as number` | `x.toInt()` |

@@ -67,7 +67,9 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   - JavaScript: `x++;` and `++x;` as whole statements, one-line bodies and braces, brackets
     that don't change the meaning.
   - C++: one-line bodies and braces, `std::` where `using namespace std` applies, main's final
-    `return 0`, extra `#include`s, `main` moved to the end.
+    `return 0`, extra `#include`s, `main` moved to the end, a `break;` that ends a switch's last
+    case (it jumps to where the switch ends anyway), and `++i` / `i++` as the step of a `for` that
+    makes its own `int i` (nothing uses the value; on anything else, a class can make them differ).
   - HTML: attribute order, whitespace a browser doesn't show (every space counts in `<pre>`,
     `<textarea>`, scripts and styles, and between inline elements), a button's `type` outside
     a form, `<input>`'s default `type="text"`, and the page's own `style.css`/`script.js`

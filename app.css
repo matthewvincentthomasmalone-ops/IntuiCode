@@ -1429,3 +1429,17 @@ details.pg > summary .count { margin-left: auto; }
 .work.unity.term-shut, .work.unity.web.term-shut { grid-template-rows: minmax(150px, 1fr) auto auto; }
 .work.unity .explain { max-height: 17vh; }
 @media (max-height: 760px) { .explain { max-height: 18vh; } .work.unity .explain { max-height: 14vh; } }
+
+/* Lines kept as code inside sentences (python: …, html: …): coloured as code; the language's name, which the
+   file needs, drawn as a faint </> mark of the same width */
+.s-rawtag { color: var(--ink-3); opacity: .45; font-size: .9em; letter-spacing: -.02em; }
+.s-raw { color: var(--ink-2); }
+.u-hl .ul.kept { background: rgba(0, 0, 0, .28); box-shadow: inset 2px 0 0 rgba(127, 240, 178, .35); }
+/* Predictive Mode for code: the rest of a word, dim, in the editor's font (so it lines up) */
+.pm-ghost.code-ghost { opacity: .6; }
+/* The closest sentences to a line IntuaCode doesn't recognise */
+.ex-close { margin-top: 8px; }
+.ex-close ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ex-close li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ex-close .btn { flex: none; }
+.ex-close .ex-say { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
