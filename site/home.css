@@ -160,3 +160,15 @@ section { padding: 40px 0; }
   .key { flex: 1 1 100%; justify-content: center; }
   .code { font-size: 12.5px; }
 }
+
+/* A page of text (the code signing policy) */
+.doc { max-width: 820px; padding-top: 40px; padding-bottom: 20px; }
+.doc h1.plate { font-size: 15px; }
+.doc h2 { margin: 30px 0 8px; font-size: 19px; color: var(--rose-hi); }
+.doc p, .doc li { color: var(--ink-2); }
+.doc ul { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.doc .credit { font-size: 17px; color: var(--ink); padding: 14px 18px; border-radius: 6px; background: var(--card); box-shadow: var(--card-raised); }
+.doc table { width: 100%; border-collapse: collapse; border-radius: 6px; overflow: hidden; background: var(--card); box-shadow: var(--card-raised); font-size: 15px; }
+.doc th, .doc td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #000; vertical-align: top; }
+.doc th { color: var(--metal-ink); background: var(--metal); text-shadow: var(--engrave); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+.doc td { color: var(--ink-2); }
