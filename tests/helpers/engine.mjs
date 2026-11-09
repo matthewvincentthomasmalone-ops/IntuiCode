@@ -69,7 +69,8 @@ export function roundTrip(L, files) {
   const checks = compareMany(sources.map((s, i) => [s, generated[i].text]));
   return files.map((f, i) => {
     const lines = sentences[i].split('\n').filter(l => l.trim() && !/^\s*note:/.test(l));
-    const counted = lines.filter(l => !/^\s*python:\s*(import |from \S+ import )/.test(l));
+    // imports aren't counted, whether as code or as "bring in …" sentences, so the number stays comparable
+    const counted = lines.filter(l => !/^\s*(?:python:\s*(import |from \S+ import )|bring in\s)/.test(l));
     const raw = counted.filter(l => /^\s*python:/.test(l)).length;
     return {
       file: path.relative(ROOT, f),

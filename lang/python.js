@@ -14,7 +14,7 @@
 
   const PY_KEYWORDS = new Set(['False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield']);
   const BUILTINS = new Set(['print', 'input', 'len', 'int', 'float', 'str', 'bool', 'list', 'dict', 'range', 'sum', 'min', 'max', 'abs', 'round', 'sorted', 'reversed', 'enumerate', 'zip', 'type', 'isinstance', 'any', 'all', 'set', 'tuple', 'map', 'filter', 'chr', 'ord', 'pow', 'divmod']);
-  const MODULES = new Set(['random', 'math', 'time', 'sys', 'string', 'datetime']);
+  const MODULES = new Set(['random', 'math', 'time', 'sys', 'string', 'datetime', 'os', 'json']);
   const WORD_NUMBERS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 };
   // "twenty one", "forty-two": one number, not two
   const TENS_UNITS = /\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/gi;
@@ -156,9 +156,10 @@
 
   // Brackets with brackets inside, up to 4 deep (a regular expression can't count further).
   const nest = (o, c) => { let s = `[^${o}${c}]*`; for (let i = 0; i < 3; i++) s = `(?:[^${o}${c}]|${o}${s}${c})*`; return o + s + c; };
-  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]');
-  // An operand: a protected string, a number, a name or a bracketed group, then any .names, calls and indexes.
-  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|${PAREN}|${SQUARE})(?:\.[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
+  const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]'), CURLY = nest('\\{', '\\}');
+  // An operand: a protected string, a number, a name or a bracketed group ({…} too: a dictionary or set), then any
+  // .names, calls and indexes.
+  const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|${PAREN}|${SQUARE}|${CURLY})(?:\.[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
   // "\b" can't sit before quoted text (⟦0⟧), so operands use a look-behind instead.
   const R = (src) => new RegExp(src.replace(/\\b\(OPD\)/g, '(?<![\\w.])(OPD)').replace(/OPD/g, OPD), 'gi');
 
@@ -166,6 +167,15 @@
     // Looking things up
     { re: R(String.raw`\bfirst (?:item|one|thing) (?:of|in|from) (OPD)`), to: '$1[0]', note: 'Python counts positions from 0, so the first item is `[0]`.' },
     { re: R(String.raw`\blast (?:item|one|thing) (?:of|in|from) (OPD)`), to: '$1[-1]', note: '`[-1]` counts from the end: it is always the last item.' },
+    // an item that may not be there: .get gives the value to use instead (or None) rather than stopping with an error
+    { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) (?:of|in|from) (OPD) or (OPD) if there (?:isn't|is not) one\b`), to: '$2.get($1, $3)', note: '`.get(key, other)` gives the item under that key, or `other` when there is none (square brackets would stop with an error).' },
+    { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) (?:of|in|from) (OPD) if there is one\b`), to: '$2.get($1)', note: '`.get(key)` gives the item under that key, or `None` when there is none.' },
+    { re: R(String.raw`\blast item taken out of (OPD)`), to: '$1.pop()', note: '`.pop()` takes the last item out of the list and gives it back.' },
+    { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) taken out of (OPD)`), to: '$2.pop($1)', note: '`.pop(n)` takes that item out and gives it back.' },
+    { re: R(String.raw`\benvironment variable (OPD) or (OPD) if there (?:isn't|is not) one\b`), to: 'os.getenv($1, $2)', use: 'os', note: '`os.getenv(name, other)` reads a setting from the computer\'s environment, or gives `other` when it isn\'t set.' },
+    { re: R(String.raw`\benvironment variable (OPD)`), to: 'os.getenv($1)', use: 'os', note: '`os.getenv(name)` reads a setting from the computer\'s environment (`None` when it isn\'t set).' },
+    { re: R(String.raw`\bthere is no file or folder at (OPD)`), to: 'not os.path.exists($1)', use: 'os', note: '`os.path.exists` checks whether a file or folder is there.' },
+    { re: R(String.raw`\bthere is a file or folder at (OPD)`), to: 'os.path.exists($1)', use: 'os', note: '`os.path.exists` checks whether a file or folder is there.' },
     { re: R(String.raw`\bitem (?!is\b|not\b|in\b)(OPD) (?:of|in|from) (OPD)`), to: '$2[$1]', note: 'Square brackets pick one item. For lists, Python counts from 0: item 0 is the first one.' },
     // Functions written as words, e.g. "length of x"
     { re: R(String.raw`\b(?:length|size) of (OPD)`), to: 'len($1)', repeat: true },
@@ -178,13 +188,38 @@
     // (postfix: these follow their value, so after a sum they could mean the last value or the whole sum)
     { re: R(String.raw`\b(OPD) rounded to (OPD) (?:decimal )?places?`), to: 'round($1, $2)', postfix: true },
     { re: R(String.raw`\b(OPD) rounded\b`), to: 'round($1)', postfix: true },
+    { re: R(String.raw`\b(OPD) sorted by (OPD) biggest first\b`), to: 'sorted($1, key=$2, reverse=True)', note: '`sorted(…, key=…)` orders the items by what the key tool gives for each; `reverse=True` puts the biggest first.', postfix: true },
+    { re: R(String.raw`\b(OPD) sorted by (OPD)`), to: 'sorted($1, key=$2)', note: '`sorted(…, key=…)` orders the items by what the key tool gives for each one.', postfix: true },
+    { re: R(String.raw`\b(OPD) sorted biggest first\b`), to: 'sorted($1, reverse=True)', note: '`reverse=True` puts the biggest first.', postfix: true },
     { re: R(String.raw`\bsorted (OPD)`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.' },
     { re: R(String.raw`\b(OPD) sorted\b(?!\()`), to: 'sorted($1)', note: '`sorted()` makes a new sorted copy and leaves the original list alone.', postfix: true },
+    // JSON: text that holds data (lists, dictionaries, numbers…), as web APIs and settings files use
+    { re: R(String.raw`\b(OPD) as JSON text\b`), to: 'json.dumps($1)', use: 'json', note: '`json.dumps()` writes the value as JSON text.', postfix: true },
+    { re: R(String.raw`\b(OPD) read as JSON\b`), to: 'json.loads($1)', use: 'json', note: '`json.loads()` reads JSON text into lists, dictionaries, numbers and text.', postfix: true },
+    { re: R(String.raw`\bJSON read from (OPD)`), to: 'json.load($1)', use: 'json', note: '`json.load()` reads the JSON in an open file.' },
+    { re: R(String.raw`\b(OPD) as an? JSON (?:reply|response)\b`), to: 'jsonify($1)', note: "`jsonify()` (Flask's) turns the value into a JSON reply for the web browser or app that asked.", postfix: true },
+    { re: R(String.raw`\bJSON sent with (OPD)`), to: '$1.get_json()', note: '`.get_json()` reads the JSON data sent with a web request.' },
     { re: R(String.raw`\b(OPD) as (?:a )?(?:whole )?number\b`), to: 'int($1)', note: '`int()` turns text like "42" into the whole number 42. It stops with an error if the text is not a number.', postfix: true },
     { re: R(String.raw`\b(OPD) as (?:a )?decimal(?: number)?\b`), to: 'float($1)', note: '`float()` turns text into a decimal number, like 3.5.', postfix: true },
     { re: R(String.raw`\b(OPD) as text\b`), to: 'str($1)', note: '`str()` turns a value into text, so it can be joined to other text.', postfix: true },
     { re: R(String.raw`\b(OPD) in (?:capitals|capital letters|uppercase|upper case)\b`), to: '$1.upper()', postfix: true },
     { re: R(String.raw`\b(OPD) in (?:lowercase|lower case|small letters)\b`), to: '$1.lower()', postfix: true },
+    // Text's own tools, in words
+    { re: R(String.raw`\b(OPD) trimmed\b`), to: '$1.strip()', note: '`.strip()` takes the spaces (and tabs and new lines) off both ends of the text.', postfix: true },
+    { re: R(String.raw`\b(OPD) split into words\b`), to: '$1.split()', note: '`.split()` cuts the text at every run of spaces and gives back a list of the words.', postfix: true },
+    { re: R(String.raw`\b(OPD) split at (OPD)`), to: '$1.split($2)', note: '`.split(x)` cuts the text at every x and gives back a list of the pieces.', postfix: true },
+    { re: R(String.raw`\b(OPD) joined by (OPD)`), to: '$2.join($1)', note: '`text.join(items)` puts the items together into one text, with that text between each.', postfix: true },
+    { re: R(String.raw`\b(OPD) with (OPD) replaced by (OPD)`), to: '$1.replace($2, $3)', note: '`.replace(a, b)` gives a copy of the text with every a swapped for b.', postfix: true },
+    { re: R(String.raw`\b(OPD) (?:does not|doesn't) start with (OPD)`), to: 'not $1.startswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) starts with (OPD)`), to: '$1.startswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) (?:does not|doesn't) end with (OPD)`), to: 'not $1.endswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) ends with (OPD)`), to: '$1.endswith($2)', postfix: true },
+    { re: R(String.raw`\b(OPD) is not all letters or digits\b`), to: 'not $1.isalnum()', postfix: true },
+    { re: R(String.raw`\b(OPD) is all letters or digits\b`), to: '$1.isalnum()', note: '`.isalnum()` is true when the text has only letters and digits (and isn\'t empty).', postfix: true },
+    { re: R(String.raw`\b(OPD) is not all letters\b`), to: 'not $1.isalpha()', postfix: true },
+    { re: R(String.raw`\b(OPD) is all letters\b`), to: '$1.isalpha()', note: '`.isalpha()` is true when the text has only letters (and isn\'t empty).', postfix: true },
+    { re: R(String.raw`\b(OPD) is not all digits\b`), to: 'not $1.isdigit()', postfix: true },
+    { re: R(String.raw`\b(OPD) is all digits\b`), to: '$1.isdigit()', note: '`.isdigit()` is true when the text has only digits (and isn\'t empty).', postfix: true },
     { re: R(String.raw`\bpairs (?:of|in) (OPD)`), to: '$1.items()', note: '`.items()` gives the key and value of each entry in a dictionary, as pairs.' },
     // Randomness
     { re: R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`), to: 'random.randint($1, $2)', use: 'random', range: true, note: '`random.randint(a, b)` can give back a or b, and anything in between. The `random` module is imported for you.' },
@@ -222,6 +257,7 @@
     // Plain values
     { re: /\ban empty list\b|\bempty list\b/gi, to: '[]' },
     { re: /\ban empty dictionary\b|\bempty dictionary\b/gi, to: '{}' },
+    { re: /\ban empty set\b|\bempty set\b/gi, to: 'set()', note: '`set()` is an empty set: a collection that keeps each value once, in no order. (`{}` would be an empty dictionary.)' },
     { re: /\bempty text\b/gi, to: '""' },
     { re: /\b(?:yes|true)\b/gi, to: 'True' },
     { re: /\b(?:no|false)\b/gi, to: 'False' },
@@ -765,6 +801,28 @@
     return { py: '"""' + m[1] + '"""', desc: m[1] };
   });
 
+  /* Imports in words: "bring in os and sys", "bring in tkinter as tk", "bring in Flask and jsonify from flask",
+     "bring in everything from math" (import *), "bring in views from this package" (from . import views). */
+  rule(/^bring in\s+(.+?)(?:\s+from\s+(this package|\.+[A-Za-z_][\w.]*|\.{2,}|[A-Za-z_][\w.]*))?$/i, (m, x) => {
+    const from = m[2] && (/^this package$/i.test(m[2]) ? '.' : m[2]);
+    const items = splitItems(m[1]);
+    if (from && items.length === 1 && /^everything$/i.test(items[0])) {
+      x.note(`\`from ${from} import *\` brings in every public name ${code(from)} has, so they can be used without ${code(from + '.')} in front.`);
+      return { py: `from ${from} import *` };
+    }
+    const parts = [];
+    for (const it of items) {
+      const p = it.match(from ? /^([A-Za-z_]\w*)(?:\s+as\s+([A-Za-z_]\w*))?$/ : /^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?:\s+as\s+([A-Za-z_]\w*))?$/);
+      if (!p || PY_KEYWORDS.has(p[1]) || (p[2] && PY_KEYWORDS.has(p[2]))) { x.err(`"${it}" can't be brought in: say a ${from ? 'name' : 'module'}, like ${from ? '"bring in sqrt from math"' : '"bring in random"'}, with "as" for another name.`); continue; }
+      const bound = p[2] || (from ? p[1] : p[1].split('.')[0]);
+      declare(x, bound, bound, from ? 'value' : 'module');
+      parts.push(p[1] + (p[2] ? ' as ' + p[2] : ''));
+    }
+    if (!parts.length) return { py: '# ??? ' + m.input };
+    x.note(from ? `\`from ${from} import …\` brings in ${parts.map(code).join(', ')} from ${code(from)}, so ${parts.length > 1 ? 'they' : 'it'} can be used by name.`
+      : `\`import\` loads ${parts.map(code).join(', ')}, so ${parts.length > 1 ? 'their' : 'its'} tools can be used${parts.some(p => / as /.test(p)) ? ' (by the name after "as")' : ''}.`);
+    return { py: from ? `from ${from} import ${parts.join(', ')}` : `import ${parts.join(', ')}` };
+  });
   rule(/^(?:use|import)\s+(?:the\s+)?([A-Za-z_]\w*)(\s+(?:module|library|toolkit))?$/i, (m, x) => {
     const mod = m[1].toLowerCase();
     if (!MODULES.has(mod) && !m[2] && !/^import/i.test(m[0])) return null; // "use hint" means run a tool
@@ -1487,8 +1545,14 @@
 
     // Header: standard modules, then the project's own sections.
     const header = [];
+    // a module the file imports itself (import random, import os, sys, import os.path) isn't imported again
+    const imported = new Set();
+    for (const o of out) {
+      const im = o.text.match(/^\s*import\s+([^#]+?)\s*(?:#.*)?$/);
+      if (im) for (const part of im[1].split(',')) { const [name, as] = part.trim().split(/\s+as\s+/); imported.add(as || name.split('.')[0]); }
+    }
     for (const mod of [...env.imports].sort()) {
-      if (/^import /.test(out.find(o => o.text.trim() === 'import ' + mod)?.text || '')) continue;
+      if (imported.has(mod)) continue;
       header.push({ text: `import ${mod}`, src: -1, note: `Loads Python's ${code(mod)} module, because a sentence below uses it.` });
     }
     const order = project.sections.map(s => s.file);

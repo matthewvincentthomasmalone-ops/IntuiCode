@@ -211,6 +211,12 @@ def described(node, level):
     return out
 
 
+def and_list(items):
+    """["a"] -> a; ["a", "b"] -> a and b; ["a", "b", "c"] -> a, b and c."""
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
 def dotted_name(e):
     """a / a.b / a.b.c -> the text, else None."""
     parts = []
@@ -676,11 +682,30 @@ class Sentences:
                 out += self.decorator(d, level)
             return out + S(level, f"define class {n.name}" + (f" based on {', '.join(bases)}" if bases else "")) + self.block(n.body, level + 1)
         if isinstance(n, (ast.Import, ast.ImportFrom)):
-            if not self.strict:
-                mods = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or "."]
-                return S(level, "use " + ", ".join(mods))
-            raise Unwordable()
+            return S(level, self.import_sentence(n))
         return self.compound(n, level)
+
+    def import_sentence(self, n):
+        """import os, sys -> bring in os and sys; from flask import Flask as F -> bring in Flask as F from flask;
+        from math import * -> bring in everything from math; from . import views -> bring in views from this package."""
+        def ok(name):
+            return all(re.fullmatch(r"[A-Za-z_]\w*", p) and name_ok(p) for p in name.split("."))
+        names = []
+        for a in n.names:
+            if a.name == "*" or not ok(a.name) or (a.asname and not ok(a.asname)):
+                if a.name == "*" and isinstance(n, ast.ImportFrom) and len(n.names) == 1:
+                    names.append("everything")
+                    break
+                raise Unwordable()
+            if isinstance(n, ast.ImportFrom) and a.name.lower() == "everything":
+                raise Unwordable()   # "everything" is what * is called
+            names.append(a.name + (f" as {a.asname}" if a.asname else ""))
+        if isinstance(n, ast.Import):
+            return "bring in " + and_list(names)
+        mod = "." * n.level + (n.module or "")
+        if n.module and not ok(n.module):
+            raise Unwordable()
+        return f"bring in {and_list(names)} from {'this package' if mod == '.' else mod}"
 
     def call_stmt(self, c, level):
         S = self.say
