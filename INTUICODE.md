@@ -1955,6 +1955,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 | **Page** | `page title is "‹title›"` | `<title>…</title>` | Shown in the browser tab. |
 | **Text** | `add a big heading "‹text›"` | `<h1>…</h1>` | One per page: the main title. |
 |  | `add a heading "‹text›"` | `<h2>…</h2>` |  |
+|  | `add a paragraph called ‹name› saying "‹text›"` | `<p id="name">…</p>` | The name is how Styling and Mechanics refer to it (to change its text, say). |
 |  | `add a paragraph "‹text›"` | `<p>…</p>` |  |
 | **Controls** | `add a button called ‹name› saying "‹text›"` | `<button id="name">…</button>` | The name is how Styling and Mechanics refer to it. |
 |  | `add a text box called ‹name› with hint "‹hint›"` | `<input id="name" placeholder="…">` | Also: number box, password box, email box, big text box. |

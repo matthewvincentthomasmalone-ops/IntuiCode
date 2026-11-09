@@ -1140,6 +1140,15 @@
         },
         {
           "topic": "Text",
+          "say": "add a paragraph called ‹name› saying \"‹text›\"",
+          "becomes": "<p id=\"name\">…</p>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "The name is how Styling and Mechanics refer to it (to change its text, say)."
+        },
+        {
+          "topic": "Text",
           "say": "add a paragraph \"‹text›\"",
           "becomes": "<p>…</p>",
           "folders": [

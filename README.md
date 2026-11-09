@@ -294,6 +294,14 @@ code in the same place:
 - a part with a problem stays as sentences until it's fixed, and the help says why (and shows the code
   it will write while you type).
 
+Pressing **Original Code** (or **Original Code (all)**) turns Predictive Mode off, and the button becomes a
+pressed **Revert**. Press it again to put the sentences, and Predictive Mode, back as they were. Edit the code
+in between and the button goes back to Original Code.
+
+**Split Mode's left pane is always sentences.** Code parts a file has in Unity are said in sentences when it's
+shown there (a line no sentence can say stays as exact code, and the terminal says which). Back in Unity they
+are code again: exactly as they were if nothing changed in Split Mode, or written from the sentences as edited.
+
 The **help** under the pane is Split Mode's help: on a green line, the sentence and the code it makes, its
 shape and its words; on a line of code, the terms in it and the part it belongs to. **Hide help** folds it
 away. **Predictive Mode** works in green parts as it does in Split Mode: the rest of the sentence shows dim

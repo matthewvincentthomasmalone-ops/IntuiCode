@@ -448,9 +448,14 @@
     const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
     if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groups = g[1].split(/\s*,\s*|\s+and\s+/).map(toId).filter(Boolean); s = s.slice(0, g.index); }
     // a name: called save, called main area (two words become main-area), or called "helpToggle" (kept exactly)
-    const CALLED = /\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+(?:\s+[\w-]+)?)(?=\s+(?:saying|with|of|described|showing|to)\b|\s+["']|$)/i;
+    // (the name ends at a full stop or comma, or at a word that starts what it says: saying, says, reads, with …)
+    const CALLED = /\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+(?:\s+(?!(?:saying|says|that|which|reads|reading|showing|shows|is|with|of|described|to)\b)[\w-]+)?)(?=[.,;:]|\s+(?:saying|says|that|which|reads|reading|showing|shows|is|with|of|described|to)\b|\s+["']|$)/i;
     const called = (t) => { const c = t.match(CALLED); return c ? nameOf(c[1]) : null; };
     const cut = (t) => t.replace(CALLED, '');
+    // the text it shows: "…" on its own, or after saying, says, reads, that says, with the text … (and after its
+    // name, if it has one: add a paragraph called intro. Its text reads "Hello" works too)
+    const SAYS = /^[.,;:]?\s*(?:and\s+)?(?:(?:it|that|which|its|the)\s+)?(?:(?:paragraph|heading|title|button|label|item|link)\s+)?(?:text\s+)?(?:(?:that|which)\s+)?(?:says|saying|reads|reading|shows|showing|is|with(?:\s+the)?\s+(?:text|words))\s+(?=["'])/i;
+    const textOf = (t) => strOf(cut(' ' + t).trim().replace(SAYS, ''));
     const el = (tag, extra = {}) => ({ tag, id: extra.id || null, groups, attrs: extra.attrs || {}, text: extra.text ?? null, container: !!extra.container });
 
     if ((m = s.match(/^(?:set the page title to|page title is|the page is called|title)\s+(.+)$/i))) {
@@ -460,18 +465,18 @@
     }
     if ((m = s.match(/^(?:page language is|the page is in)\s+([\w-]+)$/i))) return { lang: /^[a-z]{2}(?:-[a-z0-9]+)*$/i.test(m[1]) ? m[1] : m[1].toLowerCase().slice(0, 2) };
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big |small |)heading\s+(.+)$/i))) {
-      const t = strOf(cut(m[2])); if (t == null) inf.errs.push('Put the heading text in quotes.');
+      const t = textOf(m[2]); if (t == null) inf.errs.push('Put the heading text in quotes, like: add a heading saying "Prices"');
       const tag = { 'big ': 'h1', 'small ': 'h3', '': 'h2' }[m[1].toLowerCase()];
       note(inf, `${code('<' + tag + '>')} is a heading. Use one big heading (h1) per page; screen readers and search engines use headings to understand the page.`);
-      return el(tag, { text: t || '', id: called(m[2]) });
+      return el(tag, { text: t || '', id: called(' ' + m[2]) });
     }
-    if ((m = s.match(/^add\s+(?:a\s+)?paragraph(?:\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+))?\s+(.+)$/i))) {
-      const t = strOf(m[2]); if (t == null) inf.errs.push('Put the paragraph text in quotes.');
-      return el('p', { text: t || '', id: m[1] ? nameOf(m[1]) : null });
+    if ((m = s.match(/^add\s+(?:a\s+)?paragraph(\s+.+|[.,;:].*)$/i))) {
+      const t = textOf(m[1]); if (t == null) inf.errs.push('Put the paragraph text in quotes, like: add a paragraph called intro saying "Hello"');
+      return el('p', { text: t || '', id: called(' ' + m[1]) });
     }
-    if ((m = s.match(/^add\s+text\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the text in quotes.'); return el('span', { text: t || '', id: nameOf(m[1]) }); }
-    if ((m = s.match(/^add\s+text\s+(.+)$/i))) return el('span', { text: strOf(m[1]) ?? m[1] });
-    if ((m = s.match(/^add\s+(?:a\s+)?button(.*?)\s+(?:saying|that says|labelled|labeled)\s+(.+)$/i))) {
+    if ((m = s.match(/^add\s+text\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = textOf(m[2]); if (t == null) inf.errs.push('Put the text in quotes.'); return el('span', { text: t || '', id: nameOf(m[1]) }); }
+    if ((m = s.match(/^add\s+text\s+(.+)$/i))) return el('span', { text: textOf(m[1]) ?? m[1] });
+    if ((m = s.match(/^add\s+(?:a\s+)?button(.*?)\s+(?:saying|(?:that |which )?(?:says|reads)|reading|showing|labelled|labeled|with(?: the)? text)\s+(.+)$/i))) {
       const t = strOf(m[2]); if (t == null) inf.errs.push('Put the button text in quotes.');
       const id = called(m[1] + ' ') || called(m[1]);
       if (!id) inf.warns.push('Give the button a name ("called save") so Styling and Mechanics can refer to it.');
@@ -589,6 +594,9 @@
         if (k === 'type') el.typeSaid = true;
         if (k === 'alt' && v == null) inf.warns = inf.warns.filter(w => !/described as/.test(w));
       }
+      // a name given after a comma ("with id …") is a name too
+      if (el.id) inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
+      if (el.id && /\s/.test(el.id)) inf.warns.push(`A name can't have spaces in the page, so ${code(el.id)} won't work. Leave out the quotes (called ${el.id.trim().split(/\s+/).slice(0, 2).join(' ')}) and it becomes ${code(toId(el.id))}.`);
       if (el.tag && !VOID_TAGS.has(el.tag) && !/^(?:textarea|select)$/.test(el.tag) && !el.container && !el.children) el.container = true;   // anything can hold other things
     }
     if (glued) el.glued = true;
@@ -1931,6 +1939,7 @@
     T('Page', 'page title is "‹title›"', '<title>…</title>', 'Shown in the browser tab.', ['structure']),
     T('Text', 'add a big heading "‹text›"', '<h1>…</h1>', 'One per page: the main title.', ['structure']),
     T('Text', 'add a heading "‹text›"', '<h2>…</h2>', '', ['structure']),
+    T('Text', 'add a paragraph called ‹name› saying "‹text›"', '<p id="name">…</p>', 'The name is how Styling and Mechanics refer to it (to change its text, say).', ['structure']),
     T('Text', 'add a paragraph "‹text›"', '<p>…</p>', '', ['structure']),
     T('Controls', 'add a button called ‹name› saying "‹text›"', '<button id="name">…</button>', 'The name is how Styling and Mechanics refer to it.', ['structure']),
     T('Controls', 'add a text box called ‹name› with hint "‹hint›"', '<input id="name" placeholder="…">', 'Also: number box, password box, email box, big text box.', ['structure']),

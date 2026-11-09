@@ -55,3 +55,20 @@ test('Predict: lines entered are remembered at the front, once, and only whole s
   assert.deepEqual(plain(h), ['Set speed to 5', 'show speed']);
   assert.equal(P.remember(['a b c', 'd e f', 'g h i'], 'j k l', 2).length, 2);
 });
+
+test('Predict: the rest of a sentence once its blanks so far are filled in', () => {
+  const para = 'add a paragraph called ‹name› saying "‹text›"';
+  assert.equal(P.after('add a paragraph called intro', para), ' saying "‹text›"');
+  assert.equal(P.after('add a paragraph called "main description"', para), ' saying "‹text›"');
+  assert.equal(P.after('add a paragraph called intro s', para), 'aying "‹text›"');
+  assert.equal(P.after('turn pin 13', 'turn pin ‹13› on'), ' on');
+  assert.equal(P.after('set score', 'set ‹name› to ‹value›'), ' to ‹value›');
+});
+
+test('Predict: nothing when it does not fit, or only a closing quote is left', () => {
+  const para = 'add a paragraph called ‹name› saying "‹text›"';
+  assert.equal(P.after('add a paragraph called intro saying "Hi"', para), '');
+  assert.equal(P.after('add a paragraph called intro saying "Hi', para), '');
+  assert.equal(P.after('add a big heading "x"', 'add a heading "‹text›"'), '');
+  assert.equal(P.after('add a paragraph', para), '', 'before the first blank, the pattern itself is offered');
+});

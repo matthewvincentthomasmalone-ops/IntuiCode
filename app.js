@@ -972,7 +972,7 @@
     $('tabPreview').hidden = !webOn();
     if (!webOn()) showBottom('terminal');
     save(); autosave();
-    if (mode === 'unity') unityShow();
+    if (mode === 'unity') unityShow(); else splitPlain();
     if (message) tLine(message, 't-sys');
     return '';
   }
@@ -1102,6 +1102,7 @@
     refreshAll();
     if (mode === 'unity') unityShow(line);   // Unity shows the same file, in one pane
     else if (line != null) goToLine(line); else { ta.setSelectionRange(0, 0); ta.scrollTop = 0; syncScroll(); }
+    if (mode === 'write') splitPlain();   // Split Mode's left pane is always sentences
     if (!$('index').hidden) renderIndex();
     save();
   }
@@ -1329,6 +1330,12 @@
         return (lead.startsWith(lower) || (lower.startsWith(lead.trim()) && lower.length <= lead.length + 1 && lead.trim().length)) && t.pattern.toLowerCase() !== lower;
       })()).sort((a, b2) => (b2.sections.includes(file) - a.sections.includes(file)))
         .map(t => ({ kind: 'template', label: t.pattern, py: t.py, tag: t.group, t, ...whole }))).slice(0, 7);
+      // a sentence with its blanks so far filled in: the rest of it ("add a paragraph called intro" -> saying "…")
+      for (const t of pk.templates.slice().sort((a, b2) => (b2.sections.includes(file) - a.sections.includes(file)))) {
+        if (items.length >= 7) break;
+        const r = (!pk.webOnly || pk.filter(t)) && PRED.after(typed, t.pattern);
+        if (r && !items.some(it => it.label.toLowerCase() === (typed + r).toLowerCase())) items.push({ kind: 'template', label: typed + r, py: t.py, tag: t.group, t, ...whole });
+      }
       // by meaning: "add a data graph" -> the drawing area; "add a border" -> a style, in Styling
       if (items.length < 4 && (/\s/.test(typed.trim()) || typed.trim().length >= 5)) {
         const have2 = new Set(items.map(it => it.label.toLowerCase()));
@@ -3483,6 +3490,9 @@
   if (!uViews || typeof uViews !== 'object' || Array.isArray(uViews)) uViews = {};
   // the file Unity shows: id, lang (null for a file with no sentences: notes, data, other code), text, regions
   let unity = { id: null, lang: null, text: '', regions: [] };
+  // what Original Code changed, while its button is a pressed Revert (see uOriginal)
+  let uBack = null;   // { id, which: 'uRe' | 'uReAll', text, regions, predict, caret, scroll, after }
+  const U_RE = { uRe: ['Original Code', $('uRe').title], uReAll: ['Original Code (all)', $('uReAll').title] };
   const uTa = $('uTa');
   let uBefore = [''], uCaret = -1, uProblems = [], uStripTimer = 0, uFrame = 0, uViewsTimer = 0;   // (uStripTimer: the help, a moment after the cursor stops)
   const uCan = (sec) => !!UNITY && !!sec && UNITY.LANGS.includes(sec.lang);
@@ -3514,14 +3524,31 @@
       return ok && UNITY.toFile(sec.lang, lines, v.regions) === sec.text ? v : null;
     } catch (_) { return null; }
   }
+  /* Unity's view of a file whose text changed since (in Split Mode, say): the parts that weren't touched keep
+     their place, as code or as green parts; edited green parts keep their code to compare with; new sentences
+     are green parts of their own, and exact lines are code. */
+  function uViewFor(sec) {
+    const kept = uKept(sec);
+    if (kept) return { text: kept.text, regions: JSON.parse(JSON.stringify(kept.regions)) };
+    const f = UNITY.fromFile(sec.lang, sec.text), v = uViews[sec.id];
+    if (!v || typeof v.text !== 'string' || !Array.isArray(v.regions)) return { text: f.lines.join('\n'), regions: f.regions };
+    try {
+      const was = UNITY.toFile(sec.lang, v.text.split('\n'), v.regions).split('\n'), now = String(sec.text).replace(/\r\n?/g, '\n').split('\n');
+      const regions = UNITY.adjust(JSON.parse(JSON.stringify(v.regions)), was, now, -1).filter(r => r.from >= 0 && r.to < now.length && r.to >= r.from);
+      const inR = (n) => regions.some(r => n >= r.from && n <= r.to);
+      // the rest as a file would be read (a kept part's lines stand in as code, so no new part runs across one)
+      const rest = UNITY.fromFile(sec.lang, now.map((l, n) => (inR(n) ? UNITY.RAW[sec.lang] + '…' : l)).join('\n'));
+      return { text: now.map((l, n) => (inR(n) ? l : f.lines[n])).join('\n'), regions: regions.concat(rest.regions).sort((a, b) => a.from - b.from) };
+    } catch (e) { console.error(e); return { text: f.lines.join('\n'), regions: f.regions }; }
+  }
   /* The project's open file, as Unity shows it. */
   function uLoad() {
     activeSec().text = ta.value;
     const sec = activeSec();
     if (!uCan(sec)) unity = { id: sec.id, lang: null, text: sec.text, regions: [] };
     else {
-      const kept = uKept(sec), f = kept ? null : UNITY.fromFile(sec.lang, sec.text);
-      unity = { id: sec.id, lang: sec.lang, text: kept ? kept.text : f.lines.join('\n'), regions: JSON.parse(JSON.stringify(kept ? kept.regions : f.regions)) };
+      const v = uViewFor(sec);
+      unity = { id: sec.id, lang: sec.lang, text: v.text, regions: v.regions };
       uGiveCode();
     }
     uTa.value = unity.text;
@@ -3565,6 +3592,7 @@
   /* Show the project's open file (after another file is opened, or the project changes). */
   function unityShow(line) {
     uLoad();
+    if (uFromSplit()) { uTa.value = unity.text; uBefore = unity.text.split('\n'); uCommit(); }
     renderUnity();
     if (line != null) uGoTo(line);
   }
@@ -3575,6 +3603,75 @@
     const lh = parseFloat(getComputedStyle(uTa).lineHeight) || 22;
     uTa.scrollTop = Math.max(0, line * lh - 40);
     uTools();
+  }
+
+  /* Split Mode's left pane is always sentences. A file shown there with code parts (from Original Code in Unity,
+     or typed as exact lines) has them said in sentences; Unity gets them back as code (uFromSplit): exactly as
+     they were if nothing changed in Split Mode, or written from the sentences as they are now. Lines no
+     sentence can say stay as exact code. */
+  const splitBack = {};    // file id -> { before: Unity's view, after: its text once said in sentences }
+  const splitTried = {};   // file id -> its text after the last try (so it isn't read again until it changes)
+  const splitTold = {};    // file id -> what was said about lines that stay as code (said once)
+  let splitBusy = false;
+  async function splitPlain() {
+    if (!UNITY || mode !== 'write' || splitBusy) return;
+    const sec = activeSec();
+    sec.text = ta.value;
+    if (!uCan(sec) || splitTried[sec.id] === sec.text || !sec.text.split('\n').some(l => UNITY.EXACT[sec.lang].test(l))) return;
+    const id = sec.id, fileText = sec.text;
+    uLoad();
+    const lines = unity.text.split('\n');
+    if (!lines.some((l, n) => l.trim() && uRegionAt(n) < 0)) { splitTried[id] = fileText; return; }   // exact lines only inside green parts
+    const before = { text: unity.text, regions: JSON.parse(JSON.stringify(unity.regions)) };
+    splitBusy = true;
+    ta.readOnly = true;
+    const slow = setTimeout(() => tLine(`Saying the code in ${fileName(sec)} in sentences for Split Mode…`, 't-sys'), 600);
+    let d = null;
+    try {
+      for (const r of unity.regions) r.was = true;   // the parts it had: the new ones are the code just said
+      d = await UNITY.deRegex(unity.lang, lines, unity.regions, 0, lines.length - 1, uConvert, { body: unity.lang === 'cpp' });
+    } catch (e) { console.error(e); }
+    finally { clearTimeout(slow); splitBusy = false; ta.readOnly = false; for (const r of unity.regions) delete r.was; }
+    const still = mode === 'write' && activeSec().id === id && activeSec().text === fileText && unity.id === id;
+    if (d && still) {
+      if (d.done.length) {
+        const caret = ta.selectionStart, top = ta.scrollTop;
+        unity.regions = d.regions.map(r => { const { was, ...x } = r; return was ? x : { ...x, auto: true }; });
+        uSetText(d.lines.join('\n'));   // the file, and Split Mode's pane
+        splitBack[id] = { before, after: unity.text };
+        ta.setSelectionRange(Math.min(caret, ta.value.length), Math.min(caret, ta.value.length));
+        refreshAll(); measure(); ta.scrollTop = top; syncScroll();
+      }
+      const span = (p) => (p.from === p.to ? `line ${p.from + 1}` : `lines ${p.from + 1}–${p.to + 1}`);
+      const left = d.failed.map(f => `${span(f)} (${f.reason})`).concat(d.blocked.map(b => `${span(b)} (they hold sentences that can't be code yet)`));
+      const told = left.join('; ');
+      if (left.length && splitTold[id] !== told) tLine(`${fileName(sec)}: ${told} stay${left.length === 1 && !/^lines/.test(told) ? 's' : ''} as exact code in Split Mode.`, 't-err');
+      splitTold[id] = told;
+      splitTried[id] = activeSec().text;
+    }
+    if (mode === 'write' && activeSec().id !== id) splitPlain();   // another file was opened meanwhile
+  }
+  /* Back in Unity: what Split Mode said in sentences is code again. true if anything changed. */
+  function uFromSplit() {
+    if (!unity.lang) return false;
+    const back = splitBack[unity.id];
+    delete splitBack[unity.id];
+    if (back && unity.text === back.after) {   // nothing changed in Split Mode: exactly as it was
+      unity.text = back.before.text;
+      unity.regions = JSON.parse(JSON.stringify(back.before.regions));
+      return true;
+    }
+    if (!unity.regions.some(r => r.auto)) return false;
+    let lines = unity.text.split('\n');
+    for (let i = unity.regions.length - 1; i >= 0; i--) {
+      if (!unity.regions[i].auto) continue;
+      let r = null;
+      try { r = UNITY.reRegex(unity.lang, lines, unity.regions, i, uW()); } catch (e) { console.error(e); }
+      if (r && r.ok) { lines = r.lines; unity.regions = r.regions; }
+      else delete unity.regions[i].auto;   // sentences that can't be code yet stay as sentences, with their problems
+    }
+    unity.text = lines.join('\n');
+    return true;
   }
 
   /* Unity's text from before it worked on the project: if it held anything but its sample, it's kept in the
@@ -3653,9 +3750,10 @@
   }
   function uTools() {
     const at = uRegionAt(uLineOf(uTa.selectionStart));
+    uBackButtons();
     $('uDe').disabled = !uHasCode();
-    $('uRe').disabled = at < 0;
-    $('uReAll').disabled = !unity.regions.length;
+    $('uRe').disabled = at < 0 && uBack?.which !== 'uRe';
+    $('uReAll').disabled = !unity.regions.length && uBack?.which !== 'uReAll';
     uFloatPos();
     clearTimeout(uStripTimer); uStripTimer = setTimeout(renderExplain, 120);
   }
@@ -3734,7 +3832,9 @@
     const h = PRED.history(typed, lines, 1)[0];
     if (h) return h;
     const low = typed.toLowerCase(), t = packFor(sec).templates.find(x => x.pattern.toLowerCase().startsWith(low) && x.pattern.toLowerCase() !== low);
-    return t ? t.pattern : '';
+    if (t) return t.pattern;
+    for (const x of packFor(sec).templates) { const r = PRED.after(typed, x.pattern); if (r) return typed + r; }   // the rest, once its blanks are filled in
+    return '';
   }
   function uUpdateGhost() {
     const g = $('uGhost');
@@ -3847,6 +3947,46 @@
     else if (ok) tLine('Every green part is code again.', 't-sys');
   }
 
+  /* Original Code, and back. Pressing Original Code (or Original Code (all)) keeps what Unity had (the text,
+     the green parts, Predictive Mode), turns Predictive Mode off, and makes that button a pressed Revert.
+     Revert puts all of it back. Any change to the text since, and Revert is Original Code again. */
+  function uBackButtons() {
+    if (uBack && (uBack.id !== unity.id || uTa.value !== uBack.after)) uBack = null;
+    for (const id of ['uRe', 'uReAll']) {
+      const b = $(id), on = uBack?.which === id;
+      b.textContent = on ? 'Revert' : U_RE[id][0];
+      b.setAttribute('aria-pressed', String(on));
+      b.title = on ? `Put the sentences, and Predictive Mode, back as they were before ${U_RE[id][0]}${id === 'uRe' ? ' (Ctrl+Shift+B)' : ''}` : U_RE[id][1];
+    }
+  }
+  function uOriginal(which) {
+    uBackButtons();
+    if (uBack?.which === which) { uRevert(); return; }
+    // pressed again on the other button: Revert still goes back to before the first press
+    const snap = uBack || { id: unity.id, text: uTa.value, regions: JSON.parse(JSON.stringify(unity.regions)), predict: !!layout.predict, caret: uTa.selectionStart, scroll: uTa.scrollTop };
+    const before = uTa.value;
+    if (which === 'uRe') { const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); }
+    else uReRegexAll();
+    if (uTa.value === before) { uTools(); return; }   // nothing became code (each part has a problem)
+    uBack = { ...snap, which, after: uTa.value };
+    if (layout.predict) { layout.predict = false; store.set(LAYOUT_KEY, layout); applyPredict(); }
+    uTools();
+  }
+  function uRevert() {
+    const b = uBack;
+    uBack = null;
+    unity.regions = JSON.parse(JSON.stringify(b.regions));
+    uSetText(b.text);
+    uProblems = [];
+    const c = Math.min(b.caret, uTa.value.length);
+    uTa.setSelectionRange(c, c);
+    uTa.scrollTop = b.scroll;
+    if (b.predict !== !!layout.predict) setPredict(b.predict);
+    renderUnity();
+    uTa.focus({ preventScroll: true });
+    tLine('Reverted: the sentences are back as they were.', 't-sys');
+  }
+
   if (UNITY) {
     uTa.addEventListener('beforeinput', () => { uCaret = uRegionAt(uLineOf(uTa.selectionStart)); });
     uTa.addEventListener('input', () => {
@@ -3885,13 +4025,13 @@
     document.addEventListener('keydown', (e) => {
       if (mode !== 'unity' || !e.ctrlKey || !e.shiftKey || e.altKey) return;
       if (e.key === 'D' || e.key === 'd') { e.preventDefault(); uDeRegex(); }
-      if (e.key === 'B' || e.key === 'b') { e.preventDefault(); const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); }
+      if (e.key === 'B' || e.key === 'b') { e.preventDefault(); uOriginal('uRe'); }
     });
     $('uDe').addEventListener('click', uDeRegex);
     $('uFloat').addEventListener('mousedown', (e) => e.preventDefault());   // keeps the selection
     $('uFloat').addEventListener('click', uDeRegex);
-    $('uRe').addEventListener('click', () => { const i = uRegionAt(uLineOf(uTa.selectionStart)); if (i >= 0) uReRegex(i); uTa.focus(); });
-    $('uReAll').addEventListener('click', uReRegexAll);
+    $('uRe').addEventListener('click', () => { uOriginal('uRe'); uTa.focus({ preventScroll: true }); });
+    $('uReAll').addEventListener('click', () => uOriginal('uReAll'));
     $('uCopy').addEventListener('click', (e) => {
       const sec = uSec() || activeSec();
       uCommit();
@@ -3937,7 +4077,7 @@
     showBottom(project.kind === 'website' ? 'preview' : 'terminal');
     updateChip();
     if (next === 'unity') { uMoveOldScratch(); unityShow(); $('uTa').focus(); }
-    else { ta.value = activeSec().text; refreshAll(); measure(); syncScroll(); }
+    else { ta.value = activeSec().text; refreshAll(); measure(); syncScroll(); splitPlain(); }
     if (!$('index').hidden) renderIndex();
   }
   $('modeWrite').addEventListener('click', () => setMode('write'));
@@ -5364,7 +5504,7 @@
           const res = await sentencesFor(onDisk);
           if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
-        if (changed.length) { ta.value = activeSec().text; refreshAll(); }
+        if (changed.length) { ta.value = activeSec().text; refreshAll(); if (mode === 'write') splitPlain(); }
         showFolder();
         return;
       }

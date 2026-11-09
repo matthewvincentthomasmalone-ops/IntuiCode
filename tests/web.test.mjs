@@ -545,3 +545,24 @@ test('mechanics and styling: default inputs, multiply/divide, a worked-out posit
   const bad = site('', '', 'create list stars with 1, 2, 3\nset k to 0\nshow item k plus 1 of stars');
   assert.ok(problems(bad, 'mechanics').some(e => /has to be one value/.test(e)));
 });
+
+test('structure: text said with saying, says, reads or "with the text", after a name too', () => {
+  const p = (line) => { const r = site(line); return [problems(r, 'structure'), r.results.structure.text.match(/<(p|h2|span|button)\b[^>]*>[^<]*<\/\1>/)[0]]; };
+  assert.deepEqual(p('add a paragraph called "main description". Paragraph text reads "A good time to be alive"'), [[], '<p id="main description">A good time to be alive</p>']);
+  assert.deepEqual(p('add a paragraph called intro saying "Hello"'), [[], '<p id="intro">Hello</p>']);
+  assert.deepEqual(p('add a paragraph called intro that says "Hello"'), [[], '<p id="intro">Hello</p>']);
+  assert.deepEqual(p('add a paragraph saying "Hello"'), [[], '<p>Hello</p>']);
+  assert.deepEqual(p('add a paragraph called main area with the text "Hi"'), [[], '<p id="main-area">Hi</p>']);
+  assert.deepEqual(p('add a paragraph called status "Saved"'), [[], '<p id="status">Saved</p>']);
+  assert.deepEqual(p('add a heading called prices saying "Prices"'), [[], '<h2 id="prices">Prices</h2>']);
+  assert.deepEqual(p('add a button called next that reads "Next"'), [[], '<button id="next" type="button">Next</button>']);
+  assert.deepEqual(p('add text saying "hi"'), [[], '<span>hi</span>']);
+});
+
+test('structure: a name given as "with id" counts, and a name with a space is flagged', () => {
+  const r = site('add a button saying "Next", with id quote');
+  assert.deepEqual(plain(r.results.structure.info[0].warns), []);
+  assert.match(r.results.structure.text, /<button id="quote" type="button">Next<\/button>/);
+  const spaced = site('add a block, with id "main display"');
+  assert.match(plain(spaced.results.structure.info[0].warns).join(' '), /can't have spaces.*main-display/);
+});
