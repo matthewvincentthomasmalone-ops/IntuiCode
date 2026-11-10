@@ -88,3 +88,9 @@ test('tests: a test file, or a test inside any file, is Tests & Checks, named by
   assert.deepEqual(names('python', 'def test_add():\n    assert 1 + 1 == 2\n\ndef helper():\n    return 3\n', 'tools/capture.py').map(([t]) => t), ['tests', 'mechanics']);
   assert.deepEqual(names('js', 'describe("cart", () => {\n  it("adds", () => {});\n});\n', 'src/cart.spec.js'), [['tests', 'test: cart']]);
 });
+
+test('imported C++: comments go with the part under them; raw strings and run-on signatures don\'t split a function', () => {
+  const src = pfx('// The mixer\'s gain, in dB.\nfloat gainDb (float v)\n{\n    return v;\n}\n\nint main() {\n    const auto meta = R"meta(Found "settings" {\nupdate: id:0 value:\'4\')meta";\n    return 0;\n}\n\nvoid Mixer::setKernels (std::span<const float> a,\n                        std::span<const float> b) noexcept {\n    load (a, b);\n}\n\n[[nodiscard]] static int count (int n) { return n; }');
+  assert.deepEqual(names('cpp', src, 'src/Mixer.cpp').map(([, t]) => t), ['gainDb()', 'main()', 'Mixer::setKernels()', 'count()']);
+  assert.equal(P.split('cpp', src, 'src/Mixer.cpp')[0].from, 0, 'the comment is the first line of its part');
+});

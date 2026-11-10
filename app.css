@@ -1504,3 +1504,6 @@ details.pg > summary .count { margin-left: auto; }
 .pv-more { margin: 8px 0 0; }
 @keyframes pv-lit { from { box-shadow: inset 0 0 0 2px var(--tc, #9FE2BF), 0 0 18px color-mix(in srgb, var(--tc, #9FE2BF) 35%, transparent); } to { box-shadow: inset 0 0 0 1px #1C1D21; } }
 .pv-part.lit { animation: pv-lit 1.6s ease-out; }
+.part-row.two { grid-template-columns: 7px minmax(0, 1fr); row-gap: 0; padding-top: 4px; padding-bottom: 4px; }
+.part-row.two .pdot { grid-row: 1; }
+.part-row.two .pr-where { grid-column: 2; max-width: none; font-size: 10.5px; opacity: .85; }

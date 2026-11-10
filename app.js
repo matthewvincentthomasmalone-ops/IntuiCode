@@ -833,8 +833,8 @@
     $('app').dataset.group = groupFilter || '';
     pvWhole = false;
     pvShown = PV_STEP;
-    if (groupFilter && sideView() === 'files') { setSideView('parts'); sideAuto = true; }
-    else if (!groupFilter && sideAuto) { setSideView('files'); sideAuto = false; }
+    if (groupFilter && sideView() === 'files') { setSideView('parts', false); sideAuto = true; }
+    else if (!groupFilter && sideAuto) { setSideView('files', false); sideAuto = false; }
     renderGroupViews();
     $('pvList').scrollTop = 0;
   }
@@ -847,9 +847,11 @@
   for (const b of document.querySelectorAll('.grp-btn')) b.addEventListener('click', () => setGroup(b.dataset.group));
 
   /* The side panel: the project's files (File View), or its code part by part (CodeParts). */
-  const sideView = () => (layout.sideView === 'parts' ? 'parts' : 'files');
-  function setSideView(v) {
-    layout.sideView = v; store.set(LAYOUT_KEY, layout);
+  let sideNow = null;   // the view this time, when it switched itself (the one picked is kept in layout)
+  const sideView = () => sideNow || (layout.sideView === 'parts' ? 'parts' : 'files');
+  function setSideView(v, keep = true) {
+    sideNow = v;
+    if (keep) { layout.sideView = v; store.set(LAYOUT_KEY, layout); }
     sideAuto = false;
     applySideView();
     if (v === 'parts') renderParts();
@@ -920,8 +922,10 @@
     const row = ({ s, p }, inFile) => {
       const linked = [...linkedLines(s.id)].some(n => n >= p.from && n <= p.to);
       const at = s.id === here.id && li >= p.from && li <= p.to;
-      const where = inFile || !multi ? `${p.from + 1}` : `${escHtml(fileName(s).split('/').pop())}:${p.from + 1}`;
-      return `<li><button type="button" class="part-row${linked ? ' linked' : ''}${at ? ' here' : ''}" data-part-sec="${escHtml(s.id)}" data-part-line="${p.from}" title="${escHtml(p.title)} · ${escHtml(fileName(s))}, lines ${p.from + 1}–${p.to + 1} · ${escHtml(typeName(p.type))}">`
+      // listed under its file: just the line; otherwise its file and line go under its name, so the name has the room
+      const two = !inFile && multi;
+      const where = two ? `${escHtml(fileName(s).split('/').pop())}:${p.from + 1}` : `${p.from + 1}`;
+      return `<li><button type="button" class="part-row${two ? ' two' : ''}${linked ? ' linked' : ''}${at ? ' here' : ''}" data-part-sec="${escHtml(s.id)}" data-part-line="${p.from}" title="${escHtml(p.title)} · ${escHtml(fileName(s))}, lines ${p.from + 1}–${p.to + 1} · ${escHtml(typeName(p.type))}">`
         + `<span class="pdot t-${p.type}" aria-hidden="true"></span><span class="pr-title">${escHtml(p.title)}</span><span class="pr-where">${where}</span></button></li>`;
     };
     const group = (key, head, rows, inFile) => {

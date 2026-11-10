@@ -138,7 +138,18 @@
   function blocks(lang, lines, byIndent) {
     const out = [];
     let cur = null, depth = 0, wraps = 0;   // wraps: namespaces open around the parts (their braces don't count)
+    let lead = -1, leadTo = -1;             // comments at the left edge: they belong to the part under them
+    let raw = null;                         // a C++ raw string open over several lines: R"meta( … )meta"
     const useBraces = BRACES.has(lang) && !byIndent;
+    // a line's brackets, outside raw strings (whose quotes and brackets are only text)
+    const delta = (line) => {
+      let s = String(line);
+      if (raw != null) { const end = s.indexOf(')' + raw + '"'); if (end < 0) return 0; s = s.slice(end + raw.length + 2); raw = null; }
+      s = s.replace(/\bR"([^(\s"\\]{0,16})\(([\s\S]*?)\)\1"/g, '""');
+      const open = s.match(/\bR"([^(\s"\\]{0,16})\(/);
+      if (open) { raw = open[1]; s = s.slice(0, open.index); }
+      return braceDelta(s);
+    };
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (blankLine(line)) { if (cur && depth > 0) cur.to = i; continue; }
@@ -157,20 +168,34 @@
       // signature over several lines (one not yet ended by ";" or "}")
       const runsOn = useBraces && cur && /^\s*[{:,)]|^\s+\S/.test(line) && !/[;}]\s*(?:\/\/.*)?$/.test(lines[cur.to]);
       const top = useBraces ? depth <= 0 && !runsOn : indentOf(line) === 0 && !/^\s*[)\]}]/.test(line);
-      if (top || !cur) { cur = { from: i, to: i }; out.push(cur); }
+      if (top && isComment(line) && !/^\s*(note|comment|teach)\s*:/i.test(line)) { if (lead < 0) lead = i; leadTo = i; cur = null; continue; }
+      if (top || !cur) { cur = { from: lead >= 0 ? lead : i, to: i }; out.push(cur); lead = -1; }
       else cur.to = i;
-      if (useBraces) depth = Math.max(0, depth + braceDelta(line));
+      if (useBraces) depth = Math.max(0, depth + delta(line));
     }
+    if (lead >= 0) out.push({ from: lead, to: leadTo });   // comments at the very end: a part of their own
     return out;
   }
 
+  const IMPORT_LINE = /^\s*(import\s|from\s+\S+\s+import\b|#include\b|(const|let|var)\s+[\w${}\s,]+=\s*require\(|using\s|use\s|@import\b|bring in\b)/;
+  /* The line a part is named by: its first line of code, past comments, a #! line and #pragma once; a return
+     type on a line of its own ("void" over "Mixer::paint (…)") goes with the line after it. */
+  function headLine(own) {
+    const real = own.filter(l => !blankLine(l) && !isComment(l) && !/^\s*(#!|#pragma\s+once\b|\[\[[\w:]+\]\]\s*$|template\s*<[^>]*>\s*$)/.test(l));
+    if (!real.length) return own.find(l => !blankLine(l)) || '';
+    if (real.length > 1 && /^\s*(?:(?:static|inline|virtual|constexpr|explicit|extern|friend|unsigned|signed|const)\s+)*[\w:<>*&]+[*&\s]*$/.test(real[0])) return real[0].trim() + ' ' + real[1].trim();
+    return real[0];
+  }
   /* A part's name: its first line, without the code's punctuation. */
   function titleOf(line) {
-    let t = String(line).trim();
+    let t = String(line).trim().replace(/^(?:\[\[[^\]]*\]\]\s*)+/, '');   // [[nodiscard]] and the like
+    // a signature that runs onto the next lines: void Mixer::setKernels (std::span<const float> a,
+    const sig = t.match(/^(?:[\w:<>,*&\s~]+?\s+)?[*&]*((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)\s*\([^;)]*$/);
+    if (sig && !/^(if|for|while|switch|return|else|catch|sizeof)$/.test(sig[1].split('::').pop()) && /\s|::/.test(t.slice(0, t.indexOf('(')).trim())) return sig[1] + '()';
     const fn = t.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:(?:template\s*<[^>]*>\s*)?(?:def|function|fn|func|sub|procedure|class|struct|interface|enum(?:\s+class)?|trait|impl|module|namespace))\s+([\w$.:]+)/);
     if (fn) return fn[1];
     // C++ and the like: a function or method, Class::method or Class::Class (no return type), with what's after its name
-    const cfn = t.match(/^(?:[\w:<>,*&\s~]+?\s+)?[*&]*((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)\s*\([^;]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?::[^{]*)?\{?\s*$/);
+    const cfn = t.match(/^(?:[\w:<>,*&\s~]+?\s+)?[*&]*((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)\s*\([^;]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?::[^{]*)?(?:\{.*)?$/);
     if (cfn && !/^(if|for|while|switch|return|else|catch|sizeof|TEST\w*|it|describe|test)$/.test(cfn[1].split('::').pop())) return cfn[1] + '()';
     const named = t.match(/^\s*(?:it|describe|test|TEST_CASE|SECTION)\s*\(\s*(['"`])(.*?)\1/);   // it("adds"), TEST_CASE("fader", "[tags]")
     if (named) return `test: ${named[2]}`;
@@ -178,6 +203,9 @@
     if (gtest) return `test: ${gtest[1]}.${gtest[2]}`;
     const arrow = t.match(/^(?:export\s+)?(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>/);
     if (arrow) return arrow[1];
+    // a C++ declaration on one line: inline const juce::Colour ink{0xff2a1a10}; static constexpr int maxChannels = 16;
+    const decl = t.match(/^(?:(?:inline|static|constexpr|const|extern|thread_local|mutable|volatile|unsigned|signed|long|short)\s+)*(?:[A-Za-z_][\w:]*(?:<[^;=]*>)?[*&\s]+)+([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*(?:\{[^;]*\}\s*;|=[^;]*;|;)\s*(?:\/\/.*)?$/);
+    if (decl && !/^(return|delete|throw|goto|case|using|typedef)$/.test(t.split(/\s+/)[0])) return decl[1];
     const tag = t.match(/^<([A-Za-z][\w.-]*)([^>]*)>?/);
     if (tag) { const id = tag[2].match(/\b(?:id|class|className)=["']([^"']+)/); return `<${tag[1]}>${id ? ' ' + id[1].split(' ')[0] : ''}`; }
     t = t.replace(/\s*[{:(]\s*$/, '').replace(/\s+/g, ' ');
@@ -191,14 +219,14 @@
       const last = out[out.length - 1];
       if (last && last.single && p.single && last.type === p.type && p.from - last.to <= 2) {
         last.lines = last.lines.concat(new Array(p.from - last.to - 1).fill(null), p.lines);
-        last.to = p.to; last.count++;
+        last.to = p.to; last.count++; last.imports = last.imports || p.imports;
         continue;
       }
       out.push(p);
     }
     for (const p of out) {
       if (p.count < 2) continue;
-      if (p.type === 'setup') p.title = /^\s*(import|from|#include|require|using|use|include|bring in|load the)\b/i.test(p.first) ? 'Imports' : 'Settings';
+      if (p.type === 'setup') p.title = p.imports || /^\s*(import|from|#include|require|using|use|include|bring in|load the)\b/i.test(p.first) ? 'Imports' : 'Settings';
       else if (p.type === 'data') p.title = 'Values';
       else p.title += ' …';
     }
@@ -237,9 +265,9 @@
       const lineTypes = own.map((l, i) => (blankLine(l) || isComment(l) ? null : lang === 'css' ? 'display' : best(scores[i], null) || type));
       // a test file is tests through and through; elsewhere, a test function is
       if (testFile || TEST_PART.test(own[0])) { type = 'tests'; lineTypes.forEach((t, i) => { if (t) lineTypes[i] = 'tests'; }); }
-      return { from: b.from, to: b.to, type, title: titleOf(own[0]), first: own[0], lines: lineTypes, single: b.from === b.to, count: 1 };
+      return { from: b.from, to: b.to, type, title: titleOf(headLine(own)), first: own[0], imports: own.some(l => IMPORT_LINE.test(l)), lines: lineTypes, single: b.from === b.to, count: 1 };
     });
-    return merge(parts).map(({ single, count, first, ...p }) => p);
+    return merge(parts).map(({ single, count, first, imports, ...p }) => p);
   }
 
   const SENTENCE_LANGS = new Set(['python', 'html', 'css', 'js', 'cpp', 'arduino']);
