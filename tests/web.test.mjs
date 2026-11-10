@@ -661,3 +661,36 @@ test('the page links style.css and script.js when the project has them, or the p
     assert.match(compile(files).s0.text, /  <link rel="stylesheet" href="style\.css">\n<\/head>[\s\S]*  <script src="script\.js"><\/script>\n<\/body>/);
   }
 });
+
+test('Web: "background colour" and "background color" before the colour, as "text colour" is', () => {
+  const css = (styling) => site('add a block called box-one', styling).results.styling;
+  for (const [said, want] of [
+    ['style box-one: background colour #a9a9a9, text colour #fffdd0', 'background: #a9a9a9; color: #fffdd0;'],
+    ['style box-one: background colour white', 'background: white;'],
+    ['style box-one: background color white', 'background: white;'],
+    ['style box-one: background colour the colour main', 'background: var(--main);'],
+    ['style box-one: background colour #123456 40% see-through', 'background: rgba(18, 52, 86, 0.6);'],
+    ['style box-one: background white', 'background: white;']]) {
+    const r = css(said);
+    assert.deepEqual(plain(r.info.flatMap(i => i.errs)), [], said);
+    assert.ok(r.text.replace(/\s+/g, ' ').includes(want), `${said}\n${r.text}`);
+  }
+});
+
+test('Web: a colour with words before it says which words to leave out; advice fits what was written', () => {
+  const errs = (styling) => problems(site('add a block called box-one', styling), 'styling');
+  assert.match(errs('style box-one: text colour nice #a9a9a9')[0], /is the colour `#a9a9a9` with more words before it\. Leave out `nice`\./);
+  assert.match(errs('style box-one: text colour very dark red')[0], /is the colour `dark red` with more words before it\. Leave out `very`\./);
+  // a colour code without its #: the advice is the code with its #, not "use a code like #1a2b3c"
+  assert.equal(errs('style box-one: background abc')[0], "I don't know the colour `abc`. For a colour code, put # first: `#abc`.");
+  // CSS's nearby names are enough: no "use a name like navy" after them
+  assert.doesNotMatch(errs('style box-one: text colour whit')[0], /navy/);
+  // "light red" isn't red with a word too many: CSS's names for it are given
+  assert.match(errs('style box-one: text colour light red')[0], /lightcoral or salmon/);
+});
+
+test('Web: text in quotes with more after it says what the extra words are, not "put it in quotes"', () => {
+  assert.match(problems(site('add a big heading "Hi" in colour red'), 'structure')[0], /The heading text is "Hi", and `in colour red` after it isn't part of this sentence\. How it looks goes in Styling, like: style big headings: text colour red/);
+  assert.match(problems(site('add a paragraph "Hi" in bold'), 'structure')[0], /style paragraphs: bold$/);
+  assert.match(problems(site('add a heading Prices'), 'structure')[0], /^Put the heading text in quotes/);
+});

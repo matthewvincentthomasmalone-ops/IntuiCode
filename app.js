@@ -231,7 +231,9 @@
     const html = act && act.file === 'structure' ? act : t.structure;
     return { html, styling: t.styling, mechanics: t.mechanics };
   }
+  let compileN = 0;   // counts compiles: a fix found is good until the next one
   function compile() {
+    compileN++;
     try { compiled = compileAll(project); }
     catch (e) { console.error(e); return; }
     checkDrift();
@@ -563,8 +565,9 @@
     const py = inf.py.map(i => r.lines[i].text).filter(t => t.trim()).join('\n');
     const items = [], fill = fillHtml(text);
     if (runtimeMark && runtimeMark.sec === sec.id && runtimeMark.line === li) items.push(`<li class="err">${withCode(runtimeMark.msg)}</li>`);
-    if (li === typingLine && inf.errs.length) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
-    else inf.errs.forEach(e => { if (!(fill && /^Fill in the ‹[^›]*› slot\.$/.test(e))) items.push(`<li class="err">${withCode(e)}</li>`); });
+    const typing = li === typingLine && inf.errs.length, fixes = fixKnown(sec, li, text);
+    if (typing) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
+    else inf.errs.forEach(e => { if (!(fill && /^Fill in the ‹[^›]*› slot\.$/.test(e))) items.push(`<li class="err">${withCode(tidyMsg(e, fixes))}</li>`); });
     inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${li}">Keep the new code</button>` : ''}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim());
     const why = inf.notes.length && pyLines.length ? `<button type="button" class="linklike ex-why" data-pick="${pyLines[0]}">${inf.notes.length === 1 ? 'A note' : inf.notes.length + ' notes'} on the ${escHtml(tutorSays(sec))}: click its line on the right</button>` : '';
@@ -573,8 +576,8 @@
         <div class="ex-arrow" aria-hidden="true">→</div>
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.map(i => i + 1).join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
       </div>
-      ${shapeHtml(sec, text)}
-      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${inf.errs.some(e => UNKNOWN_LINE.test(e)) ? closeMatchesHtml(sec, text, li) : ''}${sayTutorHtml(sec, li)}
+      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${!typing && inf.errs.length && !fill ? fixHtml(sec, li, text, inf.errs) : ''}${inf.errs.some(e => UNKNOWN_LINE.test(e)) ? closeMatchesHtml(sec, text, li) : ''}
+      ${shapeHtml(sec, text)}${sayTutorHtml(sec, li)}
       <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
   }
   /* A line the writer doesn't recognise: the known sentences closest to what it says, each one click away. */
@@ -586,6 +589,123 @@
       const role = x.other ? (x.t.role || (x.t.sections || [])[0]) : '';
       return `<li><button type="button" class="btn small" data-use-sentence="${escHtml(x.pattern)}" data-use-role="${escHtml(role || '')}" data-use-line="${li}" data-use-where="${where}">${x.other ? `Add to ${escHtml(x.other.replace(/ \(.*\)$/, ''))}` : 'Use'}</button><span class="ex-say">${escHtml(x.pattern).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>')}</span></li>`;
     }).join('')}</ul></div>`;
+  }
+
+  /* ---------- Fixes that work ----------
+   * For a line with a problem: changes to the line itself (a word spelled as the sentences spell it, a name the
+   * project has, what the problem suggests, the second half of "when …, …" on its own line, the closest sentence
+   * with the line's own values), each translated in place first (lang/fixes.js). Only the ones that come out with
+   * no problems are offered, in the help strip and in Problems, one click to use. */
+  const FIX = window.IntuiFixes;
+  const fixCache = new Map(), fixWordCache = new Map();
+  const fixKey = (sec, li, text) => sec.id + '\u0001' + li + '\u0001' + text;
+  const lineOfSec = (sec, li) => ((sec.id === project.active ? ta.value : sec.text).split('\n')[li] || '');
+  function fixWords(sec) {
+    const key = WEB_ROLE[sec.lang] ? 'web' : sec.lang;
+    if (fixWordCache.has(key)) return fixWordCache.get(key);
+    const pk = packFor(sec), pats = (pk.webOnly ? WEB.TEMPLATES : pk.templates || []).map(t => t.pattern).concat(intentExtras(sec).map(t => t.pattern));
+    if (WEB_ROLE[sec.lang]) for (const list of Object.values(WEB.WORDS || {})) for (const w of list) pats.push(Array.isArray(w) ? w[0] : (w && w.pattern) || String(w));
+    const words = [...new Set(pats.flatMap(p => String(p).replace(/‹[^›]*›/g, ' ').toLowerCase().match(/[a-z][a-z'-]*/g) || []))];
+    fixWordCache.set(key, words);
+    return words;
+  }
+  function fixNames() {
+    if (!compiled) return [];
+    const out = [];
+    for (const [k, v] of compiled.syms || []) out.push((v && v.display) || k);
+    const web = compiled.web, keys = (x) => (!x ? [] : x instanceof Map || x instanceof Set ? [...x.keys()] : Array.isArray(x) ? x : Object.keys(x));
+    if (web) out.push(...keys(web.ids), ...keys(web.groups));
+    return out;
+  }
+  /* The line's problems with t in its place: the file compiled with the others its engine reads (a website's
+     pages, styles and scripts; all the Python files). t can be two lines. */
+  function fixCheck(sec, li) {
+    const eng = ENGINE[sec.lang], lines = (sec.id === project.active ? ta.value : sec.text).split('\n');
+    const sections = project.sections.filter(s => s.id === sec.id || !ENGINE[s.lang] || ENGINE[s.lang] === eng);
+    return (t) => {
+      const add = String(t).split('\n'), copy = lines.slice();
+      copy.splice(li, 1, ...add);
+      const r = compileAll({ ...project, sections: sections.map(s => (s.id === sec.id ? { ...s, text: copy.join('\n') } : s)) }).results[sec.id];
+      if (!r) return null;
+      const infs = r.info.slice(li, li + add.length);
+      return { errs: infs.flatMap(i => i.errs), warns: infs.flatMap(i => i.warns) };
+    };
+  }
+  function fixesFor(sec, li, text, errs, budget = 250) {
+    const key = fixKey(sec, li, text), hit = fixCache.get(key);
+    if (hit && hit.n === compileN) return hit.fixes;
+    let fixes = [];
+    if (FIX && isSentences(sec) && text.trim()) {
+      try {
+        fixes = FIX.suggest(text, { errs, words: fixWords(sec), values: WEB_ROLE[sec.lang] ? WEB.COLOURS || [] : [], names: fixNames(),
+          patterns: closeMatches(sec, text, 6).filter(x => !x.other).map(x => x.pattern), check: fixCheck(sec, li), budget });
+      } catch (e) { console.error(e); }
+    }
+    if (fixCache.size > 300) for (const [k, v] of fixCache) if (v.n !== compileN) fixCache.delete(k);
+    fixCache.set(key, { n: compileN, fixes });
+    return fixes;
+  }
+  const fixKnown = (sec, li, text) => { const h = fixCache.get(fixKey(sec, li, text)); return h && h.n === compileN ? h.fixes : null; };
+  const fixMarked = (before, after) => (FIX ? FIX.marks(before, after.trim()) : [[after.trim(), false]]).map(([s, isNew]) => (isNew ? `<mark>${escHtml(s)}</mark>` : escHtml(s))).join('');
+  /* A problem's "Did you mean "x"?" that no checked fix bears out is left out: the help gives only advice that works. */
+  function tidyMsg(msg, fixes) {
+    const m = String(msg).match(/ Did you mean "([^"]+)"\?/);
+    return !m || !fixes || fixes.some(f => new RegExp('\\b' + m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(f.text)) ? msg : msg.replace(m[0], '');
+  }
+  /* In the help strip: the line's fixes, worked out just after the strip shows (so moving the cursor stays quick). */
+  let fixWait = '';
+  function fixHtml(sec, li, text, errs) {
+    if (!FIX) return '';
+    const fixes = fixKnown(sec, li, text);
+    if (!fixes) {
+      const key = fixKey(sec, li, text);
+      if (fixWait !== key) {
+        fixWait = key;
+        setTimeout(() => {
+          if (fixWait === key) fixWait = '';
+          if (project.active !== sec.id || caretLine() !== li || lineOfSec(sec, li) !== text || mode === 'unity') return;   // moved on
+          fixesFor(sec, li, text, errs);
+          renderExplain(); renderProblems();
+        }, 60);
+      }
+      return '<div class="ex-fix wait"><span class="ex-lbl">Looking for a fix that works…</span></div>';
+    }
+    if (!fixes.length) return '';
+    return `<div class="ex-fix"><span class="ex-lbl">${fixes.length === 1 ? 'A fix that works' : 'Fixes that work'} · checked: the line translates with no errors</span><ul>${fixes.map((f, k) =>
+      `<li><button type="button" class="btn small${k ? '' : ' primary'}" data-fix-line="${li}" data-fix-text="${escHtml(f.text)}">Use this</button><span class="ex-say">${fixMarked(text, f.text)}</span><span class="ex-why">${escHtml(f.why)}${(f.warns || []).length ? ` · a warning stays: ${withCode(f.warns[0])}` : ''}</span></li>`).join('')}</ul></div>`;
+  }
+  /* Use a fix: it replaces the line (two lines for a block), as one edit that Undo takes back. */
+  function applyFix(secId, li, text) {
+    if (secId && secId !== project.active) openSection(secId, li);
+    const lines = ta.value.split('\n');
+    if (li < 0 || li >= lines.length) return;
+    const start = lineStartOf(li);
+    insertText(text, start, start + lines[li].length);
+    ta.setSelectionRange(start + text.length, start + text.length);
+    typingLine = -1;
+    refreshAll();
+  }
+  /* In Problems: the fixes for lines that have problems, worked out once typing stops: one line at a time with a
+     pause between (so typing never waits), up to 8, and given up as soon as anything is typed. */
+  let fixTimer = null, fixRuns = 0;
+  function fixSoon() { clearTimeout(fixTimer); fixRuns = 0; if (FIX) fixTimer = setTimeout(fixIdle, 700); }
+  function fixIdle() {
+    if (mode === 'unity' || !compiled || fixRuns >= 8) return;
+    const n = compileN;
+    for (const s of project.sections) {
+      const r = secResult(s.id);
+      if (!r || !isSentences(s)) continue;
+      const lines = (s.id === project.active ? ta.value : s.text).split('\n');
+      for (let i = 0; i < r.info.length; i++) {
+        const inf = r.info[i], text = lines[i] || '';
+        if (!inf.errs.length || (s.id === project.active && i === typingLine) || fixKnown(s, i, text)) continue;
+        fixesFor(s, i, text, inf.errs, 120);
+        fixRuns++;
+        renderProblems();
+        fixTimer = setTimeout(() => { if (compileN === n) fixIdle(); }, 40);
+        return;
+      }
+    }
   }
 
   /* ‹Blanks›: what goes in one, from its step's "blank:" line in the templates (your own kits' too): what
@@ -1223,8 +1343,16 @@
     pc.textContent = items.length ? String(items.length) : '';
     pc.className = 'count' + (errCount ? ' bad' : '');
     $('probWrap').hidden = !items.length;   // the Problems list shows only when there's something in it
+    const offered = new Set();   // a line's fix shows once, under its first problem
     $('problems').innerHTML = items.length
-      ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
+      ? items.slice(0, 60).map(p => {
+        const text = p.kind === 'err' && mode !== 'unity' ? lineOfSec(p.s, p.i) : null, fixes = text != null ? fixKnown(p.s, p.i, text) : null;
+        const key = p.s.id + ':' + p.i, fix = fixes && fixes.length && !offered.has(key) ? fixes[0] : null;
+        if (fix) offered.add(key);
+        return `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(tidyMsg(p.msg, fixes)))}</span></button>`
+          + (fix ? `<div class="prob-fix"><button type="button" class="btn small" data-fix-sec="${escHtml(p.s.id)}" data-fix-line="${p.i}" data-fix-text="${escHtml(fix.text)}" title="Checked: the line translates with no errors. ${escHtml(fix.why)}">Fix</button><span class="fx-line">${fixMarked(text, fix.text)}</span></div>` : '')
+          + '</li>';
+      }).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
     return errCount;
   }
@@ -1247,6 +1375,7 @@
     renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPartsView(); renderPlan(); renderProblems();
     renderGroupButtons();
     tutorSoon();
+    fixSoon();
     schedulePreview();
   }
 
@@ -1290,7 +1419,7 @@
     ensureCaretVisible();
     syncScroll();
     const cur = caretLine();
-    if (typingLine >= 0 && cur !== typingLine) { typingLine = -1; renderOverlay(); renderTree(); renderProblems(); schedulePreview(); }
+    if (typingLine >= 0 && cur !== typingLine) { typingLine = -1; renderOverlay(); renderTree(); renderProblems(); fixSoon(); schedulePreview(); }
     [...gutterInner.children].forEach((g, i) => g.classList.toggle('cur', i === cur));
     linkPython(scrollPy);
     renderExplain();
@@ -1858,6 +1987,8 @@
     if (b) openSection(b.dataset.id);
   });
   $('problems').addEventListener('click', (e) => {
+    const f = e.target.closest('[data-fix-text]');
+    if (f) return applyFix(f.dataset.fixSec, +f.dataset.fixLine, f.dataset.fixText);
     const b = e.target.closest('button[data-sec]');
     if (!b) return;
     const blank = /^Fill in ‹/.test(b.textContent.replace(/^.*?line \d+/, ''));
@@ -2031,6 +2162,7 @@
       if (where === 'unity') { uCommit(); setMode('write'); }
       return useSentence(pattern, role || null, +line);
     }
+    if ((b = t('[data-fix-text]'))) return applyFix(project.active, +b.dataset.fixLine, b.dataset.fixText);
     if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
     if ((b = t('[data-keep-code]'))) return keepNewCode(project.active, +b.dataset.keepCode);
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);

@@ -563,6 +563,16 @@
     // name, if it has one: add a paragraph called intro. Its text reads "Hello" works too)
     const SAYS = /^[.,;:]?\s*(?:and\s+)?(?:(?:it|that|which|its|the)\s+)?(?:(?:paragraph|heading|title|button|label|item|link)\s+)?(?:text\s+)?(?:(?:that|which)\s+)?(?:says|saying|reads|reading|shows|showing|is|with(?:\s+the)?\s+(?:text|words))\s+(?=["'])/i;
     const textOf = (t) => strOf(cut(' ' + t).trim().replace(SAYS, ''));
+    /* The text isn't in quotes on its own. When there is quoted text, it's the words after it that don't belong
+       ("add a big heading "Hi" in colour red"): say which, and that how it looks goes in Styling. */
+    const quotesWanted = (t, what, example, styled) => {
+      const qm = cut(' ' + t).trim().replace(SAYS, '').match(/^("(?:[^"\\]|\\.)*")\s+(.+)$/);
+      if (!qm) return `Put the ${what} in quotes, like: ${example}`;
+      const extra = qm[2].trim(), colour = extra.match(/\bcolou?r\s+(#?[\w-]+)$/i);
+      const look = colour || /\b(?:bold|italic|size|bigger|smaller|centred|centered|background|font|border|underlined)\b/i.test(extra);
+      return `The ${what} is ${qm[1]}, and ${code(extra)} after it isn't part of this sentence. ` +
+        (look ? `How it looks goes in Styling, like: style ${styled}: ${colour ? 'text colour ' + colour[1] : (extra.match(/\b(bold|italic|underlined)\b/i) || [])[1] || extra.replace(/^(?:in|with|and)\s+/i, '')}` : 'Take it out, or say it on a line of its own.');
+    };
     const el = (tag, extra = {}) => ({ tag, id: extra.id || null, groups, attrs: extra.attrs || {}, text: extra.text ?? null, container: !!extra.container });
 
     if ((m = s.match(/^(?:set the page title to|page title is|the page is called|title)\s+(.+)$/i))) {
@@ -572,13 +582,13 @@
     }
     if ((m = s.match(/^(?:page language is|the page is in)\s+([\w-]+)$/i))) return { lang: /^[a-z]{2}(?:-[a-z0-9]+)*$/i.test(m[1]) ? m[1] : m[1].toLowerCase().slice(0, 2) };
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big |small |)heading\s+(.+)$/i))) {
-      const t = textOf(m[2]); if (t == null) inf.errs.push('Put the heading text in quotes, like: add a heading saying "Prices"');
+      const t = textOf(m[2]); if (t == null) inf.errs.push(quotesWanted(m[2], 'heading text', 'add a heading saying "Prices"', { 'big ': 'big headings', 'small ': 'small headings', '': 'headings' }[m[1].toLowerCase()]));
       const tag = { 'big ': 'h1', 'small ': 'h3', '': 'h2' }[m[1].toLowerCase()];
       note(inf, `${code('<' + tag + '>')} is a heading. Use one big heading (h1) per page; screen readers and search engines use headings to understand the page.`);
       return el(tag, { text: t || '', id: called(' ' + m[2]) });
     }
     if ((m = s.match(/^add\s+(?:a\s+)?paragraph(\s+.+|[.,;:].*)$/i))) {
-      const t = textOf(m[1]); if (t == null) inf.errs.push('Put the paragraph text in quotes, like: add a paragraph called intro saying "Hello"');
+      const t = textOf(m[1]); if (t == null) inf.errs.push(quotesWanted(m[1], 'paragraph text', 'add a paragraph called intro saying "Hello"', 'paragraphs'));
       return el('p', { text: t || '', id: called(' ' + m[1]) });
     }
     if ((m = s.match(/^add\s+text\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = textOf(m[2]); if (t == null) inf.errs.push('Put the text in quotes.'); return el('span', { text: t || '', id: nameOf(m[1]) }); }
@@ -1033,11 +1043,23 @@
       note(inf, `CSS has no colour called ${code(w)}, so this is ${code(gray(words[0]))}, a shade of ${words[1]}.`);
       return gray(words[0]);
     }
+    // a colour with other words before it ("colour #a9a9a9", "a nice white"): say which words to leave out
+    const said = v.split(/\s+/);
+    for (let k = 1; k < said.length && !NEAR[w]; k++) {
+      // ("red orange" is between two colours, not orange with a word too many)
+      if (said.slice(0, k).some(x => NAMED.has(x.toLowerCase()) || HUES.has(x.toLowerCase()))) break;
+      const end = said.slice(k).join(' ');
+      if (/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(end) || NAMED.has(end.toLowerCase().replace(/[\s-]+/g, ''))) {
+        inf.errs.push(`${code(v)} is the colour ${code(end)} with more words before it. Leave out ${code(said.slice(0, k).join(' '))}.`);
+        return v;
+      }
+    }
     // not a colour: the names CSS has with those words in them, if there are a few
     const pool = [...NAMED].filter(n => n !== 'transparent' && !/grey/.test(n)), has = (ws) => pool.filter(n => ws.every(x => n.includes(gray(x))));
     const both = words.length > 1 ? has(words) : [], last = has(words.slice(-1)), pick = both.length ? both : last.length <= 6 ? last : [];
     const near = NEAR[w] || (pick.length && pick.length <= 6 ? pick.join(', ') : null);
-    inf.errs.push(`I don't know the colour ${code(v)}.` + (near ? ` CSS has ${near}.` : '') + (/^[0-9a-f]{3,8}$/i.test(v) ? ` For a colour code, put # first: #${v}.` : ' Use a name like navy, or a code like #1a2b3c.'));
+    // (the advice fits what was written: a colour code without its #, or a word that isn't a colour)
+    inf.errs.push(`I don't know the colour ${code(v)}.` + (near ? ` CSS has ${near}.` : '') + (/^[0-9a-f]{3,8}$/i.test(v) ? ` For a colour code, put # first: ${code('#' + v)}.` : near ? '' : ' Use a name like navy, or a code like #1a2b3c.'));
     return v;
   }
   /* A size: a number (pixels), or a number and a unit: 20px, 50%, 2em. A unit said as a word is its CSS unit
@@ -1155,7 +1177,8 @@
         const cs = [m[2], ...m[3].split(/\s+through\s+/i).filter(s => s.trim()), m[4]].map(c => color(c.trim(), inf));
         out.push(['background', `linear-gradient(${m[1] ? m[1] + ', ' : ''}${cs.join(', ')})`]); continue;
       }
-      if ((m = part.match(/^(?:background|background colou?r)\s+(.+?)(?:\s+(\d+)%\s+(?:see-through|transparent))?$/i))) {
+      // ("background colour" before "background": tried the other way, "colour #a9a9a9" was taken as the colour)
+      if ((m = part.match(/^background(?:\s+colou?r)?\s+(.+?)(?:\s+(\d+)%\s+(?:see-through|transparent))?$/i))) {
         const pic = m[1].match(/^picture\s+(.+)$/i);
         if (pic) { out.push(['background-image', `url(${pic[1].trim()})`], ['background-size', 'cover']); continue; }
         const c = color(m[1], inf);
@@ -3160,7 +3183,7 @@
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
     readAttr, sayAttr, elementWord, wordTag: (w, svg) => (svg ? SVG_WORD_TAG : HTML_WORD_TAG).get(String(w).toLowerCase()) || null, splitAnd, splitItems, strOf, quoteText,
     addressFor: (t, kind) => address(t, kind).value,
-    cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf) };
+    cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf), COLOURS: [...NAMED] };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWeb = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -183,7 +183,7 @@ test('styling: a colour code without its #, and rgb without brackets', () => {
   assert.equal(css('style group a: background rgba 0, 0, 0, 0.5, text colour white').text, '.a {\n  background: rgba(0, 0, 0, 0.5);\n  color: white;\n}\n');
   assert.equal(decl('border 2 solid rgb 0 0 0').text, 'border: 2px solid rgb(0, 0, 0);');
   // a word made of the letters a to f isn't taken for a code
-  assert.match(decl('background bad').errs.join(' '), /I don't know the colour `bad`\. For a colour code, put # first: #bad\./);
+  assert.match(decl('background bad').errs.join(' '), /I don't know the colour `bad`\. For a colour code, put # first: `#bad`\./);
 });
 
 test('styling: a unit said as a word is its CSS unit, wherever a size goes', () => {
