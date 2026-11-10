@@ -36,6 +36,7 @@ const CASES = [
       '"max" is one of Arduino\'s own tools, so it can\'t be a name here. Try "my max" or "max value".']],
   ['the sketch\'s own parts as tools', 'arduino', 'define loop\n    wait 1 second\ndefine setup\n    wait 1 second', [],
     ['"loop" is the sketch\'s own "over and over" part: write that instead of "define loop".', '"setup" is the sketch\'s own "when the board starts" part: write that instead of "define setup".']],
+  ['… but not a name that is only a macro with brackets', 'arduino', 'set C to 20\nset F to C times 1.8 plus 32', [/^double F = C \* 1\.8 \+ 32;$/m]],
   ['… they are only Arduino\'s in a sketch', 'cpp', 'set delay to 3\nset HIGH to 4', [/int delay = 3;/, /int HIGH = 4;/]],
   // 3. thousands
   ['1,000 is 1000', 'cpp', 'set total to 1,000\nset big to 1,000,000\nif total is more than 1,500\n    show total', [/int total = 1000;/, /int big = 1000000;/, /if \(total > 1500\) \{/], [], 'C++ numbers have no commas, so 1,000 is written 1000.'],
