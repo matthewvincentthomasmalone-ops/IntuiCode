@@ -65,7 +65,8 @@
     for (let i = 0; i < s.length; i++) {
       const c = s[i];
       if (quote) { cur += c; if (c === '\\') cur += s[++i] || ''; else if (c === quote) quote = null; continue; }
-      if (c === '"' || c === "'") { quote = c; cur += c; continue; }
+      // (an apostrophe in a word, as in "the caller's", starts no quote)
+      if (c === '"' || (c === "'" && !/\w/.test(s[i - 1] || ''))) { quote = c; cur += c; continue; }
       if ('([{<'.includes(c) && !(c === '<' && /\s/.test(s[i + 1] || ''))) depth++;
       if (')]}>'.includes(c) && depth > 0 && !(c === '>' && /\s/.test(s[i - 1] || ''))) depth--;
       if (depth === 0 && c === ',') { parts.push(cur); cur = ''; continue; }
@@ -230,15 +231,50 @@
     return q;
   }
 
+  /* Is p one call of fn, brackets and all ("String(t)", not "String(a) + b")? */
+  function wholeCall(p, fn) {
+    if (!p.startsWith(fn + '(')) return false;
+    let depth = 0, q = null;
+    for (let i = fn.length; i < p.length; i++) {
+      const c = p[i];
+      if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+      if (c === '"' || c === "'") q = c;
+      else if (c === '(') depth++;
+      else if (c === ')' && --depth === 0) return i === p.length - 1;
+    }
+    return false;
+  }
+  // tools every board or program has without being defined in the sentences
+  const BUILT_IN = /^(?:abs|min|max|sqrt|pow|sq|sin|cos|tan|floor|ceil|round|random|randomSeed|millis|micros|analogRead|digitalRead|pulseIn|map|constrain|bitRead|bitSet|bitClear|bitWrite|highByte|lowByte|printf|rand|srand)$/;
+  /* A tool that isn't defined here: an error, unless the program includes files (the tool can come from one). */
+  function unknownTool(name, x, inf) {
+    if (/[.:>]/.test(name) || x.fns.has(name) || x.known.has(name) || x.classes.has(name) || BUILT_IN.test(name)) return;
+    if (x.headers) { const w = `${code(name)} isn't defined here, so it must come from an included file.`; if (!inf.warns.includes(w)) inf.warns.push(w); }
+    else inf.errs.push(`There's no tool called ${code(name)}. Make one with "define ${name} using …".`);
+  }
+
   function cppExpr(src, x, inf, cond = false) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return '0'; }
+    // "the result of area with 2, 3": what a tool gives back. It is the whole value, since "with …" runs to the end.
+    const res = qmatch(s, /^(?:the\s+)?result of\s+(self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*)(?:\s+with\s+(.+))?$/i);
+    if (res) {
+      const name = res[1].replace(/^self\./, 'this->');
+      unknownTool(res[1], x, inf);
+      return `${name}(${res[2] ? splitItems(res[2]).map(a => cppExpr(a, x, inf)).join(', ') : ''})`;
+    }
     const strs = [];
     // a .name or […] typed right after the text stays attached to it: "abc".size()
     let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     if (/'/.test(q.replace(/\b\w'\w/g, ''))) inf.warns.push("In C++, text goes in double quotes (\"like this\"). Single quotes are for one character.");
     // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
     const swap = (p, to) => { const re = R(p); if (p.endsWith('(OPD)')) for (const m of q.matchAll(re)) looseBrackets(m, q, strs, inf); q = q.replace(re, to); };
+    // "the result of a.rows" inside a value: a tool's result with no inputs (with inputs, only as the whole value)
+    q = q.replace(/\b(?:the\s+)?result of\s+(self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*)(\s+with\b)?/gi, (m, name, w) => {
+      if (w) { const e = '"the result of … with …" only works as the whole value. Store the result in a name first, then use the name.'; if (!inf.errs.includes(e)) inf.errs.push(e); return m; }
+      unknownTool(name, x, inf);
+      return `${name.replace(/^self\./, 'this->')}()`;
+    });
     q = q.replace(/\bself\s*\.\s*/g, 'this->');
     q = q.replace(/\bthe\b/gi, ' ');
     if (x.arduino) {
@@ -339,8 +375,10 @@
       }
       if (text) parts.push('"' + text + '"');
       if (x.arduino) {
-        note(inf, 'Text with {…} inside is joined with `+`. Starting with `String(…)` makes the joining work on Arduino. (A brace itself is written twice: {{ or }}.)');
-        return parts.map((p, k) => (k === 0 ? `String(${p})` : p)).join(' + ');
+        // "Temp: {t as text}": text, then a value already made into text, joins as it is ("Temp: " + String(t))
+        const wrap = !(parts.length > 1 && /^"/.test(parts[0]) && wholeCall(parts[1], 'String'));
+        note(inf, 'Text with {…} inside is joined with `+`.' + (wrap ? ' Starting with `String(…)` makes the joining work on Arduino.' : '') + ' (A brace itself is written twice: {{ or }}.)');
+        return parts.map((p, k) => (k === 0 && wrap ? `String(${p})` : p)).join(' + ');
       }
       x.needs.add('text');
       note(inf, 'Text with {…} inside is built by a small helper, `text(…)`, added at the top: it joins the pieces and the values into one std::string. (A brace itself is written twice: {{ or }}.)');
@@ -367,6 +405,13 @@
     }
     return p;
   }
+
+  /* The small helpers the translator adds above main when the sentences need them. (The converter knows them
+     too: a program that has them, as the translator writes them, gets them from the sentences again.) */
+  const HELPERS = {
+    random: ['int random_number(int low, int high) {', '    static std::mt19937 generator(std::random_device{}());', '    return std::uniform_int_distribution<int>(low, high)(generator);', '}'],
+    text: ['template <typename... Parts>', 'std::string text(const Parts&... parts) {', '    std::ostringstream out;', '    (out << ... << parts);', '    return out.str();', '}'],
+  };
 
   /* Does the block under line i give back a value? (Arduino tools need a result type.) */
   function blockGivesBack(lines, i) {
@@ -401,6 +446,8 @@
       else if ((m = s.match(/^define\s+([A-Za-z_]\w*)/i))) x.fns.add(m[1]);
       if ((m = s.match(/^let\s+([A-Za-z_]\w*)\s+stand for\s/i))) x.known.add(m[1]);
       if (/^start (?:the serial monitor|talking to the computer)|Serial\.begin/i.test(s)) serialStarted = true;
+      // a file included beyond the ones the translator adds itself: tools can come from it
+      if ((m = s.match(/^(?:(?:include|use the library)\s+|(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:\s*#\s*include\s*)(<[^>]+>|"[^"]+"|[\w./]+)/i)) && (A || !/^<?(?:iostream|string|vector|random|sstream|cstdlib|algorithm|cstdio)>?$/.test(m[1]))) x.headers = true;
       if ((m = s.match(/^(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:(.*)$/i))) {   // names made in raw C++
         for (const d of m[1].matchAll(/\b(?:class|struct)\s+([A-Za-z_]\w*)/g)) { x.classes.add(d[1]); x.known.add(d[1]); }
         for (const d of m[1].matchAll(/^\s*(?:(?:const|static|unsigned|constexpr|inline)\s+)*[A-Za-z_][\w:<>,]*[\s&*]+([A-Za-z_]\w*)\s*(?:=|;|\(|\[|\{)/g)) x.known.add(d[1]);
@@ -837,8 +884,10 @@
         return say(`${A ? 'Serial.printf' : 'printf'}(${m[1]}, ${splitItems(m[2]).map(v => E(v, inf)).join(', ')});`);
       }
       // a screen or another object that prints: "show "Hi" on lcd" (lcd.print), "…, then start a new line" (println)
+      // "show the result of f with a, b": one value (the inputs aren't more things to show)
+      const oneResult = (v) => /^(?:the\s+)?result of\s/i.test(v.trim()) && splitPhrase(v, /\s+followed by\s+/i).length === 1;
       if ((m = M(/^show\s+(.+?)\s+on\s+([A-Za-z_]\w*)(,?\s+then start a new line)?$/i))) {
-        const items = splitItems(m[1]);
+        const items = oneResult(m[1]) ? [m[1]] : splitItems(m[1]);
         if (items.length > 1 && items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')))) inf.errs.push(`Show one thing at a time on ${m[2]}: one "show … on ${m[2]}" for each.`);
         note(inf, `\`${m[2]}.${m[3] ? 'println' : 'print'}\` shows the value on ${code(m[2])}` + (m[3] ? ', then moves to a new line.' : '.'));
         return say(`${m[2]}.${m[3] ? 'println' : 'print'}(${E(m[1], inf)});`);
@@ -858,7 +907,7 @@
       if ((m = M(/^show\s+(.+?)(\s+on the same line|\s+without ending the line)?$/i))) {
         const joined = splitPhrase(m[1], /\s+followed by\s+/i);
         // "show a is 1 and b is 2" is one test: "and" only separates plain values
-        const items = splitItems(m[1]);
+        const items = oneResult(m[1]) ? [m[1]] : splitItems(m[1]);
         const plainOnly = items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')));
         const pieces = joined.length > 1 ? joined.map(v => E(v, inf)) : (plainOnly ? items : splitItems(m[1], false)).map(v => E(v, inf));
         const gap = joined.length > 1 ? '' : ' ';
@@ -957,7 +1006,7 @@
       if ((m = M(/^run\s+([A-Za-z_][\w.:>-]*)(?:\s+with\s+(.+?))?(?:\s+and store (?:it |the result )?in\s+([A-Za-z_]\w*))?$/i))) {
         const name = m[1].replace(/^self\./, 'this->');
         const call = `${name}(${m[2] ? splitItems(m[2]).map(v => E(v, inf)).join(', ') : ''})`;
-        if (!x.fns.has(m[1]) && !/[.:>]/.test(m[1]) && !x.known.has(m[1])) inf.errs.push(`There's no tool called ${code(m[1])}. Make one with "define ${m[1]} using …".`);
+        unknownTool(m[1], x, inf);
         return say(m[3] ? declare(m[3], 'auto', inf, call) : call + ';');
       }
       // one item of a list: "set item 0 of scores to 5", "set the last item of scores to 0"
@@ -1019,12 +1068,8 @@
     for (const inc of includes) if (!auto.has(inc.h)) hdr(`#include ${inc.h}`, null, inc.src);
     if (usingStd != null) hdr('using namespace std;', null, usingStd);
     if (all.length) hdr('', null);
-    if (x.needs.has('random')) {
-      ['int random_number(int low, int high) {', '    static std::mt19937 generator(std::random_device{}());', '    return std::uniform_int_distribution<int>(low, high)(generator);', '}', ''].forEach(t => hdr(t, 'A helper for "random number from … to …": picks a whole number between low and high, both included.'));
-    }
-    if (x.needs.has('text')) {
-      ['template <typename... Parts>', 'std::string text(const Parts&... parts) {', '    std::ostringstream out;', '    (out << ... << parts);', '    return out.str();', '}', ''].forEach(t => hdr(t, 'A helper for text with {…} in it: joins the pieces and values into one std::string.'));
-    }
+    if (x.needs.has('random')) [...HELPERS.random, ''].forEach(t => hdr(t, 'A helper for "random number from … to …": picks a whole number between low and high, both included.'));
+    if (x.needs.has('text')) [...HELPERS.text, ''].forEach(t => hdr(t, 'A helper for text with {…} in it: joins the pieces and values into one std::string.'));
     while (topOut.length && topOut[0].text === '') topOut.shift();
     if (topOut.length) { topOut.forEach(o => all.push(o)); if (!A) all.push({ text: '', src: -1 }); }
     while (mainOut.length && mainOut[0].text.trim() === '') mainOut.shift();
@@ -1146,7 +1191,7 @@
   const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name']];
   const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board|it is |it's )|over and over|again and again|at the start|depending on |do this)/i;
 
-  const api = { compileCppProject, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };
+  const api = { compileCppProject, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiCpp = api;
 })(typeof window !== 'undefined' ? window : globalThis);

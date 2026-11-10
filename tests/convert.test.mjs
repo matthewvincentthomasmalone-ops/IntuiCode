@@ -80,8 +80,8 @@ test('code -> sentences: the sentences read naturally', () => {
   const cpp = convert('cpp', read('tests/corpus_web/scores.cpp')).text;
   assert.match(cpp, /^define class Student\n    field name: text\n    field score: whole number = 0$/m);
   assert.match(cpp, /^    when made using text name, whole number score\n        set self\.name to name$/m);
-  assert.match(cpp, /^show ada\.name followed by " got " followed by ada\.grade\(\)$/m);
-  assert.match(cpp, /^set decimal avg to average\(all\)$/m);
+  assert.match(cpp, /^show ada\.name followed by " got " followed by the result of ada\.grade$/m);
+  assert.match(cpp, /^set decimal avg to the result of average with all$/m);
   const ino = convert('arduino', read('tests/corpus_web/button_led.ino')).text;
   assert.match(ino, /^when the board starts\n    make pin BUTTON an input with pull-up$/m);
   assert.match(ino, /^    if pin BUTTON is off$/m);
@@ -226,7 +226,7 @@ test('code -> sentences: an Arduino sketch reads as plain sentences, with no c++
     /^    set item slot of history to level$/m,
     /^    show "Level: " followed by level followed by " Distance: " followed by cm$/m,
     /^    clear lcd\n    move lcd's cursor to 0, 0\n    show level on lcd$/m,
-    /^    repeat 4 times, counting with i\n        show history\[i\] followed by " " on the same line\n    end the line$/m,
+    /^    repeat 4 times, counting with i\n        show item i of history followed by " " on the same line\n    end the line$/m,
   ]) assert.match(r.text, re);
 });
 
