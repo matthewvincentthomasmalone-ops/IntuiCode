@@ -189,6 +189,8 @@
     let m;
     const one = (n, v) => (v == null ? null : [[n, v]]);
     if (/^with no space before it$/i.test(s)) return { glued: true };
+    // "with id main display": an id of several words, without quotes, is those words joined (main-display)
+    if ((m = s.match(/^with (?:the )?id\s+([a-z][\w-]*(?:\s+[\w-]+)+)$/i))) return [['id', toId(m[1])]];
     if (/^hidden from screen readers$/i.test(s)) return [['aria-hidden', 'true']];
     if ((m = s.match(/^labell?ed\s+(.+?)\s+for screen readers$/i))) return one('aria-label', strOf(m[1]));
     if ((m = s.match(/^labell?ed by\s+(.+)$/i))) return one('aria-labelledby', namesOf(m[1]));
@@ -591,14 +593,16 @@
       el.attrs = { ...(el.attrs || {}) };
       for (const [k, v] of attrs) {
         if (v == null) delete el.attrs[k];
-        else if (k === 'id' && !el.id) el.id = v;
-        else { delete el.attrs[k]; el.attrs[k] = v; }
+        else if (k === 'id' && !el.id) {
+          // an id can't have spaces in a page: "main display" is main-display, as "called main display" is
+          el.id = /\s/.test(v.trim()) ? toId(v) : v;
+          if (el.id !== v) note(inf, `An id can't have spaces in a page, so ${code(v)} is ${code(el.id)}. Styling and Mechanics can call it ${v.trim()} or ${el.id}.`);
+        } else { delete el.attrs[k]; el.attrs[k] = v; }
         if (k === 'type') el.typeSaid = true;
         if (k === 'alt' && v == null) inf.warns = inf.warns.filter(w => !/described as/.test(w));
       }
       // a name given after a comma ("with id …") is a name too
       if (el.id) inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
-      if (el.id && /\s/.test(el.id)) inf.warns.push(`An id with a space isn't valid in a page (links to it break). Write "called ${el.id.trim().split(/\s+/).slice(0, 2).join(' ')}" instead: it becomes ${code(toId(el.id))}.`);
       if (el.tag && !VOID_TAGS.has(el.tag) && !/^(?:textarea|select)$/.test(el.tag) && !el.container && !el.children) el.container = true;   // anything can hold other things
     }
     if (glued) el.glued = true;

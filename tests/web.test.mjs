@@ -559,12 +559,17 @@ test('structure: text said with saying, says, reads or "with the text", after a 
   assert.deepEqual(p('add text saying "hi"'), [[], '<span>hi</span>']);
 });
 
-test('structure: a name given as "with id" counts, and a name with a space is flagged', () => {
+test('structure: a name given as "with id" counts, and an id with spaces becomes one a page can use', () => {
   const r = site('add a button saying "Next", with id quote');
   assert.deepEqual(plain(r.results.structure.info[0].warns), []);
   assert.match(r.results.structure.text, /<button id="quote" type="button">Next<\/button>/);
-  const spaced = site('add a block, with id "main display"');
-  assert.match(plain(spaced.results.structure.info[0].warns).join(' '), /space isn't valid.*main-display/);
+  for (const line of ['add a block, with id "main display"', 'add a block, with id main display']) {
+    const spaced = site(line, 'set main display background to navy', 'hide "main display"');
+    assert.deepEqual(plain(spaced.results.structure.info[0].warns), [], line);
+    assert.match(spaced.results.structure.text, /<div id="main-display"><\/div>/, line);
+    assert.match(spaced.results.styling.text, /^#main-display \{/m, line);
+    assert.match(spaced.results.mechanics.text, /getElementById\("main-display"\)/, line);
+  }
 });
 
 test('styling: by the text something shows, which names it in the page', () => {
