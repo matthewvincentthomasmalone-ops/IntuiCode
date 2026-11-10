@@ -33,6 +33,15 @@ Tick each one. If something is off, note what you did and what the terminal said
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
 
+**Saving, Backups and closing**
+- [ ] With no folder yet, the header shows no folder name; after Save it shows the folder's name.
+- [ ] Change a sentence and close the window: "Save before closing?". Cancel keeps it open; Save saves (asking for a
+      folder the first time), then closes; Don't save closes. Without changes since the last Save it just closes.
+- [ ] Work for a few minutes, then **File → Backups…**: copies 2 minutes apart, newest first, each with its project's
+      name and file count. Restore one: it opens, and a copy of what was open is now at the top (Restore that to undo).
+- [ ] In a browser: Ctrl+S downloads `<project>.zip`; Import code → Open a .zip opens it as it was. Change something and
+      reload: the browser asks before leaving.
+
 **Planning and Project Templates**
 - [ ] **Project Templates**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
       top show only those. A kit's **Choose its steps…** opens planning at that kit; **Plan one ›** at its kind.

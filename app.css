@@ -1454,3 +1454,4 @@ details.pg > summary .count { margin-left: auto; }
 .bk-what small { flex: none; font-size: 12px; color: var(--ink-3); }
 .bk-none { padding: 4px 8px; font-size: 13px; color: var(--ink-3); }
 .close-actions { justify-content: flex-end; }
+#closeModal { z-index: 70; }   /* over any other dialog, menu or tip that's open */

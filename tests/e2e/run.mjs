@@ -516,6 +516,16 @@ try {
     if (await listed('private.py')) throw new Error('a pretend drop read a folder the page may not');
   });
 
+  // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the
+  // close (so the tests can end the app): this is the page's side, asked as the desktop layer asks it.
+  await check('closing with changes not saved asks first; Cancel keeps the window', async () => {
+    await setSentences('show "not saved yet"');
+    await js(() => { window.__TAURI__.event.emit('ask-to-close'); return true; });
+    await waitFor('the question', inPage(() => !document.getElementById('closeModal').hidden && document.getElementById('closeTitle').textContent === 'Save before closing?'), 10000);
+    await click('closeCancel');
+    if (!(await js(() => document.getElementById('closeModal').hidden))) throw new Error('Cancel left the question open');
+  });
+
   // (last: it ends the app)
   if (process.platform === 'linux') await check('ending the app ends the programs it started', async () => {
     const marker = `sleep ${4000 + process.pid % 1000}.5`;   // a command line to find it by
