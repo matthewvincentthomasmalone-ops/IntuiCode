@@ -1196,16 +1196,112 @@
     }
   }
 
+  /* s with quoted text and everything inside brackets hidden (the same length), so a phrase is only found at
+     the top level of a value. */
+  function topMask(s) {
+    const q = String(s).replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (m) => '\u0001'.repeat(m.length));
+    let out = '', depth = 0;
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i];
+      if ('([{⟦'.includes(c)) { out += depth ? '\u0001' : c; depth++; continue; }
+      if (')]}⟧'.includes(c)) { depth = Math.max(0, depth - 1); out += depth ? '\u0001' : c; continue; }
+      out += depth ? '\u0001' : c;
+    }
+    return out;
+  }
+  /* The first match of re in s at the top level: { at, end } (indexes into s), or null. */
+  const topFind = (s, re, from = 0) => { const m = re.exec(topMask(s).slice(from)); return m ? { at: from + m.index, end: from + m.index + m[0].length } : null; };
+  const JS_NAME = String.raw`[A-Za-z_$][\w$]*`, JS_PATH = String.raw`${JS_NAME}(?:\.${JS_NAME})*`;
+
+  /* Phrases that take a whole value, as Python's do: "the result of f with a, b", "a new Date", "a if c otherwise
+     b", "a list of x times 2 for each x in xs if x is more than 1", "x is done for every x in xs", "the first x in
+     xs where …", and "wait for" before any of them. In brackets they work inside a bigger value too (see
+     wholeGroups). Gives back the JavaScript, or null when s isn't one. */
+  function jsWhole(s, x, inf) {
+    s = String(s).trim();
+    let m, f;
+    const sub = (t, names = []) => {   // a part, with the little function's input as a name inside it
+      const added = names.filter(n => !x.vars.has(n));
+      added.forEach(n => x.vars.add(n));
+      try { return jsExpr(t, x, inf); } finally { added.forEach(n => x.vars.delete(n)); }
+    };
+    const body = (t, p) => { const v = sub(t, [p]); return /^\{/.test(v) ? `(${v})` : v; };   // (a record given back needs brackets)
+    const args = (t) => (t ? splitAnd(t).map(a => jsExpr(a, x, inf)).join(', ') : '');
+    if ((m = s.match(/^wait for\s+(.+)$/i))) { const w = jsWhole(m[1], x, inf); return w == null ? null : `await ${w}`; }
+    // a list made from another, item by item: .map, and .filter for "if"
+    if ((m = s.match(/^a list of\s+/i)) && (f = topFind(s, /\s+for each\s+/i, m[0].length))) {
+      const e = s.slice(m[0].length, f.at), rest = s.slice(f.end), pm = rest.match(new RegExp(`^(${JS_NAME})\\s+in\\s+`, 'i'));
+      if (!pm || !e.trim()) return null;
+      const p = pm[1], tail = rest.slice(pm[0].length), c = topFind(tail, /\s+if\s+/i);
+      const list = jsExpr(c ? tail.slice(0, c.at) : tail, x, inf), cond = c ? body(tail.slice(c.end), p) : null;
+      const kept = cond ? `${list}.filter(${p} => ${cond})` : list;
+      note(inf, cond ? '`.filter` keeps the items the test is true for' + (e.trim() === p ? '.' : '; `.map` then makes a new list from each of them.') : '`.map` makes a new list, one value for each item.');
+      return e.trim() === p && cond ? kept : `${kept}.map(${p} => ${body(e, p)})`;
+    }
+    // a test of every item, or any item
+    if ((f = topFind(s, new RegExp(`\\s+for (every|any)\\s+(${JS_NAME})\\s+in\\s+`, 'i')))) {
+      const [, which, p] = s.slice(f.at, f.end).trim().match(new RegExp(`^for (every|any)\\s+(${JS_NAME})`, 'i'));
+      note(inf, /^every$/i.test(which) ? '`.every` is true when the test is true for every item.' : '`.some` is true when the test is true for at least one item.');
+      return `${jsExpr(s.slice(f.end), x, inf)}.${/^every$/i.test(which) ? 'every' : 'some'}(${p} => ${body(s.slice(0, f.at), p)})`;
+    }
+    if ((m = s.match(new RegExp(`^the first (${JS_NAME}) (?:in|of)\\s+`, 'i'))) && (f = topFind(s, /\s+where\s+/i, m[0].length))) {
+      note(inf, '`.find` gives back the first item the test is true for (`undefined` if there is none).');
+      return `${jsExpr(s.slice(m[0].length, f.at), x, inf)}.find(${m[1]} => ${body(s.slice(f.end), m[1])})`;
+    }
+    // "a if c otherwise b"
+    if ((f = topFind(s, /\s+if\s+/i))) {
+      const o = topFind(s, /\s+otherwise\s+/i, f.end);
+      if (o) {
+        note(inf, '`c ? a : b` is a if c is true, b otherwise.');
+        const was = x.cond; x.cond = true;
+        let c; try { c = jsExpr(s.slice(f.end, o.at), x, inf); } finally { x.cond = was; }
+        return `${c} ? ${jsExpr(s.slice(0, f.at), x, inf)} : ${jsExpr(s.slice(o.end), x, inf)}`;
+      }
+    }
+    if ((m = s.match(new RegExp(`^(?:the )?(?:result|answer) of (${JS_PATH})(?:\\s+with\\s+(.+))?$`, 'i')))) return `${jsExpr(m[1], x, inf)}(${args(m[2])})`;
+    if ((m = s.match(new RegExp(`^an? new (${JS_PATH})(?:\\s+with\\s+(.+))?$`, 'i'))) && !(/^[a-z]/.test(m[1]) && MAKE_NEW.test('make ' + s))) {   // ("a new button" is an element: make-new)
+      note(inf, `\`new\` makes a new ${code(m[1])} object.`);
+      return `new ${m[1]}(${args(m[2])})`;
+    }
+    return null;
+  }
+  /* Bracketed parts of a value that hold a whole-value phrase ("(the result of f with x) plus 1") become one
+     operand, ⟦n⟧, holding their JavaScript. q has its quoted text as ⟦n⟧ already. */
+  function wholeGroups(q, strs, x, inf) {
+    let out = '';
+    for (let i = 0; i < q.length; i++) {
+      if (q[i] === '(') {
+        let depth = 0, end = -1;
+        for (let k = i; k < q.length; k++) { if (q[k] === '(') depth++; else if (q[k] === ')' && --depth === 0) { end = k; break; } }
+        if (end > 0) {
+          const inner = q.slice(i + 1, end).replace(/⟦(\d+)⟧/g, (mm, n) => strs[+n]);
+          const js = /\s/.test(inner.trim()) ? jsWhole(inner, x, inf) : null;
+          // (a call needs no brackets of its own: f(x) + 1, new Date().getTime())
+          if (js != null) { strs.push(/^(?:the\s+)?(?:result|answer) of\s|^an? new\s/i.test(inner.trim()) ? js : `(${js})`); out += ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(q.slice(end + 1)) ? '' : ' '); i = end; continue; }
+        }
+      }
+      out += q[i];
+    }
+    return out;
+  }
+
   function jsExpr(src, x, inf) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return 'null'; }
+    const whole = jsWhole(s, x, inf);
+    if (whole != null) return whole;
     // text in quotes, and regular expressions like /  +/g (a / where a value starts), are kept exactly as written;
     // a .name or […] typed right after one stays attached to it: "abc".length
     const strs = [];
     let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^])\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    q = wholeGroups(q, strs, x, inf);
     // An operand: quoted text, a number or a name (a page element's may have dashes), then any .names, calls and
     // indexes, with brackets inside brackets (see PAREN).
     const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|${nameSource(x)})(?:\.[\w$]+|${PAREN}|${SQUARE})*`;
+    // An operand, or a sum in brackets, but never a sentence word ("plus trimmed" is no name)
+    const OPX = String.raw`(?<![\w$.])(?!(?:plus|minus|times|divided|mod|and|or|not|is|if|otherwise|to|by|at)\b)(?:${PAREN}|${OPD})`;
+    const RX = (p) => new RegExp(p.replace(/OPX/g, () => OPX).replace(/OPD/g, () => OPD), 'gi');
+    const unwrap = (a) => (/^\(/.test(a) ? a.slice(1, -1).trim() : a);   // a bracketed sum, as a call's input
     // A phrase that starts with an operand ("x as text") never starts partway through one (after a .).
     const R = (p) => new RegExp(p.replace(/^\(OPD\)/, '(?<![\\w$.])(OPD)').replace(/OPD/g, () => OPD), 'gi');
     // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
@@ -1225,8 +1321,19 @@
     const byId = (id) => { strs.push(`"${toId(id)}"`); return `document.getElementById(⟦${strs.length - 1}⟧)`; };
     // "the element matching "#sales tbody"", "every element matching ".card"": the page's elements by a CSS selector
     q = q.replace(/\b(every\s+)?element matching\s+⟦(\d+)⟧/gi, (m, every, n) => { note(inf, `${code(every ? 'querySelectorAll' : 'querySelector')} finds ${every ? 'every element' : 'the first element'} that the CSS selector ${code(strs[+n])} picks.`); return `document.querySelector${every ? 'All' : ''}(⟦${n}⟧)`; });
+    // "the element called "total"": an element by its id, as written (for one Structure doesn't name)
+    q = q.replace(/\belement called\s+⟦(\d+)⟧/gi, (m, n) => (/^["']/.test(strs[+n]) ? `document.getElementById(⟦${n}⟧)` : m));
+    // "a new "li" element": a new element of that tag, not on the page yet
+    q = q.replace(/\ban? new\s+⟦(\d+)⟧\s+element\b/gi, (m, n) => { if (!/^["']/.test(strs[+n])) return m; note(inf, `\`document.createElement\` makes a new ${code('<' + strOf(strs[+n]) + '>')} element; it isn't on the page until it is put somewhere.`); return `document.createElement(⟦${n}⟧)`; });
+    q = q.replace(/\bpage title\b/gi, 'document.title');
+    // the browser's memory, and the server's reply (both need the block to wait: see needsAsync)
+    q = q.replace(RX(String.raw`\btext saved in browser as (OPX)`), (m, k) => { note(inf, '`localStorage.getItem` gives back the text saved under that name in this browser, or `null` if there is none.'); return `localStorage.getItem(${unwrap(k)})`; });
+    q = q.replace(RX(String.raw`\breply from (OPX)`), (m, u) => { note(inf, '`fetch` asks the server, and `await` waits for its reply (a Response) without freezing the page.'); return `await fetch(${unwrap(u)})`; });
+    q = q.replace(RX(String.raw`\b(JSON|text) read from (OPX)`), (m, w, r) => { note(inf, `\`.${w === 'JSON' ? 'json' : 'text'}()\` reads the reply's body${w === 'JSON' ? ' as JSON, into values JavaScript can use' : ' as text'}; \`await\` waits for it.`); return `await ${r}.${w === 'JSON' ? 'json' : 'text'}()`; });
     q = q.replace(R(String.raw`\b(width|height) of ([\w-]+)`), (m, wh, id) => (x.shared.ids[toId(id)] ? `${byId(id)}.${wh.toLowerCase()}` : m));
-    q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `${byId(id)}.${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : m; });
+    // "text of x": a page element's text (what was typed, for a box); "value of x", "text of x" for a name holding one
+    q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `${byId(id)}.${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : holdsElement(id, x) ? `${id}.textContent` : m; });
+    q = q.replace(R(String.raw`\bvalue of (${JS_NAME})`), (m, id) => (!x.shared.ids[toId(id)] && holdsElement(id, x) ? `${id}.value` : m));
     // what was picked in a file picker
     q = q.replace(R(String.raw`\b(?:(first )?file|files) (?:in|of|from|picked in) ([\w-]+)`), (m, one, id) => ((x.shared.ids[toId(id)] || {}).type === 'file' ? `${byId(id)}.files${m.startsWith('files') ? '' : '[0]'}` : m));
     // items, innermost first: "item c of item r of grid" is grid[r][c]
@@ -1247,7 +1354,8 @@
     q = randomRange(q, OPD, strs, inf, s);
     swap(String.raw`\brandom item (?:from|of|in) (OPD)`, '$1[Math.floor(Math.random() * $1.length)]');
     // words that follow their value: right after a sum they could mean the last value or the whole sum
-    for (const p of [String.raw`(OPD) as (?:a )?number\b`, String.raw`(OPD) as text\b`, String.raw`(OPD) in (?:capitals|uppercase)\b`, String.raw`(OPD) in lowercase\b`]) {
+    for (const p of [String.raw`(OPD) as (?:a )?number\b`, String.raw`(OPD) as text\b`, String.raw`(OPD) in (?:capitals|uppercase)\b`, String.raw`(OPD) in lowercase\b`,
+      String.raw`(OPD) read as JSON\b`, String.raw`(OPD) as JSON text\b`, String.raw`(OPD) joined by\b`, String.raw`(OPD) to (?:OPD) decimal places\b`, String.raw`(OPD) trimmed\b`, String.raw`(OPD) split at\b`, String.raw`(OPD) rounded(?: up| down)?\b`]) {
       for (const m of q.matchAll(R(p))) {
         const before = q.slice(0, m.index);
         if (!/(?:\b(?:plus|minus|times|divided by|mod)|[-+*/%])\s*$/i.test(before)) continue;
@@ -1258,6 +1366,13 @@
     }
     q = q.replace(R(String.raw`(OPD) as (?:a )?number\b`), 'Number($1)').replace(R(String.raw`(OPD) as text\b`), 'String($1)');
     q = q.replace(R(String.raw`(OPD) in (?:capitals|uppercase)\b`), '$1.toUpperCase()').replace(R(String.raw`(OPD) in lowercase\b`), '$1.toLowerCase()');
+    // text and lists: "s trimmed", "s split at ",", "xs joined by ", "", "n to 2 decimal places", JSON
+    q = q.replace(RX(String.raw`(OPX) trimmed\b`), '$1.trim()').replace(RX(String.raw`(OPX) split at (OPX)`), (m, a, b) => `${a}.split(${unwrap(b)})`);
+    q = q.replace(RX(String.raw`(OPX) joined by (OPX)`), (m, a, b) => { note(inf, '`.join` puts the items together as one text, with the separator between them.'); return `${a}.join(${unwrap(b)})`; });
+    q = q.replace(RX(String.raw`(OPX) to (OPX) decimal places\b`), (m, a, n) => { note(inf, '`.toFixed` gives the number as text, rounded to that many decimal places.'); return `${a}.toFixed(${unwrap(n)})`; });
+    q = q.replace(RX(String.raw`(OPX) read as JSON\b`), (m, a) => { note(inf, '`JSON.parse` turns JSON text back into values.'); return `JSON.parse(${unwrap(a)})`; })
+      .replace(RX(String.raw`(OPX) as JSON text\b`), (m, a) => { note(inf, '`JSON.stringify` turns a value into JSON text.'); return `JSON.stringify(${unwrap(a)})`; });
+    q = q.replace(RX(String.raw`(OPX) rounded( up| down)?\b`), (m, a, way) => `Math.${!way ? 'round' : /up/.test(way) ? 'ceil' : 'floor'}(${unwrap(a)})`);
     // a checkbox, and an element's groups
     q = q.replace(R(String.raw`(OPD) is not (?:ticked|checked)\b`), '!$1.checked').replace(R(String.raw`(OPD) is (?:ticked|checked)\b`), (m, a) => { note(inf, '`.checked` is true while a checkbox is ticked.'); return `${a}.checked`; });
     q = q.replace(R(String.raw`(OPD) is not in group ([\w-]+)`), (m, a, g) => `!${a}.classList.contains(${quoted(toId(g))})`)
@@ -1329,6 +1444,9 @@
     if (x.made.has(raw)) return { js: raw, id: raw, tag: x.made.get(raw), made: true };
     const el = x.shared.ids[id];
     if (el) return { js: `document.getElementById("${id}")`, id, tag: el.tag };
+    // "the element called "add"", "the element matching ".go"": found on the page as the code runs
+    if (/^(?:the\s+)?element (?:called|matching)\s+(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i.test(raw)) return { js: jsExpr(raw, x, inf), id: raw, tag: null };
+    if (/^the (?:page|document)$/i.test(raw)) return { js: 'document', id: 'the page', tag: null };
     const v = holdsElement(raw, x);
     if (v) return { js: v[2] === raw ? raw : jsExpr(raw, x, inf), id: raw, tag: null };
     inf.errs.push(`Nothing in Structure is called ${code(id)}. Add it there first, e.g. "add a button called ${id} saying "…"", or make it in Mechanics: "make a new button saying "…" in … and store in ${/^[A-Za-z_$][\w$]*$/.test(raw) ? raw : 'b'}".`);
@@ -1367,6 +1485,9 @@
       if ((m = s.match(/^when\s+.+?,?\s+with the event as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^load (?:the |a )?(?:picture|image)\s+.+?\s+(?:as|called)\s+([A-Za-z_$][\w$]*)$/i))) { x.vars.add(m[1]); x.pictures = (x.pictures || new Set()).add(m[1]); }
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }   // (greeting = "hi": the name is greeting)
+      if ((m = s.match(/^when (?:a )?new\s+[A-Za-z_$][\w$]*\s+is (?:made|created)\s+(?:with|using)\s+(.+)$/i))) m[1].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, '')));
+      if ((m = s.match(/^define (?:a )?class\s+([A-Za-z_$][\w$]*)/i))) x.vars.add(m[1]);
+      if ((m = s.match(/^bring in\s+(.+?)\s+from\s+["']/i))) m[1].split(/\s*,\s*|\s+and\s+/).forEach(n => x.vars.add(n.trim()));
       if ((m = s.match(MAKE_NEW)) && (m = m[2].match(/\band store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) x.made.set(m[1], MADE[s.match(MAKE_NEW)[1].toLowerCase().replace(/\s+/g, ' ')]);
       if ((m = s.match(/^(every|after)\s+.+?\s+seconds?\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) { x.vars.add(m[2]); x.timers.set(m[2], /^every$/i.test(m[1]) ? 'Interval' : 'Timeout'); }
       if ((m = s.match(/^(?:if|when) (?:it|that|this|anything|something) fails\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
@@ -1435,7 +1556,7 @@
         if (inner != null) continue;
         if (/\b(fetch|send .+ to)\b/i.test(lines[j])) return true;
         if (/^\s*(?:note|comment)\s*:/i.test(lines[j])) continue;
-        if (/\bwait for\b/i.test(lines[j].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'))) return true;
+        if (/\bwait for\b|\breply from\b|\b(?:JSON|text) read from\b/i.test(lines[j].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'))) return true;
         const r = lines[j].trim().replace(FILLER, '').match(/^run\s+([A-Za-z_$][\w$]*)(?=\s|$)/i);
         if (r && x.fns.has(r[1]) && !/\swithout waiting(?:\s|$)/i.test(lines[j]) && fnIsAsync(r[1], seen)) return true;
         // exact code that waits (await) needs it too, unless it makes a function of its own there
@@ -1459,7 +1580,10 @@
       return idx >= 0 && needsAsync(idx, new Set([...seen, name]));
     };
     const insideFn = () => stack.some(b => b.kind === 'fn');
-    const FAILS = /^(?:if|when) (?:it|that|this|anything|something) fails\b/i, FINALLY = /^(?:finally|in any case|either way|whatever happens)[.:]?$/i;
+    // a case of "depending on" ends with break, unless its last step leaves anyway or it goes on into the next case
+    const closeOf = (b) => [].concat(typeof b.close === 'function' ? b.close() : b.close);
+    const caseEnd = (b) => () => { const last = out[out.length - 1]; return b.fall || (last !== b.head && /^\s*(?:return\b|break;|continue;|throw\b)/.test(last.text)) ? [] : ['  break;']; };
+    const FAILS =/^(?:if|when) (?:it|that|this|anything|something) fails\b/i, FINALLY = /^(?:finally|in any case|either way|whatever happens)[.:]?$/i;
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) { push('', i); return; }
@@ -1472,7 +1596,7 @@
         if (nextIsElse) { stack.push(b); for (const n of scopes[scopes.length - 1].keys()) x.gone.add(n); scopes[scopes.length - 1] = new Map(); break; }
         for (const n of scopes.pop().keys()) x.gone.add(n);
         while (out.length && out[out.length - 1].text === '') out.pop();
-        for (const c of [].concat(b.close)) push('  '.repeat(stack.length) + c, b.src);
+        for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src);
       }
       const pad = '  '.repeat(stack.length);
       const open = (head, close, kind, extra = {}) => { push(pad + head, i); stack.push({ ind, close, kind, src: i, head: out[out.length - 1], ...extra }); scopes.push(new Map()); };
@@ -1584,17 +1708,35 @@
         return say(`clear${kind || 'Interval'}(${m[1]});`);
       }
       // --- the page
-      if ((m = M(/^get the (?:text|value) (?:of|in|from)\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
-        const el = elementRef(m[1], x, inf);
-        const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
+      // (a page element's tag picks .value or .textContent; for one found as the code runs, the word does)
+      const textProp = (el, word) => (el.tag ? (/^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent') : /^value$/i.test(word) ? 'value' : 'textContent');
+      if ((m = M(/^get the (text|value) (?:of|in|from)\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
+        const el = elementRef(m[2], x, inf);
+        const prop = textProp(el, m[1]);
         note(inf, prop === 'value' ? 'Text boxes keep what was typed in `.value`.' : '`.textContent` is the text shown inside the element.');
-        return say(`${keyword(m[2], inf)}${m[2]} = ${el.js}.${prop};`);
+        return say(`${keyword(m[3], inf)}${m[3]} = ${el.js}.${prop};`);
       }
-      if ((m = M(/^set the (?:text|value) of\s+(.+?)\s+to\s+(.+)$/i))) {
+      if ((m = M(/^set the (text|value) of\s+(.+?)\s+to\s+(.+)$/i))) {
+        const el = elementRef(m[2], x, inf);
+        const prop = textProp(el, m[1]);
+        note(inf, prop === 'value' ? '`.value` is what a box holds: what was typed, or picked.' : '`textContent` sets plain text safely: anything typed by users is shown as text, never run as code.');
+        return say(`${el.js}.${prop} = ${E(m[3], inf)};`);
+      }
+      if ((m = M(/^set the HTML (?:of|in|inside)\s+(.+?)\s+to\s+(.+)$/i))) {
         const el = elementRef(m[1], x, inf);
-        const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
-        note(inf, '`textContent` sets plain text safely: anything typed by users is shown as text, never run as code.');
-        return say(`${el.js}.${prop} = ${E(m[2], inf)};`);
+        note(inf, '`innerHTML` replaces what is inside the element with this HTML. Only use it with HTML you wrote: text typed by users could run as code.');
+        return say(`${el.js}.innerHTML = ${E(m[2], inf)};`);
+      }
+      if ((m = M(/^set the groups of\s+(.+?)\s+to\s+(.+)$/i))) {
+        const el = elementRef(m[1], x, inf);
+        note(inf, '`className` is all of the element\'s groups (classes) as one text, separated by spaces; this replaces them.');
+        return say(`${el.js}.className = ${E(m[2], inf)};`);
+      }
+      if ((m = M(/^set the page(?:'s)? title to\s+(.+)$/i))) { note(inf, '`document.title` is the page title, shown on the browser tab.'); return say(`document.title = ${E(m[1], inf)};`); }
+      if ((m = M(/^put\s+(.+?)\s+at the end of\s+(.+)$/i))) {
+        const el = elementRef(m[2], x, inf), what = elementRef(m[1], x, inf);
+        note(inf, `\`appendChild\` puts ${code(what.id)} inside ${code(el.id)}, after everything already there (moving it, if it was on the page).`);
+        return say(`${el.js}.appendChild(${what.js});`);
       }
       if ((m = M(MAKE_NEW)) && !(/^(?:numbered )?list$/i.test(m[1]) && /^\s+(?:called\s+)?[A-Za-z_$][\w$]*(?:\s+with\s.+)?$/i.test(m[2]))) {   // ("make a new list called scores" is a list of values)
         const kind = m[1].toLowerCase().replace(/\s+/g, ' '), tag = MADE[kind];
@@ -1727,7 +1869,9 @@
       if ((m = M(/^wait for\s+(.+?)(?:\s+and store (?:it |the result |the answer )?in\s+([A-Za-z_$][\w$]*))?$/i))) {
         if (!insideFn()) inf.errs.push('"wait for" only works inside a block that runs later: "when …", "every …" or "define …".');
         note(inf, '`await` waits for something that finishes later (a promise), like copying, playing a sound or asking a server, without freezing the page. If it can fail, put it under "try", with "if it fails" after.');
-        const v = `await ${E(m[1], inf)}`;
+        // "wait for navigator.clipboard.writeText with text": a call, said the way "run" says one
+        const e = E(new RegExp(`^${JS_PATH}\\s+with\\s+\\S`, 'i').test(m[1]) ? 'the result of ' + m[1] : m[1], inf);
+        const v = /^await\s/.test(e) ? e : `await ${e}`;
         return say(m[2] ? `${replyKeyword(m[2])}${m[2]} = ${v};` : v + ';');
       }
       if (/^try$/i.test(s)) {
@@ -1755,6 +1899,60 @@
         note(inf, '`throw` stops with an error. Whoever ran this can catch it with "try" and "if it fails".');
         return say(`throw new Error(${E(m[1], inf)});`);
       }
+      // --- "depending on x", with "when it is 1" (or "1 or 2") and "otherwise" under it: the same words as C++
+      const top = stack[stack.length - 1];
+      if ((m = M(/^depending on\s+(.+)$/i))) {
+        note(inf, '`switch` runs the case whose value matches (`===`). Each case ends with `break;`, so only its own steps run.');
+        return open(`switch (${E(m[1], inf)}) {`, '}', 'switch');
+      }
+      const inSwitch = top && top.kind === 'switch';
+      if ((m = M(/^when it(?:'s|\s+is)\s+(.+)$/i)) || (inSwitch && /^(?:otherwise|else)$/i.test(s))) {
+        if (!inSwitch) { inf.errs.push('"when it is …" goes right under "depending on …", one step further in.'); return say(`// ??? ${s}`); }
+        if (!m && top.hasDefault) inf.errs.push('There is already an "otherwise" here. A "depending on" has only one.');
+        if (!m) top.hasDefault = true;
+        for (const h of m ? outsideQuotes(m[1], (t) => t.replace(/\s+or\s+/gi, '\u0002')).split('\u0002').map(v => `case ${E(v, inf)}:`) : ['default:']) say(h);
+        const b = { ind, kind: 'case', src: i, head: out[out.length - 1] };
+        b.close = caseEnd(b);
+        stack.push(b); scopes.push(new Map());
+        return;
+      }
+      if (/^(?:go on|carry on) into the next case$/i.test(s)) {
+        if (!top || top.kind !== 'case') { inf.errs.push('"go on into the next case" goes last in a case ("when it is …").'); return; }
+        top.fall = true;
+        note(inf, 'No `break;` at the end of this case, so JavaScript carries on with the steps of the next case.');
+        return;
+      }
+      if (inSwitch) { inf.errs.push('Under "depending on …", each step goes in a case: "when it is …" or "otherwise".'); return say(`// ??? ${s}`); }
+      if ((m = M(/^do this,? then repeat (?:while|as long as)\s+(.+)$/i))) {
+        note(inf, '`do … while` runs the steps once, then again for as long as the test is true.');
+        return open('do {', `} while (${E(m[1], inf, true)});`, 'loop');
+      }
+      // --- classes: "define class Store", with "when a new Store is made with key" and "define load" inside
+      if ((m = M(/^define (?:a )?class\s+([A-Za-z_$][\w$]*)(?:\s+based on\s+([A-Za-z_$][\w$.]*))?$/i))) {
+        note(inf, `A class is a blueprint for objects: each one made from it ("a new ${m[1]}") keeps its own values, \`this.…\`, and can use the tools defined inside it.` + (m[2] ? ` It builds on ${code(m[2])} (\`extends\`).` : ''));
+        declare(m[1]);
+        return open(`class ${m[1]}${m[2] ? ' extends ' + m[2] : ''} {`, '}', 'class', { cls: m[1] });
+      }
+      const inClass = top && top.kind === 'class';
+      if ((m = M(/^when (?:a )?new\s+([A-Za-z_$][\w$]*)\s+is (?:made|created)(?:\s+(?:with|using)\s+(.+))?$/i))) {
+        if (!inClass) inf.errs.push(`"when a new ${m[1]} is made" sets up each new object of a class, so it goes right inside "define class ${m[1]}".`);
+        else if (m[1] !== top.cls) inf.errs.push(`This is inside the class ${code(top.cls)}, so it's "when a new ${top.cls} is made".`);
+        const ps = m[2] ? splitItems(m[2]) : [];
+        note(inf, '`constructor` runs each time a new object is made, and sets up its values (`this.…`).');
+        open(`constructor(${ps.join(', ')}) {`, '}', 'fn', { def: true });
+        for (const p of ps) declare(p.replace(/\s*=.*$/, ''));
+        return;
+      }
+      if (inClass && !/^define\s/i.test(s)) { inf.errs.push('Inside "define class", each part is "when a new … is made" or "define …" (a tool of its own).'); return say(`// ??? ${s}`); }
+      // --- other files' tools: "bring in fetchSales from "./api.js""
+      if ((m = M(/^bring in\s+(.+?)\s+from\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i))) {
+        const names = splitAnd(m[1]).map(n => n.trim());
+        if (names.some(n => !/^[A-Za-z_$][\w$]*$/.test(n))) inf.errs.push('Name each thing to bring in, like: bring in fetchSales and saveSales from "./api.js".');
+        if (stack.length) inf.errs.push('"bring in" goes at the left edge, near the top.');
+        note(inf, '`import` brings in tools another JavaScript file shares (with `export`). The page has to load this file as a module.');
+        names.forEach(n => declare(n, 'const'));
+        return say(`import { ${names.join(', ')} } from ${m[2]};`);
+      }
       // --- logic (same sentences as Python, JavaScript output)
       if ((m = M(/^(?:otherwise if|else if)\s+(.+)$/i))) { push('  '.repeat(stack.length - 1) + `} else if (${E(m[1], inf, true)}) {`, i); return; }
       if (/^(?:otherwise|else)$/i.test(s)) { push('  '.repeat(stack.length - 1) + '} else {', i); return; }
@@ -1774,18 +1972,22 @@
       if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${E(m[1], inf, true)}) {`, '}', 'loop');
       if ((m = M(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) {
         const ps = m[2] ? splitItems(m[2]) : [];
-        note(inf, '`function` makes a reusable tool.');
-        open(`${needsAsync(i) ? 'async ' : ''}function ${m[1]}(${ps.join(', ')}) {`, '}', 'fn', { def: true });
+        note(inf, inClass ? `A tool of every ${top.cls} object (a method): inside it, \`this\` is the object it was used on.` : '`function` makes a reusable tool.');
+        open(`${needsAsync(i) ? 'async ' : ''}${inClass ? '' : 'function '}${m[1]}(${ps.join(', ')}) {`, '}', 'fn', { def: true });
         for (const p of ps) declare(p.replace(/\s*=.*$/, ''));   // its inputs are names inside it already
         return;
       }
       if ((m = M(/^(?:give back|return)\b\s*(.*)$/i))) {
         // "give back total and count": two values, or a yes/no test that both are true?
         const parts = m[1] ? splitAnd(m[1]) : [];
-        if (parts.length > 1 && !/,/.test(outsideQuotes(m[1], t => t))) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, give back a list: give back [${parts.join(', ')}].`);
+        if (parts.length > 1 && !/,/.test(outsideQuotes(m[1], t => t)) && !topFind(m[1], /\s(?:if|with|for each|for every|for any|where)\s/i)) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, give back a list: give back [${parts.join(', ')}].`);
         return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
       }
-      if (/^stop the loop$/i.test(s)) return say('break;');
+      if (/^stop the loop$/i.test(s)) {
+        const near = [...stack].reverse().find(b => /^(?:loop|case|fn)$/.test(b.kind));
+        if (near && near.kind === 'case') inf.errs.push('Inside "depending on", `break` only ends the case, not the loop around it. To stop the loop from here, set a yes/no value and test it after "depending on".');
+        return say('break;');
+      }
       if (/^skip to next$/i.test(s)) return say('continue;');
       if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(?:new\s+)?(?:empty\s+)?list\s+(?:called\s+)?([A-Za-z_$][\w$]*)(?:\s+with\s+(.+))?$/i))) {
         return say(`${keyword(m[1], inf)}${m[1]} = [${m[2] ? splitAnd(m[2]).map(v => E(v, inf)).join(', ') : ''}];`);
@@ -1868,7 +2070,7 @@
       inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
       say('// ??? ' + s);
     });
-    while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of [].concat(b.close)) push('  '.repeat(stack.length) + c, b.src); }
+    while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src); }
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
     return { lines: out, info, text: out.map(o => o.text).join('\n').replace(/\n{3,}/g, '\n\n') + '\n' };
   }
