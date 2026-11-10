@@ -78,7 +78,7 @@ test('React: lists, either-or, references, clean-up, worked-out values and taken
     '  const box = useRef<HTMLDivElement>(null);',
     '  const [open, setIsOpen] = useState(false);',
     '  const { toast } = useToast();',
-    '  const done = useMemo(() => items.filter(i => i.done), [items]);',
+    '  const done = useMemo(() => items.filter((i) => i.done), [items]);',
     '  useEffect(() => {',
     '    const timer = setInterval(tick, 1000);',
     '    return () => clearInterval(timer);',
@@ -103,7 +103,8 @@ test('React: JSX keeps its spaces the way React reads them', () => {
   assert.match(tsx('define component P\n    show:\n        a paragraph saying "1 < 2 & {{x}}"').text, /<p>1 &lt; 2 &amp; &#123;x&#125;<\/p>/);
   // and the converter says them back exactly
   exact('tsx', 'const P = () => <p>Hello <b>you</b>! Tom &amp; Jerry{" "}<i>{name}</i></p>;\n');
-  exact('tsx', 'const P = () => (\n  <p>\n    two words\n    on two lines\n  </p>\n);\n', /^    a paragraph saying "two words on two lines"$/m);
+  // (text on lines of its own, between the tags, is said on a line of its own under the element)
+  exact('tsx', 'const P = () => (\n  <p>\n    two words\n    on two lines\n  </p>\n);\n', /^    a paragraph\n        "two words on two lines"$/m);
 });
 
 test('React: what isn\'t right is a problem on the line, never a guess', () => {
@@ -119,13 +120,15 @@ test('React: code -> sentences, checked exact', () => {
   exact('tsx', 'export function Card({ title, children }: CardProps) {\n  return (\n    <div className="card">\n      <h2>{title}</h2>\n      {children}\n    </div>\n  );\n}\n',
     /^define shared component Card using title and children from CardProps\n    show:\n        a block, styled "card"\n            a heading saying \{title\}\n            \{children\}$/m);
   exact('tsx', 'export default function App() {\n  const [n, setN] = useState(0);\n  return <button onClick={() => setN(n + 1)}>{n}</button>;\n}\n',
-    /^define main component App\n    keep n, starting at 0\n    show:\n        a button saying \{n\}, when clicked: change n to n plus 1$/m);
+    /^define main component App\n    keep n, starting at 0\n    show: a button saying \{n\}, when clicked: change n to n plus 1$/m);
   exact('tsx', 'const L = ({ notes }: P) => (\n  <ul>\n    {notes.map((note) => (\n      <li key={note.id} onClick={() => pick(note)}>{note.title}</li>\n    ))}\n  </ul>\n);\n',
     /^constant L is a component using notes from P, showing:\n    a list\n        for each note in notes\n            a list item saying \{note\.title\}, keyed by note\.id, when clicked: run pick with note$/m);
   exact('tsx', 'function A() {\n  useEffect(() => {\n    load();\n    return () => {\n      stop();\n    };\n  }, [id]);\n  return null;\n}\n', /^    whenever id changes\n        run load\n        when A goes away\n            run stop$/m);
-  exact('tsx', 'const F = () => <Link to="/about" className="underline">About</Link>;\n', /^constant F is a component, showing:\n    a Link to "\/about" saying "About", styled as underlined$/m);
-  exact('tsx', 'const F = () => <a href="/">Home</a>;\n', /^    a link to "\/" saying "Home"$/m);
-  exact('tsx', 'const F = () => <Input value={v} onChange={(e) => setV(e.target.value)} {...rest} disabled />;\n', /^    an Input, with value \{v\}, when changed with e: run setV with e\.target\.value, with everything in rest, with disabled$/m);
+  // (an element given back on the line it starts on, without brackets, is said after "showing:" on that line)
+  exact('tsx', 'const F = () => <Link to="/about" className="underline">About</Link>;\n', /^constant F is a component, showing: a Link to "\/about" saying "About", styled as underlined$/m);
+  exact('tsx', 'const F = () => <a href="/">Home</a>;\n', /, showing: a link to "\/" saying "Home"$/m);
+  exact('tsx', 'const F = () => <Input value={v} onChange={(e) => setV(e.target.value)} {...rest} disabled />;\n', /, showing: an Input, with value \{v\}, when changed with e: run setV with e\.target\.value, with everything in rest, with disabled$/m);
+  exact('tsx', 'const F = () => (\n  <a href="/">Home</a>\n);\n', /^constant F is a component, showing:\n    a link to "\/" saying "Home"$/m);
 });
 
 test('React: what can\'t be said yet stays exact code inside the sentences', () => {
@@ -149,7 +152,7 @@ for (const [dir, least] of [['tests/corpus_react', 0.95], ['tests/heldout_react'
 }
 
 test('JSX in JavaScript (.jsx, .js) is React too, with js: lines', () => {
-  exact('js', 'export function Hello({ name }) {\n  const [n, setN] = useState(0);\n  return <p onClick={() => setN(n + 1)}>Hi {name}</p>;\n}\n', /^define shared component Hello using name\n    keep n, starting at 0\n    show:\n        a paragraph saying "Hi \{name\}", when clicked: change n to n plus 1$/m);
+  exact('js', 'export function Hello({ name }) {\n  const [n, setN] = useState(0);\n  return <p onClick={() => setN(n + 1)}>Hi {name}</p>;\n}\n', /^define shared component Hello using name\n    keep n, starting at 0\n    show: a paragraph saying "Hi \{name\}", when clicked: change n to n plus 1$/m);
   // a JavaScript file has no types to give
   assert.match(errs(TS.compileTs({ id: 'x', file: 'mechanics', text: 'define component A using b from P' }, null, { lang: 'js' })).join(), /Types are TypeScript/);
 });
