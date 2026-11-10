@@ -29,9 +29,18 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] The window opens. The terminal says which Python it found ("Desktop app: programs run with Python 3.x…").
 
 **New project**
-- [ ] File → New project (or Ctrl+N): pick a kind, type a name, leave "Choose a folder for it now" ticked,
+- [ ] Menu → New project (or Ctrl+N): pick a kind, type a name, leave "Choose a folder for it now" ticked,
       Create, and choose an empty folder: the project's files appear there.
 - [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
+
+**Saving, Backups and closing**
+- [ ] With no folder yet, the header shows no folder name; after Save it shows the folder's name.
+- [ ] Change a sentence and close the window: "Save before closing?". Cancel keeps it open; Save saves (asking for a
+      folder the first time), then closes; Don't save closes. Without changes since the last Save it just closes.
+- [ ] Work for a few minutes, then **Menu → Backups…**: copies 2 minutes apart, newest first, each with its project's
+      name and file count. Restore one: it opens, and a copy of what was open is now at the top (Restore that to undo).
+- [ ] In a browser: Ctrl+S downloads `<project>.zip`; Import code → Open a .zip opens it as it was. Change something and
+      reload: the browser asks before leaving.
 
 **Planning and Project Templates**
 - [ ] **Project Templates**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
@@ -50,7 +59,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
 
 **Project map: ticks, and Hand to my AI** (in Unity, then again in Split Mode)
-- [ ] File → Plan a project… → Websites → Showing my work → Build. The Project map shows each step with a checkbox and,
+- [ ] Menu → Plan a project… → Websites → Showing my work → Build. The Project map shows each step with a checkbox and,
       under it, how to check it's done; above the steps, **0 of 9 done**.
 - [ ] Tick steps 1 to 3: the count and the bar move on, each ticked step drops its check line, and the terminal names the
       next step. Untick one: it's back.
@@ -59,7 +68,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       Unity too).
 - [ ] **+ Step** with **Check it's done** filled in: the new step shows that line. Left empty: the depth's own line shows.
 - [ ] Save, close the app, open the folder again: the same ticks, and the map is scrolled to the first step not done.
-- [ ] **Hand to my AI** (under the map's count, or File → Hand to my AI…): tasks.md lists `- [x] 1.1 …` for ticked steps
+- [ ] **Hand to my AI** (under the map's count, or Menu → Hand to my AI…): tasks.md lists `- [x] 1.1 …` for ticked steps
       and `- [ ] …` for the rest, each with `Check: …`; proposal.md has Why, What Changes and Impact. **Copy** copies the
       file shown.
 - [ ] Desktop, unsaved project: the button says **Save the project…** and saves first. Saved: **Write to the project
@@ -73,7 +82,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Browser: **Download .zip** gives `<name>-openspec.zip`; unzipped, it makes `openspec/changes/<name>/`. With
       OpenSpec installed, `openspec list` in that folder shows the change. Tick a task in the unzipped `tasks.md`, then
       **Take ticks from a tasks.md…** and choose it: that step is ticked on the map.
-- [ ] A project with no map (Import → Try the example project): File → Hand to my AI… says there's no map yet.
+- [ ] A project with no map (Import → Try the example project): Menu → Hand to my AI… says there's no map yet.
 
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
@@ -152,7 +161,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.
       ▾ on a colour: a palette and "Any colour". Ctrl+Z undoes each change. Alt+↓ opens the list at the cursor.
 - [ ] Write `style paragraph: line-height: 1.1 #000000`: a warning says the colour needs its own style.
-- [ ] **File → Add an image…**, pick a PNG: it's listed under Images with a thumbnail. In Structure, **Use** adds
+- [ ] **Menu → Add an image…**, pick a PNG: it's listed under Images with a thumbnail. In Structure, **Use** adds
       `add a picture of "images/….png" …`, and the preview shows it. Save to a folder: the folder has `images/`.
       Open that folder again: the picture is still there.
 - [ ] A game in Mechanics: `load the picture "images/….png" as ship`, then `draw ship at 20, 20 on game` inside

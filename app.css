@@ -1443,3 +1443,78 @@ details.pg > summary .count { margin-left: auto; }
 .ex-close li { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ex-close .btn { flex: none; }
 .ex-close .ex-say { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ======================================================================
+   One Menu, five kinds of part, File View / CodeParts, the parts view
+   ====================================================================== */
+:root { --t-tests: #F2A08E; }   /* Tests & Checks: coral */
+.t-tests { --tc: var(--t-tests); }
+#grpSetup { --tc: var(--t-setup); }
+#grpData { --tc: var(--t-data); }
+#grpTests { --tc: var(--t-tests); }
+.grp-btn { padding: 5px 10px; }
+
+/* The Menu: File, Project Templates and Library in one place */
+.menu-btn { display: inline-flex; align-items: center; gap: 6px; }
+.menu-btn svg { width: 14px; height: 14px; }
+.menu-h { padding: 6px 10px 3px; font: 700 10px var(--f-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--rose); }
+
+/* The side panel's switch: seafoam, like Predictive Mode */
+.btn.view-btn { --seafoam: #9FE2BF; background: #000; color: var(--seafoam); box-shadow: inset 0 0 0 1px #1F3A2C, 0 1px 0 var(--metal-edge); }
+.btn.view-btn:hover { background: #0A100D; color: #C9F5DD; box-shadow: inset 0 0 0 1px var(--seafoam), 0 1px 0 var(--metal-edge); filter: none; }
+#writeSide[data-view="parts"] #imgWrap, #writeSide[data-view="parts"] #planWrap { display: none !important; }
+#filesView[hidden], #partsWrap[hidden] { display: none; }
+
+/* CodeParts */
+.parts-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 4px 12px 6px; }
+.parts-h .side-acts { margin-left: auto; }
+.parts-showing { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--f-ui); color: var(--ink-2); }
+.link-like { border: 0; background: none; padding: 0; color: var(--seafoam, #9FE2BF); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.parts-find { margin: 0 12px 8px; width: calc(100% - 24px); box-sizing: border-box; padding: 5px 9px; border-radius: 4px; border: 0; background: #050506; color: var(--ink); font: 12px var(--f-ui); box-shadow: var(--sunken); }
+.parts-find::placeholder { color: var(--ink-3); }
+.parts-find:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+.pr-where { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-more { width: 100%; border: 0; background: none; color: var(--ink-3); font: 600 11.5px var(--f-ui); text-align: left; padding: 4px 8px 6px 23px; cursor: pointer; }
+.pg-more:hover { color: var(--ink); }
+
+/* The parts view: only the picked kind of part, file by file */
+.work.isolated .explain-wrap { display: none; }
+.pv { display: flex; flex-direction: column; min-height: 0; }
+.pv[hidden] { display: none; }
+.pv-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid #000; box-shadow: 0 1px 0 rgba(255, 255, 255, .03); }
+.pv-title { display: inline-flex; align-items: center; gap: 8px; font: 700 15px var(--f-ui); color: var(--ink); }
+.pv-sub { color: var(--ink-3); font-size: 12.5px; }
+.pv-h .btn { margin-left: auto; }
+.pv-list { overflow: auto; min-height: 0; flex: 1; padding: 6px 16px 18px; }
+.pv-none { color: var(--ink-3); padding: 18px 2px; }
+.pv-file { margin-top: 14px; }
+.pv-fname { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: 600 13px var(--f-py); color: var(--ink-2); }
+.pv-fname svg { width: 14px; height: 14px; flex: none; opacity: .8; }
+.pv-flang { margin-left: auto; font: 600 10.5px var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.pv-part { margin: 0 0 10px; border-radius: 6px; background: #0B0C0E; box-shadow: inset 0 0 0 1px #1C1D21; overflow: hidden; }
+.pv-part > header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255, 255, 255, .025); border-bottom: 1px solid #000; font-size: 12.5px; }
+.pv-part > header b { font: 600 12.5px var(--f-py); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pv-lines { color: var(--ink-3); font: 11px var(--f-py); white-space: nowrap; }
+.pv-part > header .btn { margin-left: auto; }
+.pv-code { padding: 6px 0; font: 13px/1.55 var(--f-py); overflow-x: auto; }
+.pv-ln { display: grid; grid-template-columns: 46px minmax(0, 1fr); white-space: pre; }
+.pv-n { text-align: right; padding-right: 12px; color: var(--ink-3); opacity: .55; font-variant-numeric: tabular-nums; user-select: none; }
+.pv-t { padding-right: 12px; }
+.pv-cut .pv-t { color: var(--ink-3); font-style: italic; white-space: normal; }
+.pv-more { margin: 8px 0 0; }
+@keyframes pv-lit { from { box-shadow: inset 0 0 0 2px var(--tc, #9FE2BF), 0 0 18px color-mix(in srgb, var(--tc, #9FE2BF) 35%, transparent); } to { box-shadow: inset 0 0 0 1px #1C1D21; } }
+.pv-part.lit { animation: pv-lit 1.6s ease-out; }
+.part-row.two { grid-template-columns: 7px minmax(0, 1fr); row-gap: 0; padding-top: 4px; padding-bottom: 4px; }
+.part-row.two .pdot { grid-row: 1; }
+.part-row.two .pr-where { grid-column: 2; max-width: none; font-size: 10.5px; opacity: .85; }
+/* Backups (Menu → Backups…), and the question before the desktop app's window closes */
+.bk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 52vh; overflow: auto; }
+.bk-item { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 5px 8px; border-radius: 3px; }
+.bk-item:hover { background: rgba(255, 255, 255, .045); }
+.bk-when { font: 12.5px var(--f-py); color: var(--ink-2); white-space: nowrap; }
+.bk-what { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bk-what b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
+.bk-what small { flex: none; font-size: 12px; color: var(--ink-3); }
+.bk-none { padding: 4px 8px; font-size: 13px; color: var(--ink-3); }
+.close-actions { justify-content: flex-end; }
+#closeModal { z-index: 70; }   /* over any other dialog, menu or tip that's open */

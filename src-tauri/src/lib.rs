@@ -6,6 +6,7 @@
 //!   arduino-cli installed on this computer, and compile C++ with it
 //! - serve the website preview from its own address
 //! - open files and folders dropped on the window
+//! - ask the page before the window closes with changes not saved
 
 use std::collections::HashMap;
 #[cfg(target_os = "linux")]
@@ -13,6 +14,7 @@ use std::ffi::{OsStr, OsString};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -834,6 +836,27 @@ fn preview_page<R: tauri::Runtime>(app: &AppHandle<R>, path: &str) -> tauri::htt
         .unwrap()
 }
 
+/* ------------------------------------------------------------------ */
+/* Closing the window                                                  */
+/* ------------------------------------------------------------------ */
+
+/// Whether the project has changes since it was last saved, as the page says. While it has, closing the
+/// window asks the page first (ask-to-close): it offers to save, then closes the window with close_window.
+/// Off, the window closes as any window does, so a page that can't answer never keeps it open.
+#[derive(Default)]
+struct CloseGuard(AtomicBool);
+
+#[tauri::command]
+fn guard_close(guard: State<CloseGuard>, on: bool) {
+    guard.0.store(on, Ordering::SeqCst);
+}
+
+/// Close the window after all (the page asked first). This doesn't ask again.
+#[tauri::command]
+fn close_window(window: tauri::Window) -> Result<(), String> {
+    window.destroy().map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -841,6 +864,7 @@ pub fn run() {
         .manage(Compiler::default())
         .manage(Access::default())
         .manage(Preview::default())
+        .manage(CloseGuard::default())
         .register_uri_scheme_protocol("preview", |ctx, request| preview_page(ctx.app_handle(), request.uri().path()))
         .setup(|_app| {
             #[cfg(unix)]
@@ -850,18 +874,24 @@ pub fn run() {
         // The window takes a drop of files or folders before the page sees it (the page gets them
         // as paths). The person chose those, as in the folder dialog, so the window may read them.
         // (A page can send a pretend drop to itself, but it doesn't reach here.)
-        .on_window_event(|window, event| {
-            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
                 let access = window.state::<Access>();
                 for path in paths {
                     access.allow_folder(path);
                 }
             }
+            // changes not saved: the page asks whether to save them, and closes the window itself
+            WindowEvent::CloseRequested { api, .. } if window.state::<CloseGuard>().0.load(Ordering::SeqCst) => {
+                api.prevent_close();
+                let _ = window.emit("ask-to-close", ());
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             read_folder, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
             run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
-            compile_cpp, find_arduino, run_capture, find_venv
+            compile_cpp, find_arduino, run_capture, find_venv, guard_close, close_window
         ])
         .build(tauri::generate_context!())
         .expect("IntuaCode could not start")

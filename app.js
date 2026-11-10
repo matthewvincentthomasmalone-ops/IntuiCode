@@ -155,6 +155,7 @@
    * yet), so autosave can never write one project's files into another project's folder. */
   function replaceProject(next, message, folder = null) {
     activeSec().text = ta.value;
+    takeBackup();   // the project going out, if it changed since its last backup
     if (desk.on) {
       if (desk.folder && desk.dirty) saveProject('quiet');   // finish saving the old project to its own folder
       clearTimeout(desk.saveTimer);
@@ -163,6 +164,8 @@
     }
     store.set(PREVIOUS_KEY, project);
     project = normalized(next);
+    backups.due = true;
+    setUnsaved(!(desk.on && folder));   // only a project opened from its folder is saved as it is
     planToNext = true;   // its map opens at the first step not done
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
@@ -821,29 +824,63 @@
     $('sayMarks').style.transform = `translateY(${-ta.scrollTop}px)`;
   }
 
+  /* The buttons at the top show one kind of part only: the side panel lists only those (it switches to
+     CodeParts, and back when the kind is put away if it switched itself), and the main pane shows only them,
+     file by file (the parts view). "Edit whole files" (or a part's Open) goes back to the editor, the
+     parts still marked there. */
+  let sideAuto = false;    // the side panel switched to CodeParts by itself
+  let pvWhole = false;     // a kind is picked, but the editor shows the whole file
   function setGroup(g) {
     groupFilter = groupFilter === g ? null : g;
     for (const b of document.querySelectorAll('.grp-btn')) b.setAttribute('aria-pressed', String(b.dataset.group === groupFilter));
     $('app').dataset.group = groupFilter || '';
-    if (groupFilter && !secInGroup(activeSec(), groupFilter)) {
-      // the open file has nothing on this side: open the first that has
-      const next = project.sections.find(s => secInGroup(s, groupFilter));
-      if (next) {
-        const first = partsOf(next).find(p => inGroup(p, groupFilter));
-        openSection(next.id, first ? first.from : null);
-        tLine(`${typeName(groupFilter)}: opened ${fileName(next)}, the first file with some.`, 't-sys');
-        return renderGroupViews();
-      }
-      tLine(`Nothing in this project is ${typeName(groupFilter)} yet.`, 't-sys');
-    }
+    pvWhole = false;
+    pvShown = PV_STEP;
+    if (groupFilter && sideView() === 'files') { setSideView('parts', false); sideAuto = true; }
+    else if (!groupFilter && sideAuto) { setSideView('files', false); sideAuto = false; }
     renderGroupViews();
+    $('pvList').scrollTop = 0;
   }
   function renderGroupViews() {
-    renderTree(); renderParts();
+    applyIsolate();
+    renderTree(); renderParts(); renderPartsView();
     if (mode === 'unity') renderUnity(); else { renderOverlay(); renderPython(); }
     if (!$('libModal').hidden) renderLibList();
   }
   for (const b of document.querySelectorAll('.grp-btn')) b.addEventListener('click', () => setGroup(b.dataset.group));
+
+  /* The side panel: the project's files (File View), or its code part by part (CodeParts). */
+  let sideNow = null;   // the view this time, when it switched itself (the one picked is kept in layout)
+  const sideView = () => sideNow || (layout.sideView === 'parts' ? 'parts' : 'files');
+  function setSideView(v, keep = true) {
+    sideNow = v;
+    if (keep) { layout.sideView = v; store.set(LAYOUT_KEY, layout); }
+    sideAuto = false;
+    applySideView();
+    if (v === 'parts') renderParts();
+  }
+  function applySideView() {
+    const v = PARTS ? sideView() : 'files';
+    $('writeSide').dataset.view = v;
+    $('filesView').hidden = v !== 'files';
+    $('partsWrap').hidden = v !== 'parts';
+    $('sideTitle').textContent = v === 'parts' ? 'CodeParts' : 'Project';
+    const b = $('btnSideView');
+    b.hidden = !PARTS;
+    b.textContent = v === 'parts' ? 'File View' : 'CodeParts';
+    b.title = v === 'parts' ? 'Back to the project\'s files and folders' : 'The project\'s code, part by part: each function, page section, style rule, block of settings';
+  }
+  $('btnSideView').addEventListener('click', () => setSideView(sideView() === 'parts' ? 'files' : 'parts'));
+
+  /* Is the main pane showing only the picked kind of part? */
+  const isolated = () => !!(PARTS && groupFilter && !pvWhole);
+  function applyIsolate() {
+    const on = isolated();
+    $('partsView').hidden = !on;
+    $('work').classList.toggle('isolated', on);
+    $('writeView').hidden = on || mode !== 'write';
+    $('unityView').hidden = on || mode !== 'unity';
+  }
 
   /* What each language does in a project, for Parts by language. */
   const LANG_ROLE = {
@@ -851,33 +888,65 @@
     vue: 'screens and components (Vue)', python: 'the program', cpp: 'the program', arduino: 'the board\'s sketch', c: 'the program', json: 'data and settings',
     yaml: 'settings', toml: 'settings', csv: 'a table of data', markdown: 'notes', text: 'notes', sql: 'the database', php: 'the server\'s pages', ruby: 'the program',
   };
-  const partsClosed = new Set();   // groups folded away in Parts
+  const partsClosed = new Set();   // groups folded away in CodeParts
+  const partsMore = new Map();     // group -> how many of its parts are listed (long groups grow on request)
+  let partsQuery = '';
+  /* The parts to show: only the picked kind (each part by its own type), and only those matching the search
+     (its name, its file, or the words in its lines). */
+  function shownParts() {
+    const q = partsQuery.trim().toLowerCase(), out = [];
+    for (const s of project.sections) {
+      const file = s.path.toLowerCase();
+      for (const p of partsOf(s)) {
+        if (groupFilter && p.type !== groupFilter) continue;
+        if (q && !p.title.toLowerCase().includes(q) && !file.includes(q) && !textOf(s).split('\n').slice(p.from, p.to + 1).join('\n').toLowerCase().includes(q)) continue;
+        out.push({ s, p });
+      }
+    }
+    return out;
+  }
   function renderParts() {
-    const wrap = $('partsWrap'), box = $('parts');
-    if (!PARTS) { wrap.hidden = true; return; }
-    const by = layout.partsBy === 'lang' ? 'lang' : 'type';
+    if (!PARTS) { $('partsWrap').hidden = true; return; }
+    applySideView();
+    if (sideView() !== 'parts') return;
+    const box = $('parts');
+    const by = ['type', 'file', 'lang'].includes(layout.partsBy) ? layout.partsBy : 'type';
+    const grouping = by === 'type' && groupFilter ? 'file' : by;   // one kind picked: its parts file by file
     $('partsByType').setAttribute('aria-selected', String(by === 'type'));
+    $('partsByFile').setAttribute('aria-selected', String(by === 'file'));
     $('partsByLang').setAttribute('aria-selected', String(by === 'lang'));
-    const all = [];
-    for (const s of project.sections) for (const p of partsOf(s)) if (inGroup(p, groupFilter)) all.push({ s, p });
+    const all = shownParts();
     $('partsCount').textContent = all.length || '';
+    $('partsShowing').innerHTML = groupFilter
+      ? `${typeChip(groupFilter)}<span>only</span>${pvWhole ? '<button type="button" class="link-like" id="partsOnly" title="Show only these in the main pane">show only these</button>' : ''}`
+      : (partsQuery ? 'Found' : 'All parts');
     const here = activeSec(), li = mode === 'unity' ? uLineOf(uTa.selectionStart) : caretLine();
     const multi = project.sections.length > 1;
-    const row = ({ s, p }) => {
+    const row = ({ s, p }, inFile) => {
       const linked = [...linkedLines(s.id)].some(n => n >= p.from && n <= p.to);
       const at = s.id === here.id && li >= p.from && li <= p.to;
-      return `<li><button type="button" class="part-row${linked ? ' linked' : ''}${at ? ' here' : ''}" data-part-sec="${escHtml(s.id)}" data-part-line="${p.from}" title="${escHtml(fileName(s))}, lines ${p.from + 1}–${p.to + 1}: ${escHtml(typeName(p.type))}">`
-        + `<span class="pdot t-${p.type}" aria-hidden="true"></span><span class="pr-title">${escHtml(p.title)}</span><span class="pr-where">${multi ? escHtml(fileName(s).split('/').pop()) + ':' : ''}${p.from + 1}</span></button></li>`;
+      // listed under its file: just the line; otherwise its file and line go under its name, so the name has the room
+      const two = !inFile && multi;
+      const where = two ? `${escHtml(fileName(s).split('/').pop())}:${p.from + 1}` : `${p.from + 1}`;
+      return `<li><button type="button" class="part-row${two ? ' two' : ''}${linked ? ' linked' : ''}${at ? ' here' : ''}" data-part-sec="${escHtml(s.id)}" data-part-line="${p.from}" title="${escHtml(p.title)} · ${escHtml(fileName(s))}, lines ${p.from + 1}–${p.to + 1} · ${escHtml(typeName(p.type))}">`
+        + `<span class="pdot t-${p.type}" aria-hidden="true"></span><span class="pr-title">${escHtml(p.title)}</span><span class="pr-where">${where}</span></button></li>`;
     };
-    const group = (key, head, rows) => {
-      const shown = rows.slice(0, 120);
-      return `<details class="pg" data-pg="${escHtml(key)}"${partsClosed.has(key) ? '' : ' open'}><summary>${head}<span class="count">${rows.length}</span></summary><ul class="part-list">${shown.map(row).join('')}${rows.length > shown.length ? `<li class="side-note">and ${rows.length - shown.length} more</li>` : ''}</ul></details>`;
+    const group = (key, head, rows, inFile) => {
+      const n = partsMore.get(key) || 80, shown = rows.slice(0, n);
+      return `<details class="pg" data-pg="${escHtml(key)}"${partsClosed.has(key) ? '' : ' open'}><summary>${head}<span class="count">${rows.length}</span></summary><ul class="part-list">${shown.map(x => row(x, inFile)).join('')}${rows.length > shown.length ? `<li><button type="button" class="pg-more" data-pg-more="${escHtml(key)}">Show ${Math.min(200, rows.length - shown.length)} more of ${rows.length - shown.length}</button></li>` : ''}</ul></details>`;
     };
     let html = '';
-    if (by === 'type') {
+    if (grouping === 'type') {
       for (const t of PARTS.TYPES) {
         const rows = all.filter(x => x.p.type === t.id);
         if (rows.length) html += group('t:' + t.id, `${typeChip(t.id)}<span class="pg-name">${escHtml(t.name)}</span>`, rows);
+      }
+    } else if (grouping === 'file') {
+      const files = new Map();
+      for (const x of all) { if (!files.has(x.s.id)) files.set(x.s.id, []); files.get(x.s.id).push(x); }
+      for (const [id, rows] of files) {
+        const s = rows[0].s, dir = fileName(s).split('/').slice(0, -1).join('/');
+        html += group('f:' + id, `<span class="pg-name">${escHtml(fileName(s).split('/').pop())}</span>${dir ? `<span class="pg-role">${escHtml(dir)}/</span>` : ''}`, rows, true);
       }
     } else {
       const langs = new Map();
@@ -887,19 +956,70 @@
         html += group('l:' + l, `<span class="pg-name">${escHtml(langName(l))}</span><span class="pg-role">${escHtml(role)}</span>`, rows);
       }
     }
-    box.innerHTML = html || `<p class="side-note">${groupFilter ? `Nothing here is ${escHtml(typeName(groupFilter))} yet.` : 'No code yet.'}</p>`;
+    box.innerHTML = html || `<p class="side-note">${partsQuery ? 'No part matches that.' : groupFilter ? `Nothing in this project is ${escHtml(typeName(groupFilter))} yet.` : 'No code yet.'}</p>`;
   }
   $('parts').addEventListener('toggle', (e) => {
     const d = e.target.closest && e.target.closest('details[data-pg]');
     if (d) { if (d.open) partsClosed.delete(d.dataset.pg); else partsClosed.add(d.dataset.pg); }
   }, true);
   $('parts').addEventListener('click', (e) => {
+    const more = e.target.closest('[data-pg-more]');
+    if (more) { const k = more.dataset.pgMore; partsMore.set(k, (partsMore.get(k) || 80) + 200); renderParts(); return; }
     const b = e.target.closest('[data-part-sec]');
-    if (b) openSection(b.dataset.partSec, +b.dataset.partLine);
+    if (!b) return;
+    if (isolated()) pvReveal(b.dataset.partSec, +b.dataset.partLine);
+    else openSection(b.dataset.partSec, +b.dataset.partLine);
   });
-  for (const [id, by] of [['partsByType', 'type'], ['partsByLang', 'lang']]) {
+  $('partsShowing').addEventListener('click', (e) => { if (e.target.id === 'partsOnly') { pvWhole = false; renderGroupViews(); } });
+  for (const [id, by] of [['partsByType', 'type'], ['partsByFile', 'file'], ['partsByLang', 'lang']]) {
     $(id).addEventListener('click', () => { layout.partsBy = by; store.set(LAYOUT_KEY, layout); renderParts(); });
   }
+  let partsFindTimer = 0;
+  $('partsFind').addEventListener('input', () => {
+    clearTimeout(partsFindTimer);
+    partsFindTimer = setTimeout(() => { partsQuery = $('partsFind').value; partsMore.clear(); pvShown = PV_STEP; renderParts(); renderPartsView(); }, 150);
+  });
+
+  /* The parts view: only the picked kind of part, file by file, each with its own lines. A big project's
+     parts come a page at a time. Open puts the editor on the part (the whole file, the part marked). */
+  const PV_STEP = 60;
+  let pvShown = PV_STEP;
+  function renderPartsView() {
+    if (!isolated()) return;
+    const all = shownParts(), t = PARTS.typeOf(groupFilter);
+    const files = new Set(all.map(x => x.s.id)).size;
+    $('pvTitle').innerHTML = `${typeChip(groupFilter)}<span>${escHtml(t.name)}</span>`;
+    $('pvSub').textContent = all.length ? `${all.length} part${all.length === 1 ? '' : 's'} in ${files} file${files === 1 ? '' : 's'}${partsQuery ? ', matching the search' : ''}` : '';
+    if (!all.length) { $('pvList').innerHTML = `<p class="pv-none">${partsQuery ? 'No part of this kind matches the search.' : `Nothing in this project is ${escHtml(t.name)} yet.`}</p>`; return; }
+    let html = '', lastSec = null;
+    for (const { s, p } of all.slice(0, pvShown)) {
+      if (s !== lastSec) { if (lastSec) html += '</section>'; html += `<section class="pv-file"><h3 class="pv-fname">${iconSvg(metaOf(s).icon)}<span>${escHtml(fileName(s))}</span><span class="pv-flang">${escHtml(langName(s.lang))}</span></h3>`; lastSec = s; }
+      const lines = textOf(s).split('\n').slice(p.from, p.to + 1);
+      const shown = lines.slice(0, 80);
+      const hl = (l) => (isSentences(s) ? hlLine(l) : hlFileLine(s, l)) || '​';
+      html += `<article class="pv-part" data-pv-sec="${escHtml(s.id)}" data-pv-line="${p.from}">`
+        + `<header><span class="pdot t-${p.type}" aria-hidden="true"></span><b>${escHtml(p.title)}</b><span class="pv-lines">lines ${p.from + 1}–${p.to + 1}</span><button type="button" class="btn tiny" data-pv-open title="Edit it in the whole file">Open</button></header>`
+        + `<div class="pv-code">${shown.map((l, i) => `<div class="pv-ln"><span class="pv-n">${p.from + i + 1}</span><span class="pv-t">${hl(l)}</span></div>`).join('')}${lines.length > shown.length ? `<div class="pv-ln pv-cut"><span class="pv-n"></span><span class="pv-t">… ${lines.length - shown.length} more lines: Open to see them all</span></div>` : ''}</div></article>`;
+    }
+    if (lastSec) html += '</section>';
+    if (all.length > pvShown) html += `<button type="button" class="btn small pv-more" id="pvMore">Show ${Math.min(PV_STEP, all.length - pvShown)} more parts of ${all.length - pvShown}</button>`;
+    $('pvList').innerHTML = html;
+  }
+  /* A part picked in the side panel: shown (and lit) in the parts view, listing more of them if it's further down. */
+  function pvReveal(secId, line) {
+    const all = shownParts(), at = all.findIndex(x => x.s.id === secId && x.p.from === line);
+    if (at >= pvShown) { pvShown = at + 1 + PV_STEP; renderPartsView(); }
+    const el = [...$('pvList').querySelectorAll('.pv-part')].find(a => a.dataset.pvSec === secId && +a.dataset.pvLine === line);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    el.classList.remove('lit'); void el.offsetWidth; el.classList.add('lit');
+  }
+  $('pvList').addEventListener('click', (e) => {
+    if (e.target.id === 'pvMore') { pvShown += PV_STEP; renderPartsView(); return; }
+    const art = e.target.closest('.pv-part');
+    if (art && e.target.closest('[data-pv-open]')) { pvWhole = true; renderGroupViews(); openSection(art.dataset.pvSec, +art.dataset.pvLine); }
+  });
+  $('pvWhole').addEventListener('click', () => { pvWhole = true; renderGroupViews(); });
 
   /* ---------- Adding, renaming and removing files and folders ---------- */
   const fileDlg = { kind: 'file', id: null, folder: null, isNew: true, deleting: false, lang: 'python' };
@@ -924,7 +1044,7 @@
     const here = (activeSec().path.includes('/') ? activeSec().path.replace(/\/[^/]*$/, '/') : '');
     fileDlg.lang = sec ? sec.lang : opts.lang || 'markdown';
     $('fileTitle').textContent = isFolder ? (fileDlg.isNew ? 'New folder' : `Folder: ${fileDlg.folder}/`) : (sec ? `File: ${fileName(sec)}` : 'New file');
-    $('fileLead').textContent = isFolder ? (fileDlg.isNew ? 'A folder to keep files together. Name it, then add files to it with + File (as "folder/name").' : 'Rename it (its files move with it), or delete it with everything in it.')
+    $('fileLead').textContent = isFolder ? (fileDlg.isNew ? 'A folder to keep files together. Name it, then add files to it with Menu → New file (as "folder/name").' : 'Rename it (its files move with it), or delete it with everything in it.')
       : sec ? 'Rename or move it (folders are separated with /), change its language, or make it the file Run starts.' : 'Name it with its folder if it goes in one (notes/ideas.md). Its language follows its ending, or choose one.';
     $('filePath').value = isFolder ? (fileDlg.folder || '') : sec ? sec.path : here + 'notes.md';
     $('fileLangRow').hidden = isFolder;
@@ -1000,7 +1120,7 @@
       if (fileDlg.isNew) {
         if (projectFolders().has(path)) return say(`There's already a folder called ${path}/.`);
         copy.folders = [...(copy.folders || []), path];
-        const err = changeProject(copy, null, `Added the folder ${path}/. Add files to it with + File.`);
+        const err = changeProject(copy, null, `Added the folder ${path}/. Add files to it with Menu → New file.`);
         return err ? say(err) : closeFileDialog();
       }
       const old = fileDlg.folder;
@@ -1096,7 +1216,7 @@
   function refreshAll() {
     clearTimeout(compileTimer);
     compile();
-    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPlan(); renderProblems();
+    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPartsView(); renderPlan(); renderProblems();
     tutorSoon();
     schedulePreview();
   }
@@ -1355,7 +1475,7 @@
   /* Put a suggested sentence where it belongs: on this line (replacing it), or at the end of its own file. */
   function useSentence(pattern, role, li) {
     const target = role ? fileForRole(role) : null;
-    if (role && !target) { tLine(`That sentence goes in a ${role} file, and this project has none. Add one with + File.`, 't-sys'); return; }
+    if (role && !target) { tLine(`That sentence goes in a ${role} file, and this project has none. Add one with Menu → New file.`, 't-sys'); return; }
     if (target && target.id !== activeSec().id) {
       // the line typed here asked for it: it moves to its own file, so it goes from this one
       const here = ta.value.split('\n');
@@ -2103,7 +2223,7 @@
   /* ------------------------------------------------------------------ */
 
   const LAYOUT_KEY = 'intuicode.layout.v1';
-  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false, predict: false, partsBy: 'type' }, store.get(LAYOUT_KEY, {}));
+  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false, predict: false, partsBy: 'type', sideView: 'files' }, store.get(LAYOUT_KEY, {}));
   // Project Link and Predictive Mode take turns: predictions popping up while you click around a running page get in the way
   if (layout.link === undefined) layout.link = !layout.predict;
   if (layout.link && layout.predict) layout.predict = false;
@@ -3018,7 +3138,7 @@
       if (project.kind === 'cpp') return tLine('In a C++ project, press Run to compile and run the program (desktop app).', 't-sys');
       if (project.kind === 'arduino') return tLine('In an Arduino project, press Run to check the sketch and upload it to a board (desktop app with arduino-cli). What the board shows appears here.', 't-sys');
       if (project.kind === 'website') return tLine('In a website project, the terminal shows messages from the page (from "show …" in Mechanics). Press Run to refresh the preview. Python sentences work in projects with a Python file.', 't-sys');
-      return tLine('Sentences typed here are Python\'s. Add a Python file to this project (+ File) to try them.', 't-sys');
+      return tLine('Sentences typed here are Python\'s. Add a Python file to this project (Menu → New file) to try them.', 't-sys');
     }
     const tr = LANG.translateOne(cmd, compiled.pySyms);
     if (tr.info.errs.length) return tLine(tr.info.errs.join('\n'), 't-err');
@@ -3913,7 +4033,7 @@
     }
     if (!text.trim() && !selected) {
       box.innerHTML = `<p class="ex-guide">${withCode(metaOf(sec).purpose)}.</p>
-        <div class="ex-hint">${unity.lang ? '<span>Select some code and press <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it\'s said in sentences, right where it is, in green.</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> turns a green part back into code</span>' : `<span>${escHtml(langName(sec.lang))} has no sentences in IntuaCode: change it here as it is, and the help reads it to you.</span>`}<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Start from an idea: <b>Project Templates</b>, or add parts from the <b>Library</b>.</span><span><b>Interface &amp; Display</b> and <b>Backend &amp; Mechanics</b>, at the top, show one side of the project.</span></div>`;
+        <div class="ex-hint">${unity.lang ? '<span>Select some code and press <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it\'s said in sentences, right where it is, in green.</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> turns a green part back into code</span>' : `<span>${escHtml(langName(sec.lang))} has no sentences in IntuaCode: change it here as it is, and the help reads it to you.</span>`}<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Start from an idea: <b>Project Templates</b>, or add parts from the <b>Library</b>.</span><span><b>Interface</b>, <b>Mechanics</b>, <b>Setup</b>, <b>Data</b> and <b>Tests</b>, at the top, show only that kind of part.</span></div>`;
       return;
     }
     const a = !unity.lang && (LANGS.byId(sec.lang) || {}).write === 'code' ? readOf(sec) : null;
@@ -4172,6 +4292,7 @@
 
   function setMode(next) {
     if (next === 'unity' && !UNITY) next = 'write';
+    if (isolated()) pvWhole = true;   // Unity or Split Mode picked while only parts were shown: back to the editor
     if (maxed && next !== mode) setMax(maxed);   // full screen belongs to the mode it was opened in
     if (mode === 'write' && next === 'unity') activeSec().text = ta.value;
     mode = next;
@@ -4182,6 +4303,7 @@
     $('modeUnity').setAttribute('aria-selected', String(next === 'unity'));
     $('unityView').hidden = next !== 'unity';
     $('writeView').hidden = next !== 'write';
+    applyIsolate();
     $('writeSide').classList.toggle('in-unity', next === 'unity');
     $('work').classList.toggle('unity', next === 'unity');
     $('work').classList.toggle('web', webOn());
@@ -4323,7 +4445,7 @@
     { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
     { id: 'cpp', layout: 'cpp', title: 'C++ program', about: 'main.cpp, compiled on this computer (desktop app)' },
     { id: 'arduino', layout: 'arduino', title: 'Arduino sketch', about: 'For a board plugged in by USB (desktop app)' },
-    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with + File' },
+    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with Menu → New file' },
   ];
   // What a folder starts with: a website its title, a sketch its two parts. The rest start empty.
   const NEW_START = {
@@ -5106,7 +5228,7 @@
     const has = hand.files.length > 0, name = hand.dir.split('/').slice(-2, -1)[0] || '';
     for (const b of document.querySelectorAll('[data-hand-file]')) b.setAttribute('aria-selected', String(b.dataset.handFile === hand.show));
     const f = hand.files.find(x => x.path.endsWith('/' + hand.show));
-    $('handPre').textContent = f ? f.content : 'No map yet. File → Plan a project… builds a project with one; + Step adds a step of your own.';
+    $('handPre').textContent = f ? f.content : 'No map yet. Menu → Plan a project… builds a project with one; + Step adds a step of your own.';
     $('handWhere').textContent = has ? hand.dir + hand.show : '';
     $('handCopy').disabled = !has;
     $('handAsk').hidden = !has;
@@ -5133,11 +5255,7 @@
     if (!hand.files.length) return;
     if (!desk.on) {
       const name = hand.dir.split('/').slice(-2, -1)[0] + '-openspec.zip';
-      const url = URL.createObjectURL(new Blob([OPENSPEC.zip(hand.files)], { type: 'application/zip' }));
-      const a = document.createElement('a');
-      a.href = url; a.download = name;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      offerDownload(name, OPENSPEC.zip(hand.files));
       hand.note = `Downloaded ${name}. Unzip it in the project's own folder: it makes ${hand.dir}.`;
       tLine(`Handed the map to your AI as ${name}: ${hand.dir}proposal.md and tasks.md.`, 't-sys');
       return renderHand();
@@ -5207,6 +5325,8 @@
     const list = [...e.target.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }));
     e.target.value = '';
     if (!list.length) return;
+    // one IntuaCode saved (an unzipped Save): as it was saved
+    if (await openSaved(new Map(list.map(({ path, file }) => [path, async () => new Uint8Array(await file.arrayBuffer())])), list[0].path.split('/')[0])) return;
     const { files, skipped } = await filesToProject(list);
     importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes (images, caches, virtual environments…).` : '');
   });
@@ -5216,8 +5336,10 @@
     if (!f) return;
     $('impNote').textContent = 'Opening the .zip…';
     try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (await openSavedZip(bytes, f.name)) return;
       const R = await Runner.reader((s) => setStatus(s));
-      importProject(R.readZip(new Uint8Array(await f.arrayBuffer())), '');
+      importProject(R.readZip(bytes), '');
     } catch (err) { $('impNote').textContent = 'That .zip could not be opened: ' + err.message; }
   });
 
@@ -5247,9 +5369,12 @@
     else for (const f of e.dataTransfer.files) list.push({ path: f.name, file: f });
     if (!list.length) return;
     if (list.length === 1 && /\.zip$/i.test(list[0].path)) {
+      const bytes = new Uint8Array(await list[0].file.arrayBuffer());
+      if (await openSavedZip(bytes, list[0].path)) return;
       const R = await Runner.reader((s) => setStatus(s));
-      return importProject(R.readZip(new Uint8Array(await list[0].file.arrayBuffer())), '');
+      return importProject(R.readZip(bytes), '');
     }
+    if (entries.some(en => en.isDirectory) && await openSaved(new Map(list.map(({ path, file }) => [path, async () => new Uint8Array(await file.arrayBuffer())])), list[0].path.split('/')[0])) return;
     const { files, skipped } = await filesToProject(list);
     if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes.` : '');
     else { closeImport(); addFiles(files); }
@@ -5488,9 +5613,11 @@
     renderImages();
     if (want.some(im => imageUrls.has(im.key)) && webOn()) runWebsite(false);
   }
-  /* Pictures neither the project nor the previous one ("restore") uses are let go. */
+  /* Pictures neither the project, the previous one ("restore") nor a backup uses are let go. */
   async function pruneImages() {
     const keep = new Set([...images(), ...((store.get(PREVIOUS_KEY, null) || {}).images || [])].map(im => im && im.key));
+    try { for (const b of await backupTx('readonly', s => s.getAll())) for (const k of b.images || []) keep.add(k); }
+    catch (_) { return; }   // the backups can't be read: keep every picture
     try { for (const k of await idb('readonly', s => s.getAllKeys())) if (!keep.has(k)) await idb('readwrite', s => s.delete(k)); } catch (_) { /* nothing kept */ }
   }
 
@@ -5508,14 +5635,14 @@
     let names = [];
     try { names = await invoke('list_files', { path: join(folder, 'images') }); } catch (_) { names = []; }
     for (const im of [...images()]) {
-      if (!names.includes(im.name)) { tLine(`images/${im.name} isn't in the folder any more, so sentences that use it show nothing. Add it again with File → Add an image.`, 't-err'); continue; }
+      if (!names.includes(im.name)) { tLine(`images/${im.name} isn't in the folder any more, so sentences that use it show nothing. Add it again with Menu → Add an image.`, 't-err'); continue; }
       try {
         const { entry } = await keepImage(im.name, fromB64(await invoke('read_bytes', { path: join(folder, 'images/' + im.name) })));
         imagesWritten.add(`${folder}|${entry.name}|${entry.key}`);
       } catch (e) { tLine(`Could not read images/${im.name}: ${e}`, 't-err'); }
     }
     const extra = names.filter(n => IMAGE_NAME.test(n) && !images().some(im => im.name === n));
-    if (extra.length) tLine(`images/ also has ${extra.join(', ')}, not part of the project yet. File → Add an image adds ${extra.length > 1 ? 'them' : 'it'}.`, 't-sys');
+    if (extra.length) tLine(`images/ also has ${extra.join(', ')}, not part of the project yet. Menu → Add an image adds ${extra.length > 1 ? 'them' : 'it'}.`, 't-sys');
     renderImages();
     if (webOn()) runWebsite(false);
   }
@@ -5525,7 +5652,7 @@
   /* ------------------------------------------------------------------ */
 
   const TAURI = window.__TAURI__;
-  const desk = { on: !!(TAURI && TAURI.core), linux: /Linux/.test(navigator.userAgent), folder: null, python: null, venv: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false };
+  const desk = { on: !!(TAURI && TAURI.core), linux: /Linux/.test(navigator.userAgent), folder: null, python: null, venv: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false, closeAsks: false };
   const invoke = (cmd, args) => TAURI.core.invoke(cmd, args);
   const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   const join = (a, b) => a.replace(/[\\/]+$/, '') + '/' + b;
@@ -5535,16 +5662,25 @@
     try { return await invoke('pick_folder', { title }); }
     catch (e) { tLine('The folder picker could not open: ' + e, 't-err'); return null; }
   }
+  /* The project's folder in the header, only when it has one (• after it: changes not written there yet). */
   function showFolder() {
     const el = $('folderName');
-    el.hidden = !desk.on;
-    el.textContent = desk.folder ? baseName(desk.folder) + '/' : 'not saved yet';
-    el.title = desk.folder || 'This project is not saved to a folder yet. Press Save.';
+    el.hidden = !(desk.on && desk.folder);
+    el.textContent = desk.folder ? baseName(desk.folder) + '/' : '';
+    el.title = desk.folder || '';
     el.classList.toggle('unsaved', desk.dirty);
     document.title = desk.folder ? `IntuaCode — ${baseName(desk.folder)}` : 'IntuaCode';
   }
 
-  /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
+  /* What saving writes: the code files are the real project; the project itself (your sentences) goes in
+   * .intuicode/ next to them. [[path, text]], project.json last. */
+  function savedFiles() {
+    activeSec().text = ta.value;
+    compile();
+    return project.sections.map(s => [fileName(s), codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
+  }
+
+  /* Save (desktop): to the project's folder, chosen the first time. */
   async function saveProject(pick) {
     if (!desk.on) return;
     clearTimeout(desk.saveTimer);
@@ -5557,24 +5693,25 @@
       const taken = [];
       for (const n of names) { try { await invoke('read_text', { path: join(f, n) }); taken.push(n); } catch (_) { /* not there: free */ } }
       if (taken.length) {
-        tLine(`Nothing was saved: ${baseName(f)} already has ${taken.join(', ')}, and saving would write over ${taken.length > 1 ? 'them' : 'it'}. Choose an empty folder, or use File → Open folder to open that project.`, 't-err');
+        tLine(`Nothing was saved: ${baseName(f)} already has ${taken.join(', ')}, and saving would write over ${taken.length > 1 ? 'them' : 'it'}. Choose an empty folder, or use Menu → Open folder to open that project.`, 't-err');
         return;
       }
       desk.folder = f;
     }
-    activeSec().text = ta.value;
-    compile();
     // everything to write is taken now: another project may be opened while the files are written
-    const folder = desk.folder, names = project.sections.map(fileName);
-    const files = project.sections.map((s, i) => [names[i], codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
+    const folder = desk.folder, files = savedFiles(), names = files.slice(0, -1).map(f => f[0]);
     try {
       for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
       await writeImages(folder);
-      if (desk.folder === folder) { desk.dirty = false; showFolder(); }
+      if (desk.folder === folder) { desk.dirty = false; showFolder(); if (pick !== 'quiet') setUnsaved(false); }
       if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')}${images().length ? `, ${images().length} picture${images().length > 1 ? 's' : ''} in images/` : ''} (and your sentences, in .intuicode/).`, 't-sys');
     } catch (e) { tLine('Could not save: ' + e, 't-err'); }
   }
+  /* Every change: the project goes in the next backup and counts as not saved yet (Save, Ctrl+S); the desktop
+   * app writes it to its folder, if it has one, a moment later. */
   function autosave() {
+    backups.due = true;
+    setUnsaved(true);
     if (!desk.on) return;
     desk.dirty = true;
     showFolder();
@@ -5582,6 +5719,223 @@
     clearTimeout(desk.saveTimer);
     desk.saveTimer = setTimeout(() => saveProject('quiet'), 1500);
   }
+
+  /* Save, Ctrl+S: the desktop app writes the project's folder; a browser downloads the project as a .zip. */
+  function manualSave() { if (desk.on) saveProject(); else downloadProject(); }
+
+  /* Changes since the last Save: leaving the page, or closing the desktop app's window, asks first. */
+  let unsavedWork = false;
+  function setUnsaved(on) {
+    if (unsavedWork === on) return;
+    unsavedWork = on;
+    if (desk.on && desk.closeAsks) invoke('guard_close', { on }).catch(() => { /* the window closes without asking */ });
+  }
+
+  /* Hand the browser a file to keep (it goes in its downloads). */
+  function offerDownload(name, bytes, type = 'application/zip') {
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  /* Save in a browser: a .zip laid out as the desktop app saves a folder (code files, your sentences in
+   * .intuicode/, pictures in images/), inside a folder named after the project. Import code → Open a .zip
+   * opens it again as it was. */
+  function downloadProject() {
+    const top = String(project.name || 'my-program').replace(/[\\/:*?"<>|\s]+/g, '-');
+    const files = savedFiles().map(([path, content]) => ({ path: `${top}/${path}`, content }));
+    for (const im of project.images || []) {
+      const url = imageUrls.get(im.key);
+      if (url) files.push({ path: `${top}/images/${im.name}`, bytes: fromB64(url.slice(url.indexOf(',') + 1)) });
+    }
+    try { offerDownload(top + '.zip', OPENSPEC.zip(files)); }
+    catch (e) { tLine('Could not save: ' + (e.message || e), 't-err'); return; }
+    setUnsaved(false);
+    tLine(`Saved ${top}.zip to your downloads. Import code → Open a .zip opens it again.`, 't-sys');
+  }
+
+  /* A project IntuaCode saved (Save's .zip, or that .zip unzipped), opened as it was saved: sentences, folders,
+   * map and pictures. files: path -> async () => its bytes. false if it isn't one. */
+  async function openSaved(files, label) {
+    const meta = [...files.keys()].find(p => /^([^/]+\/)?\.intuicode\/project\.json$/.test(p));
+    if (!meta) return false;
+    const top = meta.slice(0, -'.intuicode/project.json'.length);
+    const bytes = async (p) => { try { const get = files.get(top + p); return get ? await get() : null; } catch (_) { return null; } };
+    const text = async (p) => { const b = await bytes(p); return b ? new TextDecoder().decode(b).replace(/\r\n?/g, '\n') : null; };
+    let saved;
+    try { saved = checkedProject(JSON.parse(await text('.intuicode/project.json'))); } catch (_) { saved = null; }
+    if (!saved) return false;
+    closeImport();
+    replaceProject(saved, `Opened ${label}.`);
+    let pictures = 0;
+    for (const im of [...images()]) {
+      const b = await bytes('images/' + im.name);
+      if (b) { try { await keepImage(im.name, b); pictures++; } catch (_) { /* shown as missing */ } }
+    }
+    if (pictures) { renderImages(); if (webOn()) runWebsite(false); }
+    // code changed since it was saved: a file kept as code takes it; sentences stay as they were saved
+    compile();
+    const stale = [];
+    let took = false;
+    for (const s of project.sections) {
+      const there = await text(fileName(s));
+      if (there == null || there.trim() === codeOf(s).trim()) continue;
+      if (isSentences(s)) stale.push(fileName(s)); else { s.text = there; took = true; }
+    }
+    if (took) { ta.value = activeSec().text; refreshAll(); if (mode === 'unity') unityShow(); else splitPlain(); save(); }
+    if (stale.length) tLine(`${stale.join(', ')} ${stale.length > 1 ? 'were' : 'was'} changed after this was saved. The sentences are as they were saved, and make the code as it was then.`, 't-err');
+    if (!desk.on) setUnsaved(false);   // the same as the .zip it came from
+    return true;
+  }
+  /* A .zip: one Save made opens as it was saved; false for any other. */
+  async function openSavedZip(bytes, label) {
+    let list = null;
+    try { list = OPENSPEC.unzip(bytes); } catch (_) { list = null; }
+    return !!list && openSaved(new Map(list.map(f => [f.path, () => unzipped(f)])), label);
+  }
+  /* A file's bytes from unzip(): stored ones as they are, deflated ones inflated (null where the browser can't). */
+  async function unzipped(f) {
+    if (f.method === 0) return f.data;
+    if (f.method !== 8 || typeof DecompressionStream === 'undefined' || f.size > 50e6) return null;
+    return new Uint8Array(await new Response(new Blob([f.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Backups: every 2 minutes, a copy of the project if it changed; the  */
+  /* last 15 are kept (30 minutes). One list for this browser or app,   */
+  /* whichever project each copy is of. In IndexedDB, as a project can  */
+  /* be megabytes (localStorage holds about 5 MB in all).               */
+  /* ------------------------------------------------------------------ */
+
+  const BACKUP_EVERY = 2 * 60 * 1000, BACKUP_KEEP = 15;
+  const backups = { due: false, db: null, last: null, chain: Promise.resolve() };
+  // backups: { id, time, name, files, folder, images: [picture keys] }; copies: the project's JSON, by the same id
+  function backupTx(mode, act) {
+    backups.db = backups.db || new Promise((res, rej) => {
+      const rq = indexedDB.open('intuicode-backups', 1);
+      rq.onupgradeneeded = () => { rq.result.createObjectStore('backups', { keyPath: 'id', autoIncrement: true }); rq.result.createObjectStore('copies'); };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    return backups.db.then(db => new Promise((res, rej) => {
+      const tx = db.transaction(['backups', 'copies'], mode), rq = act(tx.objectStore('backups'), tx.objectStore('copies'));
+      tx.oncomplete = () => res(rq && rq.result);
+      tx.onerror = tx.onabort = () => rej(tx.error);
+    }));
+  }
+  /* A copy of the project as it is now (as the browser keeps it), if it changed since the last one (force: even
+   * if not). Never in the way: one that fails is tried again next time. -> a promise, done when it's kept. */
+  function takeBackup(force) {
+    if (!backups.due && !force) return backups.chain;
+    let entry;
+    try { entry = { time: Date.now(), name: project.name, files: project.sections.length, folder: desk.folder || null, images: (project.images || []).map(im => im.key), json: JSON.stringify(project) }; }
+    catch (_) { return backups.chain; }
+    backups.due = false;
+    backups.chain = backups.chain.then(() => keepBackup(entry)).catch(() => { backups.due = true; });
+    return backups.chain;
+  }
+  async function keepBackup({ json, ...meta }) {
+    const ids = await backupTx('readonly', b => b.getAllKeys());
+    if (backups.last == null && ids.length) backups.last = await backupTx('readonly', (b, c) => c.get(ids[ids.length - 1]));
+    if (json === backups.last) return;   // the same as the newest copy
+    await backupTx('readwrite', (b, c) => { const rq = b.add(meta); rq.onsuccess = () => c.put(json, rq.result); return rq; });
+    backups.last = json;
+    if (ids.length >= BACKUP_KEEP) {
+      const old = IDBKeyRange.upperBound(ids[ids.length - BACKUP_KEEP]);
+      await backupTx('readwrite', (b, c) => { b.delete(old); c.delete(old); });
+    }
+  }
+  setInterval(() => takeBackup(), BACKUP_EVERY);
+
+  const ago = (t) => {
+    const min = Math.floor((Date.now() - t) / 60000), d = new Date(t);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min} min ago`;
+    const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? `at ${hm}` : `on ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} at ${hm}`;
+  };
+  async function openBackups() {
+    $('bkNote').textContent = '';
+    $('bkList').innerHTML = '';
+    $('bkModal').hidden = false;
+    $('bkClose').focus();
+    let list = null;
+    try { list = await backupTx('readonly', b => b.getAll()); } catch (_) { list = null; }
+    $('bkList').innerHTML = !list ? `<li class="bk-none">Backups can't be kept here: this ${desk.on ? 'app' : 'browser'}'s storage is off or full.</li>`
+      : !list.length ? '<li class="bk-none">No copies yet. The first is kept 2 minutes after the project changes.</li>'
+      : list.reverse().map(b => `<li class="bk-item"><span class="bk-when" title="${escHtml(new Date(b.time).toLocaleString())}">${ago(b.time)}</span>`
+        + `<span class="bk-what"><b>${escHtml(b.name)}</b><small>${+b.files || 0} file${+b.files === 1 ? '' : 's'}</small></span>`
+        + `<button type="button" class="btn small" data-restore="${+b.id}">Restore</button></li>`).join('');
+  }
+  function closeBackups() { $('bkModal').hidden = true; }
+  /* Restoring keeps a copy of what's open first, so a restore can be undone from Backups too. */
+  async function restoreBackup(id) {
+    let meta = null, saved = null;
+    try {
+      meta = await backupTx('readonly', b => b.get(id));
+      const json = await backupTx('readonly', (b, c) => c.get(id));
+      saved = meta && json ? checkedProject(JSON.parse(json)) : null;
+    } catch (_) { saved = null; }
+    if (!saved) { $('bkNote').textContent = 'That copy could not be read.'; return; }
+    activeSec().text = ta.value;
+    await takeBackup(true);
+    closeBackups();
+    // in the desktop app, a copy made in the folder that's open goes back there; any other has no folder yet
+    const here = desk.on && desk.folder && meta.folder === desk.folder ? desk.folder : null;
+    replaceProject(saved, `Restored ${saved.name} as it was ${ago(meta.time)}.` + (desk.on && !here ? ' It isn\'t saved in a folder: press Save to keep it.' : ''), here);
+    if (here) autosave();   // written to the folder, as any change is
+    backups.due = false;   // it's a backup already
+  }
+  $('btnBackups').addEventListener('click', openBackups);
+  $('bkClose').addEventListener('click', closeBackups);
+  $('bkModal').addEventListener('click', (e) => {
+    if (e.target.id === 'bkModal') return closeBackups();
+    const r = e.target.closest('[data-restore]');
+    if (r) restoreBackup(+r.dataset.restore);
+  });
+
+  /* Leaving: the latest changes go in Backups (as far as the page gets), and a browser asks first if there are
+   * changes since the last Save (in its own words). */
+  window.addEventListener('beforeunload', (e) => {
+    takeBackup();
+    if (desk.on || !unsavedWork) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+  window.addEventListener('pagehide', () => takeBackup());
+
+  /* Closing the desktop app's window with changes since the last Save: the desktop layer holds the close and
+   * asks here (ask-to-close). Whatever the answer, the latest changes go in Backups first. */
+  function askToClose() {
+    if (!unsavedWork) return closeWindow();
+    $('closeModal').hidden = false;
+    $('closeSave').focus();
+  }
+  async function closeWindow() {
+    $('closeModal').hidden = true;
+    await Promise.race([takeBackup(), new Promise(r => setTimeout(r, 2000))]);
+    try { await invoke('close_window'); } catch (e) { tLine('The window could not close: ' + e, 't-err'); }
+  }
+  const keepOpen = () => { $('closeModal').hidden = true; };
+  $('closeSave').addEventListener('click', async () => {
+    keepOpen();
+    await saveProject();
+    if (!unsavedWork) closeWindow();   // (no folder chosen, or it couldn't save: the window stays)
+  });
+  $('closeDiscard').addEventListener('click', closeWindow);
+  $('closeCancel').addEventListener('click', keepOpen);
+  $('closeModal').addEventListener('click', (e) => { if (e.target.id === 'closeModal') keepOpen(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('closeModal').hidden) { e.stopPropagation(); keepOpen(); }
+    else if (!$('bkModal').hidden) { e.stopPropagation(); closeBackups(); }
+  }, true);
+
+  $('btnSave').hidden = false;
+  if (!desk.on) $('btnSave').title = 'Download the project as a .zip (Import code opens it again)';
+  $('btnSave').addEventListener('click', manualSave);
 
   /* Open a folder in Split Mode. Code on disk wins over saved sentences if they disagree. */
   async function openFolderWrite() {
@@ -5684,8 +6038,10 @@
     if (paths.length === 1 && /\.zip$/i.test(paths[0])) {
       closeImport();
       try {
+        const bytes = fromB64(await invoke('read_bytes', { path: paths[0] }));
+        if (await openSavedZip(bytes, baseName(paths[0]))) return;
         const R = await Runner.reader((s) => setStatus(s));
-        importProject(R.readZip(fromB64(await invoke('read_bytes', { path: paths[0] }))), '');
+        importProject(R.readZip(bytes), '');
       } catch (e) { tLine('That .zip could not be opened: ' + (e.message || e), 't-err'); }
       return;
     }
@@ -5904,8 +6260,11 @@
     $('btnSave').hidden = false;
     showFolder();
     $('btnOpenFolder').addEventListener('click', openFolderWrite);
-    $('btnSave').addEventListener('click', () => saveProject());
     $('btnStop').addEventListener('click', () => { if (desk.proc) invoke('stop_program', { id: desk.proc.id }); });
+    // closing the window with changes not saved asks here first (not while WebDriver drives the app, as its tests do)
+    await TAURI.event.listen('ask-to-close', askToClose);
+    desk.closeAsks = !navigator.webdriver;
+    if (desk.closeAsks) invoke('guard_close', { on: unsavedWork }).catch(() => { /* the window closes without asking */ });
     // the import dialog's folder button uses the native picker
     $('impFolder').closest('label').addEventListener('click', (e) => { e.preventDefault(); importFolder(); });
     // drops on the window come as paths (the page's own drop events never fire)
@@ -5969,7 +6328,7 @@
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.activeElement !== ta) { e.preventDefault(); run(); }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && desk.on) { e.preventDefault(); saveProject(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); manualSave(); }
     // (a browser keeps Ctrl+N for a new window; the desktop app gets it)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewProject(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
