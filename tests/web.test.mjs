@@ -123,6 +123,20 @@ test('preview inlines styles and scripts', () => {
   assert.match(doc.html, /data-ic-line="0"/);
 });
 
+test('one-page preview: every style sheet the page links that is the project\'s is inlined, the main one once', () => {
+  // an imported page: styles.css?v=2 linked in its head, a theme in a folder; the writer adds style.css as well
+  const r = site('head: <link rel="stylesheet" href="styles.css?v=2">\nhead: <link rel="stylesheet" href="./themes/dark.css">\nhead: <link rel="stylesheet" href="https://cdn.example/x.css">\nadd a paragraph called a "x"', 'style a: bold', '');
+  const styles = { 'styles.css': '#a { font-weight: bold; }', 'themes/dark.css': 'body { background: black; }' };
+  const doc = WEB.previewDocument(r, '', { page: 'index.html', styles, styling: 'styles.css' });
+  assert.equal(doc.html.match(/<style data-ic-file="styles\.css">/g).length, 1, doc.html);
+  assert.match(doc.html, /<style data-ic-file="themes\/dark\.css">\nbody \{ background: black; \}<\/style>/);
+  assert.match(doc.html, /href="https:\/\/cdn\.example\/x\.css"/);   // an address elsewhere stays a link
+  assert.doesNotMatch(doc.html, /href="style\.css"|href="styles\.css/);
+  // a page in a folder links its sheets from there; </style> in the CSS can't end the tag
+  const sub = WEB.previewDocument(site('head: <link href="../shared/site.css" rel="stylesheet">\nadd a paragraph "x"', '', ''), '', { page: 'docs/index.html', styles: { 'shared/site.css': 'p::after { content: "</style>"; }' } });
+  assert.match(sub.html, /<style data-ic-file="shared\/site\.css">\np::after \{ content: "<\\\/style>"; \}<\/style>/, sub.html);
+});
+
 test('preview keeps $&, $\' and $$ in the code as they are', () => {
   const r = site('add a paragraph called total "x"', 'css: p::after { content: "$& $\' $$"; }', 'set sum to 12\nset the text of total to "Total: ${sum}"\njs: const s = "$&$\'$$";');
   const js = r.results.mechanics.text;

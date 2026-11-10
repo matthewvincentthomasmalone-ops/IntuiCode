@@ -3210,9 +3210,17 @@
       const list = [...site.missing];
       site.missing = new Set();
       if (!list.length) return;
-      // by folder: a folder with many (a page's sounds) is one entry
-      const dirs = new Map();
-      for (const p of list) { const d = p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : ''; dirs.set(d, (dirs.get(d) || []).concat(p)); }
+      // by folder: a folder with many (a page's sounds) is one entry, and many folders are their parent's
+      let dirs = new Map();
+      const put = (m, d, ps) => m.set(d, (m.get(d) || []).concat(ps));
+      for (const p of list) put(dirs, p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '', [p]);
+      while (dirs.size > 4) {
+        const depth = Math.max(...[...dirs.keys()].map(d => d.split('/').length));
+        if (depth < 3) break;
+        const next = new Map();
+        for (const [d, ps] of dirs) put(next, d.split('/').length === depth ? d.split('/').slice(0, -2).join('/') + '/' : d, ps);
+        dirs = next;
+      }
       const parts = [...dirs].flatMap(([d, ps]) => (d && ps.length > 3 ? [`${ps.length} files in ${d}`] : ps));
       const shown = parts.slice(0, 4).join(', ') + (parts.length > 4 ? ` and ${parts.length - 4} more` : '');
       tLine(`Not in the project, so not found (404): ${shown}. The page gets what any web server gives for a file that isn't there.`, 't-sys');

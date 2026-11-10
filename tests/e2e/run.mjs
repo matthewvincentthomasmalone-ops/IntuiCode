@@ -388,7 +388,7 @@ try {
     let lastSrc = '', steady = 0;
     await waitFor('the preview to settle on its address', async () => {
       const src = await js(() => document.getElementById('preview').src);
-      steady = /preview/.test(src) && src === lastSrc ? steady + 1 : 0;
+      steady = /^http:\/\/127\.0\.0\.1:\d+\/|preview/.test(src) && src === lastSrc ? steady + 1 : 0;
       lastSrc = src;
       return steady >= 3;
     }, 30000);
@@ -402,8 +402,9 @@ try {
       } : null), 30000);
       if (inside.parent !== 'blocked' || inside.storage !== 'kept') throw new Error(JSON.stringify(inside));
       // On Windows, WebView2 runs Tauri's scripts in every frame, so the page may have Tauri's invoke.
-      // What matters is that no command runs from it: its requests come from origin null, which Tauri
-      // refuses, and the message route (forced by breaking fetch) only reaches the app from the window.
+      // What matters is that no command runs from it: its requests come from the preview's local address
+      // (http://127.0.0.1:…), which Tauri treats as a remote site and refuses (or origin null, for the
+      // one-page fallback), and the message route (forced by breaking fetch) only reaches the app from the window.
       const attempts = await wd('POST', `/session/${session}/execute/async`, {
         script: `const done = arguments[arguments.length - 1];
           const t = window.__TAURI_INTERNALS__;
@@ -425,6 +426,44 @@ try {
     } finally {
       await wd('POST', `/session/${session}/frame/parent`, {});
     }
+  });
+
+  await check('the preview serves the project\'s files (modules, JSON) at a local address, and Project Link follows them', async () => {
+    await clearTerminal();
+    // a site of several files, imported as a folder: a module that imports another and fetches JSON
+    await js(() => {
+      const files = {
+        'index.html': '<!doctype html>\n<html>\n<head>\n<link rel="stylesheet" href="look.css?v=1">\n</head>\n<body>\n<h1 id="title">Loading</h1>\n<button id="go">Go</button>\n<script type="module" src="main.js?v=1"></script>\n</body>\n</html>\n',
+        'look.css': '#go { color: rgb(1, 2, 3); }\n',
+        'main.js': "import { word } from './lib/words.js';\nconst data = await (await fetch('data.json')).json();\ndocument.getElementById('title').textContent = word + ' ' + data.n;\nconst missing = await fetch('sounds/a.ogg');\ndocument.body.dataset.missing = String(missing.status);\ndocument.getElementById('go').addEventListener('click', () => { document.body.dataset.clicked = 'yes'; });\n",
+        'lib/words.js': "export const word = 'Loaded';\n",
+        'data.json': '{ "n": 3 }\n',
+      };
+      const list = Object.entries(files).map(([p, t]) => { const f = new File([t], p.split('/').pop()); Object.defineProperty(f, 'webkitRelativePath', { value: 'e2e-site/' + p }); return f; });
+      const inp = document.getElementById('impFolder');
+      Object.defineProperty(inp, 'files', { value: list, configurable: true });
+      inp.dispatchEvent(new Event('change'));
+      return true;
+    });
+    const src = await waitFor('the preview at its local address', () => js(() => { const s = document.getElementById('preview').src; return /^http:\/\/127\.0\.0\.1:\d+\/index\.html$/.test(s) && !document.getElementById('pvAddr').hidden ? s : null; }), 30000);
+    const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
+    await wd('POST', `/session/${session}/frame`, { id: frame });
+    let page;
+    try {
+      page = await waitFor('the page\'s module, import and JSON', () => js(() => (document.getElementById('title') && document.getElementById('title').textContent === 'Loaded 3' && document.body.dataset.missing ? {
+        missing: document.body.dataset.missing, secure: isSecureContext, origin: location.origin,
+        color: getComputedStyle(document.getElementById('go')).color, marks: document.querySelectorAll('[data-ic-line]').length,
+      } : null)), 30000);
+      // a click: Project Link hears it and the page's own handler runs
+      await js(() => { const b = document.getElementById('go'); b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); b.click(); return true; });
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
+    console.log(`  ${src} · ${JSON.stringify(page)}`);
+    if (page.missing !== '404' || !page.secure || page.color !== 'rgb(1, 2, 3)' || !page.marks) throw new Error(JSON.stringify(page));
+    const bar = await waitFor('Project Link', () => js(() => { const t = document.getElementById('linkBar').innerText; return /look\.css/.test(t) && /main\.js/.test(t) ? t : null; }), 10000);
+    if (!/index\.html/.test(bar)) throw new Error(bar);
+    await waitFor('the note about the missing file', logHas('sounds/a.ogg'));
   });
 
   await check('compiles and runs C++ with a class (Visual Studio on Windows, g++ elsewhere)', async () => {
