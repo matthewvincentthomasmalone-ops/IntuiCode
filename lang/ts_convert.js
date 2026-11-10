@@ -62,6 +62,33 @@
     const close = ks[ks.length - 1];
     return !!after && after.type === ',' && after.startPosition.row === last.endPosition.row && close.type === '}' && close.startPosition.row === last.endPosition.row + 1 && call.endPosition.row === close.startPosition.row && call.endIndex === close.endIndex + 1;
   }
+  /* Are the items of a bracketed list (an import's { … }, a call's ( … )) one per line, after the line it opens on,
+     each on a line of its own (and a comma after the last when trailing is true), the closing bracket on the line
+     after the last?
+       console.error(           import {
+         "Not found:",            Card,
+         path                     CardContent,
+       );                       } from "@/components/ui/card"; */
+  function itemsOnLines(list, items, trailing) {
+    const ks = kids(list), open = ks[0], close = ks[ks.length - 1];
+    if (!items.length || ks.some(isComment) || !open || !close) return false;
+    for (let k = 0; k < items.length; k++) if (items[k].startPosition.row !== open.startPosition.row + 1 + k || items[k].endPosition.row !== items[k].startPosition.row) return false;
+    const last = items[items.length - 1], after = ks[ks.findIndex(x => x.startIndex === last.startIndex) + 1];
+    const end = trailing ? (after && after.type === ',' && after.startPosition.row === last.endPosition.row ? ks[ks.indexOf(after) + 1] : null) : after;
+    return !!end && end === close && close.startPosition.row === last.endPosition.row + 1;
+  }
+  /* The call a statement is, or gives back, or stores, or waits for (its whole value), or null. */
+  function callOf(n) {
+    let v = n.type === 'expression_statement' || n.type === 'return_statement' ? real(n)[0]
+      : n.type === 'lexical_declaration' && real(n).length === 1 && real(n)[0].type === 'variable_declarator' ? F(real(n)[0], 'value') : null;
+    if (v && v.type === 'await_expression') v = real(v)[0];
+    return v && v.type === 'call_expression' && F(v, 'arguments') && F(v, 'arguments').type === 'arguments' && !kids(v).some(k => k.type === 'optional_chain') ? v : null;
+  }
+  // a record's key that would read as a kind of line of its own (ts: exact code, note: a comment), not as a part.
+  // (description: is a part there: toast's own, and a tool's description only goes right under its "define")
+  const LINE_WORD = /^(?:js|javascript|raw|ts|tsx|note|comment)$/i;
+  // a line under "… with:" that is one part of a record, not an input: name: value, "name": value
+  const PART_LINE = /^(?:[A-Za-z_$][\w$]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\d+):\s/;
 
   /* ---------- Types ---------- */
 
@@ -247,8 +274,52 @@
     /* A tool's inputs in words (null when one of them stays code). */
     const paramsOf = (fn) => { const ps = F(fn, 'parameters') || real(fn).find(x => x.type === 'formal_parameters'); if (!ps) return null; const w = real(ps).map(paramWords); return w.some(x => x == null) ? null : w; };
 
+    /* A call written over lines, the whole value of its statement: its inputs one per line, or its last input a
+       record a part per line. Said as the sentence it is on one line, its inputs (or the record's parts) taken off
+       the end and put a line each under it:
+         run console.error with:           run toast with:                 wait for fetch with "/api" and:
+             "Not found:"                      title: "Saved"                  method: "POST"
+             path                              variant: "destructive"          body: note as JSON text
+       undefined: not one of these (or not said so), and the statement is said the usual way. */
+    const busy = new Set();
+    function callOnLines(n, depth, lvl, C) {
+      // (TypeScript and React only: their layout is what comes back; a website's JavaScript keeps its own sentences)
+      if (!typed || lvl || busy.has(n.startIndex)) return undefined;
+      const call = callOf(n);
+      if (!call || real(call).some(x => x.type === 'type_arguments')) return undefined;
+      const al = F(call, 'arguments'), a = C.args(call), obj = a.length && a[a.length - 1].type === 'object' ? a[a.length - 1] : null;
+      const parts = obj ? real(obj) : [];
+      const record = !!obj && onLines(call, obj, parts) && parts.some(p => p.type === 'pair');
+      if (!record && !(kids(al)[0].startPosition.row === call.startPosition.row && itemsOnLines(al, a, false))) return undefined;
+      // what goes under it: the record's parts, or the inputs, as the one-line sentence says them
+      const under = [];
+      for (const p of record ? parts : a) {
+        let w;
+        if (!record) w = C.item(C.ex(p));
+        else if (p.type === 'shorthand_property_identifier') w = p.text;
+        else if (p.type === 'pair' && /^(?:property_identifier|string|number)$/.test(F(p, 'key').type) && !LINE_WORD.test(F(p, 'key').text)) { const v = C.inList(C.ex(F(p, 'value'))); w = v == null ? null : `${F(p, 'key').text}: ${v}`; }
+        if (w == null || /\n/.test(w) || (!record && PART_LINE.test(w))) return undefined;
+        under.push(w);
+      }
+      // the sentence on one line (a record given over lines is never too long a sentence, nor a fetch a "send")
+      const tail = record ? `{ ${under.join(', ')} }` : under.join(', ');
+      busy.add(n.startIndex); C.lined.add(call.startIndex); if (obj) C.lined.add(obj.startIndex);
+      const m = C.o.mark(), at = C.o.lines.length;
+      let ok = false;
+      try { ok = C.one(n, depth, 0); } catch (e) { ok = false; } finally { busy.delete(n.startIndex); }
+      const got = C.o.lines.slice(at).map(l => l.trim());
+      C.o.undo(m);
+      const head = ok && got.length === 1 && got[0].endsWith(tail) ? got[0].slice(0, -tail.length) : null;
+      const said = head == null ? null : / with $/.test(head) ? head.trimEnd() + ':' : record && /, $/.test(head) ? head.slice(0, -2) + ' and:' : null;
+      if (!said) { C.lined.delete(call.startIndex); if (obj) C.lined.delete(obj.startIndex); return undefined; }
+      C.o.say(depth, [said, ...under.map(w => IND + w)].join('\n'));
+      return true;
+    }
+
     function one(n, depth, lvl, C) {
       const say = (t) => { C.o.say(depth, t); return true; };
+      const lc = callOnLines(n, depth, lvl, C);
+      if (lc !== undefined) return lc;
       const r = react(n, depth, lvl, C);
       if (r !== undefined) return r;
       switch (n.type) {
@@ -330,6 +401,8 @@
             items.push(`${t ? 'the type ' : ''}${ids[0].text}${ids[1] ? ' as ' + ids[1].text : ''}`);
           }
           if (only) return items.length > 0 && !items.some(x => / as /.test(x)) && say(`bring in the type${items.length > 1 ? 's' : ''} ${andList(items)} from ${from.text}`);
+          // the names one per line (as Prettier writes a long list): "bring in from "…":", a name a line under it
+          if (typed && !main && list && list.startPosition.row === n.startPosition.row && itemsOnLines(list, real(list), true)) return say([`bring in from ${from.text}:`, ...items.map(x => IND + x)].join('\n'));
           // ("bring in the type A …" is a list of types only, so a list can't start with one when it has other names)
           if (/^the type /.test(items[0])) return false;
           // (plain names, "bring in a and b from …", are JavaScript's own sentence)
@@ -434,17 +507,38 @@
       else if (h.m === 'upsert' && h.a.length === 1) { const v = val(h.a[0]); said = v && `adding or replacing ${v} in ${where}`; }
       else if (h.m === 'delete' && !h.a.length) said = `deleting from ${where}`;
       if (!said) return null;
+      const more = [];
       for (const md of mods) {
         const [a0, a1] = md.a;
-        if ((md.m === 'eq' || md.m === 'neq') && md.a.length === 2 && C.plainString(a0)) { const v = val(a1); if (!v) return null; said += ` where ${a0.text} is${md.m === 'neq' ? ' not' : ''} ${v}`; }
-        else if (md.m === 'order' && C.plainString(a0) && (md.a.length === 1 || (md.a.length === 2 && /^\{\s*ascending:\s*(?:true|false)\s*,?\s*\}$/.test(a1.text)))) said += ` sorted by ${a0.text}${md.a.length === 2 ? (/false/.test(a1.text) ? ' from the end' : ' from the start') : ''}`;
-        else if (md.m === 'limit' && md.a.length === 1 && a0.type === 'number') said += ` at most ${a0.text}`;
-        else if (md.m === 'select' && !md.a.length) said += ' giving back the result';
-        else if (md.m === 'single' && !md.a.length) said += ' as a single row';
-        else if (md.m === 'maybeSingle' && !md.a.length) said += ' as one row or none';
+        if ((md.m === 'eq' || md.m === 'neq') && md.a.length === 2 && C.plainString(a0)) { const v = val(a1); if (!v) return null; more.push(`where ${a0.text} is${md.m === 'neq' ? ' not' : ''} ${v}`); }
+        else if (md.m === 'order' && C.plainString(a0) && (md.a.length === 1 || (md.a.length === 2 && /^\{\s*ascending:\s*(?:true|false)\s*,?\s*\}$/.test(a1.text)))) more.push(`sorted by ${a0.text}${md.a.length === 2 ? (/false/.test(a1.text) ? ' from the end' : ' from the start') : ''}`);
+        else if (md.m === 'limit' && md.a.length === 1 && a0.type === 'number') more.push(`at most ${a0.text}`);
+        else if (md.m === 'select' && !md.a.length) more.push('giving back the result');
+        else if (md.m === 'single' && !md.a.length) more.push('as a single row');
+        else if (md.m === 'maybeSingle' && !md.a.length) more.push('as one row or none');
         else return null;
       }
-      return C.W(said);
+      // one call a line (supabase, then .from(…), .select(…) and each one after it on a line of its own): each part
+      // after the table on a line of its own under the sentence
+      return C.W(typed && more.length && chainOnLines(n, cur) ? [said,...more.map(x => IND + x)].join('\n') : [said, ...more].join(' '));
+    }
+    /* Is the chain on cur (supabase) written one call per line, the whole value of its statement?
+         const { data, error } = await supabase
+           .from("notes")
+           .select("*")
+           .order("created_at", { ascending: false }); */
+    function chainOnLines(n, cur) {
+      const p = n.parent && n.parent.type === 'await_expression' ? n.parent.parent : n.parent;
+      if (!p || !/^(?:return_statement|variable_declarator|expression_statement)$/.test(p.type)) return false;
+      const calls = [];
+      // (nodes are compared by where they are: the reader gives a new object each time it is asked for one)
+      for (let c = n; c && c.type === 'call_expression' && c.startIndex === cur.startIndex && c.endIndex !== cur.endIndex; c = F(F(c, 'function'), 'object')) calls.unshift(c);
+      if (!calls.length) return false;
+      const row = cur.endPosition.row;
+      return calls.every((c, k) => {
+        const fn = F(c, 'function'), dot = kids(fn).find(x => x.type === '.');
+        return !!dot && dot.startPosition.row === row + 1 + k && c.endPosition.row === row + 1 + k;
+      });
     }
     /* useQuery({ queryKey: ["notes"], queryFn: fetchNotes }) -> the query ["notes"] loaded by fetchNotes;
        useMutation({ mutationFn: f }) -> a change made by f. A query written one part per line (as Lovable and
@@ -570,7 +664,10 @@
             if (!items.length) return false;
             if (v.type === 'await_expression') {
               const w = C.val(real(v)[0]);
-              return w != null && !/,? and take /.test(w) && say(`wait for ${w}, and take ${andList(items)} from it`);
+              if (w == null || /,? and take /.test(w)) return false;
+              // (a value that goes on over the lines under it, a query's parts: what it takes goes on the first line)
+              const [first, ...under] = w.split('\n');
+              return say([`wait for ${first}, and take ${andList(items)} from it`, ...under].join('\n'));
             }
             const e = C.val(v);
             return e != null && say(`take ${andList(items)} from ${e}`);
@@ -579,6 +676,9 @@
         }
         case 'expression_statement': {
           const e = real(n)[0];
+          // wait for deleting from the "notes" table in supabase where "id" is id (a query waited for, its answer unused)
+          const q = e && e.type === 'await_expression' && real(e)[0] && real(e)[0].type === 'call_expression' ? supabaseWords(real(e)[0], C) : undefined;
+          if (q !== undefined) return q != null && say(`wait for ${q}`);
           if (!e || e.type !== 'call_expression') return undefined;
           const fn = F(e, 'function'), a = C.args(e);
           // when Card first appears / whenever query changes (useEffect), its steps under it

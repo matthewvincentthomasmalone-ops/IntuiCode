@@ -325,8 +325,16 @@ git, though the program is the same. The check compares syntax trees, so layout 
 - **Never guessed, always said.** After the check, the converter writes the sentences back and compares lines
   (indentation by level, so a file indented by 4 or by tabs isn't all "different"). Where they differ, its result
   has `layout: [{ from, to, why }]`, and Translate in Unity says which lines and why. It's TypeScript and React only.
-- **What isn't carried yet** (a call's inputs or a chain split over lines, an import list one name per line, text
-  and an element sharing a line between tags) would each need a sentence form of its own.
+- **More shapes, the same way** (2026-11-10): what goes on over lines is said on lines under its sentence, a line
+  each. `bring in from "…":` with the names under it; `… with:` with a call's inputs, or a record's parts
+  (`name: value`), under it (`… and:` when the record follows other inputs); a Supabase query's parts after its table
+  under it. The converter says them only for a statement's whole value laid out exactly so (inputs with no comma
+  after the last, a record with one), by saying the sentence on one line and taking its end off onto the lines
+  under; the writer joins them back and writes those values over lines. A record over lines is never "too long" a
+  sentence, nor is a fetch said as "send". Website JavaScript keeps its own sentences (`send … to …`).
+- **What isn't carried yet** (text and an element sharing a line between tags, a query split over lines with
+  nothing after its table, a record over lines inside a longer sentence like `…, and take error from it`) would each
+  need a sentence form of its own.
 
 ## Testing
 

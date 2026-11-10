@@ -1130,11 +1130,100 @@ export function useNotes() {
 }
 ```
 
+- `bring in from "…":` with a name on each line under it (or `a as b`, `the type Note`) is an import list one name
+  per line:
+
+```intuicode tsx
+bring in from "@/components/ui/card":
+    Card
+    CardContent
+    CardHeader
+```
+
+```typescript
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
+```
+
+- A sentence ending `with:` has what the call is given on the lines under it, one per line. Lines that are a
+  record's parts (`name: value`) are one record, its parts a line each; any other lines are the inputs, one per line.
+  After other inputs, the record goes under `… and:`. A record needs at least one `name: value` line (bare names
+  alone are inputs).
+
+```intuicode ts
+bring in toast from "sonner"
+
+define shared report using error
+    run console.error with:
+        "Couldn't save:"
+        error.message
+    run toast with:
+        title: "Couldn't save"
+        description: error.message
+        variant: "destructive"
+
+define shared save using note
+    wait for fetch with "/api/notes" and:
+        method: "POST"
+        body: note as JSON text
+```
+
+```typescript
+import { toast } from "sonner";
+
+export function report(error) {
+  console.error(
+    "Couldn't save:",
+    error.message
+  );
+  toast({
+    title: "Couldn't save",
+    description: error.message,
+    variant: "destructive",
+  });
+}
+
+export async function save(note) {
+  await fetch("/api/notes", {
+    method: "POST",
+    body: JSON.stringify(note),
+  });
+}
+```
+
+- A Supabase query with its parts after the table (`where …`, `sorted by …`, `at most …`, `as a single row`…) on
+  the lines under it, one per line, is the chain one call per line:
+
+```intuicode ts
+define shared fetchNotes
+    wait for every row of the "notes" table in supabase, and take data and error from it
+        sorted by "created_at" from the end
+        at most 20
+    if error, fail with error as it is
+    give back data
+```
+
+```typescript
+export async function fetchNotes() {
+  const { data, error } = await supabase
+    .from("notes")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return data;
+}
+```
+
 TypeScript is written the way Prettier writes it where the sentences can't say: `(n) => …` for a little function's
 input, no brackets a value doesn't need (`notes.filter(…).length`), two spaces a step in. Where the code is laid out
-some other way (a long chain of calls split over lines, a call's inputs one per line, an import list one name per
-line, text and an element sharing a line between tags), the program still comes back exactly, and Translate says
-which lines will be laid out differently and why.
+some other way (a query split over lines with no part after its table, a call's inputs one per line with a comma
+after the last, a record over lines that isn't the last thing its sentence says, as in `wait for … with { email,
+password }, and take error from it`, text and an element sharing a line between tags), the program still comes back
+exactly, and Translate says which lines will be laid out differently and why.
 
 ### What counts as the same (TypeScript and JSX)
 

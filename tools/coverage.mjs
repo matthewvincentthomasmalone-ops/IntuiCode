@@ -27,7 +27,14 @@ if (ts.length) {
     const kind = f.endsWith('.tsx') ? 'tsx' : f.endsWith('.ts') ? 'ts' : 'js';
     const r = convert(kind, readFileSync(f, 'utf8'));
     const lines = r.ok ? r.text.split('\n').filter(l => l.trim() && !/^\s*note:/.test(l)) : [];
-    const counted = lines.filter(l => !/^\s*(?:(?:ts|tsx|js):\s*import\s|bring in\s)/.test(l));
+    // (and the names under "bring in from "…":", one per line, are the import's too)
+    let under = -1;
+    const counted = lines.filter(l => {
+      const ind = l.match(/^\s*/)[0].length;
+      if (under >= 0 && ind > under) return false;
+      under = /^\s*bring in from\s.*:$/.test(l) ? ind : -1;
+      return !/^\s*(?:(?:ts|tsx|js):\s*import\s|bring in\s)/.test(l);
+    });
     const raw = counted.filter(l => /^\s*(?:ts|tsx|js):/.test(l)).length;
     const back = r.ok ? TS.compileTs({ id: 'x', file: 'typescript', text: r.text }, null, { lang: kind }) : null;
     const errors = back ? back.info.flatMap((inf, n) => inf.errs.map(e => `line ${n + 1}: ${e}`)) : [r.error];

@@ -275,8 +275,10 @@
       return { p: p.text, body };
     };
     const rest = (a) => a.map(ex).map(item);
-    // a list or record written over several lines stays as code when it would make one long sentence (a table of data)
-    const long = (n, parts) => n.startPosition.row !== n.endPosition.row && parts.join(', ').length > 100;
+    // a list or record written over several lines stays as code when it would make one long sentence (a table of data),
+    // unless a dialect says it over lines too, a part a line (lined: those records, and the calls they are given to)
+    const lined = new Set();
+    const long = (n, parts) => !lined.has(n.startIndex) && n.startPosition.row !== n.endPosition.row && parts.join(', ').length > 100;
     const val = (n) => (n && n.type === 'array' && !named(n).length ? 'an empty list' : ex(n));   // a whole value: [] in words
     function ex(n) {
       if (!n) return null;
@@ -466,7 +468,8 @@
     /* await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) }):
        the writer's "send v to url". Gives back { v, u } in words, or null. */
     function sendOf(c) {
-      if (!c || c.type !== 'call_expression' || F(c, 'function').text !== 'fetch' || args(c).length !== 2 || args(c)[1].type !== 'object') return null;
+      // (a fetch said over lines, its record a part a line, is said as the call it is: "wait for fetch with url and:")
+      if (!c || lined.has(c.startIndex) || c.type !== 'call_expression' || F(c, 'function').text !== 'fetch' || args(c).length !== 2 || args(c)[1].type !== 'object') return null;
       const body = named(args(c)[1]).find(p => p.type === 'pair' && F(p, 'key').text === 'body'), val = body && F(body, 'value');
       if (!val || val.type !== 'call_expression' || F(val, 'function').text !== 'JSON.stringify' || args(val).length !== 1) return null;
       const want = `{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(${val.text.replace(/\s+/g, '').slice(15, -1)})}`;
@@ -819,7 +822,7 @@
     }
     // what a dialect's sentences (D.ext) can use: the output, these values and statements, and the helpers
     const C = { o, src, force, prefix: D.prefix, kind: D.kind, ids, fileFns, asyncFns, ex, val, one, exprStmt, block, inside, args, bodyOf, paramList, handler, little,
-      W, P, whole, phrase, topOf, simple, grouped, tight, opx, opd, item, inList, rest, long, isChain, plainString, holder,
+      W, P, whole, phrase, topOf, simple, grouped, tight, opx, opd, item, inList, rest, long, lined, isChain, plainString, holder,
       breakIn: () => breakIn, walk: (nodes, depth, key, sayOne) => walkBlock(o, nodes, depth, key, force, D.prefix, src, sayOne),
       WEB: env.WEB, TS: env.TS, quote, jsxChildren, srcLines };
     walkBlock(o, named(tree), 0, null, force, D.prefix, src, one);
