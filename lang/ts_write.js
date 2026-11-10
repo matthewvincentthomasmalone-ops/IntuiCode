@@ -106,16 +106,20 @@
     }
     const dm = rest.match(/^=\s*(.+)$/);
     if (rest && !dm) { if (errs) errs.push(`I don't understand "${rest}" after the input ${code(m[1])}.`); return null; }
-    let type = null, q = false;
+    let type = null, q = false, more = false;
     if (inner != null) {
       const bits = topSplit(inner, /,/g);
+      if (bits[0] === 'the rest') { more = true; bits.shift(); }   // ...inputs: all the inputs given from here on, as a list
       if (bits[bits.length - 1] === 'if any') { q = true; bits.pop(); }
       if (bits.length > 1) { if (errs) errs.push(`Say one type for ${code(m[1])}, in its brackets.`); return null; }
       if (bits.length) { type = typeTs(bits[0], 'arg', errs); if (type == null) return null; }
     }
     if (q && dm) { if (errs) errs.push(`${code(m[1])} has a value for when it's left out, so it can't also be "if any".`); return null; }
     const def = dm ? dm[1].trim() : null;
-    return { name: m[1], ts: `${m[1]}${q ? '?' : ''}${type ? ': ' + type : ''}${def != null ? ' = ' + def : ''}`, js: def != null ? `${m[1]} = ${def}` : m[1], typed: inner != null };
+    if (more && (q || def != null)) { if (errs) errs.push(`${code(m[1])} takes the rest of the inputs, so it can't be "if any" or have a value of its own.`); return null; }
+    const dots = more ? '...' : '';
+    // (js: the input as the JavaScript sentence names it, which the types then replace in the code it makes)
+    return { name: m[1], ts: `${dots}${m[1]}${q ? '?' : ''}${type ? ': ' + type : ''}${def != null ? ' = ' + def : ''}`, js: def != null ? `${m[1]} = ${def}` : m[1], typed: inner != null };
   }
 
   /* ---------- Sentences of their own ---------- */
@@ -229,6 +233,50 @@
       }
     }
 
+    /* ---------- Phrase packs as values: Supabase queries, TanStack Query ---------- */
+
+    const Q = String.raw`(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`;
+    const SUPA = new RegExp(String.raw`^(every row of|the (${Q}) of every row of|adding (.+?) to|changing (.+?) in|adding or replacing (.+?) in|deleting from) the (${Q}) table in (${NAME})((?: .*)?)$`, 'i');
+    const SUPA_NEXT = / (?:where|sorted by|at most)\s| (?:giving back the result|as a single row|as one row or none)(?=$| )/i;
+    function packValue(s, inf, E) {
+      let m;
+      if ((m = s.match(SUPA))) {
+        const [, head, cols, ins, upd, ups, table, client, mods] = m;
+        let js = `${client}.from(${table})`;
+        if (/^every row of$/i.test(head)) js += '.select("*")';
+        else if (cols) js += `.select(${cols})`;
+        else if (ins != null) js += `.insert(${E(ins)})`;
+        else if (upd != null) js += `.update(${E(upd)})`;
+        else if (ups != null) js += `.upsert(${E(ups)})`;
+        else js += '.delete()';
+        let rest = mods || '';
+        const until = (r) => { const at = mask(r).search(SUPA_NEXT); return at < 0 ? r.length : at; };
+        for (let guard = 0; rest.trim() && guard < 20; guard++) {
+          let mm;
+          if ((mm = rest.match(new RegExp(`^ where (${Q}) is( not)? `, 'i')))) { rest = rest.slice(mm[0].length); const end = until(rest); js += `.${mm[2] ? 'neq' : 'eq'}(${mm[1]}, ${E(rest.slice(0, end))})`; rest = rest.slice(end); continue; }
+          if ((mm = rest.match(new RegExp(`^ sorted by (${Q})( from the end| from the start)?`, 'i')))) { js += `.order(${mm[1]}${mm[2] ? `, { ascending: ${/end/i.test(mm[2]) ? 'false' : 'true'} }` : ''})`; rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ at most (\d+)/i))) { js += `.limit(${mm[1]})`; rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ giving back the result/i))) { js += '.select()'; rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ as a single row/i))) { js += '.single()'; rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ as one row or none/i))) { js += '.maybeSingle()'; rest = rest.slice(mm[0].length); continue; }
+          err(inf, `I don't understand "${rest.trim()}" in this query. After the table: where "id" is id, sorted by "created_at" (from the end), at most 10, giving back the result, as a single row.`);
+          break;
+        }
+        note(inf, `A Supabase query: ${code(js.length > 90 ? js.slice(0, 87) + '…' : js)}. It asks the database and gives back { data, error } once it answers (so it is waited for).`);
+        return js;
+      }
+      const lb = topIndex(s, / loaded by /);
+      if ((m = s.match(/^the query (.+) loaded by (.+)$/i)) && lb) {
+        note(inf, '`useQuery` loads data and keeps it: the query key names it (so it is loaded once and shared), the function loads it.');
+        return `useQuery({ queryKey: ${E(s.slice('the query '.length, lb.at))}, queryFn: ${E(s.slice(lb.end))} })`;
+      }
+      if ((m = s.match(/^a change made by (.+)$/i))) {
+        note(inf, '`useMutation` makes a change (saving, deleting…) the page can run with `.mutate(…)`.');
+        return `useMutation({ mutationFn: ${E(m[1])} })`;
+      }
+      return null;
+    }
+
     /* ---------- React ---------- */
 
     const states = new Map();   // count -> setCount, from the "keep" sentences (pass 1)
@@ -284,6 +332,10 @@
           return `${set}(${E(m[2])})`;
         }
         if ((m = t.match(/^show\s+(.+)$/i))) return `console.log(${WEB().splitAnd(m[1]).map(E).join(', ')})`;
+        if ((m = t.match(new RegExp(`^mark the query (.+) in (${NAME}(?:\\.${NAME})*) as out of date$`, 'i')))) {
+          note(inf, '`invalidateQueries` marks the query as out of date, so TanStack Query loads it again (and the page shows the new data).');
+          return `${m[2]}.invalidateQueries({ queryKey: ${E(m[1])} })`;
+        }
         if ((m = t.match(new RegExp(`^run (${NAME}(?:\\.${NAME})*)(?:\\s+with\\s+(.+))?$`, 'i')))) return `${m[1]}(${m[2] ? WEB().splitAnd(m[2]).map(E).join(', ') : ''})`;
         err(inf, 'A step written here is one of: change ‹state› to …, run ‹tool› with …, show ….');
         return null;
@@ -432,13 +484,19 @@
         const hm = head.match(/^(?:(?:a|an)\s+)?(.+?)(?:\s+(to|of)\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'))?(?:\s+saying\s+(.+))?$/i);
         if (!hm) { err(inf, 'I don\'t recognise this. What a component shows is one thing per line: an element ("a button saying "Save""), text in quotes, {a value}, "only if …", "if …", "for each …".'); return [{ text: `{/* ??? ${n.t} */}`, src: n.k }]; }
         let word = hm[1], tag = null;
+        const attrs = [];
+        // react-router: a Route for "/about" showing an About
+        const route = word.match(new RegExp(`^Route for ("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*') showing an? ([A-Z][\\w$]*)$`));
+        if (route) { word = 'Route'; attrs.push(`path=${route[1]}`, `element={<${route[2]} />}`); note(inf, `A route: at the address ${route[1]}, the router shows ${code('<' + route[2] + ' />')}.`); }
+        // shadcn/ui: a ghost Button is <Button variant="ghost">
+        const variant = word.match(new RegExp(`^([a-z][a-z-]*) ([A-Z][\\w$]*(?:\\.[\\w$]+)*)$`));
+        if (variant) { word = variant[2]; attrs.push(`variant="${variant[1]}"`); note(inf, `\`variant="${variant[1]}"\` picks one of the looks ${code(variant[2])} comes in.`); }
         let comp = word.match(new RegExp(`^(${NAME}(?:\\.${NAME})*)$`));
         if (/^together$/i.test(word)) tag = '';
         else if (comp && /^[A-Z]/.test(word) && /^an?\s/i.test(head)) tag = word;
         else if ((tag = WEB().wordTag(word))) { /* an HTML element */ }
         else if ((comp = word.match(/^([a-z][\w-]*) element$/i))) tag = comp[1];
         else { err(inf, `I don't know "${word}" as something to show. Use an element's words (a block, a heading, a button…), or a component's name with a or an before it ("a Button").`); return [{ text: `{/* ??? ${n.t} */}`, src: n.k }]; }
-        const attrs = [];
         if (hm[2]) {
           const nm = tag === 'img' && /^of$/i.test(hm[2]) ? 'src' : tag === 'a' && /^to$/i.test(hm[2]) ? 'href' : /^[A-Z]/.test(tag) && /^to$/i.test(hm[2]) ? 'to' : null;
           if (!nm) err(inf, `"${hm[2]} …" goes with a link ("a link to "/about""), a picture ("a picture of "logo.png"") or a component's address ("a Link to "/about"").`);
@@ -446,6 +504,14 @@
         }
         for (const st of settings) {
           let m;
+          // Tailwind classes in words: styled as flexible layout, items centred, gap 2, "hover:bg-accent"
+          if ((m = st.match(/^styled as\s+(.+)$/i))) {
+            const errs = [], cls = tailwindClasses(m[1], errs);
+            errs.forEach(e => err(inf, e));
+            note(inf, `Tailwind classes, one for each style said: \`className="${cls || '…'}"\`. Tailwind turns each class into a CSS rule.`);
+            attrs.push(`className="${cls || ''}"`);
+            continue;
+          }
           if ((m = st.match(/^styled\s+(.+)$/i))) { const v = m[1].trim(), b = braced(v); attrs.push(QUOTED.test(v) ? `className=${v}` : b && !b.rest.trim() ? `className={${c.E(b.inner)}}` : (err(inf, 'Its style is text in quotes (styled "p-4 rounded"), or a value in braces (styled {…}).'), 'className=""')); continue; }
           if ((m = st.match(/^keyed by\s+(.+)$/i))) { attrs.push(`key={${c.E(m[1])}}`); continue; }
           if ((m = st.match(/^running\s+(.+?)\s+when\s+(.+)$/i))) { const ev = eventProp(m[2]); if (!ev) err(inf, `I don't know the event "${m[2]}".`); attrs.push(`${ev || 'onClick'}={${c.E(m[1])}}`); continue; }
@@ -586,15 +652,54 @@
         c.say(`const ${m[1]} = useMemo(() => ${/^\{/.test(v) ? `(${v})` : v}, [${deps.join(', ')}]);`);
         return true;
       }
-      // take toast from the result of useToast: const { toast } = useToast();
-      if ((m = s.match(/^take\s+(.+?)\s+from\s+(.+)$/i)) && !/\bout of group\b/i.test(s)) {
-        const ns = topSplit(m[1], /,\s*|\s+and\s+/g);
-        if (ns.some(n => !new RegExp(`^${NAME}$`).test(n))) { err(inf, 'Name each part to take, like: take data and error from …'); return true; }
-        note(inf, `\`const { ${ns.join(', ')} } = …\` takes those parts out of the object, each as a name of its own.`);
-        ns.forEach(n => c.declare(n, 'const'));
-        c.say(`const { ${ns.join(', ')} } = ${c.E(m[2])};`);
+      // take toast from the result of useToast: const { toast } = useToast(); "data as notes (or an empty list)" is
+      // data: notes = []; "wait for …, and take data and error from it" waits first
+      const take = (list, value, wait) => {
+        const parts = [];
+        for (const it of topSplit(list, /,\s*|\s+and\s+/g)) {
+          const q = it.match(new RegExp(`^(${NAME})(?:\\s+as\\s+(${NAME}))?(?:\\s+\\(or\\s+(.+)\\))?$`, 'i'));
+          if (!q) { err(inf, 'Name each part to take, like: take data and error from …, or "data as notes (or an empty list)".'); continue; }
+          const d = q[3] != null ? ' = ' + c.E(q[3]) : '';
+          parts.push(q[2] ? `${q[1]}: ${q[2]}${d}` : `${q[1]}${d}`);
+          c.declare(q[2] || q[1], 'const');
+        }
+        note(inf, `\`const { ${parts.join(', ')} } = …\` takes those parts out of the object, each as a name of its own` + (parts.some(p => /:/.test(p)) ? ' (`data: notes` names the part data notes here)' : '') + (parts.some(p => / = /.test(p)) ? '; `= …` is its value when the object has none' : '') + '.');
+        c.say(`const { ${parts.join(', ')} } = ${wait ? 'await ' : ''}${c.E(value)};`);
+        return true;
+      };
+      if ((m = s.match(/^wait for\s+(.+?),?\s+and take\s+(.+)\s+from it$/i))) { if (!c.insideFn()) err(inf, '"wait for" only works inside a block that runs later: "when …", "every …" or "define …".'); return take(m[2], m[1], true); }
+      if ((m = s.match(/^take\s+(.+?)\s+from\s+(.+)$/i)) && !/\bout of group\b/i.test(s)) return take(m[1], m[2], false);
+      // throw error: an error there already, passed on as it is
+      if ((m = s.match(/^fail with\s+(.+)\s+as it is$/i))) {
+        note(inf, '`throw` stops with this error, passed on as it is: whoever ran this can catch it with "try" and "if it fails".');
+        c.say(`throw ${c.E(m[1])};`);
         return true;
       }
+      // the app's start: show an App in the element called "root" (React DOM)
+      if ((m = s.match(/^show an? ([A-Z][\w$]*) in\s+(.+)$/))) {
+        note(inf, `\`createRoot(…).render(<${m[1]} />)\` starts React: it shows ${code('<' + m[1] + ' />')} in that element of the page, and keeps it up to date.`);
+        c.say(`createRoot(${c.E(m[2])}).render(<${m[1]} />);`);
+        return true;
+      }
+      // TanStack Query: mark the query ["notes"] in queryClient as out of date
+      if (/^mark the query\s/i.test(s)) { const step = stepCode(s, c, inf); c.say(`${step == null ? '' : step};`); return true; }
+      // give back a change made by addNote, with "when it works" (and "when it fails") under it (useMutation)
+      if ((m = s.match(/^give back a change made by\s+(.+)$/i)) && blockEnd(c.lines, c.i) > c.i) {
+        note(inf, '`useMutation` makes a change (saving, deleting…) the page can run with `.mutate(…)`. Under it: what to do when it works, or fails.');
+        c.open('return useMutation({', '});', 'mutation');
+        c.push(c.pad + '  ' + `mutationFn: ${c.E(m[1])},`, c.i);
+        return true;
+      }
+      if ((m = s.match(/^when it (works|fails)(?:,\s+(.+))?$/i))) {
+        const top = c.stack[c.stack.length - 1], key = /works/i.test(m[1]) ? 'onSuccess' : 'onError';
+        if (!top || top.kind !== 'mutation') err(inf, `"when it ${m[1]}" goes right under "give back a change made by …".`);
+        note(inf, `\`${key}\` runs when the change ${/works/i.test(m[1]) ? 'has worked' : 'has failed'}.`);
+        if (m[2]) { const step = stepCode(m[2].trim(), c, inf); c.say(`${key}: () => ${step == null ? 'undefined' : step},`); return true; }
+        c.open(`${key}: () => {`, '},', 'fn');
+        return true;
+      }
+      const top = c.stack[c.stack.length - 1];
+      if (top && top.kind === 'mutation') { err(inf, 'Under "give back a change made by …" go "when it works" and "when it fails", with their steps under them.'); c.say(`// ??? ${s}`); return true; }
       return undefined;
     }
 
@@ -732,6 +837,8 @@
 
     /* "data assumed to be a list of Note": as */
     function expr(s, x, inf, E) {
+      const own = packValue(s, inf, E);
+      if (own != null) return own;
       if (!typed) return null;
       // "el for sure": el!, TypeScript is told it is there (not null or undefined)
       if (/\sfor sure$/.test(mask(s)) && !topIndex(s, / assumed to be /)) {
@@ -767,10 +874,94 @@
         states.set(m[1], set); x.vars.add(m[1]); x.fns.add(set);
       }
       if ((m = t.match(new RegExp(`^keep a reference (${NAME})\\b`, 'i')))) x.vars.add(m[1]);
-      if ((m = t.match(/^take\s+(.+?)\s+from\s+/i)) && !/\bout of group\b/i.test(t)) topSplit(m[1], /,\s*|\s+and\s+/g).forEach(n => x.vars.add(n));
+      if (((m = t.match(/^wait for\s+.+?,?\s+and take\s+(.+)\s+from it$/i)) || (m = t.match(/^take\s+(.+?)\s+from\s+/i))) && !/\bout of group\b/i.test(t)) {
+        for (const it of topSplit(m[1], /,\s*|\s+and\s+/g)) { const q = it.match(new RegExp(`^(${NAME})(?:\\s+as\\s+(${NAME}))?`, 'i')); if (q) x.vars.add(q[2] || q[1]); }
+      }
     }
 
     return { plain, names, line, expr };
+  }
+
+  /* ---------- Phrase pack: Tailwind classes in words ---------- */
+
+  /* Each Tailwind class (the template on the left, {v} a value like 4, 0.5, px, auto, 3xl or blue-500) and the
+     words for it. One class is one phrase and back, in order; a class with no words stays as written, in quotes.
+     Variants go after the words: hover:underline is "underlined on hover". The first rule that fits wins. */
+  const TW_SPACE = String.raw`(?:\d+(?:\.\d+)?|px|auto)`, TW_SIZE = String.raw`(?:xs|sm|base|md|lg|xl|[2-9]xl|none|full)`, TW_TOKEN = String.raw`[a-z][a-z0-9-]*(?:\/\d+)?`;
+  const TW_RULES = [
+    // layout
+    ['flex', 'flexible layout'], ['inline-flex', 'flexible inline layout'], ['grid', 'grid layout'], ['block', 'block layout'], ['inline-block', 'inline block layout'], ['inline', 'inline layout'], ['hidden', 'hidden'], ['container', 'container width'],
+    ['flex-col', 'items top to bottom'], ['flex-row', 'items side by side'], ['flex-wrap', 'items wrap onto new lines'], ['flex-1', 'takes the space left'], ['shrink-0', 'never shrinks'], ['grow', 'grows to fill'],
+    ['items-center', 'items centred'], ['items-start', 'items at the start'], ['items-end', 'items at the end'], ['items-stretch', 'items stretched'], ['items-baseline', 'items on one baseline'],
+    ['justify-between', 'spread out'], ['justify-center', 'centred along'], ['justify-start', 'packed at the start'], ['justify-end', 'packed at the end'], ['justify-around', 'spread out evenly'],
+    ['self-center', 'centred itself'], ['mx-auto', 'centred'], ['ml-auto', 'pushed right'], ['mr-auto', 'pushed left'],
+    ['grid-cols-{v}', '{v} columns', String.raw`\d+`], ['col-span-{v}', 'spans {v} columns', String.raw`\d+`],
+    ['gap-{v}', 'gap {v}', TW_SPACE], ['gap-x-{v}', 'gap {v} across', TW_SPACE], ['gap-y-{v}', 'gap {v} down', TW_SPACE],
+    ['space-y-{v}', '{v} apart top to bottom', TW_SPACE], ['space-x-{v}', '{v} apart side by side', TW_SPACE],
+    // sizes
+    ['w-full', 'full width'], ['h-full', 'full height'], ['w-screen', 'as wide as the screen'], ['h-screen', 'as tall as the screen'], ['min-h-screen', 'at least as tall as the screen'],
+    ['w-{v}', 'width {v}', TW_SPACE], ['h-{v}', 'height {v}', TW_SPACE], ['size-{v}', 'size {v}', TW_SPACE], ['max-w-{v}', 'at most {v} wide', String.raw`(?:xs|sm|md|lg|xl|[2-7]xl|full|prose|screen-\w+)`], ['min-w-0', 'can shrink'],
+    // space inside and around
+    ['p-{v}', 'space inside {v}', TW_SPACE], ['px-{v}', 'space inside {v} across', TW_SPACE], ['py-{v}', 'space inside {v} up and down', TW_SPACE],
+    ['pt-{v}', 'space inside {v} at the top', TW_SPACE], ['pb-{v}', 'space inside {v} at the bottom', TW_SPACE], ['pl-{v}', 'space inside {v} on the left', TW_SPACE], ['pr-{v}', 'space inside {v} on the right', TW_SPACE],
+    ['m-{v}', 'space around {v}', TW_SPACE], ['mx-{v}', 'space around {v} across', TW_SPACE], ['my-{v}', 'space around {v} up and down', TW_SPACE],
+    ['mt-{v}', 'space above {v}', TW_SPACE], ['mb-{v}', 'space below {v}', TW_SPACE], ['ml-{v}', 'space on the left {v}', TW_SPACE], ['mr-{v}', 'space on the right {v}', TW_SPACE],
+    // text
+    ['text-{v}', 'text size {v}', TW_SIZE], ['text-center', 'text centred'], ['text-left', 'text on the left'], ['text-right', 'text on the right'],
+    ['font-bold', 'bold'], ['font-semibold', 'semi-bold'], ['font-medium', 'medium weight'], ['font-normal', 'normal weight'], ['font-light', 'light weight'], ['font-mono', 'typewriter font'],
+    ['italic', 'italic'], ['underline', 'underlined'], ['no-underline', 'not underlined'], ['line-through', 'crossed out'], ['uppercase', 'in capitals'], ['lowercase', 'in lowercase'], ['capitalize', 'capitalised'],
+    ['truncate', 'cut short with …'], ['whitespace-nowrap', 'on one line'], ['tracking-tight', 'letters close together'], ['tracking-wide', 'letters spread out'], ['leading-none', 'lines close together'], ['leading-relaxed', 'lines spread out'],
+    // colours (after the sizes and the rest of text-…)
+    ['text-{v}', 'text colour {v}', TW_TOKEN], ['bg-{v}', 'background colour {v}', TW_TOKEN],
+    // borders and corners
+    ['border', 'a border'], ['border-{v}', 'a border {v} wide', String.raw`\d+`], ['border-t', 'a border at the top'], ['border-b', 'a border at the bottom'], ['border-l', 'a border on the left'], ['border-r', 'a border on the right'],
+    ['border-dashed', 'a dashed border'], ['border-dotted', 'a dotted border'], ['border-none', 'no border'], ['border-{v}', 'border colour {v}', TW_TOKEN],
+    ['rounded', 'rounded corners'], ['rounded-full', 'fully rounded'], ['rounded-none', 'square corners'], ['rounded-{v}', 'rounded corners {v}', String.raw`(?:sm|md|lg|xl|[23]xl)`],
+    // effects
+    ['shadow', 'a shadow'], ['shadow-none', 'no shadow'], ['shadow-{v}', 'a shadow {v}', String.raw`(?:sm|md|lg|xl|2xl|inner)`], ['opacity-{v}', 'opacity {v}', String.raw`\d+`],
+    ['transition', 'changes animate'], ['transition-{v}', '{v} changes animate', String.raw`(?:all|colors|opacity|shadow|transform)`], ['duration-{v}', 'animation {v} ms', String.raw`\d+`],
+    ['cursor-pointer', 'hand cursor'], ['outline-none', 'no outline'], ['overflow-hidden', 'overflow hidden'], ['overflow-auto', 'scrolls if it must'],
+    ['relative', 'positioned relative'], ['absolute', 'positioned absolute'], ['fixed', 'fixed in place'], ['sticky', 'sticks in place'], ['inset-0', 'fills its container'], ['top-0', 'at the very top'], ['z-{v}', 'layer {v}', String.raw`\d+`],
+  ];
+  const TW_VARIANTS = [['hover', 'on hover'], ['focus', 'on focus'], ['active', 'while pressed'], ['disabled', 'while disabled'], ['dark', 'in dark mode'], ['sm', 'on small screens and up'], ['md', 'on medium screens and up'], ['lg', 'on large screens and up'], ['xl', 'on extra large screens and up']];
+  const twEsc = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  const TW = TW_RULES.map(([cls, words, v]) => ({
+    cls: new RegExp('^' + twEsc(cls).replace('\\{v\\}', `(${v || TW_TOKEN})`) + '$'),
+    words: new RegExp('^' + twEsc(words).replace('\\{v\\}', `(${v || TW_TOKEN})`) + '$'),
+    toWords: (m) => words.replace('{v}', m[1]), toCls: (m) => cls.replace('{v}', m[1]),
+  }));
+  function twWord(c) {
+    let variant = '', base = c;
+    const vm = c.match(/^([a-z]+):(.+)$/);
+    if (vm) { const v = TW_VARIANTS.find(x => x[0] === vm[1]); if (!v) return null; variant = ' ' + v[1]; base = vm[2]; }
+    for (const r of TW) { const m = base.match(r.cls); if (m) return r.toWords(m) + variant; }
+    return null;
+  }
+  function twClass(w) {
+    let variant = '', base = w.trim();
+    for (const [v, said] of TW_VARIANTS) if (base.endsWith(' ' + said)) { variant = v + ':'; base = base.slice(0, -said.length - 1); break; }
+    for (const r of TW) { const m = base.match(r.words); if (m) return variant + r.toCls(m); }
+    return null;
+  }
+  /* "flex items-center gap-2" -> "flexible layout, items centred, gap 2" (null when the classes aren't one space apart,
+     or nothing would be said in words) */
+  function tailwindWords(classes) {
+    const cs = String(classes).split(' ');
+    if (!cs.length || cs.some(c => !c) || cs.join(' ') !== classes) return null;
+    const said = cs.map(c => { const w = twWord(c); return w != null && twClass(w) === c ? w : /^[^\s"\\,]+$/.test(c) ? `"${c}"` : null; });
+    return said.some(w => w == null) || said.every(w => /^"/.test(w)) ? null : said.join(', ');
+  }
+  /* The words back into classes, or null with the problem in errs. */
+  function tailwindClasses(words, errs) {
+    const out = [];
+    for (const w of topSplit(words, /,\s*/g)) {
+      const q = w.match(/^"([^"\s]+)"$/);
+      if (q) { out.push(q[1]); continue; }
+      const c = twClass(w);
+      if (c == null) { errs.push(`I don't know "${w}" as a style. Put a Tailwind class in quotes ("hover:bg-accent"), or say it in words: space inside 4, text size sm, bold, background white…`); return null; }
+      out.push(c);
+    }
+    return out.join(' ');
   }
 
   const freshShared = () => ({ ids: {}, groups: {}, cssGroups: {}, addGroups: {} });
@@ -787,5 +978,5 @@
     return r;
   }
 
-  root.IntuiTs = { compileTs, typeTs, paramTs, ext: extFor };
+  root.IntuiTs = { compileTs, typeTs, paramTs, ext: extFor, tailwindWords, tailwindClasses };
 })(typeof window !== 'undefined' ? window : globalThis);

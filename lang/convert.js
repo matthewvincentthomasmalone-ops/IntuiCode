@@ -815,7 +815,7 @@
     const C = { o, src, force, prefix: D.prefix, kind: D.kind, ids, fileFns, asyncFns, ex, val, one, exprStmt, block, inside, args, bodyOf, paramList, handler, little,
       W, P, whole, phrase, topOf, simple, grouped, tight, opx, opd, item, inList, rest, long, isChain, plainString, holder,
       breakIn: () => breakIn, walk: (nodes, depth, key, sayOne) => walkBlock(o, nodes, depth, key, force, D.prefix, src, sayOne),
-      WEB: env.WEB, quote, jsxChildren, srcLines };
+      WEB: env.WEB, TS: env.TS, quote, jsxChildren, srcLines };
     walkBlock(o, named(tree), 0, null, force, D.prefix, src, one);
     return o;
   }

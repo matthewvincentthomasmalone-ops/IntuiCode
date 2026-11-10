@@ -136,7 +136,7 @@ test('TypeScript: what can\'t be said yet stays exact code, and says so', () => 
   // (a value with no words, like JavaScript's, is kept as its code inside the sentence, and checked like the rest)
   assert.match(r.text, /^set v to x satisfies T$/m);
   // x! (TypeScript: it is there, not null or undefined) is "x for sure"
-  exact('ts', 'let v = el!;\nrender(document.getElementById("root")!);\n', /^set v to el for sure\nrun render with \(the element called "root"\) for sure$/m);
+  exact('ts', 'let v = el!;\nrender(document.getElementById("root")!);\n', /^set v to \(el for sure\)\nrun render with \(the element called "root" for sure\)$/m);
 });
 
 test('TypeScript: the corpus comes back exactly, with no problems in its sentences', () => {

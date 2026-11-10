@@ -85,7 +85,10 @@
   /* A tool's input in words: name, name (a number), name (text, if any), name = 1, name (a number) = 1. */
   function paramWords(p) {
     if (p.type !== 'required_parameter' && p.type !== 'optional_parameter') return null;
-    const ks = kids(p), id = ks[0];
+    const ks = kids(p);
+    // ...inputs: the rest of the inputs, as a list
+    const rest = ks[0] && ks[0].type === 'rest_pattern' && real(ks[0]).length === 1 && real(ks[0])[0].type === 'identifier';
+    const id = rest ? real(ks[0])[0] : ks[0];
     if (!id || id.type !== 'identifier') return null;
     let type = null, value = null, q = false;
     for (let k = 1; k < ks.length; k++) {
@@ -99,7 +102,8 @@
     const tw = type ? sayType(type, 'arg') : null;
     if (type && tw == null) return null;
     if (value && (!one1(value.text) || /[()]/.test(value.text) && q)) return null;
-    const inner = [tw, q ? 'if any' : null].filter(Boolean).join(', ');
+    if (rest && (q || value)) return null;
+    const inner = [rest ? 'the rest' : null, tw, q ? 'if any' : null].filter(Boolean).join(', ');
     return `${id.text}${inner ? ` (${inner})` : ''}${value ? ` = ${value.text}` : ''}`;
   }
   const typeOfAnnotation = (n) => { const a = n && real(n).find(x => x.type === 'type_annotation'); return a ? real(a)[0] : null; };
@@ -181,6 +185,13 @@
     const setters = new Map();   // setCount -> count, from the "keep" sentences said so far
 
     function ex(n, C) {
+      // phrase packs: Supabase queries, TanStack Query (any kind of script)
+      if (n.type === 'call_expression') {
+        const s = supabaseWords(n, C);
+        if (s !== undefined) return s;
+        const q = queryWords(n, C);
+        if (q !== undefined) return q;
+      }
       if (!typed) return undefined;
       if (n.type === 'as_expression') {
         const [v, t] = real(n);
@@ -189,11 +200,12 @@
         if (a == null || w == null || / assumed to be /.test(a)) return null;
         return C.W(`${C.opx(a)} assumed to be ${w}`);
       }
-      // x! : x is there for sure (not null or undefined), TypeScript is told
+      // x! : (x for sure), x is there (not null or undefined), TypeScript is told. Always in brackets: "the result
+      // of f with x for sure" could be f's result for sure.
       if (n.type === 'non_null_expression') {
         const a = C.ex(real(n)[0]);
-        if (a == null || / for sure$/.test(a)) return null;
-        return C.W(`${C.opx(a)} for sure`);
+        if (a == null || / for sure\)?$/.test(a)) return null;
+        return `(${a} for sure)`;
       }
       return undefined;
     }
@@ -339,6 +351,83 @@
       });
     }
 
+    /* ---------- Phrase packs: Supabase and TanStack Query ---------- */
+
+    /* supabase.from("notes").select("*").eq("id", id).order("created_at", { ascending: false }) -> every row of the
+       "notes" table in supabase where "id" is id sorted by "created_at" from the end. undefined: not a query. */
+    const SUPA_MODS = / where | sorted by | at most | giving back | as a single row| as one row or none/;
+    function supabaseWords(n, C) {
+      const calls = [];
+      let cur = n;
+      while (cur && cur.type === 'call_expression') {
+        const fn = F(cur, 'function');
+        if (!fn || fn.type !== 'member_expression' || kids(fn).some(k => k.type === 'optional_chain') || real(cur).some(x => x.type === 'type_arguments') || !F(cur, 'arguments') || F(cur, 'arguments').type !== 'arguments') return undefined;
+        calls.unshift({ m: F(fn, 'property').text, a: C.args(cur) });
+        cur = F(fn, 'object');
+      }
+      if (!cur || cur.type !== 'identifier' || calls.length < 2 || calls[0].m !== 'from' || calls[0].a.length !== 1 || !C.plainString(calls[0].a[0])) return undefined;
+      const val = (x) => { const v = C.ex(x); return v == null || SUPA_MODS.test(` ${v} `) || /\n/.test(v) ? null : C.item(v); };
+      const where = `the ${calls[0].a[0].text} table in ${cur.text}`;
+      const [h, ...mods] = calls.slice(1);
+      let said;
+      if (h.m === 'select' && h.a.length === 1 && C.plainString(h.a[0])) said = h.a[0].text.slice(1, -1) === '*' ? `every row of ${where}` : `the ${h.a[0].text} of every row of ${where}`;
+      else if (h.m === 'insert' && h.a.length === 1) { const v = val(h.a[0]); said = v && `adding ${v} to ${where}`; }
+      else if (h.m === 'update' && h.a.length === 1) { const v = val(h.a[0]); said = v && `changing ${v} in ${where}`; }
+      else if (h.m === 'upsert' && h.a.length === 1) { const v = val(h.a[0]); said = v && `adding or replacing ${v} in ${where}`; }
+      else if (h.m === 'delete' && !h.a.length) said = `deleting from ${where}`;
+      if (!said) return null;
+      for (const md of mods) {
+        const [a0, a1] = md.a;
+        if ((md.m === 'eq' || md.m === 'neq') && md.a.length === 2 && C.plainString(a0)) { const v = val(a1); if (!v) return null; said += ` where ${a0.text} is${md.m === 'neq' ? ' not' : ''} ${v}`; }
+        else if (md.m === 'order' && C.plainString(a0) && (md.a.length === 1 || (md.a.length === 2 && /^\{\s*ascending:\s*(?:true|false)\s*,?\s*\}$/.test(a1.text)))) said += ` sorted by ${a0.text}${md.a.length === 2 ? (/false/.test(a1.text) ? ' from the end' : ' from the start') : ''}`;
+        else if (md.m === 'limit' && md.a.length === 1 && a0.type === 'number') said += ` at most ${a0.text}`;
+        else if (md.m === 'select' && !md.a.length) said += ' giving back the result';
+        else if (md.m === 'single' && !md.a.length) said += ' as a single row';
+        else if (md.m === 'maybeSingle' && !md.a.length) said += ' as one row or none';
+        else return null;
+      }
+      return C.W(said);
+    }
+    /* useQuery({ queryKey: ["notes"], queryFn: fetchNotes }) -> the query ["notes"] loaded by fetchNotes;
+       useMutation({ mutationFn: f }) -> a change made by f. */
+    function queryWords(n, C) {
+      const fn = F(n, 'function'), a = C.args(n);
+      if (!fn || fn.type !== 'identifier' || !/^use(?:Query|Mutation)$/.test(fn.text) || real(n).some(x => x.type === 'type_arguments')) return undefined;
+      const o = a.length === 1 && a[0].type === 'object' ? real(a[0]) : null;
+      const pair = (p, k) => p && p.type === 'pair' && F(p, 'key').text === k ? F(p, 'value') : null;
+      if (!o) return null;
+      if (fn.text === 'useQuery' && o.length === 2 && pair(o[0], 'queryKey') && pair(o[1], 'queryFn')) {
+        const k = C.ex(pair(o[0], 'queryKey')), f = C.ex(pair(o[1], 'queryFn'));
+        return k == null || f == null || / loaded by /.test(k + ' ' + f) || /\n/.test(k + f) ? null : C.W(`the query ${k} loaded by ${f}`);
+      }
+      if (fn.text === 'useMutation' && o.length === 1 && pair(o[0], 'mutationFn')) {
+        const f = C.ex(pair(o[0], 'mutationFn'));
+        return f == null || /\n/.test(f) ? null : C.W(`a change made by ${f}`);
+      }
+      return null;
+    }
+    /* return useMutation({ mutationFn: f, onSuccess: () => { … } }): "give back a change made by f", with "when it
+       works" (and "when it fails") under it. */
+    function mutationBlock(n, depth, C) {
+      const call = real(n)[0];
+      if (!call || call.type !== 'call_expression' || F(call, 'function').text !== 'useMutation' || real(call).some(x => x.type === 'type_arguments')) return undefined;
+      const a = C.args(call), o = a.length === 1 && a[0].type === 'object' ? real(a[0]) : null;
+      if (!o || o.length < 2 || o.some(p => p.type !== 'pair')) return undefined;
+      const [first, ...rest] = o;
+      if (F(first, 'key').text !== 'mutationFn' || rest.some(p => !/^on(?:Success|Error)$/.test(F(p, 'key').text))) return false;
+      const f = C.ex(F(first, 'value'));
+      if (f == null || /\n/.test(f)) return false;
+      C.o.say(depth, `give back a change made by ${f}`);
+      for (const p of rest) {
+        const h = F(p, 'value'), word = F(p, 'key').text === 'onSuccess' ? 'works' : 'fails';
+        if (!h || h.type !== 'arrow_function' || arrowParams(h).length || has(h, 'async')) return false;
+        const body = F(h, 'body');
+        if (body.type === 'statement_block') { C.o.say(depth + 1, `when it ${word}`); C.inside(null, () => C.block(real(body), depth + 2, n.startIndex)); }
+        else { const w = inlineWords(body, C); if (!w) return false; C.o.say(depth + 1, `when it ${word}, ${w}`); }
+      }
+      return true;
+    }
+
     /* ---------- React: components, state, effects, references, and what they show ---------- */
 
     function react(n, depth, lvl, C) {
@@ -398,13 +487,29 @@
             if (e == null || deps.some(x => x == null || / or /.test(x)) || /, worked out /.test(e)) return false;
             return say(`constant ${pat.text} is ${e}, worked out ${deps.length ? `again whenever ${deps.join(' or ')} changes` : 'once'}`);
           }
-          // take toast from the result of useToast (const { toast } = …)
+          // take toast from the result of useToast (const { toast } = …); a part as another name, and its value when
+          // it's missing: take data as notes (or an empty list) and isLoading from …; "wait for …, and take … from it"
           if (pat.type === 'object_pattern') {
-            const ns = real(pat);
-            if (!ns.length || ns.some(x => x.type !== 'shorthand_property_identifier_pattern')) return false;
+            const items = [];
+            const or = (x) => { const d = C.val(x); return d == null || /[()]/.test(d) && !C.simple(d) ? null : ` (or ${d})`; };
+            for (const x of real(pat)) {
+              if (x.type === 'shorthand_property_identifier_pattern') { items.push(x.text); continue; }
+              if (x.type === 'object_assignment_pattern') { const [k, d] = real(x), w = k && k.type === 'shorthand_property_identifier_pattern' ? or(d) : null; if (!w) return false; items.push(k.text + w); continue; }
+              if (x.type === 'pair_pattern') {
+                const k = F(x, 'key'), to = F(x, 'value');
+                if (!k || k.type !== 'property_identifier' || !to) return false;
+                if (to.type === 'identifier') { items.push(`${k.text} as ${to.text}`); continue; }
+                if (to.type === 'assignment_pattern' && F(to, 'left').type === 'identifier') { const w = or(F(to, 'right')); if (!w) return false; items.push(`${k.text} as ${F(to, 'left').text}${w}`); continue; }
+              }
+              return false;
+            }
+            if (!items.length) return false;
+            if (v.type === 'await_expression') {
+              const w = C.val(real(v)[0]);
+              return w != null && !/,? and take /.test(w) && say(`wait for ${w}, and take ${andList(items)} from it`);
+            }
             const e = C.val(v);
-            if (e == null) return false;
-            return say(`take ${andList(ns.map(x => x.text))} from ${e}`);
+            return e != null && say(`take ${andList(items)} from ${e}`);
           }
           return undefined;
         }
@@ -422,13 +527,28 @@
             C.inside(null, () => C.block(real(F(f, 'body')), depth + 1, n.startIndex));
             return true;
           }
-          // change count to count plus 1 (a state's setter)
-          if (fn.type === 'identifier' && setters.has(fn.text)) { const w = inlineWords(e, C); return w ? say(w) : false; }
+          // change count to count plus 1 (a state's setter); mark the query … as out of date (TanStack Query)
+          if ((fn.type === 'identifier' && setters.has(fn.text)) || (fn.type === 'member_expression' && F(fn, 'property').text === 'invalidateQueries')) { const w = inlineWords(e, C); return w ? say(w) : false; }
+          // the app's start: show an App in (the element called "root") for sure (React DOM's createRoot … render)
+          const r0 = fn.type === 'member_expression' && F(fn, 'property').text === 'render' ? F(fn, 'object') : null;
+          if (r0 && r0.type === 'call_expression' && F(r0, 'function').text === 'createRoot' && C.args(r0).length === 1 && a.length === 1 && a[0].type === 'jsx_self_closing_element' && real(a[0]).length === 1 && /^[A-Z][\w$]*$/.test(real(a[0])[0].text)) {
+            const at = C.ex(C.args(r0)[0]);
+            return at != null && say(`show ${art(real(a[0])[0].text)} in ${at}`);
+          }
           return undefined;
+        }
+        case 'throw_statement': {
+          // throw error: an error there already, passed on as it is (fail with … is throw new Error(…))
+          const v = real(n)[0];
+          if (!v || v.type === 'new_expression') return undefined;
+          const e = C.ex(v);
+          return e != null && !/ as it is$/.test(e) && say(`fail with ${e} as it is`);
         }
         case 'return_statement': {
           const v = real(n)[0];
           if (!v) return undefined;
+          const mb = mutationBlock(n, depth, C);
+          if (mb !== undefined) return mb;
           // show: what a component shows, under it
           if (isJsx(v)) { say('show:'); return jsxChild(unparen(v), depth + 1, n.startIndex, C); }
           // when Card goes away (an effect's clean-up)
@@ -449,6 +569,11 @@
     function inlineWords(e, C) {
       if (!e || e.type !== 'call_expression' || !F(e, 'arguments') || F(e, 'arguments').type !== 'arguments' || kids(e).some(k => k.type === 'optional_chain') || real(e).some(x => x.type === 'type_arguments')) return null;
       const fn = F(e, 'function'), a = C.args(e);
+      // queryClient.invalidateQueries({ queryKey: ["notes"] }): mark the query ["notes"] in queryClient as out of date
+      if (fn.type === 'member_expression' && F(fn, 'property').text === 'invalidateQueries' && a.length === 1 && a[0].type === 'object' && real(a[0]).length === 1) {
+        const p = real(a[0])[0], k = p.type === 'pair' && F(p, 'key').text === 'queryKey' ? C.ex(F(p, 'value')) : null, q = C.ex(F(fn, 'object'));
+        if (k != null && q != null && C.isChain(F(fn, 'object')) && !/\sas out of date|\sin\s/.test(k)) return `mark the query ${k} in ${q} as out of date`;
+      }
       const state = fn.type === 'identifier' ? setters.get(fn.text) : null;
       if (state && a.length === 1) {
         const arg = a[0];
@@ -483,6 +608,9 @@
       if (!val) return `with ${name}`;
       if (val.type === 'string') {
         if (/\n/.test(val.text)) return null;
+        // Tailwind's classes in words, when every one of them has words (or is said as written, in quotes)
+        const tw = name === 'className' && C.TS && C.TS.tailwindWords ? C.TS.tailwindWords(val.text.slice(1, -1)) : null;
+        if (tw) return `styled as ${tw}`;
         return name === 'className' ? `styled ${val.text}` : `with ${name} ${val.text}`;
       }
       if (val.type !== 'jsx_expression' || real(val).length !== 1) return null;
@@ -567,8 +695,17 @@
       if (!word) return false;
       // a link's address and a picture's file in its words: a link to "/", a picture of "logo.png", a Link to "/about"
       let first = 0;
-      const p0 = props[0], p0n = p0 && p0.type === 'jsx_attribute' ? real(p0)[0] : null, p0v = p0 && p0.type === 'jsx_attribute' ? real(p0)[1] : null;
-      if (p0n && p0v && p0v.type === 'string' && !/\n/.test(p0v.text) && ((tag === 'a' && p0n.text === 'href') || (tag === 'img' && p0n.text === 'src') || (p0n.text === 'to' && capital(tag)))) { word += `${tag === 'img' ? ' of ' : ' to '}${p0v.text}`; first = 1; }
+      const pn = (p) => (p && p.type === 'jsx_attribute' ? real(p)[0] : null), pv = (p) => (p && p.type === 'jsx_attribute' ? real(p)[1] : null);
+      const p0n = pn(props[0]), p0v = pv(props[0]);
+      const plainStr = (v) => v && v.type === 'string' && !/\n/.test(v.text);
+      // shadcn/ui: a component's variant said before its name (a ghost Button, an outline Badge)
+      if (p0n && p0n.text === 'variant' && plainStr(p0v) && /^(["'])[a-z][a-z-]*\1$/.test(p0v.text) && capital(tag || '')) { word = `${art(p0v.text.slice(1, -1))} ${tag}`; first = 1; }
+      // react-router: a Route for "/about" showing an About (path, then an element with nothing of its own)
+      const el1 = pv(props[1]), shown = el1 && el1.type === 'jsx_expression' && real(el1).length === 1 && real(el1)[0].type === 'jsx_self_closing_element' ? real(el1)[0] : null;
+      if (tag === 'Route' && p0n && p0n.text === 'path' && plainStr(p0v) && pn(props[1]) && pn(props[1]).text === 'element' && shown && real(shown).length === 1 && /^[A-Z][\w$]*$/.test(real(shown)[0].text)) {
+        word = `a Route for ${p0v.text} showing ${art(real(shown)[0].text)}`; first = 2;
+      }
+      if (!first && plainStr(p0v) && ((tag === 'a' && p0n.text === 'href') || (tag === 'img' && p0n.text === 'src') || (p0n.text === 'to' && capital(tag)))) { word += `${tag === 'img' ? ' of ' : ' to '}${p0v.text}`; first = 1; }
       const settings = props.slice(first).map(a => propWords(a, C));
       if (settings.some(s => s == null)) return false;
       const items = node.type === 'jsx_element' ? piecesOf(node, C) : [];

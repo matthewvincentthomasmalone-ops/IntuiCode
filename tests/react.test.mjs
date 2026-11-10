@@ -123,7 +123,7 @@ test('React: code -> sentences, checked exact', () => {
   exact('tsx', 'const L = ({ notes }: P) => (\n  <ul>\n    {notes.map((note) => (\n      <li key={note.id} onClick={() => pick(note)}>{note.title}</li>\n    ))}\n  </ul>\n);\n',
     /^constant L is a component using notes from P, showing:\n    a list\n        for each note in notes\n            a list item saying \{note\.title\}, keyed by note\.id, when clicked: run pick with note$/m);
   exact('tsx', 'function A() {\n  useEffect(() => {\n    load();\n    return () => {\n      stop();\n    };\n  }, [id]);\n  return null;\n}\n', /^    whenever id changes\n        run load\n        when A goes away\n            run stop$/m);
-  exact('tsx', 'const F = () => <Link to="/about" className="underline">About</Link>;\n', /^constant F is a component, showing:\n    a Link to "\/about" saying "About", styled "underline"$/m);
+  exact('tsx', 'const F = () => <Link to="/about" className="underline">About</Link>;\n', /^constant F is a component, showing:\n    a Link to "\/about" saying "About", styled as underlined$/m);
   exact('tsx', 'const F = () => <a href="/">Home</a>;\n', /^    a link to "\/" saying "Home"$/m);
   exact('tsx', 'const F = () => <Input value={v} onChange={(e) => setV(e.target.value)} {...rest} disabled />;\n', /^    an Input, with value \{v\}, when changed with e: run setV with e\.target\.value, with everything in rest, with disabled$/m);
 });
@@ -137,14 +137,16 @@ test('React: what can\'t be said yet stays exact code inside the sentences', () 
 /* The corpus: an app written the way Lovable writes them (React, TypeScript, Vite, Tailwind, shadcn/ui,
    react-router, TanStack Query, Supabase). Every file comes back exactly. */
 const files = (dir) => readdirSync(dir).flatMap(n => { const f = path.join(dir, n); return statSync(f).isDirectory() ? files(f) : /\.tsx?$/.test(n) ? [f] : []; });
-test('React: the corpus comes back exactly, mostly in words', () => {
-  let words = 0, lines = 0;
-  for (const f of files(path.join(ROOT, 'tests/corpus_react'))) {
-    const r = exact(f.endsWith('.tsx') ? 'tsx' : 'ts', readFileSync(f, 'utf8'));
-    words += r.words; lines += r.lines;
-  }
-  assert.ok(words / lines >= 0.8, `only ${words}/${lines} lines read as sentences`);
-});
+for (const [dir, least] of [['tests/corpus_react', 0.95], ['tests/heldout_react', 0.85]]) {
+  test(`React: ${dir} comes back exactly, mostly in words`, () => {
+    let words = 0, lines = 0;
+    for (const f of files(path.join(ROOT, dir))) {
+      const r = exact(f.endsWith('.tsx') ? 'tsx' : 'ts', readFileSync(f, 'utf8'));
+      words += r.words; lines += r.lines;
+    }
+    assert.ok(words / lines >= least, `only ${words}/${lines} lines read as sentences`);
+  });
+}
 
 test('JSX in JavaScript (.jsx, .js) is React too, with js: lines', () => {
   exact('js', 'export function Hello({ name }) {\n  const [n, setN] = useState(0);\n  return <p onClick={() => setN(n + 1)}>Hi {name}</p>;\n}\n', /^define shared component Hello using name\n    keep n, starting at 0\n    show:\n        a paragraph saying "Hi \{name\}", when clicked: change n to n plus 1$/m);
