@@ -188,8 +188,8 @@ for _ in range(3):
 |---|---|---|---|
 | Python | letters, digits, `_`, `-` and spaces, not starting with a digit | `high score` becomes `high_score` (lower case; spaces and `-` become `_`); later sentences can say `high score` | a one-word name keeps its case (`API_KEY`). A name is found by its exact spelling, else by a different-case spelling when there is only one. |
 | HTML ids, CSS | `called` and one or two words | `main area` becomes `main-area` (lower case; anything other than a letter or digit becomes `-`) | lower case |
-| JavaScript | one JavaScript name (letters, digits, `_`, `$`) | not for values; page elements are named as in HTML (`main area` or `main-area`) | as written |
-| C++ | one C++ name | not allowed | as written |
+| JavaScript | a JavaScript name (letters, digits, `_`, `$`), or several words | `total price` and `high-score` become `totalPrice` and `highScore` on every line; one with a sentence word in it (`number of lives`) is an error that says the one-word form. Page elements are named as in HTML (`main area` or `main-area`) | as written |
+| C++ | a C++ name, or several words | `led pin` and `high-score` become `ledPin` and `highScore` everywhere; one with a sentence word in it (`number of tries`) is an error that says the one-word form | as written |
 
 - Python: `the`, `my`, `a`, `an` and `a new` at the start of a name are left out when it is set
   (`set the end to 5` sets `end`). Python's own words (`for`, `class` …) are an error; a built-in
@@ -220,7 +220,9 @@ print(high_score + end)
   helper in C++ and `String("Hi ") + name` on Arduino. On Arduino, text then `{x as text}` joins as it is:
   `"Temp: {t as text}"` is `"Temp: " + String(t)`.
 - Single-quoted text keeps `{…}` as it is. Python text with a prefix (`f"…"`, `r"…"`, `b"…"`) is kept
-  exactly. In C++, single quotes are one character (`'a'`); text in them gets a warning. JavaScript text in
+  exactly. In C++, single quotes around one character stay a character (`'a'`); longer text in them
+  becomes double-quoted text (`'Hello'` is `"Hello"`). Curly quotes (“ ” ‘ ’) count as straight ones in
+  every language. JavaScript text in
   backticks is kept as it is.
 
 ```intuicode python
@@ -1596,7 +1598,8 @@ meant, the line is an error that says how to put it, instead of picking one:
 | `set a b to 1` when there's a name `a` | the name `a` then "b", or "a" as in "set a counter to 1"? | `set a_b to 1`, or a name that doesn't start with "a" |
 | `count i from n to 1` | up or down? only numbers written here say | `count down from n to 1` |
 | `length of rope`, when both `length of rope` and `rope` are names | the name, or the phrase? | rename one (`rope length`) |
-| `set budget to 1,000` | one number, or two (Python's 1 and 0)? | `1000` |
+| `create list xs with 100,200` | one number, or two items? (`set budget to 1,000` is one number: `1000`) | `100, 200`, or `100200` |
+| `set x to 1,5` | a decimal comma, or two values? | `1.5`, or `1, 5` |
 | `for each x in numbers from 1 to 2` | going through a list, or counting? | one or the other |
 
 And some that read one way only are written that way: `answer is "yes" or "y"` says the name again
@@ -1688,9 +1691,8 @@ direction, with the limits below.
   the shape of a `python:` line's value; Structure's names; the sentence's own words. It doesn't know what a
   value is at run time, so where that decides the code and can't be seen, Python says so with a warning.
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
-  `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above`, number words or names with
-  spaces. C++ has no names with spaces, `contains`, `is in` or `nothing`. These are errors or warnings,
-  not silent.
+  `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above` or number words. C++ has no
+  `contains`, `is in` or `nothing`. These are errors or warnings, not silent.
 
 ## Known wrong translations
 
@@ -2111,7 +2113,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 |  | `add a file picker called ‹name› for ‹pictures›` | `<input type="file" accept="image/*">` | Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›". |
 | **Media** | `add a picture of "‹file.jpg›" described as "‹what it shows›"` | `<img src="…" alt="…">` | The description is read aloud by screen readers. |
 |  | `add a drawing area called ‹game› ‹480› by ‹270›` | `<canvas id="game" width="480" height="270">` | Where a game or a picture is drawn, from Mechanics. |
-|  | `add a link to "‹https://…›" saying "‹text›"` | `<a href="…">…</a>` |  |
+|  | `add a link to "‹https://…›" saying "‹text›"` | `<a href="…">…</a>` | An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:…. |
 | **Layout** | `add a section called ‹name›` | `<section id="name">` | Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel. |
 |  | `add a list called ‹name›` | `<ul id="name">` | Indent "add a list item "…"" under it. |
 |  | `… in group ‹name›` | `class="name"` | Add to the end of any line to put it in a group (a CSS class). |
@@ -2175,7 +2177,7 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 |  | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
 |  | `add group ‹name›: ‹styles›` | `.name { … }` | The same as "create group". A group is a CSS class: put things in it with "add ‹thing› to group ‹name›". |
 |  | `add ‹name› to group ‹group›` | `class="group" in the HTML` | Puts an element from Structure in a group. It can be its name or its text in quotes. |
-|  | `add a colour called ‹main› ‹#4f7cff›` | `:root { --main: … }` | A shared colour. Use it as "the colour main". |
+|  | `add a colour called ‹main› ‹#4f7cff›` | `:root { --main: … }` | A shared colour. Use it as "the colour main". Its name runs up to the colour: "main blue #4f7cff" is the colour main blue. |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
 |  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
 |  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
@@ -2209,6 +2211,10 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `text weight 600` | `font-weight: 600` |
 | `background gradient from #fff to #000` | `background: linear-gradient(#fff, #000)` |
 | `the colour main` | `var(--main)` |
+| `background royal blue` | `background: royalblue` |
+| `width 50 percent` | `width: 50%` |
+| `text size 2 em` | `font-size: 2em` |
+| `background rgb 255 0 0` | `background: rgb(255, 0, 0)` |
 
 #### CSS: words for what to style
 
@@ -2297,7 +2303,7 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | **Server** | `fetch from "‹/api/items›" and store in ‹items›` | `await fetch(…).json()` |  |
 |  | `send ‹value› to "‹/api/items›"` | `fetch(…, { method: "POST" … })` |  |
 |  | `save ‹value› in the browser as "‹key›"` | `localStorage.setItem` | And "load "key" from the browser and store in …". |
-| **Logic** | `set ‹name› to ‹value›` | `let name = value` | Same sentences as Python: if, otherwise, repeat, for each, define, give back, run… |
+| **Logic** | `set ‹name› to ‹value›` | `let name = value` | Same sentences as Python: if, otherwise, repeat, for each, define, give back, run… A name of several words ("total price") is one name, totalPrice. |
 |  | `if ‹condition›` | `if (condition) {` |  |
 |  | `for each ‹item› in ‹list›` | `for (const item of list) {` |  |
 |  | `set item ‹i› of ‹list› to ‹value›` | `list[i] = value` | Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field). |
@@ -2387,6 +2393,12 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | `the smallest number in xs` | `Math.min(...xs)` |
 | `x, or y if that is nothing` | `x ?? y` |
 | `ua matches /win/i` | `/win/i.test(ua)` |
+| `total price` | `totalPrice` |
+| `high-score` | `highScore` |
+| `1,000` | `1000` |
+| `$5` | `5` |
+| `50%` | `0.5` |
+| `15% of total` | `0.15 * total` |
 
 ### C++
 
@@ -2398,7 +2410,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. |
+| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin. |
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
@@ -2450,6 +2462,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 |  | `above main: ‹C++ code›` | `code (outside main)` | C++ copied exactly, outside main. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
+| **Time** | `wait ‹500› milliseconds` | `std::this_thread::sleep_for(std::chrono::milliseconds(500));` | Or "wait 2 seconds", "wait half a second". Brings in <thread> and <chrono>. |
 
 #### C++ words inside sentences
 
@@ -2476,6 +2489,8 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `"Hi " plus name` | `"Hi " + name` |
 | `square root of x` | `std::sqrt(x)` |
 | `absolute value of x` | `std::abs(x)` |
+| `a to the power of b` | `std::pow(a, b)` |
+| `x is between 1 and 5` | `x >= 1 && x <= 5` |
 
 ### Arduino
 
@@ -2487,7 +2502,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. |
+| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin. |
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
@@ -2537,7 +2552,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `read pin ‹A0› and call it ‹level› (a whole number)` | `int level = analogRead(A0);` | A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). "read analog pin SENSOR" for a named analog pin; "… and store it in level" changes a name made before. |
 |  | `scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›` | `level = map(reading, 0, 1023, 0, 255);` | Moves a value from one range to another. Also "… and call it level (a whole number)". |
 |  | `set ‹duration› to how long pin ‹echo› stays on` | `duration = pulseIn(echo, HIGH);` | In microseconds: for distance sensors. |
-| **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds". |
+| **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds", "wait 500ms", "wait half a second". |
 |  | `wait ‹10› microseconds` | `delayMicroseconds(10);` | Millionths of a second, for timing a sensor's pulse. |
 |  | `if at least ‹500› milliseconds have passed since ‹last›` | `if (millis() - last >= 500) {` | On time without stopping the board. Also "more than", "less than", "at most". |
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
@@ -2576,5 +2591,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `the result of f with a, b` | `f(a, b)` |
 | `t as a whole number` | `(int)t` |
 | `square root of x` | `sqrt(x)` |
+| `a to the power of b` | `pow(a, b)` |
+| `x is between 1 and 5` | `x >= 1 && x <= 5` |
 
 <!-- index:end -->

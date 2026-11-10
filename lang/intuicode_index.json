@@ -1244,7 +1244,7 @@
           "folders": [
             "structure"
           ],
-          "tip": ""
+          "tip": "An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:…."
         },
         {
           "topic": "Layout",
@@ -1613,7 +1613,7 @@
           "folders": [
             "styling"
           ],
-          "tip": "A shared colour. Use it as \"the colour main\"."
+          "tip": "A shared colour. Use it as \"the colour main\". Its name runs up to the colour: \"main blue #4f7cff\" is the colour main blue."
         },
         {
           "topic": "Styles",
@@ -1768,6 +1768,22 @@
         {
           "say": "the colour main",
           "becomes": "var(--main)"
+        },
+        {
+          "say": "background royal blue",
+          "becomes": "background: royalblue"
+        },
+        {
+          "say": "width 50 percent",
+          "becomes": "width: 50%"
+        },
+        {
+          "say": "text size 2 em",
+          "becomes": "font-size: 2em"
+        },
+        {
+          "say": "background rgb 255 0 0",
+          "becomes": "background: rgb(255, 0, 0)"
         }
       ],
       "selectors": [
@@ -2261,7 +2277,7 @@
           "folders": [
             "mechanics"
           ],
-          "tip": "Same sentences as Python: if, otherwise, repeat, for each, define, give back, run…"
+          "tip": "Same sentences as Python: if, otherwise, repeat, for each, define, give back, run… A name of several words (\"total price\") is one name, totalPrice."
         },
         {
           "topic": "Logic",
@@ -2790,6 +2806,30 @@
         {
           "say": "ua matches /win/i",
           "becomes": "/win/i.test(ua)"
+        },
+        {
+          "say": "total price",
+          "becomes": "totalPrice"
+        },
+        {
+          "say": "high-score",
+          "becomes": "highScore"
+        },
+        {
+          "say": "1,000",
+          "becomes": "1000"
+        },
+        {
+          "say": "$5",
+          "becomes": "5"
+        },
+        {
+          "say": "50%",
+          "becomes": "0.5"
+        },
+        {
+          "say": "15% of total",
+          "becomes": "0.15 * total"
         }
       ]
     },
@@ -2813,7 +2853,7 @@
           "folders": [
             "program"
           ],
-          "tip": "The kind (int, double, std::string, bool) is worked out from the value."
+          "tip": "The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like \"led pin\", is written ledPin."
         },
         {
           "topic": "Values",
@@ -3273,6 +3313,15 @@
             "program"
           ],
           "tip": "Write C++ directly."
+        },
+        {
+          "topic": "Time",
+          "say": "wait ‹500› milliseconds",
+          "becomes": "std::this_thread::sleep_for(std::chrono::milliseconds(500));",
+          "folders": [
+            "program"
+          ],
+          "tip": "Or \"wait 2 seconds\", \"wait half a second\". Brings in <thread> and <chrono>."
         }
       ],
       "words": [
@@ -3359,6 +3408,14 @@
         {
           "say": "absolute value of x",
           "becomes": "std::abs(x)"
+        },
+        {
+          "say": "a to the power of b",
+          "becomes": "std::pow(a, b)"
+        },
+        {
+          "say": "x is between 1 and 5",
+          "becomes": "x >= 1 && x <= 5"
         }
       ]
     },
@@ -3382,7 +3439,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "The kind (int, double, std::string, bool) is worked out from the value."
+          "tip": "The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like \"led pin\", is written ledPin."
         },
         {
           "topic": "Values",
@@ -3832,7 +3889,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "Or \"wait 2 seconds\"."
+          "tip": "Or \"wait 2 seconds\", \"wait 500ms\", \"wait half a second\"."
         },
         {
           "topic": "Time",
@@ -4047,6 +4104,14 @@
         {
           "say": "square root of x",
           "becomes": "sqrt(x)"
+        },
+        {
+          "say": "a to the power of b",
+          "becomes": "pow(a, b)"
+        },
+        {
+          "say": "x is between 1 and 5",
+          "becomes": "x >= 1 && x <= 5"
         }
       ]
     }

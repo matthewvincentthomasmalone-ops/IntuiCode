@@ -98,6 +98,173 @@
     return masked.split(re).map(p => p.replace(/\u0001(\d+)\u0001/g, (m, i) => strs[+i]).trim()).filter(Boolean);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* What people naturally type that C++ can't take as written           */
+  /* ------------------------------------------------------------------ */
+  /* Each becomes the form C++ needs, with a note, or an error that says what to write when it could mean two
+     things. Only outside quoted text (and never in notes or exact C++):
+     - “curly” and ‘curly’ quote marks (phones, Macs, Word) are straight ones; an apostrophe in a word (It’s) isn't
+       a quote mark. A straight " inside curly-quoted text is part of the text (\"). Text in single quotes is text: "…".
+     - 1,000 is 1000 (after "with" or in "add … to", where it could be two numbers, it is asked about); 1_000 is 1000.
+     - $5, €5, £5 are 5; 50% is 0.5, "20% of price" is 0.2 times price, "increase price by 10%" multiplies it by 1.1.
+     - 010 is 10 (C++ reads a number starting with 0 as octal: 010 is 8).
+     - × ÷ ≤ ≥ ≠ − are * / <= >= != -. */
+  const AS_WRITTEN = /^\s*(?:(?:note|comment|description)\s*:|(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:)/i;
+  const NUMBER_WORDS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, twenty: 20, fifty: 50, hundred: 100, thousand: 1000 };
+  const wordChar = (c) => /[\p{L}\p{N}_]/u.test(c || '');
+  const SYMBOLS = { '×': '*', '÷': '/', '≤': '<=', '≥': '>=', '≠': '!=', '−': '-' };
+  const CURLY_NOTE = 'Curly quote marks (“ ” ‘ ’) are written as straight ones (" \') in C++.';
+  const INNER_NOTE = 'A " inside text is written \\" in C++, so the text doesn\'t end there.';
+  /* n (digits, maybe a decimal part) divided by 100, exactly: 12.5 -> 0.125, 100 -> 1.0 */
+  function hundredth(n) {
+    const neg = /^-/.test(n), [w, f = ''] = n.replace(/^[-+]/, '').split('.');
+    let digits = w + f, point = w.length - 2;
+    if (point < 1) { digits = '0'.repeat(1 - point) + digits; point = 1; }
+    const whole = digits.slice(0, point).replace(/^0+(?=\d)/, ''), frac = digits.slice(point).replace(/0+$/, '');
+    return (neg ? '-' : '') + whole + '.' + (frac || '0');
+  }
+  /* 1 plus (or minus) a decimal, exactly: 0.1 -> 1.1 or 0.9 */
+  function oneAnd(dec, sign) {
+    const frac = (dec.split('.')[1] || ''), k = frac.length, unit = 10 ** k;
+    const r = unit + sign * Math.round(parseFloat(dec) * unit), a = String(Math.abs(r)).padStart(k + 1, '0');
+    return (r < 0 ? '-' : '') + a.slice(0, a.length - k) + '.' + (a.slice(a.length - k).replace(/0+$/, '') || '0');
+  }
+  function tidyLine(line) {
+    const notes = [], errs = [];
+    const add = (list, s) => { if (!list.includes(s)) list.push(s); };
+    if (AS_WRITTEN.test(line) || !line.trim()) return { text: line, notes, errs };
+    // 1. the quoted parts, with curly marks made straight; the rest is fixed in step 2
+    const segs = [];   // [text, quoted]
+    let plain = '';
+    const keep = (t) => { if (plain) segs.push([plain, false]); plain = ''; segs.push([t, true]); };
+    const closeAt = (k, test) => { for (let j = k; j < line.length; j++) { if (line[j] === '\\') { j++; continue; } if (test(j)) return j; } return -1; };
+    const single = (body) => {
+      // one character ('a', '\n') stays one; more is text, which C++ only takes in double quotes
+      if (!body || /^(?:[^\\]|\\(?:x[0-9a-fA-F]+|[0-7]{1,3}|u[0-9a-fA-F]{4}|.))$/u.test(body)) return `'${body}'`;
+      const t = '"' + body.replace(/\\'/g, "'").replace(/(?<!\\)"/g, '\\"').replace(/[{}]/g, c => c + c) + '"';
+      add(notes, `C++ text goes in double quotes (single quotes hold one character), so ${body.length <= 24 ? `'${body}' is written ${t}` : 'it is written in double quotes'}.`);
+      return t;
+    };
+    let inside = null;   // text with " inside it: "He said "hi""
+    for (let k = 0; k < line.length; k++) {
+      const c = line[k];
+      if (c === '"') {
+        const end = closeAt(k + 1, j => line[j] === '"');
+        if (end < 0) { add(errs, 'This text has no closing quote mark (").'); keep(line.slice(k)); plain = ''; break; }
+        // a quote mark right after a word, or a word right after one: a quote mark inside the text
+        if (!inside && (wordChar(line[end + 1]) || (wordChar(line[k - 1]) && !/(?:^|\W)(?:u8|[uULR])$/.test(line.slice(0, k))))) inside = k;
+        keep(line.slice(k, end + 1)); k = end; continue;
+      }
+      if (c === "'" && !wordChar(line[k - 1])) {
+        // it ends at a ' that isn't an apostrophe inside a word ('It's here')
+        const end = closeAt(k + 1, j => line[j] === "'" && (j === k + 2 || !(wordChar(line[j - 1]) && wordChar(line[j + 1]))));
+        if (end < 0) { plain += c; continue; }
+        keep(single(line.slice(k + 1, end))); k = end; continue;
+      }
+      if (c === '“' || c === '”' || c === '„') {
+        // it ends at the ” that matches it (“It’s “here””: quotes inside), else at the next curly mark (“Hello“)
+        let depth = 0;
+        let end = closeAt(k + 1, j => (/[“„]/.test(line[j]) ? (depth++, false) : line[j] === '”' && depth-- === 0));
+        if (end < 0) end = closeAt(k + 1, j => /[“”„]/.test(line[j]));
+        const mixed = end < 0;   // “Hello" (a curly mark, then a straight one)
+        if (mixed) end = closeAt(k + 1, j => line[j] === '"');
+        if (end < 0) { add(errs, 'This text has no closing quote mark (”).'); keep(line.slice(k)); plain = ''; break; }
+        let body = line.slice(k + 1, end);
+        // (curly marks inside are part of the text, and C++ text can hold them; a straight one would end it)
+        if (!mixed && /(?<!\\)"/.test(body)) { body = body.replace(/(?<!\\)"/g, '\\"'); add(notes, INNER_NOTE); }
+        add(notes, CURLY_NOTE);
+        keep('"' + body + '"'); k = end; continue;
+      }
+      if (c === '‘' || (c === '’' && !wordChar(line[k - 1]))) {
+        // it ends at a ’ that isn't an apostrophe inside a word (‘It’s here’)
+        const end = closeAt(k + 1, j => /[’']/.test(line[j]) && !(wordChar(line[j - 1]) && wordChar(line[j + 1])));
+        if (end < 0) { plain += "'"; continue; }
+        add(notes, CURLY_NOTE);
+        keep(single(line.slice(k + 1, end))); k = end; continue;
+      }
+      plain += c === '’' ? "'" : c;   // an apostrophe in a sentence word: isn’t, the caller’s
+    }
+    if (plain) segs.push([plain, false]);
+    if (inside != null) {
+      const first = line.indexOf('"'), last = line.lastIndexOf('"');
+      const fixed = '"' + line.slice(first + 1, last).replace(/(?<!\\)"/g, '\\"') + '"';
+      add(errs, `This text has a " inside it, which would end the text there. Write \\" for each " that is part of the text: ${fixed}.`);
+    }
+    // 2. outside the quotes (each quoted part held as one character from the private-use area)
+    let t = segs.map(([s, q], i) => (q ? String.fromCharCode(0xE000 + i) : s)).join('');
+    const sentenceStart = (t.match(/^\s*/)[0] + (t.trim().match(FILLER) || [''])[0]).length;
+    t = t.replace(/[×÷≤≥≠−]/g, (c) => { add(notes, `${c} is written \`${SYMBOLS[c]}\` in C++.`); return SYMBOLS[c]; });
+    // => and =< are >= and <=; <> is != (as other languages write them)
+    t = t.replace(/\s*(=>|=<|(?<=\s)<>(?=\s))\s*/g, (m, op) => { const to = { '=>': '>=', '=<': '<=', '<>': '!=' }[op]; add(notes, `\`${op}\` is written \`${to}\` in C++.`); return ` ${to} `; });
+    // "set x = 5" is "set x to 5"
+    t = t.slice(0, sentenceStart) + t.slice(sentenceStart).replace(/^((?:set|let)\s+[^=<>!]+?)\s*=(?!=)\s*(?=\S)/i, '$1 to ');
+    // a ; at the end: the sentence becomes a C++ line that has its own
+    t = t.replace(/\s*;+\s*$/, () => { add(notes, 'A sentence needs no ; at the end: the C++ line gets its own.'); return ''; });
+    // money: $5 is 5 (and $1,000 is 1000, even in a list)
+    t = t.replace(/(?<![\w.])([-+]?)[$€£¥](\d+(?:,\d{3})*(?:\.\d+)?)(?!\w|[,.]\d)/g, (m, sign, n) => {
+      const v = sign.replace('+', '') + n.replace(/,/g, '');
+      add(notes, `C++ numbers have no currency sign, so ${m.trim()} is written ${v}. (Text like "${m.trim()}" shows it.)`);
+      return v;
+    });
+    t = t.replace(/(?<![\w.,])(-?\d+(?:,\d{3})*(?:\.\d+)?)\s?[$€£¥](?!\w)/g, (m, n) => {
+      const v = n.replace(/,/g, '');
+      add(notes, `C++ numbers have no currency sign, so ${m.trim()} is written ${v}. (Text like "${m.trim()}" shows it.)`);
+      return v;
+    });
+    // 1,000: one number, unless it is in a list (after "with", or in "add … to"), where it could be two
+    const listed = (at) => /\bwith\s/i.test(t.slice(0, at)) || (/^add\s/i.test(t.slice(sentenceStart)) && !/\sto\s/i.test(t.slice(sentenceStart, at)));
+    t = t.replace(/(?<![\w.,])\d+(?:,\d+)+(?:\.\d+)?(?!\w|[,.]\d)/g, (m, at) => {
+      if (!/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(m)) return m;
+      const v = m.replace(/,/g, '');
+      // (in a list, 1,000 is still one number: nobody writes an item as 000)
+      if (listed(at) && !m.split(',').slice(1).some(g => /^0/.test(g))) { add(errs, `"${m}" could be one number (${v}) or ${m.split(',').length} (${m.split(',').join(', ')}). Write ${v} for one, or put a space after each comma for ${m.split(',').length}.`); return m; }
+      add(notes, `C++ numbers have no commas, so ${m} is written ${v}.`);
+      return v;
+    });
+    // "set x to 1,5": a decimal with a comma, or two numbers? Either way not one C++ value.
+    const odd = t.slice(sentenceStart).match(/^(?:(?:set|let|make)\s.+?\s(?:to|be)|constant\s.+?\s(?:is|=)|(?:increase|decrease|multiply|divide)\s.+?\sby)\s+(\d+(?:,\d+)+)\.?\s*$/i);
+    if (odd) add(errs, `"${odd[1]}" isn't one number in C++. ${odd[1].split(',').length === 2 ? `For a decimal, write ${odd[1].replace(',', '.')} (C++ uses a point); for two numbers, make a list.` : 'For several numbers, make a list.'}`);
+    t = t.replace(/(?<![\w.])\d+(?:_\d+)+(?:\.\d+)?(?!\w|\.\d)/g, (m) => { const v = m.replace(/_/g, ''); add(notes, `C++ numbers have no _, so ${m} is written ${v}.`); return v; });
+    // percentages: "increase price by 10%" makes it 10% bigger; "20% of price"; "plus 10%" could mean two things
+    const PCT = String.raw`(?<![\w.])(-?\d+(?:\.\d+)?)%`;
+    const pctNote = (p, v) => add(notes, `In C++, % is the remainder after dividing, so ${p}% is written ${v}. (Text like "${p}%" shows the sign.)`);
+    t = t.replace(new RegExp(String.raw`^(\s*(?:${FILLER.source.slice(1)})?)(increase|decrease)\s+(.+?)\s+by\s+${PCT}\.?\s*$`, 'i'), (m, lead, how, name, p) => {
+      const f = oneAnd(hundredth(p), /^inc/i.test(how) ? 1 : -1);
+      add(notes, `${how[0].toUpperCase() + how.slice(1).toLowerCase()} by ${p}% is by ${p}% of ${name.trim()} itself, so it is multiplied by ${f}.`);
+      return `${lead}multiply ${name} by ${f}`;
+    });
+    t = t.replace(new RegExp(String.raw`(\b(?:plus|minus)\s+|(?<=[\w)\]\uE000-\uF8FF]\s*)[-+]\s*)${PCT}(?!\s*of\b)`, 'gi'), (m, op, p) => {
+      const o = op.trim();
+      add(errs, `"${o} ${p}%" could mean ${o} ${hundredth(p)}, or ${o} ${p}% of the value before it. Say which: "${o} ${hundredth(p)}", or "${o} ${p}% of price".`);
+      return m;
+    });
+    t = t.replace(new RegExp(String.raw`${PCT}\s+of\s+`, 'gi'), (m, p, at) => {
+      // "20% of price plus 5": (20% of price) plus 5, or 20% of (price plus 5)?
+      let depth = 0, rest = '';
+      for (const c of t.slice(at + m.length)) { if (c === '(') depth++; else if (c === ')' && --depth < 0) break; if (!depth) rest += c; }
+      rest = rest.split(/\s+(?:is|isn't|and|or|then|than|followed by)\b|,/i)[0].trim();
+      if (/\b(?:plus|minus)\b|[-+]/i.test(rest)) {
+        const [first, ...more] = rest.split(/\s+/);
+        add(errs, `"${p}% of ${rest}" could mean two things. Put brackets round the part you mean: (${p}% of ${first}) ${more.join(' ')}, or ${p}% of (${rest}).`);
+      }
+      const v = hundredth(p); pctNote(p, v);
+      return `${v} times `;
+    });
+    // (10%3 and 10% n are the remainder after dividing, as in C++)
+    const AFTER_PCT = /^(?:\.?\s*$|\s*[,;)\]}*/<>=!&|+-]|\s+(?:and|or|then|plus|minus|times|divided|mod|is|isn't|are|than|to|on|off|as|followed|with|for|in|from|between|by|else|otherwise)\b)/i;
+    t = t.replace(new RegExp(PCT, 'g'), (m, p, at, all) => {
+      if (!AFTER_PCT.test(all.slice(at + m.length))) return m;
+      const v = hundredth(p); pctNote(p, v);
+      return v;
+    });
+    // 010 is 10, not octal 8
+    t = t.replace(/(?<![\w.,])0+(\d+)(?!\w|[.,]\d)/g, (m, n) => {
+      add(notes, `C++ reads a whole number that starts with 0 as octal (${/[89]/.test(m) ? `${m} isn't a number there at all` : `${m} would be ${parseInt(m, 8)}`}), so ${m} is written ${n}.`);
+      return n;
+    });
+    return { text: t.replace(/[\uE000-\uF8FF]/g, (c) => segs[c.charCodeAt(0) - 0xE000][0]), notes, errs };
+  }
+
   const TYPE_WORDS = { number: 'int', numbers: 'int', 'whole number': 'int', 'whole numbers': 'int', decimal: 'double', decimals: 'double', text: 'std::string', words: 'std::string', 'yes/no': 'bool', 'yes/no value': 'bool', 'yes/no values': 'bool', character: 'char', characters: 'char' };
   /* What a list holds, as said after "list of": "whole numbers", "text", or a C++ type and "values" ("float values"). */
   function itemType(word, x) {
@@ -142,14 +309,19 @@
     const TEXT = x.arduino ? 'String' : 'std::string';
     if (/^"/.test(t) || /^text\(/.test(t) || /^std::(to_string|string)/.test(t) || /^String\(/.test(t)) return TEXT;
     if (/^'.'$/.test(t)) return 'char';
-    if (/^-?\d+$/.test(t)) return 'int';
-    if (/^-?\d*\.\d+$/.test(t)) return 'double';
+    // (0x1F, 0b101: whole numbers written in hexadecimal, binary.) One too big for an int is a long: on an Uno an
+    // int holds up to 32767, so 100000 as an int would quietly be another number.
+    if (/^-?\d+$/.test(t) || /^-?0[xX][0-9a-fA-F]+$|^-?0[bB][01]+$/.test(t)) {
+      const n = Math.abs(Number(t.replace(/^-/, '')));
+      return n > 2147483647 ? (x.arduino ? 'unsigned long' : 'long long') : x.arduino && n > 32767 ? 'long' : 'int';
+    }
+    if (/^-?\d*\.\d+$/.test(t) || /^-?\d+(?:\.\d+)?[eE][-+]?\d+$/.test(t)) return 'double';   // (1e3: 1000.0)
     if (/^(true|false)$/.test(t)) return 'bool';
     if (/^std::sto(i|l)\(|\.size\(\)$|^random_number\(|^random\(|^digitalRead\(|^analogRead\(|\.toInt\(\)$/.test(t)) return 'int';
     if (/^millis\(\)$|^pulseIn\(/.test(t)) return 'unsigned long';
     if (x.arduino && /^(?:map|constrain)\([^()]*(?:\([^()]*\)[^()]*)*\)$/.test(t)) return 'int';
     if (x.arduino && /^(?:LED_BUILTIN|A\d+|HIGH|LOW)$/.test(t)) return 'int';
-    if (/^std::stod\(|\.toFloat\(\)$/.test(t) || (/^(?:std::)?sqrt\(/.test(t) && wholeCall(t, t.match(/^(?:std::)?sqrt/)[0]))) return 'double';
+    if (/^std::stod\(|\.toFloat\(\)$/.test(t) || (/^(?:std::)?(?:sqrt|pow)\(/.test(t) && wholeCall(t, t.match(/^(?:std::)?(?:sqrt|pow)/)[0]))) return 'double';
     // a cast is the type it casts to: (int)t, static_cast<double>(n)
     const sc = t.match(/^static_cast<\s*(int|long|double|float)\s*>/);
     if (sc && wholeCall(t, sc[0])) return sc[1];
@@ -289,6 +461,7 @@
   function cppExpr(src, x, inf, cond = false) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return '0'; }
+    const errsBefore = inf.errs.length;
     // "the result of area with 2, 3": what a tool gives back. It is the whole value, since "with …" runs to the end.
     const res = qmatch(s, /^(?:the\s+)?result of\s+(self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*)(?:\s+with\s+(.+))?$/i);
     if (res) {
@@ -303,7 +476,7 @@
     let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     // a tool's result in brackets is one value, like a text: ⟦n⟧ holds its code
     if (br) q = q.replace(/⟪(\d+)⟫/g, (m, k) => { strs.push(br.codes[+k]); return `⟦${strs.length - 1}⟧`; });
-    if (/'/.test(q.replace(/\b\w'\w/g, ''))) inf.warns.push("In C++, text goes in double quotes (\"like this\"). Single quotes are for one character.");
+    if (/'/.test(q.replace(/\w'\w/g, ''))) inf.warns.push("In C++, text goes in double quotes (\"like this\"). Single quotes are for one character.");
     // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
     const swap = (p, to) => { const re = R(p); if (p.endsWith('(OPD)')) for (const m of q.matchAll(re)) looseBrackets(m, q, strs, inf); q = q.replace(re, to); };
     // "the result of a.rows" inside a value: a tool's result with no inputs (with inputs, only as the whole value)
@@ -359,6 +532,26 @@
     swap(String.raw`\bsquare root of (${inBrackets}|OPD)`, maths('sqrt'));
     if (/\babsolute value of\b/i.test(q)) note(inf, '`abs` is the value without its minus sign: -3 becomes 3.');
     swap(String.raw`\babsolute value of (${inBrackets}|OPD)`, maths('abs'));
+    // "x to the power of 2": std::pow (pow on a board). ^ and ** aren't powers in C++: ^ is exclusive-or on bits
+    const unbracket = (a) => (/^\(/.test(a) ? a.slice(1, -1).trim() : a);
+    swap(String.raw`(${inBrackets}|OPD) to\s+(?:the\s+)?power\s+of (${inBrackets}|OPD)`, (m, a, b) => {   // ("the" is gone by now)
+      if (!x.arduino) x.needs.add('cmath');
+      note(inf, `\`${x.arduino ? 'pow' : 'std::pow'}(a, b)\` is a to the power of b, as a decimal.`);
+      return `${x.arduino ? '' : 'std::'}pow(${unbracket(a)}, ${unbracket(b)})`;
+    });
+    // (x^2 written as in maths is a power, so it is an error; n ^ 3 with spaces is C++'s exclusive-or, with a note)
+    for (const m of q.matchAll(R(String.raw`(OPD)(\s*)(\^|\*\*)(\s*)(OPD)`))) {
+      const [a, op, b] = [m[1], m[3], m[5]].map(v => v.replace(/⟦(\d+)⟧/g, (_, k) => strs[+k]));
+      const xor = `In C++, ^ is exclusive-or on bits (2 ^ 3 is 1), not a power. For a power, say "${a} to the power of ${b}".`;
+      if (op === '^' && m[2] && m[4]) { note(inf, xor); continue; }
+      const e = op === '^' ? xor : `C++ has no ** for a power. Say "${a} to the power of ${b}".`;
+      if (!inf.errs.includes(e)) inf.errs.push(e);
+    }
+    // "x is between 1 and 5" includes both ends; "is not between" is outside them
+    swap(String.raw`(OPD) is (not )?between (OPD) and (OPD)`, (m, v, not, a, b) => {
+      note(inf, '"between" includes both ends: `>=` the first and `<=` the second.');
+      return not ? `(${v} < ${a} || ${v} > ${b})` : `${v} >= ${a} && ${v} <= ${b}`;
+    });
     // "random number from 1 to n plus 1": a number up to n, then plus 1, or up to n plus 1?
     for (const m of q.matchAll(R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`))) {
       const after = q.slice(m.index + m[0].length).match(/^\s+(plus|minus|times|divided by|mod)\b/i);
@@ -406,9 +599,36 @@
     ];
     for (const [re, to] of W) q = q.replace(re, to);
     q = cppTwoReadings(q, x, strs, inf, cond);
+    // "if button state is high": a sketch's HIGH and LOW are in capitals
+    if (x.arduino) q = q.replace(/(?<![\w.:>⟦])(high|low)\b(?!\s*\()/gi, (m) => {
+      if (m === m.toUpperCase() || x.types[m] || x.known.has(m)) return m;
+      note(inf, '`HIGH` and `LOW` are written in capitals in a sketch.');
+      return m.toUpperCase();
+    });
+    // the label printed on a board, D13, is pin 13 in a sketch
+    if (x.arduino) q = q.replace(/(?<![\w.:>⟦])D(\d{1,2})\b(?!\s*[(:])/g, (m, n) => {
+      if (x.types[m] || x.known.has(m)) return m;
+      note(inf, `The label ${m} on the board is pin ${n} in a sketch. (ESP8266 boards number their D pins differently: there, write the GPIO number.)`);
+      return n;
+    });
+    // two values in a row ("total price", "5 dollars"): C++ can't take them, so the line says what to write
+    const twoErr = new Set();
+    if (!/[{};]/.test(q) && inf.errs.length === errsBefore) for (const m of q.matchAll(/(?<![\w.:>⟦⟧'"])([A-Za-z_]\w*|\d+(?:\.\d+)?)[ \t]+([A-Za-z_]\w*|\d+(?:\.\d+)?)(?![\w⟦])/g)) {
+      const [, a, b] = m;
+      if (/^(?:new|delete|sizeof|throw|return|const|unsigned|signed|long|short|struct|class|enum|union|typename|volatile|co_await|co_yield|operator|case|goto)$/.test(a) || x.classes.has(a) || CPP_TYPES.test(a)) continue;
+      const e = /^\d/.test(a) && !/^\d/.test(b)
+        ? `"${a} ${b}" is a number and a word in a row, which C++ can't take. Write the number alone (${a}), or put the words in quotes to show them.`
+        : `"${a} ${b}" is two values in a row, which C++ can't take. If it is one name, set it first ("set ${a} ${b} to …")${x.arduino && /^pin$/i.test(b) ? `; for the pin ${a}, say "pin ${a}"` : ''}. For two values, put "and" or "followed by" between them.`;
+      if (!inf.errs.includes(e)) inf.errs.push(e);
+      twoErr.add(a); twoErr.add(b);
+    }
     q = q.replace(/(?<![\w.:>⟦])([A-Za-z_]\w*)\b(?!\s*::)/g, (m, id, off) => {
+      if (twoErr.has(id)) return id;   // (said in the error above)
       if (/^(true|false|std|random_number|random|text|auto|int|double|float|long|short|unsigned|signed|size_t|uint8_t|uint16_t|uint32_t|int8_t|int16_t|int32_t|byte|bool|char|const|return|nullptr|this|sizeof|String|HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP|LED_BUILTIN|A\d+|millis|micros|digitalRead|analogRead|Serial|new|delete|static_cast|reinterpret_cast|const_cast)$/.test(id) || x.types[id] || x.fns.has(id) || x.classes.has(id) || x.known.has(id)) return id;
       if (/^\d/.test(id) || /^\s*\(/.test(q.slice(off + m.length))) return id;
+      // "repeat five times": C++ sentences take numbers as digits
+      const word = x.headers || !Object.hasOwn(NUMBER_WORDS, id.toLowerCase()) ? null : NUMBER_WORDS[id.toLowerCase()];
+      if (word != null) { const e = `C++ sentences take numbers as digits: write ${word} for "${id}".`; if (!inf.errs.includes(e)) inf.errs.push(e); return id; }
       inf.warns.push(`${code(id)} hasn't been set anywhere yet.`);
       return id;
     });
@@ -467,6 +687,155 @@
     text: ['template <typename... Parts>', 'std::string text(const Parts&... parts) {', '    std::ostringstream out;', '    (out << ... << parts);', '    return out.str();', '}'],
   };
 
+  /* Names of more than one word ("total price", "led pin", "high-score"), as people say them, are written in
+     camelCase (totalPrice, ledPin: the usual style in sketches) everywhere in the program, with a note where each
+     is first used. A name is found where a sentence makes one: set … to, constant … is, called …, store it in …,
+     call it …, for each … in, count … from, counting with …, define … using …, field …, has …, let … stand for.
+     A kind said before it stays a kind ("set decimal unit price to 2": unitPrice is a double). A name can't hold a
+     word sentences read on their own (of, to, is, and, plus …) or start like a phrase ("pin …", "random number …"):
+     such a line, if it is no other sentence, gets an error that says the one-word name to write. A name is never
+     changed where a sentence starts ("count down from 3 to 1" stays, even with a name "count down"), and "the"
+     before a name is left out, as in values ("set the total to 5" sets total). */
+  const NAME_STOP = new Set(['of', 'to', 'is', 'are', 'and', 'or', 'not', 'plus', 'minus', 'times', 'divided', 'by', 'mod', 'than', 'as', 'with', 'from', 'between', 'followed', 'then', 'if', 'otherwise', 'else', 'in', 'into', 'on', 'off', 'at', 'using', 'giving', 'called', 'since', 'squared', 'limited', 'scaled', 'kept', 'a', 'an', 'the', 'yes', 'no', 'true', 'false', 'nothing']);
+  const NAME_PHRASE = /^(?:pin|random(?: whole)? number|square root|absolute value|(?:first|last) item|how long|time since)\b/i;
+  const camel = (words) => words.map((w, k) => (k ? w[0].toUpperCase() + w.slice(1) : w.toLowerCase())).join('');
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /* Calls fn(part, at) on each part of line l outside quotes (at: where it starts in l), and on the {…} values
+     inside double-quoted text (at: -1). Gives back the line with each part as fn gave it back. */
+  function eachUnquoted(l, fn) {
+    let out = '', part = '', at = 0, q = null;
+    for (let k = 0; k < l.length; k++) {
+      const c = l[k];
+      if (q) {
+        if (c === '\\') { out += c + (l[k + 1] || ''); k++; continue; }
+        if (c === q) q = null;
+        else if (q === '"' && c === '{' && l[k + 1] === '{') { out += '{{'; k++; continue; }
+        else if (q === '"' && c === '{' && l.indexOf('}', k) > k) { const e = l.indexOf('}', k); out += '{' + fn(l.slice(k + 1, e), -1) + '}'; k = e; continue; }
+        out += c; continue;
+      }
+      if (c === '"' || (c === "'" && !wordChar(l[k - 1]))) { out += fn(part, at); part = ''; q = c; out += c; continue; }
+      if (!part) at = k;
+      part += c;
+    }
+    return out + fn(part, at);
+  }
+  function spacedNames(lines, x, info) {
+    const found = new Map(x.spaced || []);   // the words, in lower case -> the camelCase name
+    const bad = new Map();   // line -> the error, given if the line is no other sentence
+    // classes first, since a class's name can come before a name ("for each Item it in items")
+    for (const l of lines) {
+      const c = l.trim().match(/^define\s+(?:an?\s+)?(?:class|structure|struct)\s+([A-Za-z_]\w*)$/i) || (/^(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:/i.test(l.trim()) && l.match(/\b(?:class|struct)\s+([A-Za-z_]\w*)/));
+      if (c) x.classes.add(c[1]);
+    }
+    const asName = (p) => {
+      p = p.trim().replace(/^(?:the|an?)\s+(?=\S)/i, '');
+      if (/^[A-Za-z_]\w*$/.test(p)) return { word: p };
+      if (!/\s|[A-Za-z0-9]-[A-Za-z]/.test(p)) return null;
+      const words = p.split(/\s+|(?<=[A-Za-z0-9])-(?=[A-Za-z])/);
+      if (!/^[A-Za-z_]\w*$/.test(words[0]) || words.some(w => !/^\w+$/.test(w))) return null;   // not plain words: a type, a value…
+      const one = camel(words), stop = words.find(w => NAME_STOP.has(w.toLowerCase())), lead = p.match(NAME_PHRASE);
+      if (stop || lead) return { bad: `"${p}" can't be a name: ${stop ? `sentences read "${stop}" as a word of their own` : `it starts like "${lead[0]} …"`}. Write it as one word, like ${one}.` };
+      return { said: words.map(w => w.toLowerCase()).join(' '), one, words };
+    };
+    /* the name in a phrase, after its kind if one is said first ("decimal unit price", "whole number s") */
+    const resolve = (phrase, typed, strict) => {
+      const w = phrase.trim().split(/\s+/);
+      if (typed) for (let k = w.length - 1; k >= 1; k--) {
+        if (!typeOf(w.slice(0, k).join(' '), x)) continue;
+        const r = asName(w.slice(k).join(' '));
+        if (r && !r.bad) return r;
+        break;
+      }
+      const r = asName(phrase);
+      return r && strict && r.words && r.words.some(v => /^[A-Z][a-z]/.test(v)) ? null : r;   // "Servo arm": a kind, then a name
+    };
+    const cands = (s) => {
+      const out = [], m = (re) => qmatch(s, re);
+      let r;
+      if ((r = m(/^(?:set|let|make)\s+(.+?)\s+(?:to|be)\s+\S/i))) out.push([r[1], true]);
+      if ((r = m(/^constant\s+(.+?)\s+(?:is|=)\s+\S/i))) out.push([r[1], true]);
+      if ((r = m(/^(?:create|make)\s+.+?\s+called\s+(.+?)(?:\s+with\s+.+)?$/i))) out.push([r[1]]);
+      if ((r = m(/\s+and\s+(?:store (?:it |the result )?in|keep it as|call it)\s+(.+?)(?:\s+\([^()]+\))?$/i))) out.push([r[1]]);
+      if ((r = m(/^for each\s+(.+?)\s+in\s+\S/i))) out.push([r[1], true, true]);
+      if ((r = m(/^count(?:\s+(?:up|down))?\s+(?!from\b)(.+?)\s+from\s+\S/i))) out.push([r[1]]);
+      if ((r = m(/,?\s+counting with\s+(.+)$/i))) out.push([r[1]]);
+      if ((r = m(/^let\s+(.+?)\s+stand for\s+\S/i))) out.push([r[1]]);
+      if ((r = m(/^field\s+(.+?)\s*:/i))) out.push([r[1]]);
+      if ((r = m(/^has\s+(?:an?\s+)?(.+?)(?:\s+(?:starting (?:at|as)|=)\s+.+)?$/i))) out.push([r[1], true, true]);
+      const d = m(/^define\s+(?!(?:an?\s+)?(?:class|structure|struct)\s)(.+?)(?:\s+using\s+(.+?))?(?:\s+giving back\s+.+?)?(?:,?\s+without changing the object)?$/i);
+      if (d) { out.push([d[1]]); if (d[2] && !/^nothing$/i.test(d[2].trim())) for (const p of splitItems(d[2])) out.push([p, true, true]); }
+      const w = m(/^when (?:made|created|built)\s+(?:using|with)\s+(.+)$/i);
+      if (w) for (const p of splitItems(w[1])) out.push([p, true, true]);
+      return out;
+    };
+    const lead = (l) => l.match(/^\s*/)[0].length + ((l.trim().match(FILLER) || [''])[0].length < l.trim().length ? (l.trim().match(FILLER) || [''])[0].length : 0);
+    lines.forEach((l, i) => {
+      if (AS_WRITTEN.test(l) || !l.trim()) return;
+      const s = l.slice(lead(l)).trim().replace(/[.:]$/, '');
+      const cls = s.match(/^define\s+(?:an?\s+)?(?:class|structure|struct)\s+(\w+(?:[\s-]+\w+)+)$/i);
+      if (cls) bad.set(i, `A class's name is one word: write ${cls[1].split(/[\s-]+/).map(w => w[0].toUpperCase() + w.slice(1)).join('')}.`);
+      for (const [phrase, typed, strict] of cands(s)) {
+        const r = resolve(phrase, typed, strict);
+        if (!r || r.word) continue;
+        if (r.bad) { if (!bad.has(i)) bad.set(i, r.bad); continue; }
+        if (!found.has(r.said)) found.set(r.said, r.one);
+      }
+    });
+    x.spaced = found;
+    const names = [...found].sort((a, b) => b[0].length - a[0].length)
+      .map(([said, one]) => ({ said, one, re: new RegExp(String.raw`(?<!\w)(?:the\s+)?` + said.split(' ').map(escRe).join(String.raw`(?:\s+|-)`) + String.raw`(?!\w)`, 'gi') }));
+    const told = x.toldSpaced || (x.toldSpaced = new Set());
+    lines.forEach((l, i) => {
+      if (AS_WRITTEN.test(l) || !l.trim()) return;
+      const start = lead(l);
+      if (names.length) l = lines[i] = eachUnquoted(l, (part, at) => {
+        for (const n of names) part = part.replace(n.re, (m, off) => {
+          if (at >= 0 && at + off === start) return m;   // where the sentence starts: its own words
+          if (!told.has(n.one)) { told.add(n.one); note(info[i], `C++ names can't have ${/-/.test(m) ? 'a -' : 'spaces'}, so "${m.replace(/^the\s+/i, '')}" is written ${code(n.one)}.`); }
+          return n.one;
+        });
+        return part;
+      });
+      // "set the total to 5", "set a counter to 1": the name is total, counter
+      const the = l.slice(start).match(/^(?:set|let)\s+(the|an?)\s+([A-Za-z_]\w*)\s+(?:to|be)\s/i);
+      if (the && !/^(?:brightness|level|power|first|last|to|be)$/i.test(the[2])) {
+        lines[i] = l.slice(0, start) + l.slice(start).replace(/^((?:set|let)\s+)(?:the|an?)\s+/i, '$1');
+        if (!/^the$/i.test(the[1])) note(info[i], `Left out "${the[1]}": the name is ${code(the[2])}.`);
+      }
+    });
+    return bad;
+  }
+
+  /* Names C++ (or the board) already has: a name like these would be read as that, so it is an error that says
+     what to write instead. */
+  const CPP_WORDS = new Set('alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline int long mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public register reinterpret_cast requires return short signed sizeof static static_assert static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq'.split(' '));
+  const ARDUINO_NAMES = /^(?:HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP|INPUT_PULLDOWN|LED_BUILTIN|A(?:\d|1[0-5])|PI|HALF_PI|TWO_PI|DEG_TO_RAD|RAD_TO_DEG|EULER|CHANGE|FALLING|RISING|LSBFIRST|MSBFIRST|DEC|HEX|OCT|BIN|Serial\d?|String|byte|word|boolean)$/;
+  // (not F, bit or sq: those are only macros with brackets, so "set F to 98.6" builds)
+  const ARDUINO_TOOLS = /^(?:setup|loop|main|pinMode|digitalWrite|digitalRead|analogRead|analogWrite|analogReference|analogReadResolution|analogWriteResolution|delay|delayMicroseconds|millis|micros|tone|noTone|pulseIn|pulseInLong|shiftIn|shiftOut|attachInterrupt|detachInterrupt|digitalPinToInterrupt|interrupts|noInterrupts|map|constrain|min|max|abs|sqrt|pow|sin|cos|tan|round|random|randomSeed|bitRead|bitWrite|bitSet|bitClear|highByte|lowByte|yield)$/;
+  function nameProblem(name, x) {
+    const n = String(name || '').trim(), said = n.toLowerCase().replace(/_/g, ' ');
+    const tryThese = `Try "my ${said}" or "${said} value".`;
+    if (CPP_WORDS.has(n)) return `"${n}" is one of C++'s own words, so it can't be a name. ${tryThese}`;
+    if (x.arduino && ARDUINO_NAMES.test(n)) return `"${n}" is one of Arduino's own names, so it can't be a name here. ${tryThese}`;
+    if (x.arduino && ARDUINO_TOOLS.test(n)) return `"${n}" is one of Arduino's own tools, so it can't be a name here. ${tryThese}`;
+    return null;
+  }
+
+  /* "wait 500 ms", "wait 500ms", "wait 2 seconds", "wait half a second", "wait a minute": { v: the amount as said,
+     per: the milliseconds in one unit, ms: the milliseconds when the words say how many (seconds or minutes written
+     as a number, or words like "half a"; milliseconds written as a number stay as written), said: a note for words } */
+  const WAIT_RE = /^wait\s+(?:for\s+)?(.+?)(?:\s+|(?<=\d))(milliseconds?|millis|msecs?|ms|seconds?|secs?|s|minutes?|mins?)$/i;
+  const WAIT_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, sixty: 60, half: 0.5, 'half a': 0.5, 'a half': 0.5, 'quarter of a': 0.25, 'a quarter of a': 0.25, 'a quarter': 0.25 };
+  function waitFor(s) {
+    const m = qmatch(s, WAIT_RE);
+    if (!m || (/^s$/i.test(m[2]) && !/\d$/.test(m[1]))) return null;   // ("wait 2s", but not "wait items")
+    const per = /^m(?:s|sec|illi)/i.test(m[2]) ? 1 : /^s/i.test(m[2]) ? 1000 : 60000;
+    const v = m[1].trim(), words = v.toLowerCase().replace(/\s+/g, ' ');
+    const n = /^\d+(?:\.\d+)?$/.test(v) ? parseFloat(v) : Object.hasOwn(WAIT_WORDS, words) ? WAIT_WORDS[words] : null;
+    return { v, per, ms: n == null || (per === 1 && /^\d/.test(v)) ? null : String(Math.round(n * per)), said: n != null && !/^\d/.test(v) ? `"${v} ${m[2]}" is ${Math.round(n * per)} milliseconds.` : null };
+  }
+  const grouped = (e) => (/^[A-Za-z_\d][\w.]*(?:\([^()]*\))?$/.test(e) ? e : `(${e})`);
+
   /* Does the block under line i give back a value? (Arduino tools need a result type.) */
   function blockGivesBack(lines, i) {
     const base = lines[i].match(/^ */)[0].length;
@@ -479,9 +848,29 @@
   }
 
   function compileCpp(sec, x) {
-    const lines = sec.text.split('\n');
-    const info = lines.map((_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] }));
+    const said = sec.text.split('\n');
+    const info = said.map((_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] }));
+    // what C++ can't take as written made into what it can (1,000, “quotes”, 50%…), then names of several words
+    const lines = said.map((l, i) => { const t = tidyLine(l); info[i].notes.push(...t.notes); info[i].errs.push(...t.errs); return t.text; });
+    const badNames = spacedNames(lines, x, info);
     const A = x.arduino;
+    // a name made here that C++ or the board already has (madeAt: the line each name is first made on, for the
+    // translator's own helpers, checked at the end)
+    const madeAt = new Map();
+    const checkName = (name, inf) => {
+      const e = nameProblem(name, x);
+      if (e && !inf.errs.includes(e)) inf.errs.push(e);
+      if (!madeAt.has(name)) madeAt.set(name, inf.line);
+    };
+    /* "set text size to 2": the kind said, and a value of another kind (std::string size = 2 doesn't build). The
+       words may have been one name ("text size"), so the error says how to write that too. */
+    const kindOf = (t) => (/^(?:const\s+)?(?:std::string|String)$/.test(t) ? 'text' : /^(?:double|float)$/.test(t) ? 'a decimal' : t === 'bool' ? 'yes or no' : /^(?:(?:unsigned|signed|long|short)\s+)*(?:int|long|short|size_t|byte|u?int\d+_t|unsigned)$/.test(t) ? 'a whole number' : null);
+    const kindsMatch = (kindWords, name, t, valueWords, v, inf) => {
+      const a = kindOf(t), b = kindOf(exprType(v, x));
+      if (!a || !b || a === b || (a !== 'text' && b !== 'text') || (a === 'yes or no' && b !== 'text')) return;
+      const words = `${kindWords.trim()} ${name}`.split(/\s+/), one = words.every(w => /^[A-Za-z]\w*$/.test(w)) ? camel(words) : null;
+      inf.errs.push(`This says ${code(name)} holds ${a}, but ${valueWords.trim()} is ${b}.` + (one ? ` If "${words.join(' ')}" is one name, write ${one}.` : ''));
+    };
     const topOut = [], mainOut = [], includes = [];
     const home = A ? topOut : mainOut;
     let out = home;
@@ -501,7 +890,7 @@
       if ((m = s.match(/^let\s+([A-Za-z_]\w*)\s+stand for\s/i))) x.known.add(m[1]);
       if (/^start (?:the serial monitor|talking to the computer)|Serial\.begin/i.test(s)) serialStarted = true;
       // a file included beyond the ones the translator adds itself: tools can come from it
-      if ((m = s.match(/^(?:(?:include|use the library)\s+|(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:\s*#\s*include\s*)(<[^>]+>|"[^"]+"|[\w./]+)/i)) && (A || !/^<?(?:iostream|string|vector|random|sstream|cstdlib|algorithm|cstdio|stdexcept|cmath|functional)>?$/.test(m[1]))) x.headers = true;
+      if ((m = s.match(/^(?:(?:include|use the library)\s+|(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:\s*#\s*include\s*)(<[^>]+>|"[^"]+"|[\w./]+)/i)) && (A || !/^<?(?:iostream|string|vector|random|sstream|cstdlib|algorithm|cstdio|stdexcept|cmath|functional|chrono|thread)>?$/.test(m[1]))) x.headers = true;
       if ((m = s.match(/^(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:(.*)$/i))) {   // names made in raw C++
         for (const d of m[1].matchAll(/\b(?:class|struct)\s+([A-Za-z_]\w*)/g)) { x.classes.add(d[1]); x.known.add(d[1]); }
         for (const d of m[1].matchAll(/^\s*(?:(?:const|static|unsigned|constexpr|inline)\s+)*[A-Za-z_][\w:<>,]*[\s&*]+([A-Za-z_]\w*)\s*(?:=|;|\(|\[|\{)/g)) x.known.add(d[1]);
@@ -524,11 +913,12 @@
     };
     const declare = (name, type, inf, value) => {
       if (isDeclared(name)) return `${name} = ${value};`;
+      checkName(name, inf);
       if (type === 'int' && x.decimal.has(name)) { type = 'double'; note(inf, `${code(name)} is given a decimal further on, so it is a decimal (\`double\`) from the start: a whole number (\`int\`) would drop what comes after the point.`); }
       scopes[scopes.length - 1].add(name);
       x.types[name] = type;
       const T = fixText(type, x);
-      if (T !== 'auto') note(inf, `C++ needs to know what kind of value ${code(name)} holds: ${code(T)}${{ int: ' (a whole number)', double: ' (a decimal number)', 'std::string': ' (text)', String: ' (text)', bool: ' (yes or no)', 'unsigned long': ' (a big whole number that is never negative)' }[T] || ''}. It can't change kind later.`);
+      if (T !== 'auto') note(inf, `C++ needs to know what kind of value ${code(name)} holds: ${code(T)}${{ int: ' (a whole number)', double: ' (a decimal number)', 'std::string': ' (text)', String: ' (text)', bool: ' (yes or no)', 'unsigned long': ' (a big whole number that is never negative)', long: x.arduino ? ' (a big whole number: an Uno\'s `int` holds up to 32767)' : ' (a big whole number)', 'long long': ' (a whole number too big for an `int`)' }[T] || ''}. It can't change kind later.`);
       else note(inf, '`auto` lets C++ work out the kind of value from what is stored.');
       return `${T} ${name} = ${value};`;
     };
@@ -539,6 +929,7 @@
       if (typeWords && (!t || t === 'void')) { inf.errs.push(`I don't know the type "${typeWords}". Use whole number, decimal, long, unsigned long, float, or another C++ type.`); return `auto ${name} = ${value};`; }
       if (/call it/i.test(how)) {
         if (scopes[scopes.length - 1].has(name)) inf.errs.push(`${code(name)} is already made here. To change it, say "… and store it in ${name}".`);
+        else checkName(name, inf);
         const T = fixText(t || dflt, x);
         scopes[scopes.length - 1].add(name); x.types[name] = T;
         note(inf, `This makes ${code(name)}, holding ${code(T)} values${t ? ', as the sentence says' : ''}.`);
@@ -642,6 +1033,7 @@
       // "let LED stand for 13": #define, a name the compiler swaps for its text before anything else
       if ((m = M(/^let\s+([A-Za-z_]\w*)\s+stand for\s+(-?\d+(?:\.\d+)?|[A-Za-z_]\w*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)')$/i))) {
         if (stack.length) inf.errs.push('"let … stand for …" goes at the left edge.');
+        checkName(m[1], inf);
         x.known.add(m[1]);
         note(inf, `\`#define\` makes ${code(m[1])} stand for ${code(m[2])}: before compiling, every ${m[1]} in the code is swapped for it. (A constant, "constant ${m[1]} is ${m[2]}", does the same job and has a type.)`);
         topOut.push({ text: `#define ${m[1]} ${m[2]}`, src: i });
@@ -652,6 +1044,7 @@
       if ((m = M(/^define\s+(?:an?\s+)?(class|structure|struct)\s+([A-Za-z_]\w*)(?:\s+based on\s+([A-Za-z_][\w:]*))?$/i))) {
         const struct = !/^class$/i.test(m[1]), [, , name, base] = m;
         if (stack.length) inf.errs.push(`${struct ? 'Structures' : 'Classes'} must be defined at the left edge, not inside another block.`);
+        checkName(name, inf);
         out = topOut;
         x.classes.add(name); x.known.add(name);
         if (struct) note(inf, `A structure (\`struct\`) bundles named values into one kind of thing: each ${code(name)} has its own fields. Everything in it can be used from anywhere (it is public), unless the sentences say otherwise.`);
@@ -668,6 +1061,7 @@
           const [name, typeWord, init] = /^field/i.test(s) ? [m[1], m[2], m[3]] : [m[2], m[1], m[3]];
           const t = typeOf(typeWord, x);
           if (!t) { inf.errs.push(`I don't know the type "${typeWord}". Use whole number, decimal, text, yes/no, list of …, or a C++ type.`); return; }
+          checkName(name, inf);
           x.types[name] = t; x.known.add(name);
           scopes[scopes.length - 1].add(name);   // so "set name to …" in the class's own tools changes the field
           cur().members++;
@@ -685,7 +1079,7 @@
         cur().members++;
         if ((m = M(/^when (?:made|created|built)(?:\s+(?:using|with)\s+(.+))?$/i))) {
           const ps = m[1] ? splitItems(m[1]).map(p => param(p, x)) : [];
-          ps.forEach(p => { x.types[p.name] = p.type || 'auto'; });
+          ps.forEach(p => { checkName(p.name, inf); x.types[p.name] = p.type || 'auto'; });
           if (ps.some(p => !p.type)) inf.errs.push('Say what kind each input is, like "when made using text name, whole number count".');
           note(inf, `A constructor: it runs when a new ${cur().cls} is made, and sets up its fields. Inside, "self.name" is this object's own ${code('name')} (\`this->name\`).`);
           open(`${cur().cls}(${ps.map(p => `${p.type || 'auto'} ${p.name}`).join(', ')})`, 'fn');
@@ -700,8 +1094,12 @@
         if (still && !inClass) inf.errs.push('"without changing the object" is for a class\'s own tools.');
         if (still) note(inf, '`const` after the brackets: this tool can look at the object\'s fields but never change them.');
         if (stack.length && !inClass) inf.errs.push('Tools must be defined at the left edge (or inside a class), not inside another block.');
+        // main, setup and loop are the program's own parts
+        if (!inClass && (m[1] === 'main' || (A && /^(?:setup|loop)$/.test(m[1])))) inf.errs.push(m[1] === 'main' ? `"main" is where ${A ? 'the board\'s own code' : 'every C++ program'} starts, so a tool can't be called main. ${A ? 'A sketch starts in "when the board starts".' : 'The steps at the left edge are main\'s steps.'}` : `"${m[1]}" is the sketch's own ${m[1] === 'setup' ? '"when the board starts"' : '"over and over"'} part: write that instead of "define ${m[1]}".`);
+        else if (!inClass || CPP_WORDS.has(m[1])) checkName(m[1], inf);
         if (!inClass) out = topOut;
         const ps = m[2] && !/^nothing$/i.test(m[2].trim()) ? splitItems(m[2]).map(p => param(p, x)) : [];   // ("using nothing": no inputs)
+        ps.forEach(p => checkName(p.name, inf));
         let ret = m[3] ? typeOf(m[3], x) : null;
         if (m[3] && !ret) inf.errs.push(`I don't know the type "${m[3]}". Use whole number, decimal, text, yes/no, nothing, or a C++ type.`);
         if (A) {
@@ -789,6 +1187,7 @@
       // a count that names a name made before it counts with that name (for (pos = 0; …)), and leaves it at the end value
       const counter = (v, named, inf2) => {
         if (named && isDeclared(v)) { note(inf2, `${code(v)} was made before, so the count uses it (no new \`int\`), and after the loop it keeps the value it ended on.`); return v; }
+        checkName(v, inf2);
         x.types[v] = 'int';
         return `int ${v}`;
       };
@@ -818,6 +1217,7 @@
       // ", so it can be changed" works on the list's own item (auto&); ", as a copy" copies it (auto)
       if ((m = M(/^for each\s+(?:(.+?)\s+)?([A-Za-z_]\w*)\s+in\s+(.+?)(?:,\s*(so it can be changed|as a copy))?$/i))) {
         const [, typeWord, name, listWords, how] = m;
+        checkName(name, inf);
         const list = E(listWords, inf);
         let t = typeWord ? typeOf(typeWord, x) : null;
         if (typeWord && (!t || t === 'void')) { inf.errs.push(`I don't know the type "${typeWord}". Use whole number, decimal, text, yes/no, character, or a C++ type.`); t = 'auto'; }
@@ -852,7 +1252,8 @@
       // --- Arduino: pins, time, sound, serial monitor
       if (A) {
         const pin = (p) => (/^(?:the )?built-?in (?:light|led)$/i.test(p.trim()) ? 'LED_BUILTIN' : E(p.replace(/^pin\s+/i, ''), inf));
-        if ((m = M(/^(?:make|set)\s+(?:pin\s+)?(.+?)\s+(?:an?|as(?:\s+an?)?)\s+(output|input)(\s+with (?:a )?pull-?up)?$/i))) {
+        // (and "make pin 13 output", without the "an")
+        if ((m = M(/^(?:make|set)\s+(?:pin\s+)?(.+?)\s+(?:an?|as(?:\s+an?)?)\s+(output|input)(\s+with (?:a )?pull-?up)?$/i)) || ((m = M(/^make\s+(?:pin\s+)?(.+?)\s+(output|input)(\s+with (?:a )?pull-?up)?$/i)) && !/\s(?:to|be)\s/i.test(m[1]))) {
           const mode = /output/i.test(m[2]) ? 'OUTPUT' : m[3] ? 'INPUT_PULLUP' : 'INPUT';
           note(inf, `\`pinMode\` sets a pin up as ${mode === 'OUTPUT' ? 'an output (the board sends power out, e.g. to an LED)' : mode === 'INPUT_PULLUP' ? 'an input with the built-in pull-up: it reads HIGH until a button connects it to ground' : 'an input (the board reads it, e.g. a button)'}.`);
           return say(`pinMode(${pin(m[1])}, ${mode});`);
@@ -896,14 +1297,15 @@
           note(inf, '`attach` connects a servo to the pin its signal wire is on.');
           return say(`${E(m[1], inf)}.attach(${pin(m[2])});`);
         }
-        if ((m = M(/^wait\s+(?:for\s+)?(.+?)\s+(?:microseconds?|us|µs)$/i))) {
+        if ((m = M(/^wait\s+(?:for\s+)?(.+?)(?:\s+|(?<=\d))(?:microseconds?|us|µs)$/i))) {
           note(inf, '`delayMicroseconds` pauses for millionths of a second: for timing a sensor\'s pulse. Up to about 16000; use "wait … milliseconds" for longer.');
           return say(`delayMicroseconds(${E(m[1].trim(), inf)});`);
         }
-        if ((m = M(/^wait\s+(?:for\s+)?(.+?)\s+(milliseconds?|ms|seconds?|secs?)$/i))) {
-          const secs = /^s/i.test(m[2]);
-          const v = m[1].trim();
-          const ms = !secs ? E(v, inf) : /^\d+(\.\d+)?$/.test(v) ? String(Math.round(parseFloat(v) * 1000)) : `${E(v, inf)} * 1000`;
+        if ((m = waitFor(s))) {
+          // (a name times 1000UL: 1000 as an unsigned long, so n * 1000 can't go past the biggest whole number an Uno's int holds, 32767)
+          const ms = m.ms != null ? m.ms : m.per === 1 ? E(m.v, inf) : `${grouped(E(m.v, inf))} * ${m.per}UL`;
+          if (m.ms == null && m.per > 1) note(inf, `\`${m.per}UL\` is ${m.per} as an unsigned long (a big whole number), so the milliseconds can go past 32767, where an Uno's \`int\` stops.`);
+          if (m.said) note(inf, m.said);
           note(inf, '`delay` pauses the sketch for a number of milliseconds (1000 = 1 second). Nothing else happens while it waits.');
           return say(`delay(${ms});`);
         }
@@ -922,6 +1324,16 @@
           note(inf, '`map` moves a value from one range to another: here from ' + `${m[2].trim()}–${m[3].trim()} to ${m[4].trim()}–${m[5].trim()}. It works in whole numbers, and doesn't stop at the ends (see "limited to").`);
           return say(keep(m[7], m[6], m[8], inf, `map(${[m[1], m[2], m[3], m[4], m[5]].map(v => E(v, inf)).join(', ')})`));
         }
+      }
+      // a program waits with std::this_thread::sleep_for (a sketch with delay, above)
+      if (!A && (m = waitFor(s))) {
+        x.needs.add('thread');
+        if (m.said) note(inf, m.said);
+        note(inf, '`std::this_thread::sleep_for` pauses the program for that long. `std::chrono` has the units: milliseconds, seconds.');
+        const whole = m.ms != null || /^(?:(?:unsigned|signed|long|short)\s+)*(?:int|long|short)$/.test(x.types[m.v] || '') || /^\d+$/.test(m.v);
+        const v = m.ms != null ? m.ms : E(m.v, inf);
+        if (m.ms != null || (m.per === 1 && whole)) return say(`std::this_thread::sleep_for(std::chrono::milliseconds(${v}));`);
+        return say(`std::this_thread::sleep_for(std::chrono::duration<double${m.per === 1 ? ', std::milli' : ''}>(${m.per === 60000 ? `${grouped(v)} * 60` : v}));`);
       }
       // "keep level between 0 and 255": constrain (Arduino) or std::clamp (C++) stores it back
       if ((m = M(/^keep\s+(self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*)\s+between\s+(.+?)\s+and\s+(.+)$/i))) {
@@ -1004,6 +1416,7 @@
         const kind = (m[1] || '').toLowerCase();
         const type = /decimal/.test(kind) ? 'double' : /number/.test(kind) ? 'int' : 'std::string';
         const decl = isDeclared(m[3]) ? '' : `${type} ${m[3]}; `;
+        if (decl) checkName(m[3], inf);
         scopes[scopes.length - 1].add(m[3]); x.types[m[3]] = type;
         say(`${decl}std::cout << ${afterShift(E(m[2], inf))};`);
         note(inf, type === 'std::string' ? '`std::getline` reads a whole line of typed text. `std::cin >> std::ws` first skips the end of any line left by an earlier number, which would otherwise read as an empty answer.' : '`std::cin >>` reads a number typed by the person.');
@@ -1012,6 +1425,7 @@
       // "make a list of whole numbers called scores with 7, 9"; "… of 4 whole numbers …" has a fixed size (a plain array)
       if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(constant\s+)?(empty\s+)?list(?:\s+of\s+(.+?))?\s+(?:called\s+)?([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
         const [, fixed, empty, of, name, said] = m;
+        checkName(name, inf);
         const K = fixed ? 'const ' : '';
         if (fixed && !said) inf.errs.push('A constant list needs its items: "… with 2, 3, 4".');
         if (fixed) note(inf, '`const`: the list\'s items can\'t be changed once it is made.');
@@ -1049,6 +1463,7 @@
         if (empty && !isText) inf.errs.push(`Only text and lists start out "empty": say "make a ${typeWords} called ${name}".`);
         if (said && plainValue) inf.errs.push(`A ${typeWords} is given its value with "set": "set ${name} to …".`);
         if (scopes[scopes.length - 1].has(name)) inf.errs.push(`${code(name)} is already made here.`);
+        else checkName(name, inf);
         const args = said ? splitItems(said).map(v => E(v, inf)) : [];
         scopes[scopes.length - 1].add(name); x.types[name] = t; x.known.add(name);
         note(inf, !plainValue && !isText ? `Makes a ${code(t)} called ${code(name)}` + (args.length ? ', passing the values to it as it is made.' : '.') : isText ? `${code(name)} holds text (${code(t)}), starting empty.` : `${code(name)} holds ${code(t)} values. It has no value until one is set (outside every block, it starts at 0).`);
@@ -1088,6 +1503,7 @@
       if ((m = M(/^make\s+(?:a\s+)?new\s+([A-Za-z_]\w*)(?:\s+with\s+(.+?))?\s+and store (?:it )?in\s+([A-Za-z_]\w*)$/i))) {
         if (!x.classes.has(m[1])) inf.warns.push(`There's no class called ${code(m[1])} here. Make one with "define class ${m[1]}".`);
         const args = m[2] ? splitItems(m[2]).map(v => E(v, inf)) : [];
+        if (!isDeclared(m[3])) checkName(m[3], inf);
         x.types[m[3]] = m[1]; scopes[scopes.length - 1].add(m[3]);
         note(inf, `Makes a new ${code(m[1])} object called ${code(m[3])}` + (args.length ? ', passing the values to its "when made" part.' : '.'));
         return say(`${m[1]} ${m[3]}${args.length ? `(${args.join(', ')})` : ''};`);
@@ -1112,18 +1528,28 @@
         const v = E(m[3], inf);
         const t = m[1] ? typeOf(m[1], x) : exprType(v, x);
         if (!t) { inf.errs.push(`I don't know the type "${m[1]}". Use whole number, decimal, text, yes/no, or a C++ type.`); return; }
+        checkName(m[2], inf);
+        if (m[1]) kindsMatch(m[1], m[2], t, m[3], v, inf);
         scopes[scopes.length - 1].add(m[2]); x.types[m[2]] = t;
         note(inf, `\`const\` makes ${code(m[2])} a constant: it keeps this value for good, and C++ stops the program from being built if anything tries to change it.`);
         return say(`const ${t} ${m[2]} = ${v};`);
       }
       if ((m = M(/^(?:set|let)\s+(.+?)\s+([A-Za-z_]\w*)\s+(?:to|be)\s+(.+)$/i)) && typeOf(m[1], x) && !isDeclared(m[2])) {
         const t = typeOf(m[1], x), v = E(m[3], inf);
+        checkName(m[2], inf);
+        kindsMatch(m[1], m[2], t, m[3], v, inf);
         scopes[scopes.length - 1].add(m[2]); x.types[m[2]] = t;
         note(inf, `${code(m[2])} holds ${code(t)} values, as the sentence says.`);
         return say(`${t} ${m[2]} = ${v};`);
       }
       if ((m = M(/^(?:set|let|make)\s+([A-Za-z_]\w*)\s+(?:to|be)\s+(.+)$/i))) {
         if (/^(?:nothing|none)$/i.test(m[2].trim())) { inf.errs.push(`A plain value in C++ always holds something, so it can't be set to nothing. Use 0, empty text (""), or a yes/no value like "set ${m[1]} to no".`); return; }
+        // "set nums to [1, 2, 3]" (as in Python or JavaScript): a C++ list is made with its own sentence
+        if (/^\[.*\]$/.test(m[2].trim()) && !isDeclared(m[1])) {
+          const items = m[2].trim().slice(1, -1).trim();
+          inf.errs.push(`A list in [square brackets] isn't a C++ value. Make it with: make a list called ${m[1]}${items ? ` with ${items}` : ''}.`);
+          return;
+        }
         const v = E(m[2], inf);
         return say(declare(m[1], isDeclared(m[1]) ? x.types[m[1]] : exprType(v, x), inf, v));
       }
@@ -1132,10 +1558,17 @@
         if (inside('fn')) { x.needs.add('exit'); return say('std::exit(0);'); }
         return say('return 0;');
       }
-      inf.errs.push(`I don't recognise this sentence. Open the Index to see the ${A ? 'Arduino' : 'C++'} sentences, or start the line with c++: to write C++ directly.`);
+      // "wait 2": how long?
+      if ((m = M(/^wait\s+(?:for\s+)?(-?\d+(?:\.\d+)?|[A-Za-z_]\w*)$/i)) && (/^-?\d/.test(m[1]) || isDeclared(m[1]))) inf.errs.push(`Say how long: "wait ${m[1]} milliseconds" or "wait ${m[1]} seconds".`);
+      else inf.errs.push(badNames.get(i) || `I don't recognise this sentence. Open the Index to see the ${A ? 'Arduino' : 'C++'} sentences, or start the line with c++: to write C++ directly.`);
       say('// ??? ' + s);
     });
     while (stack.length) closeBlock();
+    // a name of the program's that is also one of the translator's helpers (text with {…} in it, random numbers) hides it
+    for (const [h, fn] of [['text', 'text'], ['random', 'random_number']]) {
+      const at = madeAt.has(fn) ? madeAt.get(fn) : null;
+      if (x.needs.has(h) && at != null && info[at]) info[at].errs.push(`${code(fn)} is also the translator's helper for ${h === 'text' ? 'text with {…} in it' : '"random number from … to …"'}, which this program uses, so a name ${fn} would hide it. Try "my ${fn.replace(/_/g, ' ')}" or another name.`);
+    }
     if (A) {
       if (!hasSetup) topOut.push({ text: '', src: -1 }, { text: 'void setup() {', src: -1, note: 'Every sketch needs setup(), even an empty one.' }, { text: '}', src: -1 });
       if (!hasLoop) topOut.push({ text: '', src: -1 }, { text: 'void loop() {', src: -1, note: 'Every sketch needs loop(), even an empty one.' }, { text: '}', src: -1 });
@@ -1155,6 +1588,7 @@
       if (x.needs.has('stdexcept')) hdr('#include <stdexcept>', 'Standard errors to stop with, like std::invalid_argument.');
       if (x.needs.has('cmath')) hdr('#include <cmath>', 'Maths: square roots (std::sqrt), absolute values (std::abs).');
       if (x.needs.has('functional')) hdr('#include <functional>', 'std::greater: sorting biggest first.');
+      if (x.needs.has('thread')) { hdr('#include <chrono>', 'Lengths of time: milliseconds, seconds.'); hdr('#include <thread>', 'std::this_thread::sleep_for: waiting.'); }
     }
     const auto = new Set(all.map(o => o.text.slice(9)));
     for (const inc of includes) if (!auto.has(inc.h)) hdr(`#include ${inc.h}`, null, inc.src);
@@ -1186,15 +1620,16 @@
       reportBlanks(results[sec.id].info, h.blanks, h.strays);
     }
     const syms = new Map();
-    for (const [k, t] of Object.entries(x.types)) syms.set(k, { py: k, display: k, kind: /int|double|long/.test(t) ? 'number' : /string|String/.test(t) ? 'text' : /vector|\[\]/.test(t) ? 'list' : 'value' });
-    for (const f of x.fns) syms.set(f, { py: f, display: f, kind: 'function' });
+    const said = new Map([...(x.spaced || [])].map(([words, one]) => [one, words]));   // ledPin is said "led pin"
+    for (const [k, t] of Object.entries(x.types)) syms.set(k, { py: k, display: said.get(k) || k, kind: /int|double|long/.test(t) ? 'number' : /string|String/.test(t) ? 'text' : /vector|\[\]/.test(t) ? 'list' : 'value' });
+    for (const f of x.fns) syms.set(f, { py: f, display: said.get(f) || f, kind: 'function' });
     for (const c of x.classes) syms.set(c, { py: c, display: c, kind: 'class' });
     return { results, syms };
   }
 
   const T = (group, pattern, c, tip, sections = ['program']) => ({ group, pattern, py: c, tip, sections });
   const TEMPLATES = [
-    T('Values', 'set ‹name› to ‹value›', 'int name = value;', 'The kind (int, double, std::string, bool) is worked out from the value.', ['program', 'sketch']),
+    T('Values', 'set ‹name› to ‹value›', 'int name = value;', 'The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin.', ['program', 'sketch']),
     T('Values', 'constant ‹NAME› is ‹value›', 'const int NAME = value;', 'A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14".', ['program', 'sketch']),
     T('Values', 'set ‹decimal› ‹name› to ‹value›', 'double name = value;', 'Name the kind yourself: whole number, decimal, text, yes/no.', ['program', 'sketch']),
     T('Values', 'increase ‹name› by ‹amount›', 'name += amount;', '', ['program', 'sketch']),
@@ -1260,7 +1695,8 @@
     T('Pins', 'read pin ‹A0› and call it ‹level› (a whole number)', 'int level = analogRead(A0);', 'A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). "read analog pin SENSOR" for a named analog pin; "… and store it in level" changes a name made before.', ['sketch']),
     T('Pins', 'scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›', 'level = map(reading, 0, 1023, 0, 255);', 'Moves a value from one range to another. Also "… and call it level (a whole number)".', ['sketch']),
     T('Pins', 'set ‹duration› to how long pin ‹echo› stays on', 'duration = pulseIn(echo, HIGH);', 'In microseconds: for distance sensors.', ['sketch']),
-    T('Time', 'wait ‹500› milliseconds', 'delay(500);', 'Or "wait 2 seconds".', ['sketch']),
+    T('Time', 'wait ‹500› milliseconds', 'delay(500);', 'Or "wait 2 seconds", "wait 500ms", "wait half a second".', ['sketch']),
+    T('Time', 'wait ‹500› milliseconds', 'std::this_thread::sleep_for(std::chrono::milliseconds(500));', 'Or "wait 2 seconds", "wait half a second". Brings in <thread> and <chrono>.'),
     T('Time', 'wait ‹10› microseconds', 'delayMicroseconds(10);', 'Millionths of a second, for timing a sensor\'s pulse.', ['sketch']),
     T('Time', 'if at least ‹500› milliseconds have passed since ‹last›', 'if (millis() - last >= 500) {', 'On time without stopping the board. Also "more than", "less than", "at most".', ['sketch']),
     T('Serial', 'start the serial monitor at ‹9600›', 'Serial.begin(9600);', 'Put it in "when the board starts".', ['sketch']),
@@ -1288,8 +1724,8 @@
     purpose: 'Arduino is C++ for small boards that switch lights, read buttons and sensors, drive motors and make sounds. A sketch has two parts: setup(), which runs once when the board powers on, and loop(), which runs again and again until the power goes off.',
     rules: [['Two parts', 'setup() runs once; loop() repeats forever. There is no main.'], ['Pins', 'Each pin is set up as an input or an output first, then turned on (HIGH) or off (LOW), or read.'], ['Waiting', 'delay() pauses everything. For doing two things at once, compare millis() instead.'], ['Tiny memory', 'An Uno has 2 KB of memory. Lists have a fixed size, and text is kept short.'], ['Upload, then watch', 'The sketch is compiled and copied onto the board. show sends lines back to the serial monitor.']],
   };
-  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)'], ['the result of f with a, b', 'f(a, b)'], ['(the result of f with a) times 2', 'f(a) * 2'], ['x as a decimal', 'static_cast<double>(x)'], ['"Hi " plus name', '"Hi " + name'], ['square root of x', 'std::sqrt(x)'], ['absolute value of x', 'std::abs(x)']];
-  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)']];
+  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)'], ['the result of f with a, b', 'f(a, b)'], ['(the result of f with a) times 2', 'f(a) * 2'], ['x as a decimal', 'static_cast<double>(x)'], ['"Hi " plus name', '"Hi " + name'], ['square root of x', 'std::sqrt(x)'], ['absolute value of x', 'std::abs(x)'], ['a to the power of b', 'std::pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
+  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)'], ['a to the power of b', 'pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
   const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board|it is |it's )|over and over|again and again|at the start|depending on |do this)/i;
 
   const api = { compileCppProject, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };

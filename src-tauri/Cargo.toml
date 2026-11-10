@@ -1,6 +1,6 @@
 [package]
 name = "intuicode"
-version = "0.5.1"
+version = "0.5.2"
 description = "Write and read code in plain sentences"
 authors = ["IntuaCode"]
 license = "Apache-2.0"
