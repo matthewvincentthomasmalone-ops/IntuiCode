@@ -28,7 +28,6 @@
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
           <div class="menu-h" aria-hidden="true">File</div>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
-          <button type="button" role="menuitem" id="btnBuilder" title="Plan a project step by step: what you're making, its steps, then build">Plan a project…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
           <button type="button" role="menuitem" id="btnBackups" title="A copy of the project every 2 minutes it changes, for the last 30 minutes: go back to any of them">Backups…</button>
@@ -43,8 +42,7 @@
           <button type="button" role="menuitem" id="btnAbout" title="The version, the licence and the parts made by others">About and licence…</button>
         </div>
       </div>
-      <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
-      <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
+      <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index" title="Help: the Tutor, the words in a line explained, and every sentence you can write (the Index)">Help</button>
       <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
     </div>
   </header>
@@ -193,14 +191,19 @@
       </section>
     </main>
 
-    <aside class="index" id="index" hidden aria-label="Index">
+    <aside class="index" id="index" hidden aria-label="Help">
       <div class="index-h">
         <div>
-          <div class="eyebrow">Index</div>
+          <div class="eyebrow">Help</div>
           <h2 id="indexTitle">Python</h2>
         </div>
-        <button type="button" class="btn small" id="btnIndexClose" aria-label="Close index">Close</button>
+        <button type="button" class="btn small" id="btnIndexClose" aria-label="Close help">Close</button>
       </div>
+      <div class="help-tools">
+        <button type="button" id="btnTutor" class="btn small help-tutor" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself"><span class="pm-dot" aria-hidden="true"></span>Tutor</button>
+        <button type="button" id="btnGlossOpen" class="btn small" title="The words in the line or selection, explained (Ctrl+H)">Explain the words here<kbd>Ctrl+H</kbd></button>
+      </div>
+      <div class="ix-h">Index: every sentence you can write</div>
       <div class="index-search">
         <input id="indexSearch" type="search" placeholder="Search sentences, words, how-tos">
       </div>
@@ -300,17 +303,21 @@
       <div class="modal-h">
         <div>
           <h2 id="newTitle">New project</h2>
-          <p>An empty project, ready for your sentences. (Blueprints start one with sentences already written.)</p>
+          <p>Start empty, from a template, or with a plan of the steps.</p>
         </div>
         <button type="button" class="btn small" id="newClose">Close</button>
       </div>
+      <div class="new-ways" role="group" aria-label="Other ways to start">
+        <button type="button" class="new-way" id="newFromTemplate" title="Project Templates: kits and blueprints, on shelves by what you're making"><b>From a template ›</b><span>A kit or a blueprint, with sentences already written</span></button>
+        <button type="button" class="new-way" id="btnBuilder" title="Plan a project step by step: what you're making, its steps, then build"><b>Plan it step by step ›</b><span>Say what you're making and choose its steps</span></button>
+      </div>
+      <p class="new-or">Or an empty project:</p>
       <div class="new-kinds" id="newKinds" role="radiogroup" aria-label="Kind of project"></div>
       <div class="imp-row new-name">
         <label for="newName">Name</label>
         <input id="newName" value="My project" spellcheck="false" autocomplete="off">
       </div>
       <label class="new-save" id="newSaveRow" hidden><input type="checkbox" id="newSave" checked> Choose a folder for it now</label>
-      <p class="new-alt">Or <button type="button" class="linklike" id="newToBuilder">plan a project</button>: say what you're making, choose its steps, and get them laid out in the order you'd build them.</p>
       <div class="imp-actions">
         <span class="imp-note">The project you have now is kept: type "restore" in the terminal to swap back.</span>
         <button type="button" class="btn primary" id="newGo">Create project</button>

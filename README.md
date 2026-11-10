@@ -9,7 +9,8 @@ the same result. The aim is to let intuition and plain language lead, while you 
 directly connected to every part of the code.
 
 **Get it:** the public website is offline while IntuaCode becomes a paid product. The installers for Windows, Linux
-and macOS are on the repository's **Releases** page, each with its SHA-256, and `npm run site` runs the website and
+and macOS are draft releases on GitHub, each with its SHA-256: only the owner sees them until one is published
+by hand. `npm run site` runs the website and
 the browser version on this computer only (http://127.0.0.1:8080; see "Run it"). [SECURITY.md](SECURITY.md) says what
 IntuaCode does with your code (nothing leaves your computer), how to check a download, and how to report a problem.
 
@@ -61,6 +62,10 @@ when copy is clicked
     if it fails
         set the text of copied to "Select it and copy it yourself."
 ```
+
+**Menu → New project** is where every project starts: from a template, planned step by step, or empty (a website
+first). **Help** (top right) holds the Tutor's switch, **Explain the words here** (Ctrl+H) and the Index of every
+sentence.
 
 Everything you can start from is in **Project Templates** (in the Menu), by kind of project: Websites, Online services, Tools &
 utilities, Productivity, Money, Health & habits, Learning, Creative & media, Social & sharing, Games, Learning
@@ -187,7 +192,7 @@ every sentence translates cleanly, and the audio and maths parts give the right 
 
 **Plan a project: a map before you start**
 
-**Plan** (in the menu bar, or from a kit in Project Templates) asks what you're making, by the same kinds as
+**Plan it step by step** (in **Menu → New project**, or from a kit in Project Templates) asks what you're making, by the same kinds as
 Project Templates, then lists the steps that kind of project usually has, in the order you'd build them. Start from
 the smallest that works, the usual, or everything; preview any step's sentences; and watch **Your plan**
 fill in beside them before you name it and build. IntuaCode lays the steps out in your folders as
@@ -281,7 +286,7 @@ program (blocks, names, `store in`, quotes, `called`, groups, pins…). Click a 
 it's about the code: what each term in the line is, the names you made, and why it's written that way.
 ↑ and ↓ move through the code; Enter or a double-click goes to its sentence.
 
-**Ctrl+H** explains the words in a selection, or in the section the cursor is in (the line and anything
+**Ctrl+H** (or **Explain the words here** in Help, in Split Mode) explains the words in a selection, or in the section the cursor is in (the line and anything
 indented under it). In the code, every term gets a definition, an example and related terms you can
 follow. In the sentences only the words that aren't everyday English get one (`hero`, `cta`, `pull-up`,
 `give back`…); where a section is all everyday words, it shows the shapes those sentences follow, and
@@ -290,7 +295,7 @@ others in the same family, instead. The terms are plain data in `lang/glossary_t
 
 **Tutor: think in the language's style**
 
-Press **Tutor** in the menu bar. In the sentences, a balloon introduces each way of talking to the program
+Open **Help** (top right) and turn on **Tutor**; a dot on Help shows it's on. In the sentences, a balloon introduces each way of talking to the program
 the first time you use it, and **✎ Say it yourself** covers a sentence and asks you to say its code in
 words: any sentence that makes exactly the same program is right, so other ways of saying it count. In
 the code, a balloon points out how the language likes things said the first time you meet each habit
@@ -477,7 +482,8 @@ app's commands. See "nothing untrusted runs in the desktop window" in [ARCHITECT
 
 Installers are built by GitHub for Windows, macOS and Linux: go to
 **Actions → Desktop app → Run workflow**, or push a tag like `v0.1.0`. When it finishes,
-the files are on the repository's **Releases** page.
+the files are on a **draft** release: private until it's published by hand (Releases → Edit → Publish), and
+`gh release download <tag>` fetches them while signed in.
 
 To try a branch or pull request before it is released, open its **Desktop app tests** run:
 under **Artifacts**, `IntuaCode-windows-exe` is the app as a single `intuicode.exe` that runs
