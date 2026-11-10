@@ -3273,6 +3273,15 @@
             "program"
           ],
           "tip": "Write C++ directly."
+        },
+        {
+          "topic": "Time",
+          "say": "wait ‹500› milliseconds",
+          "becomes": "std::this_thread::sleep_for(std::chrono::milliseconds(500));",
+          "folders": [
+            "program"
+          ],
+          "tip": "Or \"wait 2 seconds\", \"wait half a second\". Brings in <thread> and <chrono>."
         }
       ],
       "words": [
@@ -3832,7 +3841,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "Or \"wait 2 seconds\"."
+          "tip": "Or \"wait 2 seconds\", \"wait 500ms\", \"wait half a second\"."
         },
         {
           "topic": "Time",

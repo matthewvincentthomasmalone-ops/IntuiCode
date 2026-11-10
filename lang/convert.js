@@ -1872,6 +1872,8 @@
         if (v.some(x => x == null)) return false;
         const one = a.length === 1 ? whole(a[0]) : null;   // the only value: a tool's result can have its inputs
         if (!arduino && /^(?:std::)?getline$/.test(f) && v.length === 2 && /^(std::)?cin$/.test(a[0].text) && cchain(a[1])) return say(`read a line from the keyboard into ${v[1]}`);
+        // std::this_thread::sleep_for(std::chrono::milliseconds(500)): "wait 500 milliseconds"
+        if (!arduino && f === 'std::this_thread::sleep_for' && a.length === 1 && isCall(a[0], 'std::chrono::milliseconds', 1)) { const w = ex(argsOf(a[0])[0]); if (opd(w) && w !== 'the built-in light') return say(`wait ${w} milliseconds`); }
         if (arduino) {
           const pin = (x) => (x === 'the built-in light' ? x : `pin ${x}`);
           if (f === 'pinMode' && v.length === 2) { const m = { OUTPUT: 'an output', INPUT: 'an input', INPUT_PULLUP: 'an input with pull-up' }[v[1]]; return !!m && say(`make ${pin(v[0])} ${m}`); }
