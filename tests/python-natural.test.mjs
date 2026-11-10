@@ -59,7 +59,9 @@ test('a number written with thousands commas is that number', () => {
   becomes('create list xs with 1,000, 2,000', 'xs = [1000, 2000]');
   becomes('set xs to [1,000, 2,000]\nset m to max(1,500, 2,500)', 'xs = [1000, 2000]\nm = max(1500, 2500)');
   // a comma that isn't between groups of three digits separates items, as before
-  becomes('show 1, 2\nshow 1,2\ncreate list ys with 1, 2', 'print(1, 2)\nprint(1, 2)\nys = [1, 2]');
+  becomes('show 1, 2\ncreate list ys with 1, 2', 'print(1, 2)\nys = [1, 2]');
+  // 1'000, as in Switzerland, is the number too
+  becomes("set n to 1'000", 'n = 1000', /Python numbers can't have ' in them, so 1'000 is written 1000\./);
   // Python's own list in brackets, text, and python: lines stay as written
   becomes('set xs to [100,200]\nshow "1,000"\npython: t = 1,000', 'xs = [100,200]\nprint("1,000")\nt = 1,000');
   assert.equal(run(py('set n to 12,345\nshow n plus 1').code), '12346');
@@ -95,8 +97,9 @@ test('money or a percentage shown on its own is shown as typed', () => {
 });
 
 test('curly quote marks used as quotes are straight ones', () => {
-  becomes('show “Hello there”', 'print("Hello there")', /Curly quote marks \(“ ”\) are written as straight ones \("\): Python only reads those\./);
-  becomes('show ‘Sam’\nshow ’Sam’\nshow „Hallo“', "print('Sam')\nprint('Sam')\nprint(\"Hallo\")", /Curly quote marks \(‘ ’\) are written as straight ones \('\)/);
+  becomes('show “Hello there”', 'print("Hello there")', /Quote marks like “ ” are written as straight ones \("\): Python only reads those\./);
+  becomes('show «Bonjour»', 'print("Bonjour")', /Quote marks like « » are written as straight ones \("\)/);
+  becomes('show ‘Sam’\nshow ’Sam’\nshow „Hallo“', "print('Sam')\nprint('Sam')\nprint(\"Hallo\")", /Quote marks like ‘ ’ are written as straight ones \('\)/);
   becomes('set name to “Sam”\nif name is “Sam”\n    show “Hi {name}”', 'name = "Sam"\nif name == "Sam":\n    print(f"Hi {name}")');
   becomes('create list xs with “a”, “b”\nshow "a" plus “b”', 'xs = ["a", "b"]\nprint("a" + "b")');
   // an apostrophe in a word stays, and so does anything in straight quotes
@@ -192,4 +195,37 @@ test('names that are Python\'s own words or tools are still asked about', () => 
 test('a list sentence whose items have no spaces between them is asked about', () => {
   problem('create list xs with 1,000', /In a list, "1,000" could be one number \(1000\) or 2 items\. Write 1000 for the number, or put a space after each comma between items\./);
   problem('create list xs with 100,200,300', /could be one number \(100200300\) or 3 items/);
+});
+
+test('a decimal comma (1,5) is asked about: the decimal, or two values', () => {
+  problem('set x to 1,5', /"1,5" could be the decimal 1\.5 or two values, 1 and 5\. Write 1\.5 for the decimal, or put a space after the comma for two values: 1, 5\./);
+  problem('show 1,2', /could be the decimal 1\.2 or two values/);
+  problem('show 1, 2,5', /"2,5" could be the decimal 2\.5/);
+  becomes('set xs to [1,5]', 'xs = [1,5]');   // (Python's own list)
+});
+
+test('values side by side are a problem, and say to use quotes for text', () => {
+  problem('show Hello world', /"Hello world" is two values side by side, which Python can't read\. If it's text, put it in quotes; otherwise join the values with a word like plus or times\./);
+  problem('set a to 1\nset b to 2\nshow a b', /"a b" is two values side by side/);
+  problem('set x to 5 apples', /"5 apples" is two values side by side/);
+  problem('show "Score:" 5', /"Score:" 5 is two values side by side/);
+  problem("set name to Sam's", /Python can't read ' outside quotes/);
+  // text next to text is one text in Python, and Python's own words go between values
+  becomes('show "a" "b"\nset n to 3\nshow n if n is more than 1 otherwise 0\nshow n is not None', 'print("a" "b")\nn = 3\nprint(n if n > 1 else 0)\nprint(n is not None)');
+});
+
+test('powers written 2^3 or x², and numbers in words, are the Python they mean', () => {
+  becomes('set a to 2^3\nset b to a^2\nset c to 3²\nset d to a³', 'a = 2 ** 3\nb = a ** 2\nc = 3 ** 2\nd = a ** 3', /A power is written `\*\*` in Python, so 2\^3 is 2 \*\* 3\./);
+  // a ^ between names is Python's own (it compares bits); between numbers, that's pointed out
+  becomes('set a to 6\nset b to 3\nset x to a ^ b', 'a = 6\nb = 3\nx = a ^ b');
+  assert.match(py('set x to 2 ^ 3').warnings.join(' '), /In Python \^ compares bits, so 2 \^ 3 is 1, not a power\. For a power, write 2 to the power of 3\./);
+  becomes('set a to a hundred\nset b to 1.5 million\nset c to 2 billion\nset d to three hundred\nset e to 1.1 million', 'a = 100\nb = 1500000\nc = 2000000000\nd = 300\ne = 1100000');
+  becomes('set a to 5 dollars\nset b to null\nset c to 5 – 3', 'a = 5\nb = None\nc = 5 - 3');
+  problem('set v to 1.5.2', /1\.5\.2 isn't a number Python can read: it has more than one point\. If it's a version or other text, put it in quotes: "1\.5\.2"\./);
+});
+
+test('"is between" counts both ends', () => {
+  becomes('set n to 3\nif n is between 1 and 5\n    show n\nif n is not between 1 and 5\n    show n\nif n plus 1 is between n minus 1 and n plus 2\n    show n',
+    'n = 3\nif 1 <= n <= 5:\n    print(n)\nif not 1 <= n <= 5:\n    print(n)\nif n - 1 <= n + 1 <= n + 2:\n    print(n)', /`a <= n <= b` checks that n is between a and b, counting a and b themselves\./);
+  assert.equal(run(py('set n to 5\nshow n is between 1 and 5, n is between 6 and 9').code), 'True False');
 });
