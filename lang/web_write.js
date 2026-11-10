@@ -834,7 +834,7 @@
       const el = rawLine ? { raw: rawLine[1] } : parseLine(s, inf, ctx);
       if (!el) {
         const away = ELSEWHERE.map(([re, say]) => { const w = s.match(re); return w && say(w[1]); }).find(Boolean);
-        inf.errs.push(away || 'I don\'t recognise this sentence. Open the Index to see what Structure understands, or start the line with html: to write HTML directly.');
+        inf.errs.push(away || 'I don\'t recognise this sentence. Open the Index (in Help) to see what Structure understands, or start the line with html: to write HTML directly.');
         return;
       }
       if (el.title != null) { title = el.title; inf.target = 'title'; return; }
@@ -1204,7 +1204,7 @@
         continue;
       }
       if ((m = part.match(/^(-?[a-z-]+)\s*:?\s+(.+)$/i)) && isCssProp(m[1].toLowerCase())) { out.push([m[1].toLowerCase(), m[2].trim()]); checkRaw(m[1].toLowerCase(), m[2], inf); note(inf, `${code(m[1])} is written as plain CSS.`); continue; }
-      inf.errs.push(`I don't know the style "${part}". Open the Index for style words, or write a CSS property like "letter-spacing 2px".`);
+      inf.errs.push(`I don't know the style "${part}". Open the Index (in Help) for style words, or write a CSS property like "letter-spacing 2px".`);
     }
     return out;
   }
@@ -2800,7 +2800,7 @@
         const n = (m[1] ?? m[2]).trim(), p = spacedProblem(n, x.shared) || (/^\d/.test(n) ? `A name can't start with a number, so "${n}" can't be one. Put a word before it, like "my ${n}".` : null);
         if (p) { inf.errs.push(p); return say('// ??? ' + s); }
       }
-      inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
+      inf.errs.push('I don\'t recognise this sentence. Open the Index (in Help) to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
       say('// ??? ' + s);
     });
     patched();

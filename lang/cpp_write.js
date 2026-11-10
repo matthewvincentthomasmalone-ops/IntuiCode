@@ -1560,7 +1560,7 @@
       }
       // "wait 2": how long?
       if ((m = M(/^wait\s+(?:for\s+)?(-?\d+(?:\.\d+)?|[A-Za-z_]\w*)$/i)) && (/^-?\d/.test(m[1]) || isDeclared(m[1]))) inf.errs.push(`Say how long: "wait ${m[1]} milliseconds" or "wait ${m[1]} seconds".`);
-      else inf.errs.push(badNames.get(i) || `I don't recognise this sentence. Open the Index to see the ${A ? 'Arduino' : 'C++'} sentences, or start the line with c++: to write C++ directly.`);
+      else inf.errs.push(badNames.get(i) || `I don't recognise this sentence. Open the Index (in Help) to see the ${A ? 'Arduino' : 'C++'} sentences, or start the line with c++: to write C++ directly.`);
       say('// ??? ' + s);
     });
     while (stack.length) closeBlock();

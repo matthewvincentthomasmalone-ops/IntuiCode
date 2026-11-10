@@ -46,7 +46,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Planning and Project Templates**
 - [ ] **Project Templates**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
       top show only those. A kit's **Choose its steps…** opens planning at that kit; **Plan one ›** at its kind.
-- [ ] **Plan** (menu bar) → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
+- [ ] **Menu → New project → Plan it step by step** → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
       works**, **The usual** and **Everything** change **Your plan**; **Preview its sentences** shows a step's sentences.
       Tick Mixer, Build my project: the Project map lists the steps in order, and Problems lists the hallway ‹blanks›.
 - [ ] Click a step in the Project map: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the
@@ -172,7 +172,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       `every frame`: it's drawn in the preview.
 
 **Tutor**
-- [ ] Build **Number guessing game**, press **Tutor**, and click a sentence: the strip shows how it's said, and a balloon
+- [ ] Build **Number guessing game**, open **Help** and press **Tutor** (Help gets a dot), and click a sentence: the strip shows how it's said, and a balloon
       explains a way of talking to the program. **✎ Say it yourself** covers the sentence: another way of saying it
       that makes the same Python is "Right".
 - [ ] Click a line of the Python: the lamp moves to that pane, the strip lists its terms and your names, and a balloon
@@ -238,6 +238,15 @@ Tick each one. If something is off, note what you did and what the terminal said
       count. Images has no Add an image… of its own (the Menu has it).
 - [ ] **Project Templates** lists Websites, Online services and Tools & utilities first; Games, Learning modules and
       Gadgets come after Social & sharing.
+
+### One place for each
+
+- [ ] The top right is **Menu**, **Help** and **Run**: no Tutor or Index buttons of their own.
+- [ ] **Menu → New project**: **From a template ›** opens Project Templates; **Plan it step by step ›** opens planning;
+      below them the empty kinds, **Website** first and chosen. The Menu has no Plan a project… of its own.
+- [ ] **Help**: **Tutor** turns the Tutor on and off (Help shows a dot while it's on); in Split Mode, **Explain the
+      words here** opens the words explained, as Ctrl+H does (Unity doesn't show it); below, the Index.
+- [ ] Type a sentence IntuaCode doesn't know: its problem says to open the Index (in Help).
 
 ## 3. Things that are known not to work yet
 

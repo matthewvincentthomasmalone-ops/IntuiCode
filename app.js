@@ -1924,6 +1924,7 @@
     tutor.on = on;
     saveTutor();
     $('btnTutor').setAttribute('aria-pressed', String(on));
+    $('btnIndex').classList.toggle('tutor-on', on);   // Help shows a dot while the Tutor is on
     hideTip();
     if (on) {
       setDock('help', true);   // part of the tutor lives in the help strip
@@ -3391,7 +3392,7 @@
     '  files    list the project folders and the Python file each one makes',
     '  reset    forget values from earlier runs',
     '  restore  swap back to the project you had before the last blueprint or import',
-    '  index    open the Index',
+    '  index    open Help (the Index of sentences)',
     '  board …  which board an Arduino sketch is for, e.g. board esp32 (when it can\'t be told from the USB port)',
     ...(window.__TAURI__ ? ['  $ …     run a command in the project folder, e.g. $ git status or $ pip install flask'] : []),
     'Anything else is tried right away. Type a sentence like',
@@ -3492,6 +3493,7 @@
   let indexAll = false;
 
   function renderIndex() {
+    $('btnGlossOpen').hidden = mode !== 'write';   // the words explained works in Split Mode
     const q = $('indexSearch').value.trim().toLowerCase();
     const file = tplRole(activeSec());
     const PK = packFor(activeSec());
@@ -3544,7 +3546,10 @@
     if (matchMedia('(max-width: 900px)').matches) closeIndex();
   });
   $('indexSearch').addEventListener('input', renderIndex);
+  /* Help (the panel on the right): the Tutor's switch, the words here explained (Ctrl+H, in Split Mode, where
+     it works), and the Index of every sentence. */
   function openIndex() { renderIndex(); $('index').hidden = false; $('btnIndex').setAttribute('aria-expanded', 'true'); }
+  $('btnGlossOpen').addEventListener('click', () => openGlossary());
   function closeIndex() { $('index').hidden = true; $('btnIndex').setAttribute('aria-expanded', 'false'); }
   $('btnIndex').addEventListener('click', () => ($('index').hidden ? openIndex() : closeIndex()));
   $('btnIndexClose').addEventListener('click', closeIndex);
@@ -4725,20 +4730,21 @@
     else if (e.key === 'Escape') { e.stopPropagation(); setFileMenu(false); $('btnFile').focus(); }
   });
 
+  // the kinds of empty project, a website first (where most AI-built apps start)
   const NEW_KINDS = [
+    { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
+    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with Menu → New file' },
     { id: 'script', layout: 'script', title: 'Python', about: 'One file of steps: main.py' },
     { id: 'structured', layout: 'structured', title: 'Python in parts', about: 'Settings, Tools and a Main program' },
-    { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
     { id: 'cpp', layout: 'cpp', title: 'C++ program', about: 'main.cpp, compiled on this computer (desktop app)' },
     { id: 'arduino', layout: 'arduino', title: 'Arduino sketch', about: 'For a board plugged in by USB (desktop app)' },
-    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with Menu → New file' },
   ];
   // What a folder starts with: a website its title, a sketch its two parts. The rest start empty.
   const NEW_START = {
     structure: (name) => `page title is "${name.replace(/["\\{}]/g, '')}"`,
     sketch: () => 'when the board starts\n    note: runs once, when the board powers on\nover and over\n    note: runs again and again',
   };
-  let newKind = 'script';
+  let newKind = 'website';
   function renderNewKinds() {
     $('newKinds').innerHTML = NEW_KINDS.map(k => `<button type="button" role="radio" class="new-kind" data-kind="${k.id}" aria-checked="${k.id === newKind}" tabindex="${k.id === newKind ? 0 : -1}"><b>${escHtml(k.title)}</b><span>${escHtml(k.about)}</span></button>`).join('');
   }
@@ -5314,7 +5320,7 @@
   });
   $('bldBody').addEventListener('focusin', (e) => { if (e.target.id === 'bldName' && !bld.edit) renderStages(3); });
   $('btnBuilder').addEventListener('click', openBuilder);
-  $('newToBuilder').addEventListener('click', openBuilder);
+  $('newFromTemplate').addEventListener('click', () => { closeNewProject(); openBlueprints(); });
 
   /* The project map: the plan's steps, in order, each with a tick and how to check it's done. Each opens a
    * window about its role in the whole. Ticks are saved with the project. */
@@ -6695,6 +6701,7 @@
     tLine('IntuaCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
     $('btnTutor').setAttribute('aria-pressed', String(tutor.on));
+    $('btnIndex').classList.toggle('tutor-on', tutor.on);
     setTimeout(async () => {
       await ensurePython();
       if (tutor.on) loadTutorReader();
