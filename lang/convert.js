@@ -1276,7 +1276,7 @@
           if (/^random number from /.test(l) && L.type === 'call_expression') l = `(${l})`;
           if (/^random number from /.test(r) && R.type === 'call_expression') r = `(${r})`;
           // "a plus b as text" could be (a plus b) as text: brackets round the value it goes with
-          if (/^[-+*/%]$/.test(op) && / as (?:text|a decimal|a whole number)$/.test(r) && R.type === 'call_expression') r = `(${r})`;
+          if (/^[-+*/%]$/.test(op) && / as (?:text|a decimal|a whole number)$/.test(r) && R.type === 'call_expression' && !(op === '+' && / as text$/.test(r) && plainLit(L))) r = `(${r})`;
           return `${l} ${CPP_OPS[op] || op} ${r}`;
         }
         case 'unary_expression': { const op = F(n, 'operator').type, a = ex(F(n, 'argument')); return a == null ? null : op === '!' ? `not ${a}` : `${op}${a}`; }
@@ -1307,6 +1307,8 @@
           if (((arduino && f === 'constrain') || (!arduino && f === 'std::clamp')) && args.length === 3 && args.every(opd)) return `${args[0]} limited to ${args[1]}–${args[2]}`;
           if (arduino && f === 'random' && args.length === 2 && /^\d+$/.test(args[1]) && +args[1] > 0 && opd(args[0])) return `random number from ${args[0]} to ${+args[1] - 1}`;
           if (helpers.random && f === 'random_number' && args.length === 2 && args.every(opd)) return `random number from ${args[0]} to ${args[1]}`;
+          // F("Ready"): text the board keeps in flash memory, so it takes none of the small working memory
+          if (arduino && f === 'F' && a.length === 1 && plainLit(a[0])) return `${a[0].text} kept in flash`;
           // the writer's text helper: text("Hi ", name) is "Hi {name}"
           if (helpers.text && f === 'text' && a.length) { const t = fillText(a.map(textPiece)); if (t != null) return t; }
           // a value as another kind: "t as text", "reading as a decimal" (String(t), std::to_string, static_cast, toInt…)
@@ -1444,8 +1446,16 @@
       const e = named(n)[0];
       if (!e || e.type !== 'call_expression' || !/^Serial\.print(?:ln)?$/.test(F(e, 'function').text)) return null;
       const a = argsOf(e);
-      return a.length === 1 ? { ln: F(e, 'function').text === 'Serial.println', v: whole(a[0]) } : null;
+      return a.length === 1 ? { ln: F(e, 'function').text === 'Serial.println', v: whole(a[0]) } : a.length === 2 ? { ln: F(e, 'function').text === 'Serial.println', v: printAs(a[0], a[1]) } : null;
     };
+    /* print(t, 2) on Arduino: a decimal with 2 decimal places; print(n, HEX): a whole number in hexadecimal */
+    function printAs(v, how) {
+      const e = whole(v), BASE = { HEX: 'hexadecimal', BIN: 'binary', OCT: 'octal' };
+      if (e == null || / with \d+ decimal places?$| in (?:hexadecimal|binary|octal)$/.test(e)) return null;
+      if (BASE[how.text]) return `${e} in ${BASE[how.text]}`;
+      const t = v.type === 'identifier' ? objType.get(v.text) : v.type === 'number_literal' && /\./.test(v.text) ? 'double' : null;
+      return /^\d+$/.test(how.text) && /^(?:float|double)$/.test(t || '') ? `${e} with ${how.text} decimal place${how.text === '1' ? '' : 's'}` : null;
+    }
     function serialRun(n) {
       const first = serialPrint(n);
       if (!first || first.ln || first.v == null) return null;
@@ -1537,15 +1547,17 @@
           if (f === 'delayMicroseconds' && v.length === 1) return say(`wait ${v[0]} microseconds`);
           if (f === 'Serial.begin' && v.length === 1 && /^\d+$/.test(v[0])) return say(`start the serial monitor at ${v[0]}`);
           if (f === 'Serial.println' && !v.length) return say('end the line');
-          if (f === 'Serial.print' && v.length === 1) { const run = serialRun(node); if (run) return say(run); }
-          if ((f === 'Serial.println' || f === 'Serial.print') && v.length === 1) return say(`show ${one}${f === 'Serial.print' ? ' on the same line' : ''}`);
+          const shown = v.length === 1 ? one : v.length === 2 ? printAs(a[0], a[1]) : null;
+          if (f === 'Serial.print' && shown != null) { const run = serialRun(node); if (run) return say(run); }
+          if ((f === 'Serial.println' || f === 'Serial.print') && shown != null) return say(`show ${shown}${f === 'Serial.print' ? ' on the same line' : ''}`);
           if (f === 'tone' && (v.length === 2 || v.length === 3)) return say(`play a tone of ${v[1]} on ${pin(v[0])}${v[2] ? ` for ${v[2]} milliseconds` : ''}`);
           if (f === 'noTone' && v.length === 1) return say(`stop the tone on ${pin(v[0])}`);
         }
         // an object's own steps, said for what they do: lcd.print(x), lcd.setCursor(0, 1), servo.write(90)…
         if (fn.type === 'field_expression' && F(fn, 'argument').type === 'identifier' && !fn.text.includes('->')) {
           const obj = F(fn, 'argument').text, meth = F(fn, 'field').text;
-          if (obj !== 'Serial' && (meth === 'print' || meth === 'println') && v.length === 1 && (/^the result of /.test(one) || !/\band\b|,/.test(bare(one)))) return say(`show ${one} on ${obj}${meth === 'println' ? ', then start a new line' : ''}`);
+          const shown = v.length === 1 ? one : arduino && v.length === 2 ? printAs(a[0], a[1]) : null;
+          if (obj !== 'Serial' && (meth === 'print' || meth === 'println') && shown != null && (/^the result of /.test(shown) || !/\band\b|,/.test(bare(shown)))) return say(`show ${shown} on ${obj}${meth === 'println' ? ', then start a new line' : ''}`);
           if (meth === 'setCursor' && v.length === 2 && !v.some(x => /,/.test(bare(x)))) return say(`move ${obj}'s cursor to ${v[0]}, ${v[1]}`);
           if (meth === 'clear' && !v.length) return say(`clear ${obj}`);
           if (meth === 'begin' && obj !== 'Serial' && !/^(?:the|talking)$/.test(obj)) return say(`start ${obj}${v.length ? ' with ' + v.join(', ') : ''}`);
@@ -1781,17 +1793,20 @@
       }
     }
 
-    function funcSentence(fn) {
+    /* A tool's first line. In a class, int rows() const (it can't change the object) is "…, without changing the object". */
+    function funcSentence(fn, inClass) {
       const d = F(fn, 'declarator');
-      if (!d || d.type !== 'function_declarator' || kids(d).some(x => x.type === 'type_qualifier')) return null;
+      if (!d || d.type !== 'function_declarator') return null;
       const nameNode = F(d, 'declarator');
       if (!nameNode || !/^(identifier|field_identifier)$/.test(nameNode.type)) return null;
+      const extra = named(d).filter(x => !isComment(x) && x.startIndex !== nameNode.startIndex && x.type !== 'parameter_list');
+      if (extra.some(x => !(inClass && x.type === 'type_qualifier' && x.text === 'const')) || extra.length > 1) return null;
       const type = F(fn, 'type');
       if (!type || kids(fn).some(x => /storage_class_specifier|virtual|type_qualifier|attribute/.test(x.type))) return null;
       const ret = typeWord(type.text);
       const ps = params(d);
       if (!ret || !ps) return null;
-      return `define ${nameNode.text}${ps.length ? ' using ' + ps.join(', ') : ''} giving back ${art(ret)}`;
+      return `define ${nameNode.text}${ps.length ? ' using ' + ps.join(', ') : ''} giving back ${art(ret)}${extra.length ? ', without changing the object' : ''}`;
     }
     const fnName = (n) => { const d = F(n, 'declarator'); return d && F(d, 'declarator') ? F(d, 'declarator').text : ''; };
     const fnBody = (n, depth, key) => { const was = curFn; curFn = fnName(n); try { block(named(F(n, 'body')), depth, key); } finally { curFn = was; } };
@@ -1836,14 +1851,12 @@
         classes.add(name.text);
         say(struct ? `define structure ${name.text}` : `define class ${name.text}${baseName ? ' based on ' + baseName : ''}`);
         let seenFirst = struct, prevEnd = null;
-        for (const it of items) {
-          if (prevEnd != null && it.startPosition.row > prevEnd + 1) o.blank();
-          prevEnd = it.endPosition.row;
-          if (isComment(it)) { o.notes(depth + 1, it); continue; }
+        /* One member as a sentence (false: it can't be said, so it stays exact code inside the class) */
+        const member = (it) => {
           if (it.type === 'access_specifier') {
             if (!/^(public|private)$/.test(it.text)) return false;
-            if (!seenFirst) { seenFirst = true; if (it.text === 'public') continue; }
-            o.say(depth + 1, `the rest is ${it.text}`); continue;
+            if (!seenFirst) { seenFirst = true; if (it.text === 'public') return true; }
+            o.say(depth + 1, `the rest is ${it.text}`); return true;
           }
           if (it.type === 'field_declaration') {
             const ds = named(it).filter(x => x.type === 'field_identifier');
@@ -1853,7 +1866,7 @@
             const v = dv ? ex(dv) : '';
             if (!w || v == null || (dv && kids(it).some(x => x.type === 'initializer_list'))) return false;
             o.say(depth + 1, `field ${ds[0].text}: ${w}${dv ? ' = ' + v : ''}`);
-            continue;
+            return true;
           }
           if (it.type === 'function_definition') {
             const d = F(it, 'declarator');
@@ -1862,16 +1875,32 @@
               const ps = params(d);
               if (!ps) return false;
               o.say(depth + 1, `when made${ps.length ? ' using ' + ps.join(', ') : ''}`);
-              fnBody(it, depth + 2, n.startIndex);
-              continue;
+              fnBody(it, depth + 2, it.startIndex);
+              return true;
             }
-            const s = funcSentence(it);
+            const s = funcSentence(it, true);
             if (!s) return false;
             o.say(depth + 1, s);
-            fnBody(it, depth + 2, n.startIndex);
-            continue;
+            fnBody(it, depth + 2, it.startIndex);
+            return true;
           }
           return false;
+        };
+        for (const it of items) {
+          if (prevEnd != null && it.startPosition.row > prevEnd + 1) o.blank();
+          prevEnd = it.endPosition.row;
+          if (isComment(it)) { o.notes(depth + 1, it); continue; }
+          o.parents.set(it.startIndex, n.startIndex);
+          o.keyStack.push(it.startIndex);
+          const m = o.mark();
+          let done = false;
+          if ((force.get(it.startIndex) || 0) < 2) { try { done = member(it); } catch (e) { done = false; } }
+          o.keyStack.pop();
+          if (!done) {
+            o.undo(m);
+            if (it.type === 'access_specifier') { if (!seenFirst) return false; o.rawLines(depth + 1, 'c++:', src, it, `${it.text}:`); }
+            else o.rawLines(depth + 1, 'c++:', src, it);
+          }
         }
         return true;
       }
@@ -1906,7 +1935,8 @@
      uses the value. A `break;` at the very end of a switch's last case does nothing, so it counts the same as none. */
   function cppRules(usingStd) {
     const R = {
-      skip: (c) => c.type === ';' || c.type === '{' || c.type === '}' || (/^(preproc_include|using_declaration)$/.test(c.type) && c.parent && c.parent.type === 'translation_unit'),   // compared on their own
+      skip: (c) => c.type === ';' || c.type === '{' || c.type === '}' || (/^(preproc_include|using_declaration)$/.test(c.type) && c.parent && c.parent.type === 'translation_unit')   // compared on their own
+        || (c.type === ':' && c.parent && c.parent.type === 'field_declaration_list'),   // (the colon of public:, which is compared)
       rewrite: (n) => {
         if (usingStd && (n.type === 'qualified_identifier' || n.type === 'qualified_type_identifier') && F(n, 'scope') && F(n, 'scope').text === 'std' && F(n, 'name')) return { node: F(n, 'name') };
         if (n.type === 'parenthesized_expression' && n.namedChildCount === 1 && n.parent && !/if_statement|while_statement|condition_clause|decltype/.test(n.parent.type)) return { node: n.namedChild(0) };
@@ -1918,8 +1948,8 @@
         return null;
       },
       leaf: (n) => (usingStd && (n.type === 'type_identifier' || n.type === 'primitive_type') ? n.text.replace(/^std::/, '') : n.text),
-      // a case's steps are compared one by one, so one that differs is kept as code on its own
-      block: (n) => n.type === 'translation_unit' || n.type === 'compound_statement' || n.type === 'case_statement',
+      // a case's steps and a class's members are compared one by one, so one that differs is kept as code on its own
+      block: (n) => n.type === 'translation_unit' || n.type === 'compound_statement' || n.type === 'case_statement' || n.type === 'field_declaration_list',
       after: (o, n) => {
         if (n.type === 'switch_statement') {
           const body = o.c.find(x => x.t === 'compound_statement'), last = body && body.c[body.c.length - 1];

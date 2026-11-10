@@ -215,8 +215,11 @@
     // text joined with +
     const TEXT = x.arduino ? 'String' : 'std::string';
     let joined = false;
+    // (a value that is text already, a text name or one made into text, joins with text as it is: "Hi " + name)
+    const textish = (v) => /^(?:const\s+)?(?:std::string|String)&?$/.test(x.types[v] || '') || wholeCall(v, 'String') || wholeCall(v, 'std::to_string') || wholeCall(v, 'std::string');
     q = q.replace(new RegExp(String.raw`(?<![\w.⟧\])])(${OPD})(\s*\+\s*)(${OPD})(?![\w.(\[])`, 'g'), (m, a, plus, b) => {
       if (!isText(a) && !isText(b)) return m;
+      if (isText(a) ? !isText(b) && textish(b) : textish(a)) return m;
       joined = true;
       const side = (v) => (isText(v) ? `${TEXT}(${v})` : !x.arduino && /^(?:int|double|float|long|unsigned long|bool)$/.test(T(v)) ? `std::to_string(${v})` : v);
       return `${side(a)} + ${side(b)}`;
@@ -278,6 +281,12 @@
     q = q.replace(/\bself\s*\.\s*/g, 'this->');
     q = q.replace(/\bthe\b/gi, ' ');
     if (x.arduino) {
+      // "Ready" kept in flash: F("Ready") leaves the text in flash memory, so it uses none of the working memory
+      q = q.replace(/⟦(\d+)⟧\s*kept in flash(?: memory)?\b/gi, (m, k) => {
+        if (!/^"/.test(strs[+k])) return m;
+        note(inf, '`F(…)` keeps the text in the board\'s flash memory, so it takes none of the small working memory (RAM).');
+        return `F(⟦${k}⟧)`;
+      });
       q = q.replace(/\bbuilt-?in (?:light|led)\b/gi, 'LED_BUILTIN');
       swap(String.raw`\bpin (OPD) is (on|off|high|low)\b`, (m, p, v) => { note(inf, '`digitalRead` checks whether a pin is on (HIGH) or off (LOW).'); return `digitalRead(${p}) == ${/on|high/i.test(v) ? 'HIGH' : 'LOW'}`; });
       swap(String.raw`\b(?:analog )?(?:reading|level) (?:of|on) pin (OPD)`, (m, p) => { note(inf, '`analogRead` measures the voltage on a pin as a number from 0 to 1023.'); return `analogRead(${p})`; });
@@ -318,6 +327,9 @@
     for (const p of [String.raw`(OPD) as (?:a )?(?:whole )?number\b`, String.raw`(OPD) as (?:a )?decimal\b`, String.raw`(OPD) as text\b`]) {   // (squared binds tightest, as in maths)
       for (const m of q.matchAll(R(p))) {
         if (!/(?:\b(?:plus|minus|times|divided by|mod)|[-+*/%])\s*$/i.test(q.slice(0, m.index))) continue;
+        // "Score: " plus n as text: text before it, so only n can be made into text
+        const before = q.slice(0, m.index).match(/⟦(\d+)⟧\s*(?:\bplus|\+)\s*$/i);
+        if (/as text/.test(p) && before && /^"/.test(strs[+before[1]])) continue;
         const e = `"${m[0].slice(m[1].length).trim()}" comes right after a calculation, so it could go with just ${code(m[1])} or with all of it. Put brackets round the part you mean, like (price times qty) ${m[0].slice(m[1].length).trim()}.`;
         if (!inf.errs.includes(e)) inf.errs.push(e);
       }
@@ -639,9 +651,12 @@
           return;
         }
       }
-      // --- tools
-      if ((m = M(/^define\s+([A-Za-z_]\w*)(?:\s+using\s+(.+?))?(?:\s+giving back\s+(.+))?$/i))) {
+      // --- tools ("…, without changing the object": a class's tool that only looks, `const`)
+      const still = /^define\s/i.test(s) && M(/^(.*?),?\s+without changing the object$/i);
+      if ((m = still ? qmatch(still[1], /^define\s+([A-Za-z_]\w*)(?:\s+using\s+(.+?))?(?:\s+giving back\s+(.+))?$/i) : M(/^define\s+([A-Za-z_]\w*)(?:\s+using\s+(.+?))?(?:\s+giving back\s+(.+))?$/i))) {
         const inClass = cur() && cur().kind === 'class';
+        if (still && !inClass) inf.errs.push('"without changing the object" is for a class\'s own tools.');
+        if (still) note(inf, '`const` after the brackets: this tool can look at the object\'s fields but never change them.');
         if (stack.length && !inClass) inf.errs.push('Tools must be defined at the left edge (or inside a class), not inside another block.');
         if (!inClass) out = topOut;
         const ps = m[2] && !/^nothing$/i.test(m[2].trim()) ? splitItems(m[2]).map(p => param(p, x)) : [];   // ("using nothing": no inputs)
@@ -658,7 +673,7 @@
           note(inf, 'A tool (a function). `auto` lets C++ work out the kinds of its inputs and result from how it is used.' + (inClass ? '' : ' Tools are placed above `main`, because C++ must see them before they are used.'));
         }
         ps.forEach(p => { x.types[p.name] = p.type || 'auto'; });
-        open(`${ret || 'auto'} ${m[1]}(${ps.map(p => `${p.type || 'auto'} ${p.name}`).join(', ')})`, 'fn');
+        open(`${ret || 'auto'} ${m[1]}(${ps.map(p => `${p.type || 'auto'} ${p.name}`).join(', ')})${still && inClass ? ' const' : ''}`, 'fn');
         ps.forEach(p => scopes[scopes.length - 1].add(p.name));
         return;
       }
@@ -886,11 +901,22 @@
       // a screen or another object that prints: "show "Hi" on lcd" (lcd.print), "…, then start a new line" (println)
       // "show the result of f with a, b": one value (the inputs aren't more things to show)
       const oneResult = (v) => /^(?:the\s+)?result of\s/i.test(v.trim()) && splitPhrase(v, /\s+followed by\s+/i).length === 1;
+      /* Arduino: "t with 2 decimal places" is print(t, 2); "n in hexadecimal" is print(n, HEX) (binary, octal too) */
+      const printed = (v) => {
+        const f = A && qmatch(v.trim(), /^(.+?)\s+(?:with\s+(\d+)\s+decimal places?|in\s+(hexadecimal|binary|octal))$/i);
+        if (!f) return E(v, inf);
+        const val = E(f[1], inf);
+        if (f[2] != null) {
+          if (/^(?:int|long|short|byte|unsigned|u?int\d+_t)/.test(x.types[val] || '')) inf.warns.push(`${code(val)} is a whole number: for one, the ${f[2]} would be the base to show it in (2 is binary), not decimal places.`);
+          note(inf, `The ${f[2]} after the value is how many decimal places to show.`);
+        } else note(inf, `${{ hexadecimal: 'HEX', binary: 'BIN', octal: 'OCT' }[f[3].toLowerCase()]} shows the whole number in ${f[3].toLowerCase()}.`);
+        return `${val}, ${f[2] != null ? f[2] : { hexadecimal: 'HEX', binary: 'BIN', octal: 'OCT' }[f[3].toLowerCase()]}`;
+      };
       if ((m = M(/^show\s+(.+?)\s+on\s+([A-Za-z_]\w*)(,?\s+then start a new line)?$/i))) {
         const items = oneResult(m[1]) ? [m[1]] : splitItems(m[1]);
         if (items.length > 1 && items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')))) inf.errs.push(`Show one thing at a time on ${m[2]}: one "show … on ${m[2]}" for each.`);
         note(inf, `\`${m[2]}.${m[3] ? 'println' : 'print'}\` shows the value on ${code(m[2])}` + (m[3] ? ', then moves to a new line.' : '.'));
-        return say(`${m[2]}.${m[3] ? 'println' : 'print'}(${E(m[1], inf)});`);
+        return say(`${m[2]}.${m[3] ? 'println' : 'print'}(${printed(m[1])});`);
       }
       if ((m = M(/^move\s+([A-Za-z_]\w*)'s cursor to\s+(.+)$/i))) {
         const at = splitItems(m[2], false);
@@ -909,7 +935,7 @@
         // "show a is 1 and b is 2" is one test: "and" only separates plain values
         const items = oneResult(m[1]) ? [m[1]] : splitItems(m[1]);
         const plainOnly = items.every(p => !/\b(?:is|isn't|equals?|than|not|contains)\b|[=<>!]/i.test(p.replace(/"(?:[^"\\]|\\.)*"/g, '""')));
-        const pieces = joined.length > 1 ? joined.map(v => E(v, inf)) : (plainOnly ? items : splitItems(m[1], false)).map(v => E(v, inf));
+        const pieces = (joined.length > 1 ? joined : plainOnly ? items : splitItems(m[1], false)).map(printed);
         const gap = joined.length > 1 ? '' : ' ';
         if (A) {
           if (!serialStarted) inf.warns.push('Start the serial monitor first ("start the serial monitor at 9600", in "when the board starts"), or nothing will show.');
