@@ -93,6 +93,24 @@ test('mechanics: classes and bringing in other files\' tools', () => {
   assert.match(js('when a new A is made\n    show 1').errs[0], /goes right inside "define class A"/);
 });
 
+test('templates: the new Mechanics templates, filled in with their own words, have no problems', () => {
+  const NEW = /the result of|a new ‹Date›| if ‹test› otherwise|^depending on|^when it is|^do this|class|^bring in|a list of|the first ‹x›|for every|joined by|decimal places|read as JSON|element called|"‹li›" element|at the end of|the HTML of|the groups of|page title to|the reply from|^wait for ‹navigator|saved in the browser as/;
+  const fill = (p) => p.replace(/‹([^›]*)›/g, '$1');
+  let n = 0;
+  for (const t of WEB.TEMPLATES.filter(t => t.sections.includes('mechanics') && NEW.test(t.pattern))) {
+    let line = fill(t.pattern);
+    if (/^when it is/.test(line)) line = `depending on 1\n    ${line}\n        show 1`;
+    else if (/^when a new/.test(line)) line = `define class Store\n    ${line}\n        set this.key to key`;
+    else if (/^depending on/.test(line)) line = `set value to 1\n${line}\n    otherwise\n        show 1`;
+    else if (/^do this/.test(line)) line = `set test to yes\n${line}\n    show 1`;
+    else if (/^wait for/.test(line)) line = `define go using text\n    ${line}`;
+    const r = js(`${/^constant item\b/.test(line) ? '' : 'constant item is a new "li" element\n'}constant list is the element called "items"\nset price to 1\nset text to "[]"\n${line}`, { name: 'div' });
+    assert.deepEqual(r.errs, [], `${t.pattern}\n${line}`);
+    n++;
+  }
+  assert.ok(n >= 20, `only ${n} templates checked`);
+});
+
 test('checker: quotes, a last comma, (x) =>, and the break ending a switch change nothing; holes and other breaks do', () => {
   for (const [a, b] of [["f('a');", 'f("a");'], ['const o = { a: 1, };', 'const o = { a: 1 };'], ['f(a, b,);', 'f(a, b);'], ['let a = [1, 2,];', 'let a = [1, 2];'],
     ['xs.map((x) => x + 1);', 'xs.map(x => x + 1);'], ['switch (n) { case 1: f(); break; default: g(); break; }', 'switch (n) { case 1: f(); break; default: g(); }']]) {

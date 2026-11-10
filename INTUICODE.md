@@ -677,7 +677,12 @@ stop-timer  = "stop" [ "repeating" | "the repeat" | "the timer" ] name ;        
 
 (* The page *)
 get-text    = "get the" ( "text" | "value" ) ( "of" | "in" | "from" ) element "and store" [ "it" ] "in" name ;
-set-text    = "set the" ( "text" | "value" ) "of" element "to" value ;  (* → .value for boxes, .textContent otherwise *)
+set-text    = "set the" ( "text" | "value" ) "of" element "to" value ;  (* → .value for boxes, .textContent otherwise;
+                                     for an element held in a name, the word says which *)
+set-html    = "set the HTML" ( "of" | "in" | "inside" ) element "to" value ;         (* → .innerHTML *)
+set-groups  = "set the groups of" element "to" value ;                              (* → .className *)
+page-title  = "set the page" [ "'s" ] "title to" value ;                            (* → document.title *)
+append      = "put" element "at the end of" element ;                               (* → .appendChild *)
 make-new    = ( "make" | "create" | "add" ) [ "a" | "an" ] "new" kind
               [ ( "saying" | "showing" | "that says" ) value ] [ "to" value ] [ "of" value [ "described as" value ] ]
               [ "in" ( "group" | "groups" ) names ] [ ( "in" | "into" ) element ] [ "and store" [ "it" ] "in" name ] ;
@@ -710,7 +715,8 @@ fetch       = ( "fetch" | "get" | "load" ) [ "data" ] "from" value "and store" [
 send        = "send" value "to" value [ "and store the reply in" name ] ;           (* → POST as JSON *)
 save        = "save" value "in the browser as" value ;                              (* → localStorage.setItem *)
 load        = "load" value "from the browser and store" [ "it" ] "in" name ;       (* → JSON.parse(localStorage.getItem …) *)
-wait-for    = "wait for" value [ "and store" [ "it" | "the result" | "the answer" ] "in" name ] ; (* → await value *)
+wait-for    = "wait for" ( value | path "with" items ) [ "and store" [ "it" | "the result" | "the answer" ] "in" name ] ;
+                                    (* → await value; await path(items) *)
 try         = "try" ;  except = ( "if" | "when" ) ( "it" | "that" | "this" | "anything" | "something" ) "fails" [ "as" name ] ;
 finally     = "finally" | "in any case" | "either way" | "whatever happens" ;
 fail        = "fail with" value ;                                                   (* → throw new Error(value) *)
@@ -720,7 +726,15 @@ elif        = ( "otherwise if" | "else if" ) cond ;   else = "otherwise" | "else
 times       = "repeat" value ( "time" | "times" ) [ "counting with" name ] ;      (* → for (let i = 0; i < value; i++) *)
 for-each    = "for each" name "in" value ;                                          (* → for (const name of value) *)
 while       = ( "while" | "as long as" ) cond ;
-define      = "define" name [ "using" params ] ;                                    (* → [async] function name(params) *)
+do-while    = "do this" [ "," ] "then repeat" ( "while" | "as long as" ) cond ;      (* → do { … } while (cond); *)
+switch      = "depending on" value ;   case = "when it" ( "is" | "'s" ) value { "or" value } | "otherwise" ;
+fall        = ( "go on" | "carry on" ) "into the next case" ;   (* a case ends with break, unless it leaves or says this *)
+define      = "define" name [ "using" params ] ;                                    (* → [async] function name(params);
+                                                                                       a param can be "name = value" *)
+class       = "define" [ "a" ] "class" name [ "based on" path ] ;                   (* → class name [extends path] *)
+constructor = "when" [ "a" ] "new" name "is" ( "made" | "created" ) [ ( "with" | "using" ) params ] ;  (* → constructor(…) *)
+                                    (* inside a class, "define" makes a method; other steps go in these two *)
+import      = "bring in" names "from" text ;                                        (* → import { names } from text; *)
 return      = ( "give back" | "return" ) [ value ] ;
 break       = "stop the loop" ;   continue = "skip to next" ;
 make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "new" ] [ "empty" ] "list" [ "called" ] name [ "with" items ] ;
@@ -1200,6 +1214,21 @@ not an operand, so `length of (a plus b)` isn't read.
 | 23 | `plus`, `minus`, `times`, `divided by`, `mod` | `+`, `-`, `*`, `/`, `%` |
 | 24 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
 | 25 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
+
+Before those stages, a value that is one of these whole phrases is read as it: `wait for P` (any of them),
+`a list of E for each x in L [if T]` (`L.map(x => E)`, `L.filter(x => T)`), `T for every x in L` /
+`for any` (`.every` / `.some`), `the first x in L where T` (`.find`), `A if T otherwise B` (`T ? A : B`),
+`the result of f [with items]` (`f(items)`) and `a new C [with items]` (`new C(items)`). In brackets
+they work inside a bigger value: `(the result of f with 2) plus 1`.
+
+Next to the phrases above, these come early (after 3): `the element called "x"`
+(`document.getElementById("x")`), `a new "li" element` (`document.createElement("li")`), `the page title`,
+`the text saved in the browser as K` (`localStorage.getItem(K)`), `the reply from U` (`await fetch(U)`), `the
+JSON read from R` / `the text read from R` (`await R.json()` / `.text()`), and `text of N` / `value of N` for a
+name holding an element. With `as number` (10) come `X trimmed`, `X split at S`, `X joined by S`,
+`X to N decimal places`, `X read as JSON`, `X as JSON text` and `X rounded` / `rounded down` / `rounded up`
+(`Math.round`, `floor`, `ceil`); for these, X can be a sum in brackets, and after a sum they are an error,
+as `as number` is.
 
 JavaScript's precedence then applies, tightest first: `!` (on the operand right after it); `*` `/` `%`;
 `+` `-`; `<` `<=` `>` `>=`; `===` `!==` `==` `!=`; `&&`; `||`. Unlike Python, `not` binds to one
@@ -2139,6 +2168,30 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 |  | `set item ‹i› of ‹list› to ‹value›` | `list[i] = value` | Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field). |
 |  | `define ‹name› using ‹inputs›` | `function name(inputs) {` | Its first lines can be "description: …", what the tool is for. |
 |  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `name = tool(inputs)` | Keeps what the tool gives back. Inside a bigger value, put it in brackets: (the result of ‹tool›) plus 1. |
+|  | `set ‹name› to a new ‹Date›` | `name = new Date()` | An object made from a class. Add "with ‹inputs›" for what it starts with. |
+|  | `set ‹name› to ‹a› if ‹test› otherwise ‹b›` | `name = test ? a : b` | One value or the other, picked by the test. |
+|  | `depending on ‹value›` | `switch (value) {` | Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise". |
+|  | `when it is ‹1›` | `case 1:` | Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead. |
+|  | `do this, then repeat while ‹test›` | `do { … } while (test);` | The steps run once before the test. |
+|  | `define class ‹Store›` | `class Store {` | A blueprint for objects. Inside: "when a new Store is made with ‹inputs›" and "define ‹tool›". Add "based on ‹Other›" to build on another class. |
+|  | `when a new ‹Store› is made with ‹key›` | `constructor(key) {` | Inside "define class": sets up each new object. Its own values are this.something. |
+|  | `bring in ‹fetchSales› from "‹./api.js›"` | `import { fetchSales } from "./api.js";` | Tools another JavaScript file shares. The page loads this file as a module. |
+| **Lists** | `set ‹doubled› to a list of ‹x times 2› for each ‹x› in ‹list›` | `list.map(x => x * 2)` | A new list, one value for each item. Add "if ‹test›" at the end to keep only some (.filter). |
+|  | `set ‹found› to the first ‹x› in ‹list› where ‹test›` | `list.find(x => test)` | The first item the test is true for. |
+|  | `set ‹ok› to ‹test› for every ‹x› in ‹list›` | `list.every(x => test)` | Yes when the test is true for every item. "for any": true for at least one (.some). |
+|  | `set ‹line› to ‹list› joined by "‹, ›"` | `list.join(", ")` | The items as one text, with the separator between them. |
+| **Text** | `set ‹shown› to ‹price› to ‹2› decimal places` | `price.toFixed(2)` | Also "‹n› rounded", "rounded down", "rounded up", "‹text› trimmed", "‹text› split at ",". |
+|  | `set ‹data› to ‹text› read as JSON` | `JSON.parse(text)` | And "‹data› as JSON text" (JSON.stringify). |
+| **Page** | `constant ‹total› is the element called "‹total›"` | `document.getElementById("total")` | An element by its id, for one Structure doesn't name. |
+|  | `constant ‹item› is a new "‹li›" element` | `document.createElement("li")` | A new element of any tag; "put ‹item› at the end of ‹list›" puts it on the page. |
+|  | `put ‹item› at the end of ‹list›` | `list.appendChild(item)` | Puts an element inside another, after what is already there. |
+|  | `set the HTML of ‹name› to ‹value›` | `name.innerHTML = value` | Replaces what is inside with this HTML. Only HTML you wrote: text people type could run as code. |
+|  | `set the groups of ‹name› to "‹card done›"` | `name.className = "card done"` | All of its groups at once. To add or take out one, "put ‹name› in group ‹g›". |
+|  | `set the page title to ‹value›` | `document.title = value` | The title on the browser tab. |
+| **Server** | `constant ‹reply› is the reply from "‹/api/items›"` | `await fetch("/api/items")` | Then "the JSON read from ‹reply›" is what it sent (await reply.json()). |
+|  | `wait for ‹navigator.clipboard.writeText› with ‹text›` | `await navigator.clipboard.writeText(text)` | Runs a tool that finishes later and waits for it. |
+|  | `constant ‹saved› is the text saved in the browser as "‹key›"` | `localStorage.getItem("key")` | The text as it was saved (null if there is none). |
 
 #### JavaScript words inside sentences
 
@@ -2157,6 +2210,33 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | `card is in group done` | `card.classList.contains("done")` |
 | `the file in picker` | `picker.files[0]` |
 | `wait for x` | `await x` |
+| `the result of f with a, b` | `f(a, b)` |
+| `a new Date` | `new Date()` |
+| `a if c otherwise b` | `c ? a : b` |
+| `an empty list` | `[]` |
+| `x is nothing` | `x == null` |
+| `x is null` | `x === null` |
+| `a list of x times 2 for each x in xs` | `xs.map(x => x * 2)` |
+| `a list of x for each x in xs if x is more than 1` | `xs.filter(x => x > 1)` |
+| `the first x in xs where x is 2` | `xs.find(x => x === 2)` |
+| `x is more than 0 for every x in xs` | `xs.every(x => x > 0)` |
+| `x is 2 for any x in xs` | `xs.some(x => x === 2)` |
+| `xs joined by ", "` | `xs.join(", ")` |
+| `name trimmed` | `name.trim()` |
+| `line split at ","` | `line.split(",")` |
+| `price to 2 decimal places` | `price.toFixed(2)` |
+| `n rounded` | `Math.round(n)` |
+| `n rounded down` | `Math.floor(n)` |
+| `n rounded up` | `Math.ceil(n)` |
+| `text read as JSON` | `JSON.parse(text)` |
+| `data as JSON text` | `JSON.stringify(data)` |
+| `the text saved in the browser as "k"` | `localStorage.getItem("k")` |
+| `the element called "total"` | `document.getElementById("total")` |
+| `a new "li" element` | `document.createElement("li")` |
+| `the page title` | `document.title` |
+| `value of box` | `box.value` |
+| `the reply from "/api"` | `await fetch("/api")` |
+| `the JSON read from reply` | `await reply.json()` |
 
 ### C++
 

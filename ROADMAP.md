@@ -65,7 +65,9 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   audit, which found `let`/`const` and `x++`/`x += 1` on this list although they behave
   differently):
   - JavaScript: `x++;` and `++x;` as whole statements, one-line bodies and braces, brackets
-    that don't change the meaning.
+    that don't change the meaning, `'x'` and `"x"` when there is no quote or `\` inside (as
+    Python's `ast` counts them), a comma after the last item (`[1, 2,]`; not a hole, `[1, ,]`),
+    `(x) =>` and `x =>`, and a `break;` that ends a switch's last case.
   - C++: one-line bodies and braces, `std::` where `using namespace std` applies, main's final
     `return 0`, extra `#include`s, `main` moved to the end, a `break;` that ends a switch's last
     case (it jumps to where the switch ends anyway), and `++i` / `i++` as the step of a `for` that
