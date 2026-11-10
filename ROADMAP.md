@@ -29,7 +29,8 @@ directions, using rules rather than AI. This file records where it is going and 
 | 9 | A toolkit: projects as file trees in many languages (Markdown, data and 30+ languages as code beside the sentence languages), the Library of parts and kinds of project with Coding integration, steps added by hand to the project map, Read mode for every installed grammar, and a writer audit that refuses two-reading English instead of guessing | done (2026-11-04) |
 | 10 | Unity mode: the project in one pane (the same files as Write, the Library included); select a region and **Translate to Plain Language Syntax** it into sentences in place (shown dark green), edit it, and **Original Code** puts it back into the code | done (first version: the six sentence languages) |
 | 11 | Unity first, Split Mode beside it (Read mode folded in: imported code becomes the project's files); parts by type (Interface & Display, Backend & Mechanics, Setup & Settings, Data & Notes) and by language, with two buttons that show one side of the project; Project Link: the code behind what's in use in the preview, in pink; Predictive Mode in Unity and from the Library | done (first version) |
-| 12 | React and TypeScript as sentence languages: `.ts`, `.tsx` (and React in `.jsx`/`.js`) translatable in Unity and editable in Split Mode, checked exact with types counted; components, state, effects and JSX in words; the Lovable stack (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) as phrase packs | done (first version, 2026-11-10; running React in the Preview not yet) |
+| 12 | React and TypeScript as sentence languages: `.ts`, `.tsx` (and React in `.jsx`/`.js`) translatable in Unity and editable in Split Mode, checked exact with types counted; components, state, effects and JSX in words; the Lovable stack (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) as phrase packs | done (first version, 2026-11-10) |
+| 13 | Running React: a Vite app's folder opens in place, and Run starts its own dev server in the desktop Preview, with hot reload; other sites it contacts are listed | done (first version, 2026-11-10; desktop app only) |
 
 The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
@@ -113,8 +114,10 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 
 ## What could come next
 
-- Running a React app in the Preview: a bundler or transpiler in the page (esbuild-wasm, say), a new dependency
-  and a decision for the owner. The desktop Preview's local address (PR #32) would serve its files.
+- Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
+  dependency and a decision for the owner.
+- Translated React keeps its layout: today a multi-line call (`useQuery({ … })`) comes back on one line, and
+  blank lines between components are dropped (the same program, checked exact, laid out differently).
 
 - More of the web into words: forms with names, `hidden` elements, listeners on saved
   elements (`const form = …; form.addEventListener`), multi-file C++ projects with headers.

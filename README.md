@@ -136,8 +136,15 @@ effect as `whenever query changes`, and what it shows as the Structure words (`a
 items centred, gap 2`), Supabase queries as what they ask (`every row of the "notes" table in supabase sorted by
 "created_at" from the end`). Types count: a sentence that would lose one stays as exact code (`ts:`, `tsx:`). Every
 translation is checked against the original's syntax tree, so the sentences rebuild exactly the same program, or
-the part stays as code and says why. IntuaCode reads, edits and checks React apps; it doesn't run them in the
-Preview yet (that needs a bundler).
+the part stays as code and says why.
+
+**Running a React app (desktop app).** Open a Vite app's folder (Lovable's projects are Vite apps) with
+**Menu → Open folder**. It opens in place: every file comes in as its exact lines, and saving writes back only
+the files you change, keeping their line endings. **Run** starts the project's own `npm run dev` and shows it in
+the Preview; each change is saved a moment later and the dev server shows it, keeping the page's state. Its
+packages are the project's own (`$ npm install` once, with [Node.js](https://nodejs.org)). Other sites the app
+contacts are allowed, and the terminal lists each one. The browser version reads, edits and checks React apps
+but doesn't run them.
 
 **Files and folders: one project, several languages**
 
