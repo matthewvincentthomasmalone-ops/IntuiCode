@@ -2078,7 +2078,9 @@
       if ((m = M(/^(?:give back|return)\b\s*(.*)$/i))) {
         // "give back total and count": two values, or a yes/no test that both are true?
         const parts = m[1] ? splitAnd(m[1]) : [];
-        if (parts.length > 1 && !/,/.test(outsideQuotes(m[1], t => t)) && !topFind(m[1], /\s(?:if|with|for each|for every|for any|where)\s/i)) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, give back a list: give back [${parts.join(', ')}].`);
+        // (one whole value, like "the result of f with a and b" or "a if b and c otherwise d", is one value)
+        const oneValue = /^(?:the\s+)?(?:result|answer) of\s|^an? new\s|^a list of\s|^the first\s/i.test(m[1].trim()) || (topFind(m[1], /\s+if\s+/i) && topFind(m[1], /\s+otherwise\s+/i)) || topFind(m[1], /\s+for (?:every|any)\s+/i);
+        if (parts.length > 1 && !/,/.test(outsideQuotes(m[1], t => t)) && !oneValue) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, give back a list: give back [${parts.join(', ')}].`);
         return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
       }
       if (/^stop the loop$/i.test(s)) {
