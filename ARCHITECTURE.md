@@ -334,6 +334,25 @@ exactly that. IntuaCode adds no bundler and no dependency:
 - **Not here:** the browser version (it can't start programs); Project Link and Pick, which need the marked pages
   IntuaCode writes.
 
+## Decision: translated TypeScript keeps its layout
+
+*Decided 2026-11-10.*
+
+A project's file is written back from its sentences, so any layout the sentences lose shows up as a change in
+git, though the program is the same. The check compares syntax trees, so layout is a separate promise:
+
+- **The sentences carry layout, by one rule: one line of sentences is one line of code.** Blank lines; an if with
+  its step after a comma (`if error, fail with error as it is`); `show: …` on one line; an element's text or settings
+  on lines of their own; `loaded by …` on the line under a query. Each is a form a person could type, read the same
+  way by the writer; none is a hidden annotation.
+- **Where sentences can't say it, TypeScript is written as Prettier writes it** (`(n) =>`, no brackets a value
+  doesn't need), since that's how Lovable's code is formatted. JavaScript keeps its own style (`n =>`).
+- **Never guessed, always said.** After the check, the converter writes the sentences back and compares lines
+  (indentation by level, so a file indented by 4 or by tabs isn't all "different"). Where they differ, its result
+  has `layout: [{ from, to, why }]`, and Translate in Unity says which lines and why. It's TypeScript and React only.
+- **What isn't carried yet** (a call's inputs or a chain split over lines, an import list one name per line, text
+  and an element sharing a line between tags) would each need a sentence form of its own.
+
 ## Testing
 
 - `python3 -m unittest discover -s tests`: reader tests

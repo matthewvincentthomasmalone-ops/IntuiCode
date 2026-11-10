@@ -4456,6 +4456,12 @@
     const grew = d.done.some(p => p.from < sel.from || p.to > sel.to), loose = d.done.find(p => !p.exact);
     tLine(`Translated ${lineWord(d.done)}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Original Code puts code back.`
       + (loose ? ` Some of it stays as exact code: ${loose.reason}.` : ''), loose ? 't-err' : 't-sys');
+    // the same program, but not laid out as written once the code is written from the sentences: where, and why
+    const laid = d.done.flatMap(p => p.layout || []);
+    if (laid.length) {
+      const shown = laid.slice(0, 4).map(x => `${x.from === x.to ? 'line' : 'lines'} ${span(x)} (${x.why})`).join('; ');
+      tLine(`Same program, different layout when the code is written from these sentences: ${shown}${laid.length > 4 ? `; and ${laid.length - 4} more` : ''}. Original Code on sentences nobody changed still gives the code exactly as it was.`, 't-sys');
+    }
   }
   function uReRegex(i, quiet) {
     const r = UNITY.reRegex(unity.lang, uLines(), unity.regions, i, uW());

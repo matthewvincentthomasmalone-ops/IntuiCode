@@ -16,7 +16,9 @@
  *   env   { parse(kind, source) -> tree-sitter root node, WEB, CPP,
  *           ids: { id: tag } from the page (for css/js), groups: [class names],
  *           pulled: [hrefs/srcs of the page's own CSS and JS files] (for html) }
- *   -> { ok, text, exact, reason, words, lines, kept }
+ *   -> { ok, text, exact, reason, words, lines, kept, layout }
+ *   layout (TypeScript and React): where the code the sentences make is the same program laid out differently,
+ *   [{ from, to, why }] in the source's lines (from 1); empty when it comes back as written.
  */
 (function (root) {
   'use strict';
@@ -74,7 +76,11 @@
   /* Sentence output with, for each line, the key of the code it came from. */
   function Out() {
     const o = { lines: [], keys: [], raw: 0, words: 0, parents: new Map(), keyStack: [], careful: new Set() };
-    o.say = (depth, text) => { o.lines.push(IND.repeat(depth) + text); o.keys.push(o.keyStack[o.keyStack.length - 1] ?? null); if (!/^\s*note:/.test(text)) o.words++; };
+    // (a sentence can go on over the lines under it, one step further in: "… the query ["notes"]", then "loaded by …")
+    o.say = (depth, text) => {
+      for (const part of String(text).split('\n')) { o.lines.push(IND.repeat(depth) + part); o.keys.push(o.keyStack[o.keyStack.length - 1] ?? null); }
+      if (!/^\s*note:/.test(text)) o.words++;
+    };
     o.raw = 0;
     o.rawLines = (depth, prefix, src, node, text) => {
       const html = prefix === 'html:' || prefix === 'head:';
@@ -2496,7 +2502,8 @@
       // sentences the translator complains about are kept as code too
       const bad = new Set();
       gen.info.forEach((inf, i) => { if (inf.errs.length && conv.keys[i] != null) bad.add(conv.keys[i]); });
-      if (last.same && !bad.size) return result(conv, text, true);
+      // (TypeScript and React: the same program, but is it laid out as it was? Where not, the result says where and why)
+      if (last.same && !bad.size) return result(conv, text, true, null, kind === 'ts' || kind === 'tsx' ? saidAt(layoutOf(src, gen.text), conv, src) : []);
       let added = 0;
       const blame = (k) => {
         let key = k;
@@ -2523,10 +2530,100 @@
     }
     return result(conv, conv.lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '') + '\n', false, last && last.why);
   }
-  function result(conv, text, exact, why) {
+  function result(conv, text, exact, why, layout) {
     const lines = conv.lines.filter(l => l.trim() && !/^\s*note:/.test(l));
     const raw = lines.filter(l => /^\s*(?:html|css|js|ts|tsx|c\+\+|above main|head):/.test(l)).length;
-    return { ok: true, text, exact, reason: exact ? null : why ? `The sentences differ from the original in ${why}.` : 'Some parts could not be matched exactly.', lines: lines.length, words: lines.length - raw, kept: raw };
+    return { ok: true, text, exact, reason: exact ? null : why ? `The sentences differ from the original in ${why}.` : 'Some parts could not be matched exactly.', lines: lines.length, words: lines.length - raw, kept: raw, layout: layout || [] };
+  }
+
+  /* ---------- Layout: the same program, written as it was? ---------- */
+
+  /* The indentation one level is in these lines, in spaces: a tab, or the commonest step in (2 or 4). */
+  function indentUnit(lines) {
+    if (lines.some(l => /^\t/.test(l))) return '\t';
+    const steps = {};
+    let last = 0;
+    for (const l of lines) {
+      if (!l.trim()) continue;
+      const w = l.match(/^ */)[0].length;
+      if (w > last) steps[w - last] = (steps[w - last] || 0) + 1;
+      last = w;
+    }
+    const best = Object.entries(steps).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+    return ' '.repeat(best ? +best[0] : 2);
+  }
+  /* Why a run of lines comes back laid out differently, from how its first line is written. */
+  function layoutWhy(lines, at) {
+    const l = lines[at] || '', t = l.trim(), next = (lines[at + 1] || '').trim();
+    if (/^if\s*\(.*\)\s*[^\s{].*;$/.test(t) && !/\{$/.test(t)) return 'an if with its step on the same line (in sentences the step goes on a line of its own, so the code gets braces)';
+    if (/^import\s+(?:type\s+)?\{$/.test(t)) return 'names brought in one per line';
+    if (/^return\s+<.*>;$/.test(t) || /=>\s*<.*>;$/.test(t)) return 'an element given back on the same line (sentences put what a component shows under "show:")';
+    if (/^</.test(t) || /^\{.*(?:\(|&&)$/.test(t)) return 'an element laid out over its lines in a way sentences don\'t say';
+    if (/[([{,]$/.test(t) || /^\./.test(next)) return 'a value written over several lines';
+    return 'line breaks or spacing that sentences don\'t say';
+  }
+  /* Where the code the sentences make (made) is laid out differently from the code they were read from (src), for a
+     program the check found the same: [{ from, to, why }], the source's lines from 1. Indentation counts by level
+     (the code's own steps against the writer's 2 spaces), so a file indented by 4 or by tabs isn't all "different". */
+  function layoutOf(src, made) {
+    const a = src.replace(/\n+$/, '').split('\n'), b = made.replace(/\n+$/, '').split('\n');
+    const ua = indentUnit(a);
+    const key = (l, unit) => {
+      if (!l.trim()) return '';
+      const lead = l.match(/^[ \t]*/)[0];
+      const lv = unit === '\t' ? (lead.match(/\t/g) || []).length + Math.round(lead.replace(/\t/g, '').length / 4) : Math.round(lead.length / unit.length);
+      return lv + '|' + l.trim();
+    };
+    const ka = a.map(l => key(l, ua)), kb = b.map(l => key(l, '  '));
+    let p = 0;
+    while (p < ka.length && p < kb.length && ka[p] === kb[p]) p++;
+    let s = 0;
+    while (s < ka.length - p && s < kb.length - p && ka[ka.length - 1 - s] === kb[kb.length - 1 - s]) s++;
+    const n = ka.length - p - s, m = kb.length - p - s;
+    if (!n && !m) return [];
+    const off = new Set();
+    if (n > 2000 || m > 2000) for (let i = p; i < p + n; i++) off.add(i);
+    else {
+      // the longest run of lines in common (an LCS), from the end, then walked from the start
+      const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+      for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = ka[p + i] === kb[p + j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      let i = 0, j = 0;
+      while (i < n || j < m) {
+        if (i < n && j < m && ka[p + i] === kb[p + j]) { i++; j++; continue; }
+        if (j < m && (i >= n || L[i][j + 1] >= L[i + 1][j])) { off.add(Math.min(p + i, a.length - 1)); j++; }   // (a line only the made code has: the code line where it shows)
+        else { off.add(p + i); i++; }
+      }
+    }
+    // blank lines alone are never a run of their own (the line next to them is where it shows)
+    const rows = [...off].filter(r => a[r] != null && a[r].trim()).sort((x, y) => x - y);
+    const runs = [];
+    for (const r of rows) {
+      const last = runs[runs.length - 1];
+      if (last && r === last.to + 1) last.to = r;
+      else runs.push({ from: r, to: r });
+    }
+    return runs.map(x => ({ from: x.from + 1, to: x.to + 1, why: layoutWhy(a, x.from) }));
+  }
+  /* Each layout run with the sentence lines that say it (said: { from, to }, from 1, in the text toSentences gives):
+     the lines made from code that starts in the run, or else the one made from the code the run is inside. */
+  function saidAt(layout, conv, src) {
+    if (!layout.length) return layout;
+    const starts = [0];
+    for (let k = 0; k < src.length; k++) if (src[k] === '\n') starts.push(k + 1);
+    const rowOf = (at) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= at) lo = mid; else hi = mid - 1; } return lo; };
+    // the sentence lines as the text has them (no blank lines at the ends, at most one in a row), with their code's row
+    const rows = [];
+    conv.lines.forEach((l, i) => {
+      if (!l.trim() && (!rows.length || rows[rows.length - 1].blank)) return;
+      rows.push({ blank: !l.trim(), row: conv.keys[i] == null ? null : rowOf(conv.keys[i]) });
+    });
+    while (rows.length && rows[rows.length - 1].blank) rows.pop();
+    return layout.map(x => {
+      const inRun = rows.map((r, i) => (r.row != null && r.row >= x.from - 1 && r.row <= x.to - 1 ? i : -1)).filter(i => i >= 0);
+      let at = inRun.length ? [inRun[0], inRun[inRun.length - 1]] : null;
+      if (!at) { let k = -1; rows.forEach((r, i) => { if (r.row != null && r.row < x.from - 1) k = i; }); if (k >= 0) at = [k, k]; }
+      return at ? { ...x, said: { from: at[0] + 1, to: at[1] + 1 } } : x;
+    });
   }
 
   /* A page's own names (ids with their tags, classes) and the CSS and JS files it loads. */

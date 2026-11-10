@@ -28,6 +28,40 @@
   };
   const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
   const plainQuoted = (s) => /^(["'])[^"'\\\n]*\1$/.test(s);
+  const IND = '    ';   // (one step in, in sentences)
+  // the steps an if can have on its own line ("if error, fail with error as it is"): what lang/ts_write.js reads there
+  const IF_STEP = /^(?:give back(?:\s|$)|fail with\s|stop the loop$|skip to next$|run\s|show:\s|change\s\S+\s(?:from\s\S+\s)?to\s)/i;
+
+  /* Are a tag's props one per line, the name on the line it opens on and its > (or />) on a line of its own after
+     them?
+       <Input
+         id="title"
+         value={title}
+       /> */
+  function propsOnLines(open, nameN, props) {
+    const row = open.startPosition.row;
+    if (!props.length || !nameN || nameN.startPosition.row !== row) return false;
+    for (let k = 0; k < props.length; k++) if (props[k].startPosition.row !== row + 1 + k || props[k].endPosition.row !== props[k].startPosition.row) return false;
+    const ks = kids(open), last = props[props.length - 1], end = ks[ks.findIndex(x => x.startIndex === last.startIndex) + 1];
+    return !!end && end.startPosition.row === last.endPosition.row + 1 && open.endPosition.row === end.startPosition.row;
+  }
+
+  /* Is call(obj) laid out one part per line, the whole value of a statement? f({ on the call's line, each part on a
+     line of its own with a comma after it, and }) on the line after the last:
+       useQuery({
+         queryKey: ["notes"],
+         queryFn: fetchNotes,
+       }) */
+  function onLines(call, obj, parts) {
+    const p = call.parent;
+    if (!p || !/^(?:return_statement|variable_declarator|expression_statement|await_expression)$/.test(p.type)) return false;
+    const row = obj.startPosition.row, ks = kids(obj);
+    if (row !== call.startPosition.row || !parts.length || ks.some(isComment)) return false;
+    for (let k = 0; k < parts.length; k++) if (parts[k].startPosition.row !== row + 1 + k || parts[k].endPosition.row !== parts[k].startPosition.row) return false;
+    const last = parts[parts.length - 1], after = ks[ks.indexOf(ks.find(x => x.startIndex === last.startIndex)) + 1];
+    const close = ks[ks.length - 1];
+    return !!after && after.type === ',' && after.startPosition.row === last.endPosition.row && close.type === '}' && close.startPosition.row === last.endPosition.row + 1 && call.endPosition.row === close.startPosition.row && call.endIndex === close.endIndex + 1;
+  }
 
   /* ---------- Types ---------- */
 
@@ -327,6 +361,30 @@
           }
           return false;
         }
+        // an if with its one step on the same line, if (error) throw error;: "if error, fail with error as it is".
+        // (Checked like the rest; if the check finds it differs, it is said as an if with its step under it.)
+        case 'if_statement': {
+          const cons = F(n, 'consequence'), cond = F(n, 'condition');
+          if (!typed || F(n, 'alternative') || !cons || !cond || cons.type === 'statement_block' || cons.startPosition.row !== n.startPosition.row || cons.endPosition.row !== n.endPosition.row) return undefined;
+          const c = C.ex(real(cond)[0]);
+          if (c == null) return false;
+          if (lvl) {   // the check found the one line differs: the if with its step under it, as JavaScript says it
+            say(`if ${c}`);
+            C.block(C.bodyOf(cons), depth + 1, n.startIndex);
+            return true;
+          }
+          const m = C.o.mark(), at = C.o.lines.length;
+          C.o.parents.set(cons.startIndex, n.startIndex);
+          C.o.keyStack.push(cons.startIndex);
+          let ok = false;
+          try { ok = C.one(cons, depth + 1, 0); } catch (e) { ok = false; }
+          C.o.keyStack.pop();
+          const got = C.o.lines.slice(at).map(l => l.trim());
+          C.o.undo(m);
+          if (!ok || got.length !== 1 || !IF_STEP.test(got[0])) return undefined;
+          C.o.careful.add(n.startIndex);
+          return say(`if ${c}, ${got[0]}`);
+        }
         default: return undefined;
       }
     }
@@ -389,7 +447,9 @@
       return C.W(said);
     }
     /* useQuery({ queryKey: ["notes"], queryFn: fetchNotes }) -> the query ["notes"] loaded by fetchNotes;
-       useMutation({ mutationFn: f }) -> a change made by f. */
+       useMutation({ mutationFn: f }) -> a change made by f. A query written one part per line (as Lovable and
+       Prettier write it) is said that way too, when it is a statement's whole value: "… the query ["notes"]" with
+       "loaded by fetchNotes" on the line under it. */
     function queryWords(n, C) {
       const fn = F(n, 'function'), a = C.args(n);
       if (!fn || fn.type !== 'identifier' || !/^use(?:Query|Mutation)$/.test(fn.text) || real(n).some(x => x.type === 'type_arguments')) return undefined;
@@ -398,7 +458,8 @@
       if (!o) return null;
       if (fn.text === 'useQuery' && o.length === 2 && pair(o[0], 'queryKey') && pair(o[1], 'queryFn')) {
         const k = C.ex(pair(o[0], 'queryKey')), f = C.ex(pair(o[1], 'queryFn'));
-        return k == null || f == null || / loaded by /.test(k + ' ' + f) || /\n/.test(k + f) ? null : C.W(`the query ${k} loaded by ${f}`);
+        if (k == null || f == null || / loaded by /.test(k + ' ' + f) || /\n/.test(k + f)) return null;
+        return C.W(onLines(n, a[0], o) ? `the query ${k}\n${IND}loaded by ${f}` : `the query ${k} loaded by ${f}`);
       }
       if (fn.text === 'useMutation' && o.length === 1 && pair(o[0], 'mutationFn')) {
         const f = C.ex(pair(o[0], 'mutationFn'));
@@ -455,6 +516,9 @@
             const head = `constant ${pat.text} is a component${pr.said ? ' using ' + pr.said : ''}${pr.type ? ' from ' + pr.type : ''}`;
             if (body.type === 'statement_block') { say(head); C.inside(null, () => C.block(real(body), depth + 1, n.startIndex)); return true; }
             if (!isJsx(body)) return undefined;
+            // (const A = () => <p>Hi</p>; on one line: "…, showing: a paragraph saying "Hi"")
+            const one = JSX_TYPES.includes(body.type) ? oneLineJsx(body, depth, n.startIndex, C) : null;
+            if (one) return say(`${head}, showing: ${one}`);
             say(head + ', showing:');
             return jsxChild(unparen(body), depth + 1, n.startIndex, C);
           }
@@ -549,8 +613,14 @@
           if (!v) return undefined;
           const mb = mutationBlock(n, depth, C);
           if (mb !== undefined) return mb;
-          // show: what a component shows, under it
-          if (isJsx(v)) { say('show:'); return jsxChild(unparen(v), depth + 1, n.startIndex, C); }
+          // show: what a component shows, under it; or after it, on one line, when the code gives it back on its
+          // line without brackets: return <p>Loading…</p>; is "show: a paragraph saying "Loading…""
+          if (isJsx(v)) {
+            const one = !lvl && JSX_TYPES.includes(v.type) ? oneLineJsx(v, depth, n.startIndex, C) : null;
+            if (one) { C.o.careful.add(n.startIndex); return say(`show: ${one}`); }
+            say('show:');
+            return jsxChild(unparen(v), depth + 1, n.startIndex, C);
+          }
           // when Card goes away (an effect's clean-up)
           if (v.type === 'arrow_function' && inEffect(n) && !arrowParams(v).length && !has(v, 'async')) {
             const body = F(v, 'body');
@@ -681,6 +751,15 @@
       if (!ok) { C.o.undo(m); C.o.rawLines(depth, C.prefix, C.src, node); }
       return true;
     }
+    /* An element on one line of code, said on one line of sentences (nothing under it), or null. */
+    function oneLineJsx(node, depth, key, C) {
+      if (node.startPosition.row !== node.endPosition.row) return null;
+      const m = C.o.mark(), at = C.o.lines.length;
+      jsxChild(node, depth, key, C);
+      const got = C.o.lines.slice(at);
+      C.o.undo(m);
+      return got.length === 1 && !got[0].trim().startsWith(C.prefix) && !/^\s*note:/.test(got[0]) ? got[0].trim() : null;
+    }
     function elementSaid(node, depth, key, C) {
       if (!JSX_TYPES.includes(node.type)) return false;
       const open = node.type === 'jsx_self_closing_element' ? node : real(node).find(x => x.type === 'jsx_opening_element');
@@ -710,10 +789,17 @@
       if (settings.some(s => s == null)) return false;
       const items = node.type === 'jsx_element' ? piecesOf(node, C) : [];
       if (!items) return false;
-      // one run inside: "saying …" on the same line
-      const one = items.length === 1 && items[0].run ? runLine(items[0].run) : null;
+      // one run inside, on the line the element opens and closes on: "saying …" on the same line (one on a line of
+      // its own between them is said on a line of its own, under the element)
+      const close = node.type === 'jsx_element' ? real(node).find(x => x.type === 'jsx_closing_element') : null;
+      const inline = !close || open.endPosition.row === close.startPosition.row;
+      const one = inline && items.length === 1 && items[0].run ? runLine(items[0].run) : null;
       if (one && items[0].run.some(p => C.force.get(p.k) >= 2)) return false;
-      C.o.say(depth, word + (one ? ' saying ' + one : '') + settings.map(s => ', ' + s).join(''));
+      // the settings one per line (as Prettier writes a long tag), when the code has them so: each a line under it
+      if (settings.length && propsOnLines(open, nameN, props)) {
+        C.o.say(depth, word + (one ? ' saying ' + one : ''));
+        for (const s of settings) C.o.say(depth + 1, s);
+      } else C.o.say(depth, word + (one ? ' saying ' + one : '') + settings.map(s => ', ' + s).join(''));
       if (one || !items.length) return true;
       for (const it of items) {
         if (it.node) { jsxChild(it.node, depth + 1, key, C); continue; }
