@@ -78,6 +78,12 @@
     if (sec.lang === 'python' && tplRole(sec) !== sec.file) return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: 'A Python file of your own. The Python files listed before it in the project can use what it defines (IntuaCode adds the import); the start file can use them all.' }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes('main') };
     if (secLang(sec) === 'cpp') { const ino = sec.file === 'sketch'; return { templates: CPP.TEMPLATES, opens: CPP.OPENS_BLOCK, words: ino ? CPP.ARDUINO_WORDS : CPP.WORDS, guide: ino ? CPP.ARDUINO_GUIDE : CPP.GUIDE, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true }; }
     if (secLang(sec) === 'python') return { templates: LANG.TEMPLATES, opens: LANG.OPENS_BLOCK, words: LANG.WORDS, guide: { ...LANG.GUIDE, section: LANG.GUIDE.sections[sec.file] }, howtos: LANG.GUIDE.howtos, filter: (t) => t.sections.includes(sec.file) };
+    // TypeScript and React: their own sentences, and every Mechanics (JavaScript) sentence too
+    const TSW = window.IntuiTs;
+    if ((sec.lang === 'ts' || sec.lang === 'tsx') && TSW) {
+      const js = WEB.TEMPLATES.filter(t => t.sections.includes('mechanics')).map(t => ({ ...t, sections: [...t.sections, 'typescript'] }));
+      return { templates: [...TSW.TEMPLATES, ...js], opens: TSW.OPENS_BLOCK, words: [...TSW.WORDS, ...WEB.WORDS.mechanics], guide: TSW.GUIDE, howtos: [], filter: (t) => t.sections.includes('typescript') };
+    }
     const g = WEB.GUIDES[sec.file];
     return { templates: WEB.TEMPLATES, opens: WEB.OPENS_BLOCK, words: WEB.WORDS[sec.file] || [], guide: g, howtos: [], filter: (t) => t.sections.includes(sec.file), webOnly: true };
   }
@@ -1858,7 +1864,7 @@
   const TUTOR = window.IntuiTutor;
   const TUTOR_KEY = 'intuicode.tutor.v1';
   const tutor = Object.assign({ on: false, seen: {}, practised: {} }, store.get(TUTOR_KEY, {}));
-  const tutorRun = { reader: null, loading: null, cpp: null, cppLoading: null, styles: {}, timer: null, offered: new Set(), lastOffer: 0, exercise: null };
+  const tutorRun = { reader: null, loading: null, cpp: null, cppLoading: null, ts: null, tsLoading: null, styles: {}, timer: null, offered: new Set(), lastOffer: 0, exercise: null };
   const tip = $('tip');
   const saveTutor = () => store.set(TUTOR_KEY, { on: tutor.on, seen: tutor.seen, practised: tutor.practised });
   const known = (card) => (tutor.practised[card] || 0) >= TUTOR.FADE_AFTER;
@@ -1867,12 +1873,22 @@
   const cardId = (lang, card) => (lang === 'python' ? card : lang + ':' + card);
   /* The language the tutor teaches in a folder, or null. */
   const tutorLang = (sec) => (TUTOR.CARDS[secLang(sec)] ? secLang(sec) : null);
-  const tutorReady = (lang) => (lang === 'python' ? !!tutorRun.reader : lang === 'cpp' ? !!tutorRun.cpp : false);
+  const isTs = (lang) => lang === 'ts' || lang === 'tsx';
+  const tutorReady = (lang) => (lang === 'python' ? !!tutorRun.reader : lang === 'cpp' ? !!tutorRun.cpp : isTs(lang) ? !!tutorRun.ts : false);
   const tutorSays = (sec) => (sec.file === 'sketch' ? 'Arduino C++' : LANG_NAME[secLang(sec)]);
-  const TOUR_LANGS = new Set(['python', 'cpp']);   // the languages the tutor's style cards cover
-  const RAW_LINE = { python: /^\s*(?:raw python|python|raw|note|comment)\s*:|^\s*#/i, cpp: /^\s*(?:c\+\+|cpp|raw|above main|outside main|at the top|note|comment)\s*:|^\s*include\b/i };
+  const TOUR_LANGS = new Set(['python', 'cpp', 'ts', 'tsx']);   // the languages the tutor's style cards cover
+  const RAW_LINE = { python: /^\s*(?:raw python|python|raw|note|comment)\s*:|^\s*#/i, cpp: /^\s*(?:c\+\+|cpp|raw|above main|outside main|at the top|note|comment)\s*:|^\s*include\b/i,
+    ts: /^\s*(?:ts|js|javascript|raw|note|comment|description)\s*:|^\s*show\s*:\s*$/i, tsx: /^\s*(?:tsx|ts|js|javascript|raw|note|comment|description)\s*:|^\s*show\s*:\s*$/i };
 
   function loadTutorReader(lang = 'python') {
+    if (isTs(lang)) {
+      if (tutorRun.ts || tutorRun.tsLoading) return;
+      tutorRun.tsLoading = Runner.webReader((s) => setStatus(s))
+        .then(WR => WR.loadLangs(['ts', 'tsx']).then(() => { tutorRun.ts = WR.parse; renderExplain(); tutorSoon(300); }))
+        .catch(() => { /* the reader couldn't load: the tutor goes without it */ })
+        .finally(() => { tutorRun.tsLoading = null; });
+      return;
+    }
     if (lang === 'cpp') {
       if (tutorRun.cpp || tutorRun.cppLoading) return;
       tutorRun.cppLoading = Runner.webReader((s) => setStatus(s))
@@ -1895,7 +1911,7 @@
     hideTip();
     if (on) {
       setDock('help', true);   // part of the tutor lives in the help strip
-      tLine('Tutor is on. As you write, I\'ll point out how the language likes things said, and now and then ask you to write a line yourself. (It speaks Python, C++ and Arduino so far.)', 't-sys');
+      tLine('Tutor is on. As you write, I\'ll point out how the language likes things said, and now and then ask you to write a line yourself. (It speaks Python, C++, Arduino, TypeScript and React so far.)', 't-sys');
       loadTutorReader(tutorLang(activeSec()) || 'python');
       tutorSoon(600);
     }
@@ -1909,7 +1925,7 @@
     if (!r || !lang || !tutorReady(lang)) return null;
     const cached = tutorRun.styles[sec.id];
     if (cached && cached.text === r.text) return cached;
-    const res = lang === 'cpp' ? TUTOR.cppStylePoints(tutorRun.cpp, r.text, true) : tutorRun.reader.stylePoints(r.text, true);
+    const res = lang === 'cpp' ? TUTOR.cppStylePoints(tutorRun.cpp, r.text, true) : isTs(lang) ? TUTOR.tsStylePoints(tutorRun.ts, r.text, true, lang) : tutorRun.reader.stylePoints(r.text, true);
     const byLine = [];
     for (const p of res.points || []) (byLine[p.line - 1] = byLine[p.line - 1] || []).push(cardId(lang, p.card));
     return (tutorRun.styles[sec.id] = { text: r.text, byLine });
@@ -1931,7 +1947,7 @@
   /* A sentence to say yourself: one that is a sentence (not exact code, a note or a blank) and makes code. */
   function sayExercise(sec, li) {
     const r = secResult(sec.id), inf = r && r.info[li], text = ta.value.split('\n')[li] || '';
-    if (!inf || inf.errs.length || !text.trim() || /‹[^›]*›/.test(text) || /^\s*(?:note|comment|python|raw python|raw|c\+\+|cpp|html|css|js|head|above main|outside main|at the top)\s*:/i.test(text)) return null;
+    if (!inf || inf.errs.length || !text.trim() || /‹[^›]*›/.test(text) || /^\s*(?:note|comment|python|raw python|raw|c\+\+|cpp|html|css|js|ts|tsx|head|above main|outside main|at the top)\s*:/i.test(text)) return null;
     const code = inf.py.map(i => r.lines[i].text).filter(t => t.trim());
     return code.length ? { code, sentence: text.trim() } : null;
   }
@@ -1971,7 +1987,7 @@
       ? `<li class="known">✓ ${withCode(cardOf(c).title)} <span class="dim">· you know this one</span></li>`
       : `<li><b>${withCode(cardOf(c).title)}.</b> ${withCode(cardOf(c).say)}</li>`));
     const says = tutorSays(sec);
-    const canWrite = lang !== 'cpp' || !/^\}|\{\s*$/.test(ex || '');   // (a c++: line can't open or close a block of sentences)
+    const canWrite = (lang !== 'cpp' && !isTs(lang)) || !/^\}|\{\s*$/.test(ex || '');   // (a c++: or ts: line can't open or close a block of sentences)
     const act = !ex ? '' : allKnown && canWrite ? `<button type="button" class="btn small" data-tutor="code" title="Replace the sentence with the line of ${escHtml(says)} it stands for">Write this line as ${escHtml(LANG_NAME[lang])}</button>`
       : `<button type="button" class="btn small" data-tutor="turn">✎ Write it yourself</button>`;
     return `<div class="ex-tutor"><div class="ex-tutor-h"><span class="ex-lbl">In ${escHtml(says)}</span>${act}</div>${items.length ? `<ul>${items.join('')}</ul>` : ''}</div>`;
@@ -2112,8 +2128,8 @@
       placeTip();
       return;
     }
-    const cpp = ex.lang === 'cpp', name = LANG_NAME[ex.lang];
-    const res = cpp ? TUTOR.cppCompare(tutorRun.cpp, ex.expected, input.value) : tutorRun.reader.compare(TUTOR.probe(ex.expected), TUTOR.probe(input.value));
+    const cpp = ex.lang === 'cpp' || isTs(ex.lang), name = LANG_NAME[ex.lang];
+    const res = isTs(ex.lang) ? TUTOR.tsCompare(tutorRun.ts, ex.expected, input.value, ex.lang) : cpp ? TUTOR.cppCompare(tutorRun.cpp, ex.expected, input.value) : tutorRun.reader.compare(TUTOR.probe(ex.expected), TUTOR.probe(input.value));
     if (res.same) {
       const learned = [];
       for (const c of ex.cards) { const was = known(c); tutor.practised[c] = (tutor.practised[c] || 0) + 1; if (!was && known(c)) learned.push(cardOf(c).title); }
@@ -2186,10 +2202,10 @@
     if (!code || !tutorReady(lang)) return;
     const lines = ta.value.split('\n'), original = lines[li];
     const start = lines.slice(0, li).reduce((n, l) => n + l.length + 1, 0);
-    insertText(original.match(/^\s*/)[0] + (lang === 'cpp' ? 'c++: ' : 'python: ') + code, start, start + original.length);
+    insertText(original.match(/^\s*/)[0] + (lang === 'cpp' ? 'c++: ' : isTs(lang) ? lang + ': ' : 'python: ') + code, start, start + original.length);
     compile();
     const after = secResult(sec.id);
-    const same = after && !after.info[li].errs.length && (lang === 'cpp' ? TUTOR.cppSameProgram(tutorRun.cpp, before, after.text) : tutorRun.reader.compare(before, after.text).same);
+    const same = after && !after.info[li].errs.length && (lang === 'cpp' ? TUTOR.cppSameProgram(tutorRun.cpp, before, after.text) : isTs(lang) ? TUTOR.tsSameProgram(tutorRun.ts, before, after.text, lang) : tutorRun.reader.compare(before, after.text).same);
     if (!same) {   // (it would lose an import or #include the sentence brought in, or the end of a block): put the sentence back
       insertText(original, start, start + ta.value.split('\n')[li].length);
       tLine(`That line needs something the sentence brings along (${lang === 'cpp' ? 'an #include, or the end of its block' : 'an import'}, say), so it stays a sentence for now.`, 't-sys');

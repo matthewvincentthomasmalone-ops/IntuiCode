@@ -154,6 +154,25 @@ test('JSX in JavaScript (.jsx, .js) is React too, with js: lines', () => {
   assert.match(errs(TS.compileTs({ id: 'x', file: 'mechanics', text: 'define component A using b from P' }, null, { lang: 'js' })).join(), /Types are TypeScript/);
 });
 
+/* The helpers know the new languages: the Tutor's habits, the glossary, completion and Parts. */
+test('Tutor, glossary, completion and Parts know TypeScript and React', () => {
+  const h = { console }; h.window = h; vm.createContext(h);
+  for (const f of ['lang/tutor.js', 'lang/glossary_terms.js', 'lang/glossary.js', 'lang/complete.js', 'lang/parts.js']) vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), h, { filename: f });
+  const parse = env().parse;
+  const form = readFileSync(path.join(ROOT, 'tests/corpus_react/src/components/NoteForm.tsx'), 'utf8');
+  const cards = new Set(plain(h.IntuiTutor.tsStylePoints(parse, form, true, 'tsx').points.map(p => p.card)));
+  for (const c of ['interface', 'optional', 'component', 'props', 'state', 'type-annotation', 'class-name', 'jsx-handler', 'export']) assert.ok(cards.has(c), `the Tutor finds ${c}: ${[...cards]}`);
+  for (const c of cards) assert.ok(h.IntuiTutor.CARDS.tsx[c], `a card for ${c}`);
+  assert.equal(h.IntuiTutor.tsCompare(parse, 'const [n, setN] = useState(0);', 'const [n,setN]=useState( 0 );', 'tsx').same, true);
+  assert.equal(h.IntuiTutor.tsCompare(parse, 'let total: number = 0;', 'let total = 0;', 'ts').same, false);
+  const terms = plain(h.IntuiGlossary.find('tsx', form).map(e => e.t));
+  for (const t of ['useState()', 'className', 'interface']) assert.ok(terms.includes(t), `the glossary finds ${t}: ${terms}`);
+  assert.ok(plain(h.IntuiGlossary.find('say', 'keep count, starting at 0\nshow:\n    a block, styled as gap 2', { pack: 'web' }).map(e => e.t)).includes('keep'));
+  assert.equal(h.IntuiComplete.complete('tsx', 'const [a, b] = useSt', '', {}).label, 'useState');
+  const parts = h.IntuiParts.split('tsx', 'define shape Note\n    id is text\n    title is text\n    done is true or false\n\ndefine component Card using title\n    show:\n        a heading saying {title}\n', 'Card.tsx');
+  assert.deepEqual(plain(parts.map(p => p.type)), ['data', 'display']);
+});
+
 /* Unity on a .tsx file: a line of what a component shows grows to the whole "show:", and goes back exactly. */
 const ctx = { console };
 ctx.window = ctx;

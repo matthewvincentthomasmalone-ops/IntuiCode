@@ -527,9 +527,61 @@
     ],
 
     /* ------------------------------------------------------------------ */
+    /* TypeScript (a .ts or .tsx file looks here first, then in js)        */
+    /* ------------------------------------------------------------------ */
+    ts: [
+      { t: 'interface', k: 'keyword', s: 'Describes the shape of an object: the parts it has and the type of each. It is only for checking; nothing of it is left when the program runs.', eg: 'interface Note { id: string; done: boolean; }', see: ['type', ':', '?'] },
+      { t: 'type', k: 'keyword', s: 'Gives a type a name of its own: `type Filter = "all" | "done";`. Also `import type`, which brings in types only.', eg: 'type Filter = "all" | "done";', see: ['interface', '|'] },
+      { t: ':', k: 'punctuation', s: 'In TypeScript, a type comes after a colon: `let total: number`, `(e: React.FormEvent)`, `): string {` for what a function gives back.', eg: 'let total: number = 0;', see: ['interface', 'number', 'string'] },
+      { t: 'number', k: 'type', s: 'Any number, whole or decimal.', eg: 'let total: number = 0;', see: ['string', 'boolean'] },
+      { t: 'string', k: 'type', s: 'Text.', eg: 'title: string;', see: ['number', 'boolean'] },
+      { t: 'boolean', k: 'type', s: 'True or false.', eg: 'done: boolean;', see: ['number', 'string'] },
+      { t: 'any', k: 'type', s: 'Anything at all: TypeScript stops checking that value, which hides the mistakes the checker is there to find.', eg: 'let data: any;', see: ['unknown'] },
+      { t: 'unknown', k: 'type', s: 'Something not known yet: unlike any, it has to be checked (or assumed with as) before it is used.', eg: 'catch (err: unknown)', see: ['any', 'as'] },
+      { t: 'void', k: 'type', s: 'What a function gives back when it gives back nothing: `(id: string) => void`.', eg: 'onClose: () => void;', see: ['Promise'] },
+      { t: '?', k: 'punctuation', s: 'After a name in a type, it can be left out: `email?: string`. `a?.b` is optional chaining: b, or undefined when a is null or undefined.', eg: 'tags?: string[];', see: ['interface', '!'] },
+      { t: '!', k: 'punctuation', s: 'This mark after a value tells TypeScript it is there for sure (not null or undefined). Nothing checks it when the program runs. Before a value, the same mark means "not".', eg: 'document.getElementById("root")!', see: ['?', 'as'] },
+      { t: 'as', k: 'keyword', s: 'Tells TypeScript to treat a value as a type: `data as Note[]`. It changes nothing when the program runs, so if you are wrong, nothing warns you. In an import, `a as b` gives a name another name.', eg: 'return data as Note[];', see: ['!', 'unknown'] },
+      { t: 'readonly', k: 'keyword', s: 'A part of a shape that can\'t be changed once it is set.', eg: 'readonly id: string;', see: ['interface', 'const'] },
+      { t: '|', m: ['|'], k: 'operator', s: 'In a type: one of these. `string | null` is text or nothing; `"all" | "done"` is one of those two texts.', eg: 'owner: User | null;', see: ['type'] },
+      { t: 'Promise', k: 'type', s: 'A value that comes later: an async function gives back a Promise of what it returns, and await waits for it.', eg: 'async function load(): Promise<Note[]> {', see: ['void'] },
+      { t: 'export', k: 'keyword', s: 'Shares a name with other files, which bring it in with import. `export default` makes it the file\'s main part, brought in by any name.', eg: 'export default function App() {', see: ['import', 'as'] },
+      { t: 'import', k: 'keyword', s: 'Brings in what another file shares: `import App from "./App"` (its main part), `import { a, b } from …` (by name), `import "./index.css"` (the file, for what it does).', eg: 'import { useState } from "react";', see: ['export', 'as'] },
+    ],
+
+    /* ------------------------------------------------------------------ */
+    /* React and the Lovable stack (JSX in .tsx and .jsx, looked for first) */
+    /* ------------------------------------------------------------------ */
+    react: [
+      { t: 'useState()', m: ['useState'], k: 'React hook', s: 'Keeps a value between showings of a component: `const [count, setCount] = useState(0)`. Changing it with its setter shows the component again. Changing it directly does nothing on screen.', eg: 'const [count, setCount] = useState(0);', see: ['useEffect()', 'props'] },
+      { t: 'useEffect()', m: ['useEffect'], k: 'React hook', s: 'Runs steps after the component is shown: once (`[]`), or again whenever the values in its list change. A function it gives back is its clean-up. A missing value in the list is the usual bug.', eg: 'useEffect(() => { … }, [query]);', see: ['useState()', 'useRef()'] },
+      { t: 'useRef()', m: ['useRef'], k: 'React hook', s: 'Keeps a value (its `.current`) without showing the component again when it changes: often an element on the page, given with `ref={…}`.', eg: 'const inputRef = useRef<HTMLInputElement>(null);', see: ['useState()'] },
+      { t: 'useMemo()', m: ['useMemo'], k: 'React hook', s: 'Keeps a worked-out value and works it out again only when the values in its list change.', eg: 'const visible = useMemo(() => notes.filter(…), [notes]);', see: ['useEffect()'] },
+      { t: 'props', k: 'React word', s: 'What a component is given, like attributes on an element: `<Card title="Hi" />` gives Card a prop called title. A component reads them; it never changes them.', eg: 'function Card({ title, children }: CardProps) {', see: ['children', 'useState()'] },
+      { t: 'children', k: 'React word', s: 'The prop holding what was put inside a component: in `<Card>Hi</Card>`, children is "Hi".', eg: '{children}', see: ['props'] },
+      { t: 'className', k: 'JSX', s: 'The class attribute of HTML, in JSX (class is a JavaScript word). With Tailwind it holds the classes that style the element.', eg: '<div className="flex gap-2">', see: ['Tailwind', 'key'] },
+      { t: 'key', k: 'JSX', s: 'A name for each item shown from a list (in .map), so React can tell them apart when the list changes. Use something stable, like an id, not the item\'s place.', eg: '<li key={note.id}>', see: ['map()'] },
+      { t: 'onClick', m: ['onClick', 'onChange', 'onSubmit'], k: 'JSX', s: 'A function React runs when it happens: `onClick={save}` hands it save; `onClick={() => save()}` a little function that runs it. `onClick={save()}` runs save at once, every time the component is shown: a common bug.', eg: '<button onClick={() => setOpen(true)}>', see: ['useState()'] },
+      { t: 'Tailwind', m: ['twMerge', 'clsx'], k: 'Lovable stack', s: 'A CSS framework of small classes, each one style: `flex`, `p-4`, `text-sm`. IntuaCode says each in words: styled as flexible layout, space inside 4, text size sm.', eg: 'className="flex items-center gap-2"', see: ['className'] },
+      { t: 'supabase', m: ['supabase'], k: 'Lovable stack', s: 'The database and sign-in service Lovable apps use. `supabase.from("notes").select("*")` asks for every row of the notes table, and gives back `{ data, error }`.', eg: 'await supabase.from("notes").select("*")', see: ['useQuery()'] },
+      { t: 'useQuery()', m: ['useQuery', 'useMutation', 'useQueryClient', 'invalidateQueries'], k: 'Lovable stack', s: 'TanStack Query: useQuery loads data once and shares it, by its query key; useMutation makes a change and, when it works, marks queries out of date (invalidateQueries) so they load again.', eg: 'useQuery({ queryKey: ["notes"], queryFn: fetchNotes })', see: ['supabase'] },
+      { t: 'Route', m: ['Route', 'Routes', 'BrowserRouter', 'Link', 'useNavigate', 'useParams'], k: 'Lovable stack', s: 'react-router: a Route shows a component for an address (`path="/about"`); a Link goes there without reloading the page; useNavigate goes there from code; useParams reads the address\'s parts.', eg: '<Route path="/" element={<Index />} />', see: ['props'] },
+    ],
+
+    /* ------------------------------------------------------------------ */
     /* Sentence words with a special meaning                               */
     /* ------------------------------------------------------------------ */
     say: [
+      // TypeScript and React
+      { t: 'show:', m: ['show:'], k: 'React word', s: 'What a component shows, one thing per line under it: elements (a heading saying …), components (a Button), text in quotes, {values}. It becomes the component\'s return ( … ) in JSX.', eg: 'show:', see: ['keep', 'only if', 'together'], packs: ['web'] },
+      { t: 'keep', m: ['keep'], k: 'React word', s: 'A state: a value the component keeps between showings (useState). "change count to …" changes it, and the component is shown again.', eg: 'keep count, starting at 0', see: ['show:', 'whenever'], packs: ['web'] },
+      { t: 'whenever', m: ['whenever', 'first appears', 'goes away'], k: 'React word', s: 'An effect (useEffect): steps that run after the component is shown, once ("when Card first appears") or again whenever a value changes. "when Card goes away", inside it, is its clean-up.', eg: 'whenever query changes', see: ['keep'], packs: ['web'] },
+      { t: 'only if', m: ['only if'], k: 'React word', s: 'Shows what is under it only while the test is true ({test && …} in JSX).', eg: 'only if loading', see: ['show:', 'together'], packs: ['web'] },
+      { t: 'together', m: ['together'], k: 'React word', s: 'Several things shown as one, with nothing round them (a fragment, <> … </>).', eg: 'together', see: ['show:'], packs: ['web'] },
+      { t: 'styled as', m: ['styled as'], k: 'React word', s: 'Tailwind classes said in words, in order: styled as flexible layout, gap 2 is className="flex gap-2". A class with no words is in quotes.', eg: 'a block, styled as flexible layout, items centred', see: ['show:'], packs: ['web'] },
+      { t: 'shape', m: ['shape', 'define shape'], k: 'TypeScript word', s: 'The parts an object has and the type of each (an interface). Each part is a line under it: id is text, email is text, if any.', eg: 'define shape Note', see: ['assumed to be'], packs: ['web'] },
+      { t: 'assumed to be', m: ['assumed to be', 'for sure'], k: 'TypeScript word', s: '"x assumed to be a Note" tells TypeScript what x is (as); "(x for sure)" that it is there (a mark after the value). Neither is checked when the program runs.', eg: 'give back data assumed to be a list of Note', see: ['shape'], packs: ['web'] },
+      { t: 'shared', m: ['shared', 'main part'], k: 'TypeScript word', s: '"define shared …" lets other files bring it in (export); "define main …" or "share App as the main part" makes it the file\'s main part (export default).', eg: 'define shared component Card using title', see: ['shape'], packs: ['web'] },
       // websites
       { t: 'hero', k: 'web word', s: 'The big welcome area at the top of a page: a headline, a line about who or what this is, and one clear button. A designer\'s word; in HTML it\'s an ordinary section.', eg: 'add a section called hero', see: ['cta', 'section'], packs: ['web'] },
       { t: 'cta', m: ['cta', 'call to action'], k: 'web word', s: 'Call to action: the one button or link you most want visitors to press, such as "Sign up" or "See the menu".', eg: 'add a button called cta saying "See the menu"', see: ['hero', 'called'], packs: ['web'] },

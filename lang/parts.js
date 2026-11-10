@@ -71,6 +71,8 @@
       /^\s*(show|print|say|display|ask|draw|paint|fill|write on|put on the screen)\b/i, /\b(heading|paragraph|button|picture|image|photo|link|label|text box|input box|list item|menu|page|screen|window|dialog|title bar|sprite|icon|emoji)\b/i,
       /\b(click(ed|s)?|press(ed|es)?|tap(ped)?|typed|hover(ed)?|scroll(ed)?)\b/i, /\bturn (pin \w+|the \w+ light|\w*led\w*) (on|off)\b/i, /\b(beep|sound|tone|play|music)\b/i,
       /^\s*add (a|an|the) (heading|box|button|picture|image|paragraph|link|list|input|text|row|column|card|menu|form|table)\b/i, /^\s*make (it|the \w+|everything|\w+) (look|bigger|smaller|bold|red|blue|green|centred|centered|rounded|hidden|visible)\b/i,
+      // React in sentences: a component, what it shows, its elements and styles
+      /^\s*(?:define (?:shared |main )?component\b|(?:shared )?constant \w+ is a component\b|show:\s*$|together\s*$|only if\b)/i, /^\s*an? (?:[a-z]+ )?[A-Z]\w*(?:\s+saying\b|,|$)/, /\b(?:styled as|saying)\b/i,
       /\b(style|styles|theme|layout|colour|color|font|shadow|rounded corners)\b/i,
     ],
     mechanics: [
@@ -94,6 +96,8 @@
       /^\s*set [\w ]+ to (-?\d+(\.\d+)?|"[^"]*"|'[^']*'|true|false|yes|no|LED_BUILTIN|A\d|D\d+)\s*$/i,
     ],
     data: [
+      // the shape of the data: TypeScript's shapes and type names, in sentences
+      /^\s*define (?:shared )?(?:shape|type)\b/i, /^\s*(?:read-only\s+)?\w+ is (?:text|a number|true or false|an? [A-Z]\w*|a list of \w+)(?:, if any)?\s*$/,
       /^\s*["'][^"']*["']\s*,?\s*$/, /^\s*-?\d+(\.\d+)?\s*,?\s*$/, /^\s*[{[]\s*$/, /^\s*["'][\w -]+["']\s*:\s*("[^"]*"|-?\d+(\.\d+)?|true|false|null)\s*,?\s*$/,
     ],
   };
@@ -109,6 +113,8 @@
     if (blankLine(line) || isComment(line)) return s;
     // bringing in a library is setup, whatever the library is for
     if (/^\s*(import\s|from\s+\S+\s+import\b|#include\b|(const|let|var)\s+[\w${}\s,]+=\s*require\(|using\s|use\s|package\s|@import\b)/.test(line)) return { setup: 5 };
+    // the shape of the data (TypeScript's shapes and type names, in sentences) is data, whatever uses it
+    if (/^\s*define (?:shared )?(?:shape|type)\b/i.test(line)) return { data: 5 };
     // so is a page's head: its title, language and links
     if (/^\s*(head\s*:|page title is|page language|no page language|leave out the (?:viewport|character set|doctype)|no doctype|no title|<(head|meta|link|title|base)\b)/i.test(line)) return { setup: 5 };
     for (const [type, list] of Object.entries(SIGNS)) {

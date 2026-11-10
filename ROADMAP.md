@@ -29,6 +29,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 9 | A toolkit: projects as file trees in many languages (Markdown, data and 30+ languages as code beside the sentence languages), the Library of parts and kinds of project with Coding integration, steps added by hand to the project map, Read mode for every installed grammar, and a writer audit that refuses two-reading English instead of guessing | done (2026-11-04) |
 | 10 | Unity mode: the project in one pane (the same files as Write, the Library included); select a region and **Translate to Plain Language Syntax** it into sentences in place (shown dark green), edit it, and **Original Code** puts it back into the code | done (first version: the six sentence languages) |
 | 11 | Unity first, Split Mode beside it (Read mode folded in: imported code becomes the project's files); parts by type (Interface & Display, Backend & Mechanics, Setup & Settings, Data & Notes) and by language, with two buttons that show one side of the project; Project Link: the code behind what's in use in the preview, in pink; Predictive Mode in Unity and from the Library | done (first version) |
+| 12 | React and TypeScript as sentence languages: `.ts`, `.tsx` (and React in `.jsx`/`.js`) translatable in Unity and editable in Split Mode, checked exact with types counted; components, state, effects and JSX in words; the Lovable stack (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) as phrase packs | done (first version, 2026-11-10; running React in the Preview not yet) |
 
 The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
@@ -93,7 +94,27 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 - Desktop: Visual Studio's `cl` (found with vswhere) on Windows; MSVC error messages map to
   sentences like g++'s. Tests drive the real app on Linux and Windows in GitHub Actions.
 
+### Step 12 notes
+
+- `lang/ts_write.js` is a dialect of the JavaScript writer (its `ext` hook); `lang/ts_convert.js` of the
+  JavaScript reader. Every Mechanics sentence means the same in TypeScript. Exact lines are `ts:` and `tsx:`.
+- Counted as the same, on top of JavaScript's: `(x) =>` and `x =>` for an input with no type, default or `?`;
+  `;` and `,` between a shape's parts; JSX as React reads it (texts as JSX keeps them, character references
+  read, `<X></X>` and `<X />`). Everything else counts: types, generics, `as`, `!`, `?`, `readonly`,
+  `import type`, `export`, the order of props, `{" "}` against a space. The must-differ pairs in
+  `tests/convert.test.mjs` cover each.
+- Still exact code (said as code inside a sentence, or kept as `ts:`/`tsx:` lines): generic functions, enums,
+  method and index signatures, a props type written inline (`{ children }: { children: ReactNode }`),
+  `createContext<T>(…)`, `useCallback`, a `useMemo` or `useState` with a function, a handler with several steps
+  written in place, an element as a prop's value (other than a Route's), `a?.b()` calls.
+- Corpus (`tests/corpus_react/`, a Lovable-style notes app) and a held-out set (`tests/heldout_react/`, written after
+  the rules): see the table below. `tests/react-packs.test.mjs` takes the corpus through Unity as a project: every
+  file translated, put back byte for byte, and an edit written in its file's context and checked exact.
+
 ## What could come next
+
+- Running a React app in the Preview: a bundler or transpiler in the page (esbuild-wasm, say), a new dependency
+  and a decision for the owner. The desktop Preview's local address (PR #32) would serve its files.
 
 - More of the web into words: forms with names, `hidden` elements, listeners on saved
   elements (`const form = …; form.addEventListener`), multi-file C++ projects with headers.
@@ -102,7 +123,8 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 
 ## The number we track
 
-`npm run coverage` reports, for the corpus in `samples/` and `tests/corpus/`:
+`npm run coverage` reports, for the corpus in `samples/` and `tests/corpus/` (and, for TypeScript and React,
+`tests/corpus_react/` and `tests/heldout_react/`):
 
 - **in words**: the share of statements (excluding imports) that read as sentences rather
   than `python:` lines;
@@ -117,6 +139,7 @@ before each measurement.
 | 2026-09-29 baseline | 43% (130/304) | 18/18 | – | – |
 | 2026-09-29 after step 2 | 98% (297/304) | 18/18 | 87% on first sight, one exactness bug found; 96% after fixes | 5/5 |
 | 2026-09-30 after the audit (docstrings now count as statements) | 98% (306/313) | 18/18 | 96% (120/125) | 5/5 |
+| 2026-11-10 TypeScript and React (`tests/corpus_react`, `tests/heldout_react`) | 99% (197/199) | 13/13 | 89% (219/247) on first sight; 89% (220/247) after one fix | 8/8 |
 
 The app has a safety net: if converting a file to sentences ever isn't exact, the
 statements that differ are kept as `python:` lines automatically and the check runs again.
@@ -132,5 +155,5 @@ statements that differ are kept as `python:` lines automatically and the check r
 4. **The "new language" trap.** Sentences can become a dialect of their own. Mitigation:
    real code always visible; sentences can be faded out as people learn.
 5. **Language differences.** HTML and CSS fit sentences well; JavaScript in practice means
-   React/TypeScript; C++ is hardest and is scheduled last.
+   React/TypeScript (sentences since step 12); C++ is hardest and is scheduled last.
 6. **Browser limits.** No real servers, packages or file system. Mitigation: the desktop app (step 4).

@@ -978,5 +978,60 @@
     return r;
   }
 
-  root.IntuiTs = { compileTs, typeTs, paramTs, ext: extFor, tailwindWords, tailwindClasses };
+  /* ---------- Phrase picker and Index content ---------- */
+
+  const T = (group, pattern, code2, tip) => ({ group, pattern, py: code2, tip, sections: ['typescript'] });
+  const TEMPLATES = [
+    T('Types', 'set ‹total› (‹a number›) to ‹0›', 'let total: number = 0;', 'A name made with set or constant can say its type in brackets: a number, text, true or false, a list of ‹Note›, a ‹User› or nothing.'),
+    T('Types', 'define ‹add› using ‹a› (‹a number›), ‹b› (‹text, if any›) giving back ‹a number›', 'function add(a: number, b?: string): number {', '"if any": an input that can be left out (?). "giving back …": the type of what it gives back.'),
+    T('Types', 'constant ‹handle› is a tool using ‹e› (‹a React.FormEvent›)', 'const handle = (e: React.FormEvent) => {', 'A little tool with typed inputs; its steps go under it.'),
+    T('Types', 'define shape ‹Note›', 'interface Note {', 'Its parts go under it, one per line: id is text, read-only created is a Date, email is text, if any. "based on ‹Base›" builds on another shape.'),
+    T('Types', 'define type ‹Filter› as ‹"all" or "done"›', 'type Filter = "all" | "done";', '"define type ‹Props› as a shape", with its parts under it, names an object type.'),
+    T('Types', '‹data› assumed to be ‹a list of Note›', 'data as Note[]', 'Tells TypeScript what the value is. Nothing checks it when the program runs.'),
+    T('Types', '(‹el› for sure)', 'el!', 'Tells TypeScript the value is there (not null or undefined).'),
+    T('Files', 'bring in ‹App› (the main part) from "‹./App›"', 'import App from "./App";', 'Also: bring in everything from "‹react›" as ‹React›; bring in ‹Toaster› as ‹Sonner› from …; bring in "‹./index.css›"; bring in the type ‹Note› from ….'),
+    T('Files', 'define shared ‹formatDate› using ‹iso› (‹text›)', 'export function formatDate(iso: string) {', '"shared" lets other files bring it in; "main" makes it the file\'s main part (export default). Also: shared constant …, share ‹a› and ‹b›, share ‹App› as the main part.'),
+    T('Components', 'define component ‹Card› using ‹title› and ‹children› from ‹CardProps›', 'function Card({ title, children }: CardProps) {', 'What it shows goes under "show:". "define main component ‹App›" is the file\'s main part.'),
+    T('Components', 'constant ‹Index› is a component', 'const Index = () => {', 'Add ", showing:" for one that only shows something, with what it shows under it.'),
+    T('Components', 'show:', 'return ( … );', 'What the component shows, one thing per line, indented under it.'),
+    T('State', 'keep ‹count›, starting at ‹0›', 'const [count, setCount] = useState(0);', 'Its type in brackets: keep ‹notes› (a list of Note), starting at an empty list. ", changed with ‹setX›" when the setter has another name.'),
+    T('State', 'change ‹count› to ‹count plus 1›', 'setCount(count + 1);', '"change ‹count› from ‹c› to ‹c plus 1›" works from its value at the time: setCount((c) => c + 1).'),
+    T('State', 'keep a reference ‹box› (to ‹an HTMLDivElement›), starting at nothing', 'const box = useRef<HTMLDivElement>(null);', 'Give it to an element with: with ref {‹box›}.'),
+    T('State', 'constant ‹visible› is ‹…›, worked out again whenever ‹notes› changes', 'const visible = useMemo(() => …, [notes]);', ''),
+    T('State', 'take ‹toast› from the result of ‹useToast›', 'const { toast } = useToast();', '"take ‹data› as ‹notes› (or an empty list) and ‹isLoading› from …" renames a part and gives its value when it is missing.'),
+    T('Effects', 'when ‹Card› first appears', 'useEffect(() => { … }, []);', 'The steps under it run once, after the component is first shown.'),
+    T('Effects', 'whenever ‹query› changes', 'useEffect(() => { … }, [query]);', '"whenever ‹a› or ‹b› changes" for several.'),
+    T('Effects', 'when ‹Card› goes away', 'return () => { … };', 'Inside an effect: its clean-up. One step can go after a comma.'),
+    T('Show', '‹a heading› saying "‹Hi {name}›"', '<h2>Hi {name}</h2>', 'Any element\'s words (a block, a paragraph, a button, a list item, a link to "/") or a component by name: a ‹Button›.'),
+    T('Show', '‹a Button› saying "‹Save›", running ‹save› when clicked', '<Button onClick={save}>Save</Button>', 'Settings go after commas, in order: styled "…", keyed by …, with ‹name› "…" or {…}, with everything in ‹props›.'),
+    T('Show', '‹a button›, when clicked: change ‹open› to ‹true›', '<button onClick={() => setOpen(true)} />', '"when changed with ‹e›: change ‹title› to ‹e.target.value›" names the event.'),
+    T('Show', 'only if ‹loading›', '{loading && …}', 'What shows only while it is true goes under it.'),
+    T('Show', 'if ‹done›', '{done ? … : …}', 'Then "otherwise" at the same indent; "nothing" under either side shows nothing.'),
+    T('Show', 'for each ‹note› in ‹notes›', '{notes.map((note) => …)}', 'Give what it shows a key: keyed by ‹note.id›. Add ", counting with ‹i›" for its place.'),
+    T('Show', 'together', '<> … </>', 'Several things shown as one.'),
+    T('Show', '{‹title›}', '{title}', 'A value on its own line. "a space" is {" "}.'),
+    T('Packs', 'styled as ‹flexible layout, items centred, gap 2›', 'className="flex items-center gap-2"', 'Tailwind classes in words, in order. A class with no words is written in quotes: "hover:bg-accent".'),
+    T('Packs', 'a ‹ghost› ‹Button›', '<Button variant="ghost">', 'A shadcn/ui component\'s variant, before its name.'),
+    T('Packs', 'a Route for "‹/about›" showing an ‹About›', '<Route path="/about" element={<About />} />', 'react-router. A link in the app: a Link to "‹/about›".'),
+    T('Packs', 'every row of the "‹notes›" table in ‹supabase› sorted by "‹created_at›" from the end', 'supabase.from("notes").select("*").order("created_at", { ascending: false })', 'Also: adding ‹note› to …, changing ‹{ done }› in …, deleting from …; then where "‹id›" is ‹id›, at most ‹10›, as a single row.'),
+    T('Packs', 'wait for ‹…›, and take ‹data› and ‹error› from it', 'const { data, error } = await …;', ''),
+    T('Packs', 'give back the query ‹["notes"]› loaded by ‹fetchNotes›', 'return useQuery({ queryKey: ["notes"], queryFn: fetchNotes });', 'TanStack Query.'),
+    T('Packs', 'give back a change made by ‹addNote›', 'return useMutation({ mutationFn: addNote, … });', 'Under it: "when it works" and "when it fails", each with its steps.'),
+    T('Packs', 'mark the query ‹["notes"]› in ‹queryClient› as out of date', 'queryClient.invalidateQueries({ queryKey: ["notes"] });', ''),
+    T('Packs', 'fail with ‹error› as it is', 'throw error;', '"fail with "…"" makes a new error: throw new Error(…).'),
+    T('Packs', 'show an ‹App› in (the element called "‹root›" for sure)', 'createRoot(document.getElementById("root")!).render(<App />);', 'Where a React app starts.'),
+  ];
+  const WORDS = [['a number', 'number'], ['text', 'string'], ['true or false', 'boolean'], ['anything', 'any'], ['something unknown', 'unknown'], ['a list of Note', 'Note[]'], ['a User or nothing', 'User | null'],
+    ['"all" or "done"', '"all" | "done"'], ['a Promise of nothing', 'Promise<void>'], ['a Record of text and a number', 'Record<string, number>'], ['a tool using id (text) giving back nothing', '(id: string) => void'],
+    ['name (text, if any)', 'name?: string'], ['inputs (the rest, a list of X)', '...inputs: X[]'], ['read-only id is text', 'readonly id: string;'], ['data assumed to be a Note', 'data as Note'], ['(el for sure)', 'el!'],
+    ['shared', 'export'], ['main', 'export default'], ['styled as …', 'className="…" (Tailwind)'], ['keyed by note.id', 'key={note.id}'], ['with everything in props', '{...props}'], ['a space', '{" "}'], ['together', '<>…</>'],
+    ['running save when clicked', 'onClick={save}'], ['when open changes', 'onOpenChange'], ['nothing (under if / otherwise)', 'null']];
+  const GUIDE = {
+    name: 'TypeScript', purpose: 'TypeScript is JavaScript with types: it says what kind of value each name holds, and a checker finds mistakes before the program runs. React builds pages from components: tools that give back what to show (JSX, elements like HTML with {values} in them).',
+    rules: [['Types say what a name holds', 'set total (a number) to 0. The checker stops text going where a number belongs.'], ['Shapes', 'define shape Note lists the parts an object has, one per line.'], ['Components show things', 'A component\'s "show:" is what it puts on the page; React shows it again when its props or state change.'], ['State', 'keep count, starting at 0 keeps a value between showings; change count to … shows the change.'], ['Effects', '"when Card first appears" and "whenever query changes" run steps after the page is shown.']],
+    section: 'A TypeScript file, in sentences. Every Mechanics (JavaScript) sentence works here too; exact lines start with ts: (tsx: in a .tsx file).',
+  };
+  const OPENS_BLOCK = new RegExp(String.raw`^\s*(?:define (?:shared |main )?(?:component|shape) |define (?:shared )?type \S+ as a shape|constant \S+ is a component|show:?\s*$|when \S+ (?:first appears|goes away)\s*$|whenever .+ changes|give back a change made by |when it (?:works|fails)\s*$|only if |together\s*$)|` + root.IntuiWeb.OPENS_BLOCK.source, 'i');
+
+  root.IntuiTs = { compileTs, typeTs, paramTs, ext: extFor, tailwindWords, tailwindClasses, TEMPLATES, WORDS, GUIDE, OPENS_BLOCK };
 })(typeof window !== 'undefined' ? window : globalThis);
