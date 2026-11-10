@@ -2477,6 +2477,8 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `"Hi " plus name` | `"Hi " + name` |
 | `square root of x` | `std::sqrt(x)` |
 | `absolute value of x` | `std::abs(x)` |
+| `a to the power of b` | `std::pow(a, b)` |
+| `x is between 1 and 5` | `x >= 1 && x <= 5` |
 
 ### Arduino
 
@@ -2577,5 +2579,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `the result of f with a, b` | `f(a, b)` |
 | `t as a whole number` | `(int)t` |
 | `square root of x` | `sqrt(x)` |
+| `a to the power of b` | `pow(a, b)` |
+| `x is between 1 and 5` | `x >= 1 && x <= 5` |
 
 <!-- index:end -->

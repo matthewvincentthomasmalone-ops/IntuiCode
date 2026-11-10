@@ -156,7 +156,8 @@
         keep(line.slice(k, end + 1)); k = end; continue;
       }
       if (c === "'" && !wordChar(line[k - 1])) {
-        const end = closeAt(k + 1, j => line[j] === "'");
+        // it ends at a ' that isn't an apostrophe inside a word ('It's here')
+        const end = closeAt(k + 1, j => line[j] === "'" && (j === k + 2 || !(wordChar(line[j - 1]) && wordChar(line[j + 1]))));
         if (end < 0) { plain += c; continue; }
         keep(single(line.slice(k + 1, end))); k = end; continue;
       }
@@ -193,9 +194,20 @@
     let t = segs.map(([s, q], i) => (q ? String.fromCharCode(0xE000 + i) : s)).join('');
     const sentenceStart = (t.match(/^\s*/)[0] + (t.trim().match(FILLER) || [''])[0]).length;
     t = t.replace(/[×÷≤≥≠−]/g, (c) => { add(notes, `${c} is written \`${SYMBOLS[c]}\` in C++.`); return SYMBOLS[c]; });
+    // => and =< are >= and <=; <> is != (as other languages write them)
+    t = t.replace(/\s*(=>|=<|(?<=\s)<>(?=\s))\s*/g, (m, op) => { const to = { '=>': '>=', '=<': '<=', '<>': '!=' }[op]; add(notes, `\`${op}\` is written \`${to}\` in C++.`); return ` ${to} `; });
+    // "set x = 5" is "set x to 5"
+    t = t.slice(0, sentenceStart) + t.slice(sentenceStart).replace(/^((?:set|let)\s+[^=<>!]+?)\s*=(?!=)\s*(?=\S)/i, '$1 to ');
+    // a ; at the end: the sentence becomes a C++ line that has its own
+    t = t.replace(/\s*;+\s*$/, () => { add(notes, 'A sentence needs no ; at the end: the C++ line gets its own.'); return ''; });
     // money: $5 is 5 (and $1,000 is 1000, even in a list)
     t = t.replace(/(?<![\w.])([-+]?)[$€£¥](\d+(?:,\d{3})*(?:\.\d+)?)(?!\w|[,.]\d)/g, (m, sign, n) => {
       const v = sign.replace('+', '') + n.replace(/,/g, '');
+      add(notes, `C++ numbers have no currency sign, so ${m.trim()} is written ${v}. (Text like "${m.trim()}" shows it.)`);
+      return v;
+    });
+    t = t.replace(/(?<![\w.,])(-?\d+(?:,\d{3})*(?:\.\d+)?)\s?[$€£¥](?!\w)/g, (m, n) => {
+      const v = n.replace(/,/g, '');
       add(notes, `C++ numbers have no currency sign, so ${m.trim()} is written ${v}. (Text like "${m.trim()}" shows it.)`);
       return v;
     });
@@ -520,6 +532,26 @@
     swap(String.raw`\bsquare root of (${inBrackets}|OPD)`, maths('sqrt'));
     if (/\babsolute value of\b/i.test(q)) note(inf, '`abs` is the value without its minus sign: -3 becomes 3.');
     swap(String.raw`\babsolute value of (${inBrackets}|OPD)`, maths('abs'));
+    // "x to the power of 2": std::pow (pow on a board). ^ and ** aren't powers in C++: ^ is exclusive-or on bits
+    const unbracket = (a) => (/^\(/.test(a) ? a.slice(1, -1).trim() : a);
+    swap(String.raw`(${inBrackets}|OPD) to\s+(?:the\s+)?power\s+of (${inBrackets}|OPD)`, (m, a, b) => {   // ("the" is gone by now)
+      if (!x.arduino) x.needs.add('cmath');
+      note(inf, `\`${x.arduino ? 'pow' : 'std::pow'}(a, b)\` is a to the power of b, as a decimal.`);
+      return `${x.arduino ? '' : 'std::'}pow(${unbracket(a)}, ${unbracket(b)})`;
+    });
+    // (x^2 written as in maths is a power, so it is an error; n ^ 3 with spaces is C++'s exclusive-or, with a note)
+    for (const m of q.matchAll(R(String.raw`(OPD)(\s*)(\^|\*\*)(\s*)(OPD)`))) {
+      const [a, op, b] = [m[1], m[3], m[5]].map(v => v.replace(/⟦(\d+)⟧/g, (_, k) => strs[+k]));
+      const xor = `In C++, ^ is exclusive-or on bits (2 ^ 3 is 1), not a power. For a power, say "${a} to the power of ${b}".`;
+      if (op === '^' && m[2] && m[4]) { note(inf, xor); continue; }
+      const e = op === '^' ? xor : `C++ has no ** for a power. Say "${a} to the power of ${b}".`;
+      if (!inf.errs.includes(e)) inf.errs.push(e);
+    }
+    // "x is between 1 and 5" includes both ends; "is not between" is outside them
+    swap(String.raw`(OPD) is (not )?between (OPD) and (OPD)`, (m, v, not, a, b) => {
+      note(inf, '"between" includes both ends: `>=` the first and `<=` the second.');
+      return not ? `(${v} < ${a} || ${v} > ${b})` : `${v} >= ${a} && ${v} <= ${b}`;
+    });
     // "random number from 1 to n plus 1": a number up to n, then plus 1, or up to n plus 1?
     for (const m of q.matchAll(R(String.raw`\brandom (?:whole )?number (?:from|between) (OPD) (?:to|and) (OPD)`))) {
       const after = q.slice(m.index + m[0].length).match(/^\s+(plus|minus|times|divided by|mod)\b/i);
@@ -1219,7 +1251,8 @@
       // --- Arduino: pins, time, sound, serial monitor
       if (A) {
         const pin = (p) => (/^(?:the )?built-?in (?:light|led)$/i.test(p.trim()) ? 'LED_BUILTIN' : E(p.replace(/^pin\s+/i, ''), inf));
-        if ((m = M(/^(?:make|set)\s+(?:pin\s+)?(.+?)\s+(?:an?|as(?:\s+an?)?)\s+(output|input)(\s+with (?:a )?pull-?up)?$/i))) {
+        // (and "make pin 13 output", without the "an")
+        if ((m = M(/^(?:make|set)\s+(?:pin\s+)?(.+?)\s+(?:an?|as(?:\s+an?)?)\s+(output|input)(\s+with (?:a )?pull-?up)?$/i)) || ((m = M(/^make\s+(?:pin\s+)?(.+?)\s+(output|input)(\s+with (?:a )?pull-?up)?$/i)) && !/\s(?:to|be)\s/i.test(m[1]))) {
           const mode = /output/i.test(m[2]) ? 'OUTPUT' : m[3] ? 'INPUT_PULLUP' : 'INPUT';
           note(inf, `\`pinMode\` sets a pin up as ${mode === 'OUTPUT' ? 'an output (the board sends power out, e.g. to an LED)' : mode === 'INPUT_PULLUP' ? 'an input with the built-in pull-up: it reads HIGH until a button connects it to ground' : 'an input (the board reads it, e.g. a button)'}.`);
           return say(`pinMode(${pin(m[1])}, ${mode});`);
@@ -1510,6 +1543,12 @@
       }
       if ((m = M(/^(?:set|let|make)\s+([A-Za-z_]\w*)\s+(?:to|be)\s+(.+)$/i))) {
         if (/^(?:nothing|none)$/i.test(m[2].trim())) { inf.errs.push(`A plain value in C++ always holds something, so it can't be set to nothing. Use 0, empty text (""), or a yes/no value like "set ${m[1]} to no".`); return; }
+        // "set nums to [1, 2, 3]" (as in Python or JavaScript): a C++ list is made with its own sentence
+        if (/^\[.*\]$/.test(m[2].trim()) && !isDeclared(m[1])) {
+          const items = m[2].trim().slice(1, -1).trim();
+          inf.errs.push(`A list in [square brackets] isn't a C++ value. Make it with: make a list called ${m[1]}${items ? ` with ${items}` : ''}.`);
+          return;
+        }
         const v = E(m[2], inf);
         return say(declare(m[1], isDeclared(m[1]) ? x.types[m[1]] : exprType(v, x), inf, v));
       }
@@ -1683,8 +1722,8 @@
     purpose: 'Arduino is C++ for small boards that switch lights, read buttons and sensors, drive motors and make sounds. A sketch has two parts: setup(), which runs once when the board powers on, and loop(), which runs again and again until the power goes off.',
     rules: [['Two parts', 'setup() runs once; loop() repeats forever. There is no main.'], ['Pins', 'Each pin is set up as an input or an output first, then turned on (HIGH) or off (LOW), or read.'], ['Waiting', 'delay() pauses everything. For doing two things at once, compare millis() instead.'], ['Tiny memory', 'An Uno has 2 KB of memory. Lists have a fixed size, and text is kept short.'], ['Upload, then watch', 'The sketch is compiled and copied onto the board. show sends lines back to the serial monitor.']],
   };
-  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)'], ['the result of f with a, b', 'f(a, b)'], ['(the result of f with a) times 2', 'f(a) * 2'], ['x as a decimal', 'static_cast<double>(x)'], ['"Hi " plus name', '"Hi " + name'], ['square root of x', 'std::sqrt(x)'], ['absolute value of x', 'std::abs(x)']];
-  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)']];
+  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)'], ['the result of f with a, b', 'f(a, b)'], ['(the result of f with a) times 2', 'f(a) * 2'], ['x as a decimal', 'static_cast<double>(x)'], ['"Hi " plus name', '"Hi " + name'], ['square root of x', 'std::sqrt(x)'], ['absolute value of x', 'std::abs(x)'], ['a to the power of b', 'std::pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
+  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)'], ['a to the power of b', 'pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
   const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board|it is |it's )|over and over|again and again|at the start|depending on |do this)/i;
 
   const api = { compileCppProject, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };

@@ -3368,6 +3368,14 @@
         {
           "say": "absolute value of x",
           "becomes": "std::abs(x)"
+        },
+        {
+          "say": "a to the power of b",
+          "becomes": "std::pow(a, b)"
+        },
+        {
+          "say": "x is between 1 and 5",
+          "becomes": "x >= 1 && x <= 5"
         }
       ]
     },
@@ -4056,6 +4064,14 @@
         {
           "say": "square root of x",
           "becomes": "sqrt(x)"
+        },
+        {
+          "say": "a to the power of b",
+          "becomes": "pow(a, b)"
+        },
+        {
+          "say": "x is between 1 and 5",
+          "becomes": "x >= 1 && x <= 5"
         }
       ]
     }
