@@ -56,7 +56,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       list on the left): the original comes back.
 - [ ] Build a game from Project Templates (Games): it plays in the preview with the keys or a tap.
 - [ ] The corner button on the sentences, the code and the terminal: each fills the work area; Esc comes back.
-- [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
+- [ ] **Hide explanation**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
 
 **Project map: ticks, and Hand to my AI** (in Unity, then again in Split Mode)
@@ -111,7 +111,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Unity**: the project's tree, its Parts and Problems are on the left, and the open file shows with its
       sentences in green. Click another file in the tree: it opens in Unity. Split Mode shows the same file.
 - [ ] Under the pane is the help, as in Split Mode: on a green line, the sentence and the code it makes; on a code line,
-      its terms and the part it's in. **Hide help** folds it away; Show help brings it back.
+      its terms and the part it's in. **Hide explanation** folds it away; Show explanation brings it back.
 - [ ] In Unity, Library → a Python part → Add to the project: the new file opens in Unity, in green.
 - [ ] **Import** (beside + File) → Choose files → a small `.py` file: it's added to the project as code. Select lines 4–6 (inside a `def`): a
       **Translate to Plain Language Syntax** button appears over the selection; press it. Those lines become sentences
@@ -247,6 +247,13 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Help**: **Tutor** turns the Tutor on and off (Help shows a dot while it's on); in Split Mode, **Explain the
       words here** opens the words explained, as Ctrl+H does (Unity doesn't show it); below, the Index.
 - [ ] Type a sentence IntuaCode doesn't know: its problem says to open the Index (in Help).
+
+### The opening screen
+
+- [ ] In a new private window: **Code you can read is code you control** opens over the Landing page, with
+      **Bring in code** (opens Import, whose button says **Bring it in**), **Start something new** (opens New project)
+      and **Look around first** (or Esc). Reload: it doesn't come back.
+- [ ] The strip under the windows says **Hide explanation** / **Show explanation**, so it isn't mistaken for Help.
 
 ## 3. Things that are known not to work yet
 

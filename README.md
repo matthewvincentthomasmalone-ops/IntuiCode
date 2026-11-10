@@ -63,6 +63,9 @@ when copy is clicked
         set the text of copied to "Select it and copy it yourself."
 ```
 
+A first visit opens on **Code you can read is code you control**, with two ways in: **Bring in code** (Import) and
+**Start something new** (New project), or **Look around first** at the Landing page behind it. It comes up once.
+
 **Menu → New project** is where every project starts: from a template, planned step by step, or empty (a website
 first). **Help** (top right) holds the Tutor's switch, **Explain the words here** (Ctrl+H) and the Index of every
 sentence.
@@ -220,7 +223,7 @@ them. In the browser, **Take ticks from a tasks.md…** reads one you choose. On
 unticked there never unticks a step, and tasks the AI added of its own are left alone.
 
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
-before the next step›`). With the cursor on it, the help under the windows says what kind of thing to write
+before the next step›`). With the cursor on it, the explanation under the windows says what kind of thing to write
 (a number, a calculation, a test that's true or false…), how to work it out from the names the program
 already has, and, behind **Show an example**, an answer that works, with **Put it in**. Tab selects the next
 ‹blank›; Problems lists the ones left, and clicking one selects it. Kit authors write these as `blank:` lines
@@ -238,7 +241,7 @@ packs in `lang/kits/`.
 **Full screen:** the corner button on the sentences, the code and the terminal makes that window fill the
 work area; the same button, or Esc, brings the others back.
 
-**More room:** **Hide help** (top right of the help under the windows) folds it into a slim bar, and the
+**More room:** **Hide explanation** (top right of the explanation under the windows) folds it into a slim bar, and the
 chevron in the terminal's header folds the terminal down to that header. Drag the terminal's top edge to
 make it taller or shorter (double-click it for the usual size). Run, and a program asking for input, bring
 the terminal back; while it's folded, a dot on its tab says there's something new. IntuaCode remembers how
@@ -335,7 +338,7 @@ shown there (a line no sentence can say stays as exact code, and the terminal sa
 are code again: exactly as they were if nothing changed in Split Mode, or written from the sentences as edited.
 
 The **help** under the pane is Split Mode's help: on a green line, the sentence and the code it makes, its
-shape and its words; on a line of code, the terms in it and the part it belongs to. **Hide help** folds it
+shape and its words; on a line of code, the terms in it and the part it belongs to. **Hide explanation** folds it
 away. **Predictive Mode** works in green parts as it does in Split Mode: the rest of the sentence shows dim
 after the cursor (→ takes it, Ctrl+→ one word). **Copy** copies the file's code, what Run uses.
 

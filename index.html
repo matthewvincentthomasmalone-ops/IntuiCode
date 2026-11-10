@@ -1,5 +1,5 @@
 <title>IntuaCode</title>
-<meta name="description" content="Write Python as sentences and blueprints, or import existing code and read it in plain English.">
+<meta name="description" content="Read, check and change code in plain sentences, and get exact code back: websites, React and TypeScript, Python, C++ and more.">
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="app.css">
 
@@ -24,7 +24,7 @@
     <div class="bar-actions">
       <span class="folder-name" id="folderName" hidden></span>
       <div class="menu" id="fileMenu">
-        <button type="button" id="btnFile" class="btn ghost menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList" title="File, Project Templates and Library"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Menu</button>
+        <button type="button" id="btnFile" class="btn ghost menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList" title="New project, open and save, add files and pictures, Project Templates, the Library, and About"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Menu</button>
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
           <div class="menu-h" aria-hidden="true">File</div>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
@@ -157,7 +157,7 @@
       </section>
 
       <div class="explain-wrap" id="explainWrap">
-        <button type="button" class="dock-btn" id="btnHelpDock" aria-expanded="true" aria-controls="explain" title="Hide the help under the windows, for more room"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Hide help</span></button>
+        <button type="button" class="dock-btn" id="btnHelpDock" aria-expanded="true" aria-controls="explain" title="Hide the explanation under the windows, for more room"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Hide explanation</span></button>
         <section class="explain" id="explain" aria-live="polite"></section>
       </div>
       <section class="term" id="term" aria-label="Terminal">
@@ -169,7 +169,7 @@
           </div>
           <span class="py-status" id="pyStatus">Python not loaded</span>
           <button type="button" class="btn small term-btn link-btn" id="btnLink" aria-pressed="true" hidden title="Project Link: as you use the page here, the code behind what you're pointing at, clicking or typing in lights up pink: in the editor, in Project and in Parts. It works on pages IntuaCode serves in the Preview, not on a site on its own domain."><span class="link-dot" aria-hidden="true"></span>Project Link</button>
-          <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
+          <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click something in the page to put its name in your sentence. Hold Alt to pick a position instead.">Pick from the page</button>
           <button type="button" class="btn small term-btn" id="btnStop" hidden>Stop</button>
           <button type="button" class="btn small term-btn" id="btnClear">Clear</button><button type="button" class="btn small term-btn dock-term" id="btnTermDock" aria-expanded="true" aria-controls="termBody previewWrap" title="Hide the terminal, for more room" aria-label="Hide the terminal"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="btn small term-btn max-btn" data-max="term" aria-pressed="false" title="Full screen: the terminal (Esc to come back)" aria-label="Full screen: the terminal"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
@@ -423,12 +423,25 @@
     </div>
   </div>
 
+  <!-- The opening screen, on a first visit: the two ways in. The Landing page website is open behind it. -->
+  <div class="modal" id="welcomeModal" hidden>
+    <div class="modal-card welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" aria-describedby="welcomeLead">
+      <h2 id="welcomeTitle">Code you can read is code you control.</h2>
+      <p id="welcomeLead">IntuaCode says any part of a program in plain sentences, right where it is, and turns your changes back into exact code. Every translation is checked, never guessed.</p>
+      <div class="welcome-ways">
+        <button type="button" class="welcome-way primary" id="welcomeImport"><b>Bring in code</b><span>A folder, a .zip or pasted code, such as an app an AI built for you. Read it, check it, make it yours.</span></button>
+        <button type="button" class="welcome-way" id="welcomeNew"><b>Start something new</b><span>From a template, planned step by step, or empty, written in plain sentences.</span></button>
+      </div>
+      <p class="welcome-alt"><button type="button" class="linklike" id="welcomeLook">Look around first</button>: a small website is open behind this, ready to read and change.</p>
+    </div>
+  </div>
+
   <div class="modal" id="impModal" hidden>
     <div class="modal-card" id="impCard" role="dialog" aria-modal="true" aria-labelledby="impTitle">
       <div class="modal-h">
         <div>
           <h2 id="impTitle">Import code</h2>
-          <p>Bring in a whole project (a folder or a .zip) or a single file. IntuaCode maps how the files connect, splits each one into sections and explains them in plain English. It all happens in this page; the code isn't sent anywhere.</p>
+          <p>Bring in a whole project (a folder or a .zip) or a single file, such as code an AI wrote for you. Its files become the project's own: say any part of them in sentences, check it, change it. It all happens on this computer; the code isn't sent anywhere.</p>
         </div>
         <button type="button" class="btn small" id="impClose">Close</button>
       </div>
@@ -449,7 +462,7 @@
       <div class="imp-actions">
         <label class="btn small file-btn">Choose files<input type="file" id="impFiles" accept=".py,.pyw,.js,.jsx,.mjs,.cjs,.ts,.tsx,.html,.htm,.css,.cpp,.cc,.cxx,.hpp,.hh,.h,.ino,text/plain" multiple></label>
         <span class="imp-note" id="impNote"></span>
-        <button type="button" class="btn primary" id="impGo">Read it</button>
+        <button type="button" class="btn primary" id="impGo">Bring it in</button>
       </div>
     </div>
   </div>

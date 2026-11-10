@@ -141,6 +141,8 @@
   const normalized = PRJ.normalized;
 
   const PROJECT_KEY = 'intuicode.project.v1';
+  const WELCOME_KEY = 'intuicode.welcomed.v1';   // the opening screen has been answered
+  const FIRST_VISIT = store.get(PROJECT_KEY, null) == null;   // no project kept here yet (read before one is made)
   const PREVIOUS_KEY = 'intuicode.previous.v1';
   // The first time, IntuaCode opens on a small website: a page you can see, use and change.
   const FIRST_BLUEPRINT = BP.BUILT_IN.find(t => /^title: Landing page$/m.test(t)) || BP.BUILT_IN[0];
@@ -2270,8 +2272,8 @@
     const work = $('work'), hb = $('btnHelpDock'), tb = $('btnTermDock');
     $('explainWrap').classList.toggle('shut', !layout.help);
     hb.setAttribute('aria-expanded', String(layout.help));
-    hb.querySelector('span').textContent = layout.help ? 'Hide help' : 'Show help';
-    hb.title = layout.help ? 'Hide the help under the windows, for more room' : 'Show the help: what the line you\'re on says, and what it makes';
+    hb.querySelector('span').textContent = layout.help ? 'Hide explanation' : 'Show explanation';
+    hb.title = layout.help ? 'Hide the explanation under the windows, for more room' : 'Show the explanation: what the line you\'re on says, and what it makes';
     work.classList.toggle('term-shut', !layout.term);
     tb.setAttribute('aria-expanded', String(layout.term));
     tb.title = layout.term ? 'Hide the terminal, for more room' : 'Show the terminal';
@@ -4703,6 +4705,21 @@
   }
 
   function openImport() { $('impModal').hidden = false; $('impNote').textContent = ''; $('impText').focus(); }
+
+  /* The opening screen, on a first visit (no project kept here yet): Bring in code, Start something new, or look
+     around the Landing page behind it. Whatever is chosen, it doesn't come back. Not under WebDriver (the
+     desktop tests), which starts from a first visit every time. */
+  function closeWelcome() { $('welcomeModal').hidden = true; store.set(WELCOME_KEY, true); }
+  function maybeWelcome() {
+    if (!FIRST_VISIT || store.get(WELCOME_KEY, false) || navigator.webdriver) return;
+    $('welcomeModal').hidden = false;
+    $('welcomeImport').focus();
+  }
+  $('welcomeImport').addEventListener('click', () => { closeWelcome(); openImport(); });
+  $('welcomeNew').addEventListener('click', () => { closeWelcome(); openNewProject(); });
+  $('welcomeLook').addEventListener('click', closeWelcome);
+  $('welcomeModal').addEventListener('click', (e) => { if (e.target.id === 'welcomeModal') closeWelcome(); });
+  $('welcomeModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeWelcome(); } });
   // the languages IntuaCode knows, for pasted code and for choosing files
   $('impLang').innerHTML = '<option value="">Auto-detect</option>' + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
   $('impFiles').accept = [...new Set(LANGS.LANGUAGES.flatMap(l => l.exts))].map(e => '.' + e).concat('.pyw', 'text/plain').join(',');
@@ -6700,6 +6717,7 @@
     loadImages().then(pruneImages);
     tLine('IntuaCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
+    maybeWelcome();
     $('btnTutor').setAttribute('aria-pressed', String(tutor.on));
     $('btnIndex').classList.toggle('tutor-on', tutor.on);
     setTimeout(async () => {
