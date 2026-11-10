@@ -81,29 +81,31 @@ define new note
     add note to notes
     give back jsonify(note), 201
 == ts server.ts
-import express, { Request, Response } from "express";
+bring in express (the main part), Request and Response from "express"
 
-type Note = { id: number; text: string };
-const notes: Note[] = [];
-const app = express();
-app.use(express.json());
+define type Note as a shape
+    id is a number
+    text is text
+constant notes (a list of Note) is an empty list
+constant app is the result of express
+run app.use with the result of express.json
 
-app.get("/api/notes", (_req: Request, res: Response) => {
-  res.json(notes);
-});
+ts: app.get("/api/notes", (_req: Request, res: Response) => {
+ts:   res.json(notes);
+ts: });
 
-app.post("/api/notes", (req: Request, res: Response) => {
-  const text = String(req.body?.text ?? "").trim();
-  if (!text || text.length > 500) {
-    res.status(400).json({ error: "Send some text, up to 500 characters." });
-    return;
-  }
-  const note: Note = { id: notes.length + 1, text };
-  notes.push(note);
-  res.status(201).json(note);
-});
+ts: app.post("/api/notes", (req: Request, res: Response) => {
+ts:   const text = String(req.body?.text ?? "").trim();
+ts:   if (!text || text.length > 500) {
+ts:     res.status(400).json({ error: "Send some text, up to 500 characters." });
+ts:     return;
+ts:   }
+ts:   const note: Note = { id: notes.length + 1, text };
+ts:   notes.push(note);
+ts:   res.status(201).json(note);
+ts: });
 
-app.listen(3000, () => console.log("Listening on http://localhost:3000"));`,
+run app.listen with 3000, () => console.log("Listening on http://localhost:3000")`,
 
 `part: udp-messages
 title: Sending and receiving UDP messages

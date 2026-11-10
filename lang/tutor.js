@@ -735,6 +735,87 @@
   /* Two whole programs: exactly the same tokens? */
   const cppSameProgram = (parse, a, b) => tokens(parse('cpp', a)).join('\n') === tokens(parse('cpp', b)).join('\n');
 
+  /* ---------- TypeScript and React ---------- */
+
+  const ts = {
+    'type-annotation': { title: 'A type after the name', say: '`let total: number = 0` says what `total` holds. TypeScript then stops anything else going in.', more: 'Most names don\'t need one: TypeScript works the type out from the value (`let total = 0` is a number already). Write one where the value doesn\'t say enough: an empty list, `null` for now, or a function\'s inputs.' },
+    interface: { title: 'Shapes, named once', say: '`interface Note { … }` names the parts an object has. Every function that takes a Note can rely on them.', more: 'Name a shape once and use the name everywhere, instead of writing `{ id: string; … }` again: when it changes, it changes in one place. `interface` and `type X = { … }` do the same job; teams pick one.' },
+    'optional': { title: 'Can be left out: ?', say: '`email?: string` (and `name?: string` as an input) can be missing: it is a string or undefined.', more: 'Code that uses it has to allow for undefined (`email ?? "none"`). Prefer a value given when it is left out (`size = "md"`) when there is a sensible one.' },
+    union: { title: 'One of these', say: '`"all" | "open" | "done"` is one of three texts, and nothing else: a typo is caught before the program runs.', more: 'A union of a few texts beats a plain `string` for anything with fixed choices: a filter, a status, a size.' },
+    'type-import': { title: 'Bringing in types only', say: '`import type { Note }` brings in a type, which is gone when the program runs.', more: 'It tells readers (and the bundler) that nothing of that file is needed at run time.' },
+    'as': { title: 'as: trust me', say: '`data as Note[]` tells TypeScript what the value is. Nothing checks it: if you are wrong, the mistake shows up later, somewhere else.', more: 'Use it where you know more than TypeScript can (data from a database, say), and nowhere else. The checker is only as good as the types it is given.' },
+    'non-null': { title: 'The ! after a value', say: '`getElementById("root")!` promises the value isn\'t null. If it is, the next step fails at run time.', more: 'In a React app\'s `main.tsx` it is safe: index.html has that element. Elsewhere, check for null instead of promising.' },
+    'export': { title: 'Sharing with other files', say: '`export` shares a name; `export default` makes it the file\'s main part.', more: 'React habit: one component per file, the file named after it, the component as its default export (or a named export, so imports keep the same name everywhere).' },
+    component: { title: 'A component is a function that shows something', say: 'A component takes props and gives back JSX: what to show. Its name starts with a capital letter, so JSX can tell `<Card>` from `<div>`.', more: 'React runs it again whenever its props or state change, so keep it free of side effects: work that talks to the outside world goes in an effect or an event handler.' },
+    props: { title: 'Props come in as one object', say: '`function Card({ title, children })` takes the props object apart into names.', more: 'Props are read-only: a component never changes its own props. To change what it shows, it keeps state, or asks its parent through a prop like `onChange`.' },
+    state: { title: 'State: useState', say: '`const [count, setCount] = useState(0)`: a value React keeps between showings, and the only way to change it.', more: 'Never change state directly (`count++` does nothing on screen). When the new value depends on the old one, give the setter a function: `setCount((c) => c + 1)`.' },
+    effect: { title: 'Effects: useEffect', say: '`useEffect(() => { … }, [query])` runs after the component is shown, and again when `query` changes.', more: 'List every value the effect uses in its array, or it works on stale values. Give back a clean-up function for timers and subscriptions, so they stop when the component goes away.' },
+    'jsx-map': { title: 'Lists need a key', say: '`{notes.map((note) => <li key={note.id}>…</li>)}` shows one item per note; `key` tells React which is which.', more: 'Use a stable id for the key, not the item\'s place in the list: with the place, React mixes items up when one is added or removed.' },
+    'jsx-and': { title: 'Showing something only sometimes', say: '`{loading && <Spinner />}` shows the spinner only while loading is true.', more: 'Careful with numbers: `{count && …}` shows a 0 when count is 0. Write `{count > 0 && …}`.' },
+    'jsx-handler': { title: 'Give React a function, not a call', say: '`onClick={save}` or `onClick={() => save(id)}` hands React a function to run later.', more: '`onClick={save()}` calls save at once, every time the component is shown, and gives React its result instead.' },
+    'class-name': { title: 'className, and Tailwind', say: 'JSX writes `className` for HTML\'s class. With Tailwind, each class is one small style: `p-4` is padding, `flex` a flexible layout.', more: 'Long class lists are normal with Tailwind. `cn(…)` (clsx and tailwind-merge) joins classes that depend on props or state.' },
+  };
+
+  /* The habits in TypeScript or TSX code, found in tree-sitter's reading of it (kind: 'ts' or 'tsx'). The same
+   * shape as cppStylePoints. */
+  function tsStylePoints(parse, source, every = false, kind = 'tsx') {
+    let root;
+    try { root = parse(kind === 'ts' ? 'ts' : 'tsx', String(source) + '\n'); } catch (e) { return { ok: false, error: 'The TypeScript reader isn\'t ready.', points: [] }; }
+    const points = [], seen = new Set();
+    const add = (card, n, name = '') => {
+      if (!every && seen.has(card)) return;
+      seen.add(card);
+      points.push({ card, line: n.startPosition.row + 1, end: n.endPosition.row + 1, name });
+    };
+    const F = (n, f) => n.childForFieldName(f);
+    const capital = (s) => /^[A-Z]/.test(s || '');
+    const visit = (n) => {
+      const t = n.type;
+      if (t === 'type_annotation' && n.parent && /^(?:variable_declarator|required_parameter)$/.test(n.parent.type)) add('type-annotation', n);
+      else if (t === 'interface_declaration' || (t === 'type_alias_declaration' && n.namedChildren.some(c => c.type === 'object_type'))) add('interface', n);
+      else if (t === 'optional_parameter' || (t === 'property_signature' && kids(n).some(c => c.type === '?'))) add('optional', n);
+      else if (t === 'union_type') add('union', n);
+      else if (t === 'as_expression') add('as', n);
+      else if (t === 'non_null_expression') add('non-null', n);
+      else if (t === 'import_statement' && kids(n).some(c => c.type === 'type')) add('type-import', n);
+      else if (t === 'export_statement') add('export', n);
+      else if (t === 'function_declaration' && capital((F(n, 'name') || {}).text) && n.descendantsOfType(['jsx_element', 'jsx_self_closing_element']).length) add('component', n, F(n, 'name').text);
+      else if (t === 'object_pattern' && n.parent && n.parent.type === 'required_parameter') add('props', n);
+      else if (t === 'call_expression') {
+        const fn = (F(n, 'function') || {}).text;
+        if (fn === 'useState') add('state', n);
+        else if (fn === 'useEffect') add('effect', n);
+        else if (/\.map$/.test(fn || '') && n.parent && n.parent.type === 'jsx_expression') add('jsx-map', n);
+      }
+      else if (t === 'binary_expression' && n.parent && n.parent.type === 'jsx_expression' && (F(n, 'operator') || {}).type === '&&') add('jsx-and', n);
+      else if (t === 'jsx_attribute') {
+        const name = (n.namedChild(0) || {}).text || '';
+        if (name === 'className') add('class-name', n);
+        else if (/^on[A-Z]/.test(name)) add('jsx-handler', n, name);
+      }
+      for (const c of kids(n)) visit(c);
+    };
+    visit(root);
+    return { ok: !root.hasError(), error: root.hasError() ? 'Some of this code could not be read, so the habits there may be missing.' : '', points };
+  }
+  /* A line of TypeScript written by hand against the expected one: the same tokens make the same program (as C++). A
+   * line that opens or closes a block gets the rest of it, so each can be read on its own. */
+  function tsProbes(line) {
+    let t = String(line).trim();
+    if (/^\}/.test(t)) t = 'if (1) {\n' + t;
+    if (/\{\s*(?:\/\/.*)?$/.test(t)) t += '\n}';
+    return [t, 'function _probe() {\n' + t + '\n}'];
+  }
+  function tsCompare(parse, expected, answer, kind = 'tsx') {
+    const k2 = kind === 'ts' ? 'ts' : 'tsx', probes = tsProbes(expected);
+    const k = probes.findIndex(p => !parse(k2, p + '\n').hasError());
+    if (k < 0) return { same: false, error: 'The line can\'t be read on its own.' };
+    const mine = parse(k2, tsProbes(answer)[k] + '\n');
+    if (mine.hasError()) return { same: false, error: 'TypeScript can\'t read that yet.' };
+    return { same: tokens(parse(k2, probes[k] + '\n')).join('\n') === tokens(mine).join('\n') };
+  }
+  const tsSameProgram = (parse, a, b, kind = 'tsx') => tokens(parse(kind === 'ts' ? 'ts' : 'tsx', a + '\n')).join('\n') === tokens(parse(kind === 'ts' ? 'ts' : 'tsx', b + '\n')).join('\n');
+
   /* One line of Python -> a program Python can read on its own, the same way for the expected line and the
    * answer: a block's first line gets a `pass` body, and lines that only make sense inside something get it. */
   function probe(line) {
@@ -757,5 +838,5 @@
 
   const FADE_AFTER = 3;   // right answers before a habit's notes shrink to "you know this"
 
-  window.IntuiTutor = { CARDS: { python, cpp, say }, probe, exerciseLine, sayPoints, cppStylePoints, cppCompare, cppSameProgram, FADE_AFTER };
+  window.IntuiTutor = { CARDS: { python, cpp, ts, tsx: ts, say }, probe, exerciseLine, sayPoints, cppStylePoints, cppCompare, cppSameProgram, tsStylePoints, tsCompare, tsSameProgram, FADE_AFTER };
 })();

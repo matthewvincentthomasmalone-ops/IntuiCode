@@ -1,7 +1,7 @@
 # IntuaCode
 
-Write Python, websites, C++ and Arduino sketches by filling in ideas and sentences, and read
-existing Python, JavaScript, HTML, CSS and C++ in plain English, or turn it into sentences.
+Write Python, websites, React and TypeScript, C++ and Arduino sketches by filling in ideas and sentences, and
+read existing Python, JavaScript, TypeScript, React, HTML, CSS and C++ in plain English, or turn it into sentences.
 
 IntuaCode is a rules-based translator, not an AI. Every sentence becomes a specific
 line of Python, every summary points at real lines, and the same input always gives
@@ -123,6 +123,17 @@ over and over
 In the desktop app, **Run** checks the sketch with arduino-cli (included in the Arduino IDE 2),
 uploads it to a board plugged in by USB, and shows what the board sends in the terminal.
 
+**React and TypeScript**, the stack most AI builders write (Lovable, Cursor, Claude Code, Codex), are sentence
+languages too. Import an app an AI wrote, select any part in Unity and translate it: a component reads as
+`define component Card using title and children from CardProps`, its state as `keep count, starting at 0`, an
+effect as `whenever query changes`, and what it shows as the Structure words (`a heading saying {title}`,
+`a ghost Button saying "Save", running save when clicked`), Tailwind classes in words (`styled as flexible layout,
+items centred, gap 2`), Supabase queries as what they ask (`every row of the "notes" table in supabase sorted by
+"created_at" from the end`). Types count: a sentence that would lose one stays as exact code (`ts:`, `tsx:`). Every
+translation is checked against the original's syntax tree, so the sentences rebuild exactly the same program, or
+the part stays as code and says why. IntuaCode reads, edits and checks React apps; it doesn't run them in the
+Preview yet (that needs a bundler).
+
 **Files and folders: one project, several languages**
 
 A project is a tree of files. **Menu → New file** and **New folder** add them, and **Import** (beside Project)
@@ -132,8 +143,8 @@ in the list, and the language decides how it's written:
 
 | Language | You write | On the right |
 |---|---|---|
-| Python, HTML, CSS, JavaScript, C++, Arduino | sentences | the code they make |
-| Rust, C#, Swift, Kotlin, Go, Lua, TypeScript… (30+) | the code itself | what it does, in plain words |
+| Python, HTML, CSS, JavaScript, TypeScript, React (`.tsx`, `.jsx`), C++, Arduino | sentences | the code they make |
+| Rust, C#, Swift, Kotlin, Go, Lua, Vue… (30+) | the code itself | what it does, in plain words |
 | Markdown, CSV, JSON, YAML, TOML, text | notes and data | Markdown as a page, CSV as a table, JSON's shape |
 
 A file's **⋯** renames or moves it, changes its language (the text stays as it is), makes it the file
@@ -332,9 +343,9 @@ sentences, because their code goes above `main`; each statement in it is its own
 **Import** (beside Project) brings in a single file, pasted code, a whole folder, a
 `.zip` or the example project, such as code an AI wrote for you. A folder, `.zip` or example becomes a new
 project (the one before is kept: type `restore` to swap back); single files join the open project. Python,
-CSS and JavaScript come in as their exact lines, ready to translate any part in Unity; HTML pages, C++ programs
-and Arduino sketches are read into sentences (checked against the original), because IntuaCode writes the
-page, `main` or `setup` and `loop` around them. Every other language (TypeScript and React, C, Rust, Go, C#,
+CSS, JavaScript, TypeScript and React come in as their exact lines, ready to translate any part in Unity; HTML
+pages, C++ programs and Arduino sketches are read into sentences (checked against the original), because
+IntuaCode writes the page, `main` or `setup` and `loop` around them. Every other language (C, Rust, Go, C#,
 Java, Kotlin, Swift, PHP, Ruby, Bash, Lua, Dart, SQL, Vue…), and data and notes (JSON, YAML, TOML, CSV,
 Markdown), comes in as it is, and the help reads it to you part by part (`lang/code_read.js`). A `.env`
 secrets file is never brought in. Pasted code and files whose name doesn't say are **auto-detected** from
@@ -557,7 +568,9 @@ npm install && npm run vendor
 | `lang/web_write.js` | Sentences → HTML, CSS and JavaScript (website projects), live preview document |
 | `lang/web_read.js` | JavaScript / React / TypeScript, HTML, CSS and C++ → sections, summaries, cross-language links |
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
-| `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact against the original |
+| `lang/convert.js` | HTML, CSS, JavaScript, TypeScript, React, C++ and Arduino → sentences, checked exact against the original |
+| `lang/ts_write.js` | Sentences → TypeScript and React (built on the JavaScript writer), and the Lovable-stack phrase packs (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) |
+| `lang/ts_convert.js` | What TypeScript and React add to the JavaScript reader: types, shapes, components, state, effects, JSX |
 | `lang/blueprints.js` | Blueprint format, built-in blueprints, filling blanks |
 | `lang/languages.js` | Every language a project's file can be in: its endings, its tree-sitter grammar, and whether it's written in sentences, as code or as text |
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
@@ -605,4 +618,10 @@ IntuaCode is source-available under the [Business Source License 1.1](LICENSE):
 - **Each version becomes Apache 2.0** four years after it's published. Versions 0.6.0 and earlier were published
   under Apache 2.0 and stay that way.
 
-Bundled third-party parts (Pyodide, tree-sitter and its grammars, the fonts) keep their own licences.
+Bundled third-party parts (Pyodide, tree-sitter and its grammars, the fonts and, in the desktop app, its Rust
+crates) keep their own licences: they're listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), made by
+`node tools/third_party.mjs` (run it again when one of them changes). Every package carries both files: the
+installers show the licence before installing, the app keeps both beside it, and **Menu → About and licence…**
+shows them in the app.
+
+Releases are built as **drafts**: private on GitHub until they're published by hand (Releases → Edit → Publish).

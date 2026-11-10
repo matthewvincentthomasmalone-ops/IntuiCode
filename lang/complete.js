@@ -56,6 +56,12 @@
     fillStyle strokeStyle beginPath arc fill stroke moveTo lineTo fillText drawImage clearRect`);
   const TS = W(`interface type enum implements private public protected readonly abstract declare namespace keyof unknown never any
     string number boolean void as satisfies`);
+  // React and the Lovable stack (TanStack Query, Supabase, react-router, shadcn/ui, Tailwind's cn)
+  const REACT = W(`useState useEffect useRef useMemo useCallback useContext useReducer createContext Fragment className htmlFor onClick
+    onChange onSubmit onKeyDown onBlur onFocus key children props useQuery useMutation useQueryClient QueryClient QueryClientProvider
+    queryKey queryFn mutationFn onSuccess onError invalidateQueries mutate isLoading isPending isError supabase select insert update
+    upsert delete eq neq order limit single maybeSingle useNavigate useParams useLocation Link Route Routes BrowserRouter cn toast
+    createRoot render`);
   const PY = W(`False None True and as assert async await break class continue def del elif else except finally for from global if import
     in is lambda nonlocal not or pass raise return try while with yield print input len range enumerate zip sorted reversed sum min max abs
     round int float str bool list dict set tuple open isinstance type super self __init__ __name__ __main__ append extend insert remove pop
@@ -94,7 +100,7 @@
     yaml: W('true false null'),
     toml: W('true false'),
   };
-  const BY_LANG = { html: HTML_TAGS.concat(HTML_ATTRS), css: CSS_PROPS.concat(CSS_VALUES), js: JS, ts: JS.concat(TS), tsx: JS.concat(TS), vue: JS.concat(HTML_TAGS),
+  const BY_LANG = { html: HTML_TAGS.concat(HTML_ATTRS), css: CSS_PROPS.concat(CSS_VALUES), js: JS, ts: JS.concat(TS, REACT), tsx: JS.concat(TS, REACT), vue: JS.concat(HTML_TAGS),
     python: PY, cpp: CPP, arduino: ARDUINO.concat(CPP), c: CPP, sql: SQL, bash: SHELL };
 
   /* What a language offers, from the lists here and the glossary's terms for it. */
@@ -103,7 +109,7 @@
     const key = lang + (glossary ? '+g' : '');
     if (vocabCache.has(key)) return vocabCache.get(key);
     const out = new Set(BY_LANG[lang] || OTHER[lang] || []);
-    const g = glossary && (glossary[lang === 'arduino' ? 'arduino' : lang === 'ts' || lang === 'tsx' ? 'js' : lang] || []);
+    const g = glossary && (lang === 'ts' || lang === 'tsx' ? ['ts', 'react', 'js'].flatMap(l => glossary[l] || []) : glossary[lang === 'arduino' ? 'arduino' : lang] || []);
     for (const e of g || []) for (const m of e.m || [e.t]) {
       const w = String(m).replace(/^<|>$|[=:(]+$/g, '').trim();
       if (/^[#$@A-Za-z_][\w.:$-]*$/.test(w) && w.length > 1) out.add(w);

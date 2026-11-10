@@ -39,6 +39,8 @@
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnBlueprints" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates…</button>
           <button type="button" role="menuitem" id="btnLibrary" hidden title="Parts to add to your project: by kind of project or by what they do, in the languages they're written in, and code that joins two languages">Library…</button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" id="btnAbout" title="The version, the licence and the parts made by others">About and licence…</button>
         </div>
       </div>
       <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
@@ -380,6 +382,24 @@
     </div>
   </div>
 
+  <div class="modal" id="aboutModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="aboutTitle">About and licence</h2>
+          <p id="aboutVersion">IntuaCode</p>
+        </div>
+        <button type="button" class="btn small" id="aboutClose">Close</button>
+      </div>
+      <div class="about-body">
+        <p><b>Business Source License 1.1.</b> Free for your own personal, non-commercial use. Organisations (schools included), paid work, products and businesses, and offering IntuaCode to others need a commercial licence. An organisation can try it free for 60 days. Each version becomes Apache 2.0 four years after it's published.</p>
+        <p>The parts made by others that ship with it (Python, the code parsers, the fonts and, in the desktop app, its Rust libraries) keep their own licences.</p>
+        <div class="seg about-tabs" role="tablist" aria-label="Show"><button type="button" role="tab" id="aboutTabLicence" aria-selected="true">Licence</button><button type="button" role="tab" id="aboutTabNotices" aria-selected="false">Third-party notices</button></div>
+        <pre class="about-text" id="aboutText" tabindex="0"></pre>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="closeModal" hidden>
     <div class="modal-card narrow" role="alertdialog" aria-modal="true" aria-labelledby="closeTitle" aria-describedby="closeText">
       <div class="modal-h">
@@ -432,10 +452,12 @@
 <script src="lang/project.js"></script>
 <script src="lang/python.js"></script>
 <script src="lang/web_write.js"></script>
+<script src="lang/ts_write.js"></script>
 <script src="lang/cpp_write.js"></script>
 <script src="lang/ts_patch.js"></script>
 <script src="lang/web_read.js"></script>
 <script src="lang/code_read.js"></script>
+<script src="lang/ts_convert.js"></script>
 <script src="lang/convert.js"></script>
 <script src="lang/unity.js"></script>
 <script src="lang/blueprints.js"></script>

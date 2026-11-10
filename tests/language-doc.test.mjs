@@ -7,9 +7,9 @@ import path from 'node:path';
 import { loadEngine, ROOT } from './helpers/engine.mjs';
 import { outOfDate, FOLDERS } from '../tools/intuicode_index.mjs';
 
-const { L, WEB, CPP } = loadEngine();
+const { L, WEB, CPP, TS } = loadEngine();
 const DOC = readFileSync(path.join(ROOT, 'INTUICODE.md'), 'utf8').replace(/\r\n/g, '\n');
-const LANGS = ['python', 'js', 'html', 'css', 'cpp', 'arduino'];
+const LANGS = ['python', 'js', 'ts', 'tsx', 'html', 'css', 'cpp', 'arduino'];
 
 test('INTUICODE.md: the index and lang/intuicode_index.json are up to date (node tools/intuicode_index.mjs)', () => {
   assert.deepEqual(outOfDate(), []);
@@ -68,6 +68,7 @@ function examples(md) {
 }
 
 function translate(lang, text, page) {
+  if (lang === 'ts' || lang === 'tsx') return TS.compileTs({ id: 'x', file: 'typescript', text }, null, { lang });
   if (lang === 'python') return L.compileProject({ sections: [{ id: 'main', file: 'main', text }] }).results.main;
   if (lang === 'cpp' || lang === 'arduino') {
     const file = lang === 'arduino' ? 'sketch' : 'program';

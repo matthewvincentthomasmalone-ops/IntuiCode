@@ -1526,3 +1526,9 @@ details.pg > summary .count { margin-left: auto; }
 .bk-none { padding: 4px 8px; font-size: 13px; color: var(--ink-3); }
 .close-actions { justify-content: flex-end; }
 #closeModal { z-index: 70; }   /* over any other dialog, menu or tip that's open */
+
+/* About and licence */
+.about-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.about-body p { margin: 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
+.about-tabs { align-self: flex-start; margin-top: 4px; }
+.about-text { margin: 0; max-height: 46vh; overflow: auto; padding: 12px 14px; border-radius: 5px; background: #050506; box-shadow: var(--sunken); color: var(--ink-2); font: 12px/1.5 var(--f-py); white-space: pre-wrap; }

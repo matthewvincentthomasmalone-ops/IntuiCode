@@ -19,6 +19,9 @@ ${body}
 </body></html>
 `);
 for (const f of ['app.css', 'app.js', 'runner.js', 'lang', 'samples', 'fonts']) cpSync(path.join(ROOT, f), path.join(DIST, f), { recursive: true });
+// the licence and the third-party notices go with the app (Menu → About and licence shows them), and its version
+for (const f of ['LICENSE', 'THIRD-PARTY-NOTICES.md']) cpSync(path.join(ROOT, f), path.join(DIST, f));
+writeFileSync(path.join(DIST, 'about.json'), JSON.stringify({ version: JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version, license: 'BUSL-1.1' }));
 
 // The desktop app never loads these from the internet (see runner.js), so a release build
 // without them would have no built-in Python and no web reader. Debug builds only warn.

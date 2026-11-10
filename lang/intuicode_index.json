@@ -2834,6 +2834,469 @@
       ]
     },
     {
+      "id": "ts",
+      "name": "TypeScript and React",
+      "writer": "lang/ts_write.js",
+      "folders": [
+        {
+          "id": "typescript",
+          "name": "A TypeScript file",
+          "file": "‹name›.ts or ‹name›.tsx",
+          "about": "A TypeScript file, in sentences. Every Mechanics (JavaScript) sentence works here too; exact lines start with ts: (tsx: in a .tsx file)."
+        }
+      ],
+      "sentences": [
+        {
+          "topic": "Types",
+          "say": "set ‹total› (‹a number›) to ‹0›",
+          "becomes": "let total: number = 0;",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "A name made with set or constant can say its type in brackets: a number, text, true or false, a list of ‹Note›, a ‹User› or nothing."
+        },
+        {
+          "topic": "Types",
+          "say": "define ‹add› using ‹a› (‹a number›), ‹b› (‹text, if any›) giving back ‹a number›",
+          "becomes": "function add(a: number, b?: string): number {",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"if any\": an input that can be left out (?). \"giving back …\": the type of what it gives back."
+        },
+        {
+          "topic": "Types",
+          "say": "constant ‹handle› is a tool using ‹e› (‹a React.FormEvent›)",
+          "becomes": "const handle = (e: React.FormEvent) => {",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "A little tool with typed inputs; its steps go under it."
+        },
+        {
+          "topic": "Types",
+          "say": "define shape ‹Note›",
+          "becomes": "interface Note {",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Its parts go under it, one per line: id is text, read-only created is a Date, email is text, if any. \"based on ‹Base›\" builds on another shape."
+        },
+        {
+          "topic": "Types",
+          "say": "define type ‹Filter› as ‹\"all\" or \"done\"›",
+          "becomes": "type Filter = \"all\" | \"done\";",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"define type ‹Props› as a shape\", with its parts under it, names an object type."
+        },
+        {
+          "topic": "Types",
+          "say": "‹data› assumed to be ‹a list of Note›",
+          "becomes": "data as Note[]",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Tells TypeScript what the value is. Nothing checks it when the program runs."
+        },
+        {
+          "topic": "Types",
+          "say": "(‹el› for sure)",
+          "becomes": "el!",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Tells TypeScript the value is there (not null or undefined)."
+        },
+        {
+          "topic": "Files",
+          "say": "bring in ‹App› (the main part) from \"‹./App›\"",
+          "becomes": "import App from \"./App\";",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Also: bring in everything from \"‹react›\" as ‹React›; bring in ‹Toaster› as ‹Sonner› from …; bring in \"‹./index.css›\"; bring in the type ‹Note› from …."
+        },
+        {
+          "topic": "Files",
+          "say": "define shared ‹formatDate› using ‹iso› (‹text›)",
+          "becomes": "export function formatDate(iso: string) {",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"shared\" lets other files bring it in; \"main\" makes it the file's main part (export default). Also: shared constant …, share ‹a› and ‹b›, share ‹App› as the main part."
+        },
+        {
+          "topic": "Components",
+          "say": "define component ‹Card› using ‹title› and ‹children› from ‹CardProps›",
+          "becomes": "function Card({ title, children }: CardProps) {",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "What it shows goes under \"show:\". \"define main component ‹App›\" is the file's main part."
+        },
+        {
+          "topic": "Components",
+          "say": "constant ‹Index› is a component",
+          "becomes": "const Index = () => {",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Add \", showing:\" for one that only shows something, with what it shows under it."
+        },
+        {
+          "topic": "Components",
+          "say": "show:",
+          "becomes": "return ( … );",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "What the component shows, one thing per line, indented under it."
+        },
+        {
+          "topic": "State",
+          "say": "keep ‹count›, starting at ‹0›",
+          "becomes": "const [count, setCount] = useState(0);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Its type in brackets: keep ‹notes› (a list of Note), starting at an empty list. \", changed with ‹setX›\" when the setter has another name."
+        },
+        {
+          "topic": "State",
+          "say": "change ‹count› to ‹count plus 1›",
+          "becomes": "setCount(count + 1);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"change ‹count› from ‹c› to ‹c plus 1›\" works from its value at the time: setCount((c) => c + 1)."
+        },
+        {
+          "topic": "State",
+          "say": "keep a reference ‹box› (to ‹an HTMLDivElement›), starting at nothing",
+          "becomes": "const box = useRef<HTMLDivElement>(null);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Give it to an element with: with ref {‹box›}."
+        },
+        {
+          "topic": "State",
+          "say": "constant ‹visible› is ‹…›, worked out again whenever ‹notes› changes",
+          "becomes": "const visible = useMemo(() => …, [notes]);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "State",
+          "say": "take ‹toast› from the result of ‹useToast›",
+          "becomes": "const { toast } = useToast();",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"take ‹data› as ‹notes› (or an empty list) and ‹isLoading› from …\" renames a part and gives its value when it is missing."
+        },
+        {
+          "topic": "Effects",
+          "say": "when ‹Card› first appears",
+          "becomes": "useEffect(() => { … }, []);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "The steps under it run once, after the component is first shown."
+        },
+        {
+          "topic": "Effects",
+          "say": "whenever ‹query› changes",
+          "becomes": "useEffect(() => { … }, [query]);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"whenever ‹a› or ‹b› changes\" for several."
+        },
+        {
+          "topic": "Effects",
+          "say": "when ‹Card› goes away",
+          "becomes": "return () => { … };",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Inside an effect: its clean-up. One step can go after a comma."
+        },
+        {
+          "topic": "Show",
+          "say": "‹a heading› saying \"‹Hi {name}›\"",
+          "becomes": "<h2>Hi {name}</h2>",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Any element's words (a block, a paragraph, a button, a list item, a link to \"/\") or a component by name: a ‹Button›."
+        },
+        {
+          "topic": "Show",
+          "say": "‹a Button› saying \"‹Save›\", running ‹save› when clicked",
+          "becomes": "<Button onClick={save}>Save</Button>",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Settings go after commas, in order: styled \"…\", keyed by …, with ‹name› \"…\" or {…}, with everything in ‹props›."
+        },
+        {
+          "topic": "Show",
+          "say": "‹a button›, when clicked: change ‹open› to ‹true›",
+          "becomes": "<button onClick={() => setOpen(true)} />",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"when changed with ‹e›: change ‹title› to ‹e.target.value›\" names the event."
+        },
+        {
+          "topic": "Show",
+          "say": "only if ‹loading›",
+          "becomes": "{loading && …}",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "What shows only while it is true goes under it."
+        },
+        {
+          "topic": "Show",
+          "say": "if ‹done›",
+          "becomes": "{done ? … : …}",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Then \"otherwise\" at the same indent; \"nothing\" under either side shows nothing."
+        },
+        {
+          "topic": "Show",
+          "say": "for each ‹note› in ‹notes›",
+          "becomes": "{notes.map((note) => …)}",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Give what it shows a key: keyed by ‹note.id›. Add \", counting with ‹i›\" for its place."
+        },
+        {
+          "topic": "Show",
+          "say": "together",
+          "becomes": "<> … </>",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Several things shown as one."
+        },
+        {
+          "topic": "Show",
+          "say": "{‹title›}",
+          "becomes": "{title}",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "A value on its own line. \"a space\" is {\" \"}."
+        },
+        {
+          "topic": "Packs",
+          "say": "styled as ‹flexible layout, items centred, gap 2›",
+          "becomes": "className=\"flex items-center gap-2\"",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Tailwind classes in words, in order. A class with no words is written in quotes: \"hover:bg-accent\"."
+        },
+        {
+          "topic": "Packs",
+          "say": "a ‹ghost› ‹Button›",
+          "becomes": "<Button variant=\"ghost\">",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "A shadcn/ui component's variant, before its name."
+        },
+        {
+          "topic": "Packs",
+          "say": "a Route for \"‹/about›\" showing an ‹About›",
+          "becomes": "<Route path=\"/about\" element={<About />} />",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "react-router. A link in the app: a Link to \"‹/about›\"."
+        },
+        {
+          "topic": "Packs",
+          "say": "every row of the \"‹notes›\" table in ‹supabase› sorted by \"‹created_at›\" from the end",
+          "becomes": "supabase.from(\"notes\").select(\"*\").order(\"created_at\", { ascending: false })",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Also: adding ‹note› to …, changing ‹{ done }› in …, deleting from …; then where \"‹id›\" is ‹id›, at most ‹10›, as a single row."
+        },
+        {
+          "topic": "Packs",
+          "say": "wait for ‹…›, and take ‹data› and ‹error› from it",
+          "becomes": "const { data, error } = await …;",
+          "folders": [
+            "typescript"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Packs",
+          "say": "give back the query ‹[\"notes\"]› loaded by ‹fetchNotes›",
+          "becomes": "return useQuery({ queryKey: [\"notes\"], queryFn: fetchNotes });",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "TanStack Query."
+        },
+        {
+          "topic": "Packs",
+          "say": "give back a change made by ‹addNote›",
+          "becomes": "return useMutation({ mutationFn: addNote, … });",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Under it: \"when it works\" and \"when it fails\", each with its steps."
+        },
+        {
+          "topic": "Packs",
+          "say": "mark the query ‹[\"notes\"]› in ‹queryClient› as out of date",
+          "becomes": "queryClient.invalidateQueries({ queryKey: [\"notes\"] });",
+          "folders": [
+            "typescript"
+          ],
+          "tip": ""
+        },
+        {
+          "topic": "Packs",
+          "say": "fail with ‹error› as it is",
+          "becomes": "throw error;",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "\"fail with \"…\"\" makes a new error: throw new Error(…)."
+        },
+        {
+          "topic": "Packs",
+          "say": "show an ‹App› in (the element called \"‹root›\" for sure)",
+          "becomes": "createRoot(document.getElementById(\"root\")!).render(<App />);",
+          "folders": [
+            "typescript"
+          ],
+          "tip": "Where a React app starts."
+        }
+      ],
+      "words": [
+        {
+          "say": "a number",
+          "becomes": "number"
+        },
+        {
+          "say": "text",
+          "becomes": "string"
+        },
+        {
+          "say": "true or false",
+          "becomes": "boolean"
+        },
+        {
+          "say": "anything",
+          "becomes": "any"
+        },
+        {
+          "say": "something unknown",
+          "becomes": "unknown"
+        },
+        {
+          "say": "a list of Note",
+          "becomes": "Note[]"
+        },
+        {
+          "say": "a User or nothing",
+          "becomes": "User | null"
+        },
+        {
+          "say": "\"all\" or \"done\"",
+          "becomes": "\"all\" | \"done\""
+        },
+        {
+          "say": "a Promise of nothing",
+          "becomes": "Promise<void>"
+        },
+        {
+          "say": "a Record of text and a number",
+          "becomes": "Record<string, number>"
+        },
+        {
+          "say": "a tool using id (text) giving back nothing",
+          "becomes": "(id: string) => void"
+        },
+        {
+          "say": "name (text, if any)",
+          "becomes": "name?: string"
+        },
+        {
+          "say": "inputs (the rest, a list of X)",
+          "becomes": "...inputs: X[]"
+        },
+        {
+          "say": "read-only id is text",
+          "becomes": "readonly id: string;"
+        },
+        {
+          "say": "data assumed to be a Note",
+          "becomes": "data as Note"
+        },
+        {
+          "say": "(el for sure)",
+          "becomes": "el!"
+        },
+        {
+          "say": "shared",
+          "becomes": "export"
+        },
+        {
+          "say": "main",
+          "becomes": "export default"
+        },
+        {
+          "say": "styled as …",
+          "becomes": "className=\"…\" (Tailwind)"
+        },
+        {
+          "say": "keyed by note.id",
+          "becomes": "key={note.id}"
+        },
+        {
+          "say": "with everything in props",
+          "becomes": "{...props}"
+        },
+        {
+          "say": "a space",
+          "becomes": "{\" \"}"
+        },
+        {
+          "say": "together",
+          "becomes": "<>…</>"
+        },
+        {
+          "say": "running save when clicked",
+          "becomes": "onClick={save}"
+        },
+        {
+          "say": "when open changes",
+          "becomes": "onOpenChange"
+        },
+        {
+          "say": "nothing (under if / otherwise)",
+          "becomes": "null"
+        }
+      ]
+    },
+    {
       "id": "cpp",
       "name": "C++",
       "writer": "lang/cpp_write.js",
