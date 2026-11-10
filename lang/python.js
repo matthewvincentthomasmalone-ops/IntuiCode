@@ -1858,7 +1858,7 @@
     x.info.errs.length = 0; x.info.warns.length = 0; x.info.notes.length = 0;
     const first = s.split(/\s+/)[0].toLowerCase();
     const guess = closest(first, STARTERS.map(w => w.split(' ')[0]), 2);
-    x.err(`I don't recognise this sentence.` + (guess && guess !== first ? ` Did you mean "${guess}"?` : '') + ' Open the Index to see the sentences you can use, or start the line with python: to write Python directly.');
+    x.err(`I don't recognise this sentence.` + (guess && guess !== first ? ` Did you mean "${guess}"?` : '') + ' Open the Index (in Help) to see the sentences you can use, or start the line with python: to write Python directly.');
     return { py: '# ??? ' + s };
   }
 

@@ -141,6 +141,8 @@
   const normalized = PRJ.normalized;
 
   const PROJECT_KEY = 'intuicode.project.v1';
+  const WELCOME_KEY = 'intuicode.welcomed.v1';   // the opening screen has been answered
+  const FIRST_VISIT = store.get(PROJECT_KEY, null) == null;   // no project kept here yet (read before one is made)
   const PREVIOUS_KEY = 'intuicode.previous.v1';
   // The first time, IntuaCode opens on a small website: a page you can see, use and change.
   const FIRST_BLUEPRINT = BP.BUILT_IN.find(t => /^title: Landing page$/m.test(t)) || BP.BUILT_IN[0];
@@ -1924,6 +1926,7 @@
     tutor.on = on;
     saveTutor();
     $('btnTutor').setAttribute('aria-pressed', String(on));
+    $('btnIndex').classList.toggle('tutor-on', on);   // Help shows a dot while the Tutor is on
     hideTip();
     if (on) {
       setDock('help', true);   // part of the tutor lives in the help strip
@@ -2269,8 +2272,8 @@
     const work = $('work'), hb = $('btnHelpDock'), tb = $('btnTermDock');
     $('explainWrap').classList.toggle('shut', !layout.help);
     hb.setAttribute('aria-expanded', String(layout.help));
-    hb.querySelector('span').textContent = layout.help ? 'Hide help' : 'Show help';
-    hb.title = layout.help ? 'Hide the help under the windows, for more room' : 'Show the help: what the line you\'re on says, and what it makes';
+    hb.querySelector('span').textContent = layout.help ? 'Hide explanation' : 'Show explanation';
+    hb.title = layout.help ? 'Hide the explanation under the windows, for more room' : 'Show the explanation: what the line you\'re on says, and what it makes';
     work.classList.toggle('term-shut', !layout.term);
     tb.setAttribute('aria-expanded', String(layout.term));
     tb.title = layout.term ? 'Hide the terminal, for more room' : 'Show the terminal';
@@ -3402,7 +3405,7 @@
     '  files    list the project folders and the Python file each one makes',
     '  reset    forget values from earlier runs',
     '  restore  swap back to the project you had before the last blueprint or import',
-    '  index    open the Index',
+    '  index    open Help (the Index of sentences)',
     '  board …  which board an Arduino sketch is for, e.g. board esp32 (when it can\'t be told from the USB port)',
     ...(window.__TAURI__ ? ['  $ …     run a command in the project folder, e.g. $ git status or $ pip install flask'] : []),
     'Anything else is tried right away. Type a sentence like',
@@ -3503,6 +3506,7 @@
   let indexAll = false;
 
   function renderIndex() {
+    $('btnGlossOpen').hidden = mode !== 'write';   // the words explained works in Split Mode
     const q = $('indexSearch').value.trim().toLowerCase();
     const file = tplRole(activeSec());
     const PK = packFor(activeSec());
@@ -3555,7 +3559,10 @@
     if (matchMedia('(max-width: 900px)').matches) closeIndex();
   });
   $('indexSearch').addEventListener('input', renderIndex);
+  /* Help (the panel on the right): the Tutor's switch, the words here explained (Ctrl+H, in Split Mode, where
+     it works), and the Index of every sentence. */
   function openIndex() { renderIndex(); $('index').hidden = false; $('btnIndex').setAttribute('aria-expanded', 'true'); }
+  $('btnGlossOpen').addEventListener('click', () => openGlossary());
   function closeIndex() { $('index').hidden = true; $('btnIndex').setAttribute('aria-expanded', 'false'); }
   $('btnIndex').addEventListener('click', () => ($('index').hidden ? openIndex() : closeIndex()));
   $('btnIndexClose').addEventListener('click', closeIndex);
@@ -4449,6 +4456,12 @@
     const grew = d.done.some(p => p.from < sel.from || p.to > sel.to), loose = d.done.find(p => !p.exact);
     tLine(`Translated ${lineWord(d.done)}: they're sentences now${grew ? ' (the selection grew to take in whole statements)' : ''}. Original Code puts code back.`
       + (loose ? ` Some of it stays as exact code: ${loose.reason}.` : ''), loose ? 't-err' : 't-sys');
+    // the same program, but not laid out as written once the code is written from the sentences: where, and why
+    const laid = d.done.flatMap(p => p.layout || []);
+    if (laid.length) {
+      const shown = laid.slice(0, 4).map(x => `${x.from === x.to ? 'line' : 'lines'} ${span(x)} (${x.why})`).join('; ');
+      tLine(`Same program, different layout when the code is written from these sentences: ${shown}${laid.length > 4 ? `; and ${laid.length - 4} more` : ''}. Original Code on sentences nobody changed still gives the code exactly as it was.`, 't-sys');
+    }
   }
   function uReRegex(i, quiet) {
     const r = UNITY.reRegex(unity.lang, uLines(), unity.regions, i, uW());
@@ -4709,6 +4722,21 @@
   }
 
   function openImport() { $('impModal').hidden = false; $('impNote').textContent = ''; $('impText').focus(); }
+
+  /* The opening screen, on a first visit (no project kept here yet): Bring in code, Start something new, or look
+     around the Landing page behind it. Whatever is chosen, it doesn't come back. Not under WebDriver (the
+     desktop tests), which starts from a first visit every time. */
+  function closeWelcome() { $('welcomeModal').hidden = true; store.set(WELCOME_KEY, true); }
+  function maybeWelcome() {
+    if (!FIRST_VISIT || store.get(WELCOME_KEY, false) || navigator.webdriver) return;
+    $('welcomeModal').hidden = false;
+    $('welcomeImport').focus();
+  }
+  $('welcomeImport').addEventListener('click', () => { closeWelcome(); openImport(); });
+  $('welcomeNew').addEventListener('click', () => { closeWelcome(); openNewProject(); });
+  $('welcomeLook').addEventListener('click', closeWelcome);
+  $('welcomeModal').addEventListener('click', (e) => { if (e.target.id === 'welcomeModal') closeWelcome(); });
+  $('welcomeModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeWelcome(); } });
   // the languages IntuaCode knows, for pasted code and for choosing files
   $('impLang').innerHTML = '<option value="">Auto-detect</option>' + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
   $('impFiles').accept = [...new Set(LANGS.LANGUAGES.flatMap(l => l.exts))].map(e => '.' + e).concat('.pyw', 'text/plain').join(',');
@@ -4736,20 +4764,21 @@
     else if (e.key === 'Escape') { e.stopPropagation(); setFileMenu(false); $('btnFile').focus(); }
   });
 
+  // the kinds of empty project, a website first (where most AI-built apps start)
   const NEW_KINDS = [
+    { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
+    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with Menu → New file' },
     { id: 'script', layout: 'script', title: 'Python', about: 'One file of steps: main.py' },
     { id: 'structured', layout: 'structured', title: 'Python in parts', about: 'Settings, Tools and a Main program' },
-    { id: 'website', layout: 'website', title: 'Website', about: 'Structure, Styling and Mechanics (HTML, CSS, JavaScript) with a live preview' },
     { id: 'cpp', layout: 'cpp', title: 'C++ program', about: 'main.cpp, compiled on this computer (desktop app)' },
     { id: 'arduino', layout: 'arduino', title: 'Arduino sketch', about: 'For a board plugged in by USB (desktop app)' },
-    { id: 'files', layout: 'files', title: 'Your own files', about: 'A README to start; add files in any language, notes and folders with Menu → New file' },
   ];
   // What a folder starts with: a website its title, a sketch its two parts. The rest start empty.
   const NEW_START = {
     structure: (name) => `page title is "${name.replace(/["\\{}]/g, '')}"`,
     sketch: () => 'when the board starts\n    note: runs once, when the board powers on\nover and over\n    note: runs again and again',
   };
-  let newKind = 'script';
+  let newKind = 'website';
   function renderNewKinds() {
     $('newKinds').innerHTML = NEW_KINDS.map(k => `<button type="button" role="radio" class="new-kind" data-kind="${k.id}" aria-checked="${k.id === newKind}" tabindex="${k.id === newKind ? 0 : -1}"><b>${escHtml(k.title)}</b><span>${escHtml(k.about)}</span></button>`).join('');
   }
@@ -5325,7 +5354,7 @@
   });
   $('bldBody').addEventListener('focusin', (e) => { if (e.target.id === 'bldName' && !bld.edit) renderStages(3); });
   $('btnBuilder').addEventListener('click', openBuilder);
-  $('newToBuilder').addEventListener('click', openBuilder);
+  $('newFromTemplate').addEventListener('click', () => { closeNewProject(); openBlueprints(); });
 
   /* The project map: the plan's steps, in order, each with a tick and how to check it's done. Each opens a
    * window about its role in the whole. Ticks are saved with the project. */
@@ -6822,7 +6851,9 @@
     loadImages().then(pruneImages);
     tLine('IntuaCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
+    maybeWelcome();
     $('btnTutor').setAttribute('aria-pressed', String(tutor.on));
+    $('btnIndex').classList.toggle('tutor-on', tutor.on);
     setTimeout(async () => {
       await ensurePython();
       if (tutor.on) loadTutorReader();

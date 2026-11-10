@@ -6,7 +6,8 @@ how it feels, and your own machine.
 
 ## 1. Install
 
-From the repository's **Releases** page, take the newest `v0.x` pre-release:
+From the repository's **Releases** page, signed in to GitHub, take the newest `v0.x` release (releases are drafts, so
+only the owner sees them; or `gh release download <tag>`):
 
 - **Windows:** `IntuaCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
   isn't signed yet: **More info → Run anyway**.
@@ -45,7 +46,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Planning and Project Templates**
 - [ ] **Project Templates**: projects by kind (Games, Productivity, Money…), each tagged PC, Phone, Web or Board; the chips at the
       top show only those. A kit's **Choose its steps…** opens planning at that kit; **Plan one ›** at its kind.
-- [ ] **Plan** (menu bar) → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
+- [ ] **Menu → New project → Plan it step by step** → Creative & media → Audio workstation: the stages at the top move on; **The smallest that
       works**, **The usual** and **Everything** change **Your plan**; **Preview its sentences** shows a step's sentences.
       Tick Mixer, Build my project: the Project map lists the steps in order, and Problems lists the hallway ‹blanks›.
 - [ ] Click a step in the Project map: its window explains it, and "Go to its sentences in Tools" jumps there. Fill the
@@ -55,7 +56,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       list on the left): the original comes back.
 - [ ] Build a game from Project Templates (Games): it plays in the preview with the keys or a tap.
 - [ ] The corner button on the sentences, the code and the terminal: each fills the work area; Esc comes back.
-- [ ] **Hide help**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
+- [ ] **Hide explanation**, then the terminal's chevron: the sentences and code grow. Drag the terminal's top edge; double-click
       it. Run brings the terminal back. Close and reopen the app: it's as you left it.
 
 **Project map: ticks, and Hand to my AI** (in Unity, then again in Split Mode)
@@ -68,7 +69,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       Unity too).
 - [ ] **+ Step** with **Check it's done** filled in: the new step shows that line. Left empty: the depth's own line shows.
 - [ ] Save, close the app, open the folder again: the same ticks, and the map is scrolled to the first step not done.
-- [ ] **Hand to my AI** (under the map's count, or Menu → Hand to my AI…): tasks.md lists `- [x] 1.1 …` for ticked steps
+- [ ] **Hand to my AI** (under the map's count): tasks.md lists `- [x] 1.1 …` for ticked steps
       and `- [ ] …` for the rest, each with `Check: …`; proposal.md has Why, What Changes and Impact. **Copy** copies the
       file shown.
 - [ ] Desktop, unsaved project: the button says **Save the project…** and saves first. Saved: **Write to the project
@@ -110,7 +111,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Unity**: the project's tree, its Parts and Problems are on the left, and the open file shows with its
       sentences in green. Click another file in the tree: it opens in Unity. Split Mode shows the same file.
 - [ ] Under the pane is the help, as in Split Mode: on a green line, the sentence and the code it makes; on a code line,
-      its terms and the part it's in. **Hide help** folds it away; Show help brings it back.
+      its terms and the part it's in. **Hide explanation** folds it away; Show explanation brings it back.
 - [ ] In Unity, Library → a Python part → Add to the project: the new file opens in Unity, in green.
 - [ ] **Import** (beside + File) → Choose files → a small `.py` file: it's added to the project as code. Select lines 4–6 (inside a `def`): a
       **Translate to Plain Language Syntax** button appears over the selection; press it. Those lines become sentences
@@ -171,7 +172,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       `every frame`: it's drawn in the preview.
 
 **Tutor**
-- [ ] Build **Number guessing game**, press **Tutor**, and click a sentence: the strip shows how it's said, and a balloon
+- [ ] Build **Number guessing game**, open **Help** and press **Tutor** (Help gets a dot), and click a sentence: the strip shows how it's said, and a balloon
       explains a way of talking to the program. **✎ Say it yourself** covers the sentence: another way of saying it
       that makes the same Python is "Right".
 - [ ] Click a line of the Python: the lamp moves to that pane, the strip lists its terms and your names, and a balloon
@@ -237,6 +238,22 @@ Tick each one. If something is off, note what you did and what the terminal said
       count. Images has no Add an image… of its own (the Menu has it).
 - [ ] **Project Templates** lists Websites, Online services and Tools & utilities first; Games, Learning modules and
       Gadgets come after Social & sharing.
+
+### One place for each
+
+- [ ] The top right is **Menu**, **Help** and **Run**: no Tutor or Index buttons of their own.
+- [ ] **Menu → New project**: **From a template ›** opens Project Templates; **Plan it step by step ›** opens planning;
+      below them the empty kinds, **Website** first and chosen. The Menu has no Plan a project… of its own.
+- [ ] **Help**: **Tutor** turns the Tutor on and off (Help shows a dot while it's on); in Split Mode, **Explain the
+      words here** opens the words explained, as Ctrl+H does (Unity doesn't show it); below, the Index.
+- [ ] Type a sentence IntuaCode doesn't know: its problem says to open the Index (in Help).
+
+### The opening screen
+
+- [ ] In a new private window: **Code you can read is code you control** opens over the Landing page, with
+      **Bring in code** (opens Import, whose button says **Bring it in**), **Start something new** (opens New project)
+      and **Look around first** (or Esc). Reload: it doesn't come back.
+- [ ] The strip under the windows says **Hide explanation** / **Show explanation**, so it isn't mistaken for Help.
 
 ## 3. Things that are known not to work yet
 

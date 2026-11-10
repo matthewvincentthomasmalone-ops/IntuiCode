@@ -639,7 +639,8 @@ test('exact lines keep their own indentation, blank lines and spaces at the end:
   assert.equal(js.results.mechanics.text, 'const page = `\n  <ul>\n    <li>${x}</li>  \n  </ul>`;\n\n\nfunction f() {\n\treturn page;\n}\n');
   // inside a sentence block (or "on screens …") an exact line is indented to fit it, as before
   const inBlock = site('add a button called go', '', 'when go is clicked\n    js: console.log(1);\n\n\nshow 1\n\n\nshow 2');
-  assert.equal(inBlock.results.mechanics.text, 'document.getElementById("go").addEventListener("click", () => {\n  console.log(1);\n});\nconsole.log(1);\n\nconsole.log(2);\n', 'blank sentence lines: still one at most');
+  // (blank lines after a block's last line go after its closing brace, where the code has them)
+  assert.equal(inBlock.results.mechanics.text, 'document.getElementById("go").addEventListener("click", () => {\n  console.log(1);\n});\n\nconsole.log(1);\n\nconsole.log(2);\n', 'blank sentence lines: still one at most');
   const media = site('add a paragraph "x"', 'on screens narrower than 600:\n  css: p { color: red; }\n\n  css: a { }\ncss: b { }\n\nstyle p: bold\n\n\nstyle a: italic');
   assert.equal(media.results.styling.text, '@media (max-width: 600px) {\n  p { color: red; }\n\n  a { }\n}\n\nb { }\np {\n  font-weight: bold;\n}\n\na {\n  font-style: italic;\n}\n');
 });
