@@ -1443,3 +1443,14 @@ details.pg > summary .count { margin-left: auto; }
 .ex-close li { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ex-close .btn { flex: none; }
 .ex-close .ex-say { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Backups (File → Backups…), and the question before the desktop app's window closes */
+.bk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 52vh; overflow: auto; }
+.bk-item { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 5px 8px; border-radius: 3px; }
+.bk-item:hover { background: rgba(255, 255, 255, .045); }
+.bk-when { font: 12.5px var(--f-py); color: var(--ink-2); white-space: nowrap; }
+.bk-what { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bk-what b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
+.bk-what small { flex: none; font-size: 12px; color: var(--ink-3); }
+.bk-none { padding: 4px 8px; font-size: 13px; color: var(--ink-3); }
+.close-actions { justify-content: flex-end; }

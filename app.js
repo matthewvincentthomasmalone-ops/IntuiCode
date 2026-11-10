@@ -155,6 +155,7 @@
    * yet), so autosave can never write one project's files into another project's folder. */
   function replaceProject(next, message, folder = null) {
     activeSec().text = ta.value;
+    takeBackup();   // the project going out, if it changed since its last backup
     if (desk.on) {
       if (desk.folder && desk.dirty) saveProject('quiet');   // finish saving the old project to its own folder
       clearTimeout(desk.saveTimer);
@@ -163,6 +164,8 @@
     }
     store.set(PREVIOUS_KEY, project);
     project = normalized(next);
+    backups.due = true;
+    setUnsaved(!(desk.on && folder));   // only a project opened from its folder is saved as it is
     planToNext = true;   // its map opens at the first step not done
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
@@ -5133,11 +5136,7 @@
     if (!hand.files.length) return;
     if (!desk.on) {
       const name = hand.dir.split('/').slice(-2, -1)[0] + '-openspec.zip';
-      const url = URL.createObjectURL(new Blob([OPENSPEC.zip(hand.files)], { type: 'application/zip' }));
-      const a = document.createElement('a');
-      a.href = url; a.download = name;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      offerDownload(name, OPENSPEC.zip(hand.files));
       hand.note = `Downloaded ${name}. Unzip it in the project's own folder: it makes ${hand.dir}.`;
       tLine(`Handed the map to your AI as ${name}: ${hand.dir}proposal.md and tasks.md.`, 't-sys');
       return renderHand();
@@ -5207,6 +5206,8 @@
     const list = [...e.target.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }));
     e.target.value = '';
     if (!list.length) return;
+    // one IntuaCode saved (an unzipped Save): as it was saved
+    if (await openSaved(new Map(list.map(({ path, file }) => [path, async () => new Uint8Array(await file.arrayBuffer())])), list[0].path.split('/')[0])) return;
     const { files, skipped } = await filesToProject(list);
     importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes (images, caches, virtual environments…).` : '');
   });
@@ -5216,8 +5217,10 @@
     if (!f) return;
     $('impNote').textContent = 'Opening the .zip…';
     try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (await openSavedZip(bytes, f.name)) return;
       const R = await Runner.reader((s) => setStatus(s));
-      importProject(R.readZip(new Uint8Array(await f.arrayBuffer())), '');
+      importProject(R.readZip(bytes), '');
     } catch (err) { $('impNote').textContent = 'That .zip could not be opened: ' + err.message; }
   });
 
@@ -5247,9 +5250,12 @@
     else for (const f of e.dataTransfer.files) list.push({ path: f.name, file: f });
     if (!list.length) return;
     if (list.length === 1 && /\.zip$/i.test(list[0].path)) {
+      const bytes = new Uint8Array(await list[0].file.arrayBuffer());
+      if (await openSavedZip(bytes, list[0].path)) return;
       const R = await Runner.reader((s) => setStatus(s));
-      return importProject(R.readZip(new Uint8Array(await list[0].file.arrayBuffer())), '');
+      return importProject(R.readZip(bytes), '');
     }
+    if (entries.some(en => en.isDirectory) && await openSaved(new Map(list.map(({ path, file }) => [path, async () => new Uint8Array(await file.arrayBuffer())])), list[0].path.split('/')[0])) return;
     const { files, skipped } = await filesToProject(list);
     if (entries.some(en => en.isDirectory)) importProject(files, skipped ? `Skipped ${skipped} files that aren't code or project notes.` : '');
     else { closeImport(); addFiles(files); }
@@ -5488,9 +5494,11 @@
     renderImages();
     if (want.some(im => imageUrls.has(im.key)) && webOn()) runWebsite(false);
   }
-  /* Pictures neither the project nor the previous one ("restore") uses are let go. */
+  /* Pictures neither the project, the previous one ("restore") nor a backup uses are let go. */
   async function pruneImages() {
     const keep = new Set([...images(), ...((store.get(PREVIOUS_KEY, null) || {}).images || [])].map(im => im && im.key));
+    try { for (const b of await backupTx('readonly', s => s.getAll())) for (const k of b.images || []) keep.add(k); }
+    catch (_) { return; }   // the backups can't be read: keep every picture
     try { for (const k of await idb('readonly', s => s.getAllKeys())) if (!keep.has(k)) await idb('readwrite', s => s.delete(k)); } catch (_) { /* nothing kept */ }
   }
 
@@ -5525,7 +5533,7 @@
   /* ------------------------------------------------------------------ */
 
   const TAURI = window.__TAURI__;
-  const desk = { on: !!(TAURI && TAURI.core), linux: /Linux/.test(navigator.userAgent), folder: null, python: null, venv: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false };
+  const desk = { on: !!(TAURI && TAURI.core), linux: /Linux/.test(navigator.userAgent), folder: null, python: null, venv: null, git: null, proc: null, nextId: 1, saveTimer: null, dirty: false, closeAsks: false };
   const invoke = (cmd, args) => TAURI.core.invoke(cmd, args);
   const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   const join = (a, b) => a.replace(/[\\/]+$/, '') + '/' + b;
@@ -5545,7 +5553,15 @@
     document.title = desk.folder ? `IntuaCode — ${baseName(desk.folder)}` : 'IntuaCode';
   }
 
-  /* Save: the code files are the real project; sentences live in .intuicode/ next to them. */
+  /* What saving writes: the code files are the real project; the project itself (your sentences) goes in
+   * .intuicode/ next to them. [[path, text]], project.json last. */
+  function savedFiles() {
+    activeSec().text = ta.value;
+    compile();
+    return project.sections.map(s => [fileName(s), codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
+  }
+
+  /* Save (desktop): to the project's folder, chosen the first time. */
   async function saveProject(pick) {
     if (!desk.on) return;
     clearTimeout(desk.saveTimer);
@@ -5563,19 +5579,20 @@
       }
       desk.folder = f;
     }
-    activeSec().text = ta.value;
-    compile();
     // everything to write is taken now: another project may be opened while the files are written
-    const folder = desk.folder, names = project.sections.map(fileName);
-    const files = project.sections.map((s, i) => [names[i], codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
+    const folder = desk.folder, files = savedFiles(), names = files.slice(0, -1).map(f => f[0]);
     try {
       for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
       await writeImages(folder);
-      if (desk.folder === folder) { desk.dirty = false; showFolder(); }
+      if (desk.folder === folder) { desk.dirty = false; showFolder(); if (pick !== 'quiet') setUnsaved(false); }
       if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')}${images().length ? `, ${images().length} picture${images().length > 1 ? 's' : ''} in images/` : ''} (and your sentences, in .intuicode/).`, 't-sys');
     } catch (e) { tLine('Could not save: ' + e, 't-err'); }
   }
+  /* Every change: the project goes in the next backup and counts as not saved yet (Save, Ctrl+S); the desktop
+   * app writes it to its folder, if it has one, a moment later. */
   function autosave() {
+    backups.due = true;
+    setUnsaved(true);
     if (!desk.on) return;
     desk.dirty = true;
     showFolder();
@@ -5583,6 +5600,223 @@
     clearTimeout(desk.saveTimer);
     desk.saveTimer = setTimeout(() => saveProject('quiet'), 1500);
   }
+
+  /* Save, Ctrl+S: the desktop app writes the project's folder; a browser downloads the project as a .zip. */
+  function manualSave() { if (desk.on) saveProject(); else downloadProject(); }
+
+  /* Changes since the last Save: leaving the page, or closing the desktop app's window, asks first. */
+  let unsavedWork = false;
+  function setUnsaved(on) {
+    if (unsavedWork === on) return;
+    unsavedWork = on;
+    if (desk.on && desk.closeAsks) invoke('guard_close', { on }).catch(() => { /* the window closes without asking */ });
+  }
+
+  /* Hand the browser a file to keep (it goes in its downloads). */
+  function offerDownload(name, bytes, type = 'application/zip') {
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  /* Save in a browser: a .zip laid out as the desktop app saves a folder (code files, your sentences in
+   * .intuicode/, pictures in images/), inside a folder named after the project. Import code → Open a .zip
+   * opens it again as it was. */
+  function downloadProject() {
+    const top = String(project.name || 'my-program').replace(/[\\/:*?"<>|\s]+/g, '-');
+    const files = savedFiles().map(([path, content]) => ({ path: `${top}/${path}`, content }));
+    for (const im of project.images || []) {
+      const url = imageUrls.get(im.key);
+      if (url) files.push({ path: `${top}/images/${im.name}`, bytes: fromB64(url.slice(url.indexOf(',') + 1)) });
+    }
+    try { offerDownload(top + '.zip', OPENSPEC.zip(files)); }
+    catch (e) { tLine('Could not save: ' + (e.message || e), 't-err'); return; }
+    setUnsaved(false);
+    tLine(`Saved ${top}.zip to your downloads. Import code → Open a .zip opens it again.`, 't-sys');
+  }
+
+  /* A project IntuaCode saved (Save's .zip, or that .zip unzipped), opened as it was saved: sentences, folders,
+   * map and pictures. files: path -> async () => its bytes. false if it isn't one. */
+  async function openSaved(files, label) {
+    const meta = [...files.keys()].find(p => /^([^/]+\/)?\.intuicode\/project\.json$/.test(p));
+    if (!meta) return false;
+    const top = meta.slice(0, -'.intuicode/project.json'.length);
+    const bytes = async (p) => { try { const get = files.get(top + p); return get ? await get() : null; } catch (_) { return null; } };
+    const text = async (p) => { const b = await bytes(p); return b ? new TextDecoder().decode(b).replace(/\r\n?/g, '\n') : null; };
+    let saved;
+    try { saved = checkedProject(JSON.parse(await text('.intuicode/project.json'))); } catch (_) { saved = null; }
+    if (!saved) return false;
+    closeImport();
+    replaceProject(saved, `Opened ${label}.`);
+    let pictures = 0;
+    for (const im of [...images()]) {
+      const b = await bytes('images/' + im.name);
+      if (b) { try { await keepImage(im.name, b); pictures++; } catch (_) { /* shown as missing */ } }
+    }
+    if (pictures) { renderImages(); if (webOn()) runWebsite(false); }
+    // code changed since it was saved: a file kept as code takes it; sentences stay as they were saved
+    compile();
+    const stale = [];
+    let took = false;
+    for (const s of project.sections) {
+      const there = await text(fileName(s));
+      if (there == null || there.trim() === codeOf(s).trim()) continue;
+      if (isSentences(s)) stale.push(fileName(s)); else { s.text = there; took = true; }
+    }
+    if (took) { ta.value = activeSec().text; refreshAll(); if (mode === 'unity') unityShow(); else splitPlain(); save(); }
+    if (stale.length) tLine(`${stale.join(', ')} ${stale.length > 1 ? 'were' : 'was'} changed after this was saved. The sentences are as they were saved, and make the code as it was then.`, 't-err');
+    if (!desk.on) setUnsaved(false);   // the same as the .zip it came from
+    return true;
+  }
+  /* A .zip: one Save made opens as it was saved; false for any other. */
+  async function openSavedZip(bytes, label) {
+    let list = null;
+    try { list = OPENSPEC.unzip(bytes); } catch (_) { list = null; }
+    return !!list && openSaved(new Map(list.map(f => [f.path, () => unzipped(f)])), label);
+  }
+  /* A file's bytes from unzip(): stored ones as they are, deflated ones inflated (null where the browser can't). */
+  async function unzipped(f) {
+    if (f.method === 0) return f.data;
+    if (f.method !== 8 || typeof DecompressionStream === 'undefined' || f.size > 50e6) return null;
+    return new Uint8Array(await new Response(new Blob([f.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Backups: every 2 minutes, a copy of the project if it changed; the  */
+  /* last 15 are kept (30 minutes). One list for this browser or app,   */
+  /* whichever project each copy is of. In IndexedDB, as a project can  */
+  /* be megabytes (localStorage holds about 5 MB in all).               */
+  /* ------------------------------------------------------------------ */
+
+  const BACKUP_EVERY = 2 * 60 * 1000, BACKUP_KEEP = 15;
+  const backups = { due: false, db: null, last: null, chain: Promise.resolve() };
+  // backups: { id, time, name, files, folder, images: [picture keys] }; copies: the project's JSON, by the same id
+  function backupTx(mode, act) {
+    backups.db = backups.db || new Promise((res, rej) => {
+      const rq = indexedDB.open('intuicode-backups', 1);
+      rq.onupgradeneeded = () => { rq.result.createObjectStore('backups', { keyPath: 'id', autoIncrement: true }); rq.result.createObjectStore('copies'); };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    return backups.db.then(db => new Promise((res, rej) => {
+      const tx = db.transaction(['backups', 'copies'], mode), rq = act(tx.objectStore('backups'), tx.objectStore('copies'));
+      tx.oncomplete = () => res(rq && rq.result);
+      tx.onerror = tx.onabort = () => rej(tx.error);
+    }));
+  }
+  /* A copy of the project as it is now (as the browser keeps it), if it changed since the last one (force: even
+   * if not). Never in the way: one that fails is tried again next time. -> a promise, done when it's kept. */
+  function takeBackup(force) {
+    if (!backups.due && !force) return backups.chain;
+    let entry;
+    try { entry = { time: Date.now(), name: project.name, files: project.sections.length, folder: desk.folder || null, images: (project.images || []).map(im => im.key), json: JSON.stringify(project) }; }
+    catch (_) { return backups.chain; }
+    backups.due = false;
+    backups.chain = backups.chain.then(() => keepBackup(entry)).catch(() => { backups.due = true; });
+    return backups.chain;
+  }
+  async function keepBackup({ json, ...meta }) {
+    const ids = await backupTx('readonly', b => b.getAllKeys());
+    if (backups.last == null && ids.length) backups.last = await backupTx('readonly', (b, c) => c.get(ids[ids.length - 1]));
+    if (json === backups.last) return;   // the same as the newest copy
+    await backupTx('readwrite', (b, c) => { const rq = b.add(meta); rq.onsuccess = () => c.put(json, rq.result); return rq; });
+    backups.last = json;
+    if (ids.length >= BACKUP_KEEP) {
+      const old = IDBKeyRange.upperBound(ids[ids.length - BACKUP_KEEP]);
+      await backupTx('readwrite', (b, c) => { b.delete(old); c.delete(old); });
+    }
+  }
+  setInterval(() => takeBackup(), BACKUP_EVERY);
+
+  const ago = (t) => {
+    const min = Math.floor((Date.now() - t) / 60000), d = new Date(t);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min} min ago`;
+    const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? `at ${hm}` : `on ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} at ${hm}`;
+  };
+  async function openBackups() {
+    $('bkNote').textContent = '';
+    $('bkList').innerHTML = '';
+    $('bkModal').hidden = false;
+    $('bkClose').focus();
+    let list = null;
+    try { list = await backupTx('readonly', b => b.getAll()); } catch (_) { list = null; }
+    $('bkList').innerHTML = !list ? `<li class="bk-none">Backups can't be kept here: this ${desk.on ? 'app' : 'browser'}'s storage is off or full.</li>`
+      : !list.length ? '<li class="bk-none">No copies yet. The first is kept 2 minutes after the project changes.</li>'
+      : list.reverse().map(b => `<li class="bk-item"><span class="bk-when" title="${escHtml(new Date(b.time).toLocaleString())}">${ago(b.time)}</span>`
+        + `<span class="bk-what"><b>${escHtml(b.name)}</b><small>${+b.files || 0} file${+b.files === 1 ? '' : 's'}</small></span>`
+        + `<button type="button" class="btn small" data-restore="${+b.id}">Restore</button></li>`).join('');
+  }
+  function closeBackups() { $('bkModal').hidden = true; }
+  /* Restoring keeps a copy of what's open first, so a restore can be undone from Backups too. */
+  async function restoreBackup(id) {
+    let meta = null, saved = null;
+    try {
+      meta = await backupTx('readonly', b => b.get(id));
+      const json = await backupTx('readonly', (b, c) => c.get(id));
+      saved = meta && json ? checkedProject(JSON.parse(json)) : null;
+    } catch (_) { saved = null; }
+    if (!saved) { $('bkNote').textContent = 'That copy could not be read.'; return; }
+    activeSec().text = ta.value;
+    await takeBackup(true);
+    closeBackups();
+    // in the desktop app, a copy made in the folder that's open goes back there; any other has no folder yet
+    const here = desk.on && desk.folder && meta.folder === desk.folder ? desk.folder : null;
+    replaceProject(saved, `Restored ${saved.name} as it was ${ago(meta.time)}.` + (desk.on && !here ? ' It isn\'t saved in a folder: press Save to keep it.' : ''), here);
+    if (here) autosave();   // written to the folder, as any change is
+    backups.due = false;   // it's a backup already
+  }
+  $('btnBackups').addEventListener('click', openBackups);
+  $('bkClose').addEventListener('click', closeBackups);
+  $('bkModal').addEventListener('click', (e) => {
+    if (e.target.id === 'bkModal') return closeBackups();
+    const r = e.target.closest('[data-restore]');
+    if (r) restoreBackup(+r.dataset.restore);
+  });
+
+  /* Leaving: the latest changes go in Backups (as far as the page gets), and a browser asks first if there are
+   * changes since the last Save (in its own words). */
+  window.addEventListener('beforeunload', (e) => {
+    takeBackup();
+    if (desk.on || !unsavedWork) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+  window.addEventListener('pagehide', () => takeBackup());
+
+  /* Closing the desktop app's window with changes since the last Save: the desktop layer holds the close and
+   * asks here (ask-to-close). Whatever the answer, the latest changes go in Backups first. */
+  function askToClose() {
+    if (!unsavedWork) return closeWindow();
+    $('closeModal').hidden = false;
+    $('closeSave').focus();
+  }
+  async function closeWindow() {
+    $('closeModal').hidden = true;
+    await Promise.race([takeBackup(), new Promise(r => setTimeout(r, 2000))]);
+    try { await invoke('close_window'); } catch (e) { tLine('The window could not close: ' + e, 't-err'); }
+  }
+  const keepOpen = () => { $('closeModal').hidden = true; };
+  $('closeSave').addEventListener('click', async () => {
+    keepOpen();
+    await saveProject();
+    if (!unsavedWork) closeWindow();   // (no folder chosen, or it couldn't save: the window stays)
+  });
+  $('closeDiscard').addEventListener('click', closeWindow);
+  $('closeCancel').addEventListener('click', keepOpen);
+  $('closeModal').addEventListener('click', (e) => { if (e.target.id === 'closeModal') keepOpen(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('closeModal').hidden) { e.stopPropagation(); keepOpen(); }
+    else if (!$('bkModal').hidden) { e.stopPropagation(); closeBackups(); }
+  }, true);
+
+  $('btnSave').hidden = false;
+  if (!desk.on) $('btnSave').title = 'Download the project as a .zip (Import code opens it again)';
+  $('btnSave').addEventListener('click', manualSave);
 
   /* Open a folder in Split Mode. Code on disk wins over saved sentences if they disagree. */
   async function openFolderWrite() {
@@ -5685,8 +5919,10 @@
     if (paths.length === 1 && /\.zip$/i.test(paths[0])) {
       closeImport();
       try {
+        const bytes = fromB64(await invoke('read_bytes', { path: paths[0] }));
+        if (await openSavedZip(bytes, baseName(paths[0]))) return;
         const R = await Runner.reader((s) => setStatus(s));
-        importProject(R.readZip(fromB64(await invoke('read_bytes', { path: paths[0] }))), '');
+        importProject(R.readZip(bytes), '');
       } catch (e) { tLine('That .zip could not be opened: ' + (e.message || e), 't-err'); }
       return;
     }
@@ -5905,8 +6141,11 @@
     $('btnSave').hidden = false;
     showFolder();
     $('btnOpenFolder').addEventListener('click', openFolderWrite);
-    $('btnSave').addEventListener('click', () => saveProject());
     $('btnStop').addEventListener('click', () => { if (desk.proc) invoke('stop_program', { id: desk.proc.id }); });
+    // closing the window with changes not saved asks here first (not while WebDriver drives the app, as its tests do)
+    await TAURI.event.listen('ask-to-close', askToClose);
+    desk.closeAsks = !navigator.webdriver;
+    if (desk.closeAsks) invoke('guard_close', { on: unsavedWork }).catch(() => { /* the window closes without asking */ });
     // the import dialog's folder button uses the native picker
     $('impFolder').closest('label').addEventListener('click', (e) => { e.preventDefault(); importFolder(); });
     // drops on the window come as paths (the page's own drop events never fire)
@@ -5970,7 +6209,7 @@
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.activeElement !== ta) { e.preventDefault(); run(); }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && desk.on) { e.preventDefault(); saveProject(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); manualSave(); }
     // (a browser keeps Ctrl+N for a new window; the desktop app gets it)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewProject(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
