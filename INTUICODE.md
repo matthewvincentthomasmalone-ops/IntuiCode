@@ -188,8 +188,8 @@ for _ in range(3):
 |---|---|---|---|
 | Python | letters, digits, `_`, `-` and spaces, not starting with a digit | `high score` becomes `high_score` (lower case; spaces and `-` become `_`); later sentences can say `high score` | a one-word name keeps its case (`API_KEY`). A name is found by its exact spelling, else by a different-case spelling when there is only one. |
 | HTML ids, CSS | `called` and one or two words | `main area` becomes `main-area` (lower case; anything other than a letter or digit becomes `-`) | lower case |
-| JavaScript | one JavaScript name (letters, digits, `_`, `$`) | not for values; page elements are named as in HTML (`main area` or `main-area`) | as written |
-| C++ | one C++ name | not allowed | as written |
+| JavaScript | a JavaScript name (letters, digits, `_`, `$`), or several words | `total price` and `high-score` become `totalPrice` and `highScore` on every line; one with a sentence word in it (`number of lives`) is an error that says the one-word form. Page elements are named as in HTML (`main area` or `main-area`) | as written |
+| C++ | a C++ name, or several words | `led pin` and `high-score` become `ledPin` and `highScore` everywhere; one with a sentence word in it (`number of tries`) is an error that says the one-word form | as written |
 
 - Python: `the`, `my`, `a`, `an` and `a new` at the start of a name are left out when it is set
   (`set the end to 5` sets `end`). Python's own words (`for`, `class` …) are an error; a built-in
@@ -220,7 +220,9 @@ print(high_score + end)
   helper in C++ and `String("Hi ") + name` on Arduino. On Arduino, text then `{x as text}` joins as it is:
   `"Temp: {t as text}"` is `"Temp: " + String(t)`.
 - Single-quoted text keeps `{…}` as it is. Python text with a prefix (`f"…"`, `r"…"`, `b"…"`) is kept
-  exactly. In C++, single quotes are one character (`'a'`); text in them gets a warning. JavaScript text in
+  exactly. In C++, single quotes around one character stay a character (`'a'`); longer text in them
+  becomes double-quoted text (`'Hello'` is `"Hello"`). Curly quotes (“ ” ‘ ’) count as straight ones in
+  every language. JavaScript text in
   backticks is kept as it is.
 
 ```intuicode python
@@ -1689,9 +1691,8 @@ direction, with the limits below.
   the shape of a `python:` line's value; Structure's names; the sentence's own words. It doesn't know what a
   value is at run time, so where that decides the code and can't be seen, Python says so with a warning.
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
-  `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above`, number words or names with
-  spaces. C++ has no names with spaces, `contains`, `is in` or `nothing`. These are errors or warnings,
-  not silent.
+  `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above` or number words. C++ has no
+  `contains`, `is in` or `nothing`. These are errors or warnings, not silent.
 
 ## Known wrong translations
 
