@@ -617,4 +617,10 @@ IntuaCode is source-available under the [Business Source License 1.1](LICENSE):
 - **Each version becomes Apache 2.0** four years after it's published. Versions 0.6.0 and earlier were published
   under Apache 2.0 and stay that way.
 
-Bundled third-party parts (Pyodide, tree-sitter and its grammars, the fonts) keep their own licences.
+Bundled third-party parts (Pyodide, tree-sitter and its grammars, the fonts and, in the desktop app, its Rust
+crates) keep their own licences: they're listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), made by
+`node tools/third_party.mjs` (run it again when one of them changes). Every package carries both files: the
+installers show the licence before installing, the app keeps both beside it, and **Menu → About and licence…**
+shows them in the app.
+
+Releases are built as **drafts**: private on GitHub until they're published by hand (Releases → Edit → Publish).
