@@ -2731,6 +2731,9 @@
     setDock('term', true);   // Run shows what happens, even when the terminal was folded away
     // Run starts the project's start file, in its own way: a page in the preview, a program, a sketch on a board
     const st = startSec();
+    // a Vite app (React) runs on its own dev server, whatever file it starts at
+    const devHow = PRJ.devServerOf(project);
+    if (devHow) return runDev(devHow);
     // only problems in the files that run stop a run (a half-written note or page doesn't stop the Python)
     const blocking = (langs) => { typingLine = -1; activeSec().text = ta.value; refreshAll(); closeAc(); renderProblems(); return project.sections.filter(s => langs.includes(s.lang)).reduce((n, s) => n + issues(s, 'errs'), 0); };
     if (WEB_ROLE[st.lang]) return runWebsite(true);
@@ -3120,6 +3123,13 @@
     if (!showPreview) clearLink();
   }
   function runWebsite(announce) {
+    if (devOn() && site.mode === 'dev') return;   // (the dev server shows the app, and each saved change)
+    // a Vite app isn't a page IntuaCode writes: its own dev server shows it, once Run starts that
+    if (PRJ.devServerOf(project)) {
+      const say = desk.on ? 'Press Run to start its own dev server, and the app shows here.' : 'It runs on its own dev server, which the IntuaCode desktop app starts with Run (or npm run dev on your computer).';
+      showPreviewPage(`<!doctype html><meta charset="utf-8"><body style="font:15px/1.5 system-ui,sans-serif;color:#666;padding:24px;max-width:36em">This is a Vite app (React, say). ${say}</body>`, !!announce);
+      return;
+    }
     if (!compiled) compile();
     const pg = previewPage(), res = (s) => (s ? secResult(s.id) : null);
     // one page: every style sheet it links is inlined; its main script too, unless that's a module (its imports
@@ -3280,7 +3290,8 @@
   /* In one page: the page's scripts that aren't inlined (modules, others) and the files they import. */
   function oneMisses() {
     const html = previewInfo && previewInfo.page && previewInfo.page.html;
-    const code = html ? (secResult(html.id) || {}).text || '' : '';
+    if (!html) return [];   // (no page of IntuaCode's shown: a Vite app's dev server shows its own)
+    const code = (secResult(html.id) || {}).text || '';
     const main = previewInfo.page.mechanics && fileName(previewInfo.page.mechanics), out = [];
     for (const m of code.matchAll(/<script\b([^>]*?)\ssrc\s*=\s*["']?([^"'\s>]+)[^>]*>/gi)) {
       const path = refPath(fileName(html), m[2]);
@@ -5732,19 +5743,20 @@
     }
     return null;
   }
-  /* One imported file as a project file: { section, note }. */
-  async function importSection(f, path, lang) {
+  /* One imported file as a project file: { section, note }. exact: every file as its exact lines, HTML too (a
+   * Vite app's, whose dev server fills in its page). */
+  async function importSection(f, path, lang, exact) {
     const code = f.source.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
     const id = newId();
     if (!UNITY || !UNITY.LANGS.includes(lang)) return { section: { id, path, lang, text: code + '\n' } };
-    if (lang === 'python' || lang === 'css' || lang === 'js' || lang === 'ts' || lang === 'tsx') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    if (exact || lang === 'python' || lang === 'css' || lang === 'js' || lang === 'ts' || lang === 'tsx') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
     let r;
     try { r = await uConvert(lang, code + '\n'); } catch (e) { r = { ok: false, reason: e.message }; }
     if (r.ok) return { section: { id, path, lang, text: r.text.replace(/\n+$/, '') + '\n' }, note: r.exact === false ? `${path} may not come back exactly: ${r.reason || 'check it'}.` : '' };
     // can't be said in sentences (a header file, say): kept exactly as it is, as code IntuaCode reads to you
     return { section: { id, path, lang: lang === 'html' ? 'text' : 'c', text: code + '\n' }, note: `${path} couldn't be read into sentences (${r.reason}), so it's kept exactly as it is.` };
   }
-  async function importSections(files, taken) {
+  async function importSections(files, taken, exact = false) {
     const out = [], notes = [];
     let left = 0, secrets = 0;
     for (const f of files) {
@@ -5752,7 +5764,7 @@
       if (taken.size >= IMPORT_MAX) { left++; continue; }
       const lang = importLang(f), path = importPath(shortPath(f.name), lang, taken);
       if (!path) { left++; continue; }
-      const got = await importSection(f, path, lang);
+      const got = await importSection(f, path, lang, exact);
       taken.add(path.toLowerCase());
       out.push(got.section);
       if (got.note) notes.push(got.note);
@@ -5989,6 +6001,21 @@
     return project.sections.map(s => [fileName(s), codeOf(s)]).concat([['.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)]]);
   }
 
+  /* What each file in a project's folder holds, as IntuaCode last read or wrote it: "folder|path" -> { text, crlf,
+   * end }. Saving writes only the files that changed, so a dev server reloads just those and a file changed outside
+   * IntuaCode is left alone unless it's changed here too; a file opened in place keeps its own line endings (\r\n)
+   * and the blank lines it ends with. */
+  const written = new Map();
+  async function writeKept(folder, name, content) {
+    const key = folder + '|' + name, was = written.get(key);
+    if (was && was.text === content) return;
+    let text = content;
+    if (was && was.end != null) text = text.replace(/\n*$/, was.end);
+    if (was && was.crlf) text = text.replace(/\n/g, '\r\n');
+    await invoke('write_text', { path: join(folder, name), content: text });
+    written.set(key, { ...was, text: content });
+  }
+
   /* Save (desktop): to the project's folder, chosen the first time. */
   async function saveProject(pick) {
     if (!desk.on) return;
@@ -6010,7 +6037,7 @@
     // everything to write is taken now: another project may be opened while the files are written
     const folder = desk.folder, files = savedFiles(), names = files.slice(0, -1).map(f => f[0]);
     try {
-      for (const [name, content] of files) await invoke('write_text', { path: join(folder, name), content });
+      for (const [name, content] of files) await writeKept(folder, name, content);
       await writeImages(folder);
       if (desk.folder === folder) { desk.dirty = false; showFolder(); if (pick !== 'quiet') setUnsaved(false); }
       if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')}${images().length ? `, ${images().length} picture${images().length > 1 ? 's' : ''} in images/` : ''} (and your sentences, in .intuicode/).`, 't-sys');
@@ -6300,10 +6327,17 @@
         const changed = [];
         for (const s of project.sections) {
           const onDisk = await read(fileName(s));
-          if (onDisk != null && onDisk.replace(/\r\n/g, '\n').trim() !== codeOf(s).trim()) changed.push([s, onDisk.replace(/\r\n/g, '\n')]);
+          if (onDisk == null) continue;
+          const lf = onDisk.replace(/\r\n/g, '\n'), same = lf.trim() === codeOf(s).trim();
+          // (each file keeps its own line endings, and how it ends, when it's written again)
+          written.set(folder + '|' + fileName(s), { text: same ? codeOf(s) : null, crlf: onDisk.includes('\r\n'), end: lf.match(/\n*$/)[0] });
+          if (!same) changed.push([s, lf]);
         }
+        // a Vite app's files, and TypeScript, come back as their exact lines, as when the folder was first opened
+        const asCode = (s) => s.lang === 'ts' || s.lang === 'tsx' || (PRJ.devServerOf(project) && UNITY && UNITY.LANGS.includes(s.lang) && s.lang !== 'python');
         for (const [s, onDisk] of changed) {
           if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuaCode: it's shown as it is now.`, 't-sys'); continue; }
+          if (asCode(s)) { s.text = UNITY.toFile(s.lang, onDisk.replace(/\n+$/, '').split('\n'), []) + '\n'; tLine(`${fileName(s)} was changed outside IntuaCode, so it's shown as its code is now, line for line (Translate turns any part into sentences).`, 't-sys'); continue; }
           if (secLang(s) !== 'python') {
             const res = await rebuildSection(folder, s, read);
             if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
@@ -6318,6 +6352,8 @@
         return;
       }
     }
+    const pkg = await read('package.json');
+    if (pkg != null && PRJ.devServerOf({ sections: [{ path: 'package.json', text: pkg }] })) return openDevFolder(folder, read);
     const main = await read('main.py');
     if (main == null) {
       // web pages, C++ and Arduino sketches become sentences too
@@ -6359,6 +6395,40 @@
     desk.folder = folder;
     await saveProject('quiet');
     tLine(`${baseName(folder)} was empty, so the current project was saved into it.`, 't-sys');
+  }
+
+  /* A Vite app's folder (React, and Lovable's projects), opened in place: its packages and dev server are there.
+   * Every file comes in as its exact lines, the page too (the dev server fills that in), so saving writes back only
+   * the files you change; Translate turns any part into sentences. If saving would change a file (a name IntuaCode
+   * can't write, say), the folder is left as it is and the code comes in as a new, unsaved project. */
+  async function openDevFolder(folder, read) {
+    const top = baseName(folder);
+    let files;
+    try { files = await invoke('read_folder', { path: folder }); } catch (e) { tLine('Could not read the folder: ' + e, 't-err'); return; }
+    importTop = top;
+    const { sections, notes } = await importSections(files, new Set(), true);
+    if (!sections.length) { tLine('No code files were found there.', 't-err'); return; }
+    const first = sections.find(s => /^src\/(?:main|index)\.[jt]sx?$/i.test(s.path)) || sections.find(s => s.path === 'index.html') || sections[0];
+    const next = { version: 2, lang: 'python', name: slug(top) || 'app', sections, active: first.id, start: (sections.find(s => s.path === 'index.html') || first).id };
+    replaceProject(next, '', folder);
+    compile();
+    // the same files back, each as it is on disk (line endings and how it ends aside: those are kept)
+    const off = [];
+    for (const s of project.sections) {
+      const disk = files.some(f => shortPath(f.name) === s.path) ? await read(s.path) : null;
+      const lf = disk == null ? null : disk.replace(/\r\n/g, '\n');
+      if (lf == null || lf.replace(/\n+$/, '') !== codeOf(s).replace(/\n+$/, '')) { off.push(s.path); continue; }
+      written.set(folder + '|' + s.path, { text: codeOf(s), crlf: disk.includes('\r\n'), end: lf.match(/\n*$/)[0] });
+    }
+    const count = `${project.sections.length} file${project.sections.length > 1 ? 's' : ''}`;
+    if (off.length) {
+      desk.folder = null; desk.dirty = true; desk.readFolder = folder;
+      setUnsaved(true); showFolder();
+      tLine(`Opened ${top}'s code (${count}) in a new, unsaved project: the folder itself is left as it is, because saving would change ${off.slice(0, 3).join(', ')}${off.length > 3 ? ` and ${off.length - 3} more` : ''}. Press Save to keep a copy.`, 't-sys');
+    } else {
+      tLine(`Opened ${top}, a Vite app, in its own folder: ${count}, each as its exact lines (Translate turns any part into sentences). Saving writes back only the files you change. Run starts its dev server.`, 't-sys');
+    }
+    for (const n of notes) tLine('Note: ' + n, 't-sys');
   }
 
   /* Import a folder's code (the desktop app's own folder picker). */
@@ -6577,6 +6647,49 @@
     }
   }
 
+  /* ---------- A project's own dev server (a React app: Vite) ----------
+   * Run on a Vite project (PRJ.devServerOf) saves it, then starts its "dev" script with npm on a free port of this
+   * computer, and the Preview shows it through the desktop layer's relay (preview_relay), which puts IntuaCode's
+   * helper in each page and reports each other site the app reaches (listed in the terminal, never blocked). The
+   * project's own packages build it (node_modules, from npm install), exactly as outside IntuaCode; each change is
+   * saved a moment after it's made (autosave), and the dev server shows it. The browser version doesn't run these. */
+  const dev = { folder: null, port: 0, relay: 0, hosts: new Set() };
+  const devOn = () => !!(desk.proc && desk.proc.kind === 'dev' && dev.folder === desk.folder);
+  async function runDev(how) {
+    if (!desk.on) {
+      tLine('This is a Vite app (React, say): it runs on its own dev server, which the IntuaCode desktop app starts and shows in the Preview. Here in the browser, read, change and check its code; to run it, use the desktop app, or npm run dev on your computer.', 't-sys');
+      return;
+    }
+    if (!desk.folder) { tLine('A Vite app runs from its own folder, where its packages are: open that folder with Menu → Open folder, then press Run. (A copy saved elsewhere needs $ npm install there first.)', 't-sys'); return; }
+    const folder = desk.folder;
+    await saveProject('quiet');
+    showBottom('preview');
+    if (devOn()) { $('preview').src = `http://127.0.0.1:${dev.relay}/`; tLine('▶ Preview reloaded. The dev server shows each change once it is saved.', 't-sys'); return; }
+    if (desk.proc) { tLine('Something is still running in the terminal: press Stop first, then Run.', 't-err'); return; }
+    // (Vite itself among the installed packages says npm install has been run)
+    try { await invoke('read_text', { path: join(folder, 'node_modules/vite/package.json') }); }
+    catch (_) { tLine('This project\'s packages (React, Vite and the rest) aren\'t installed in its folder yet. Install them once: type $ npm install (it needs Node.js, from nodejs.org). Then press Run.', 't-sys'); return; }
+    let port, relay;
+    try { port = await invoke('free_port'); relay = await invoke('preview_relay', { target: port, helper: previewHelper() }); }
+    catch (e) { tLine(`The preview's local address couldn't be opened: ${e}`, 't-err'); return; }
+    Object.assign(dev, { folder, port, relay, hosts: new Set() });
+    const id = desk.nextId++;
+    desk.proc = { id, kind: 'dev', err: '', out: '' };
+    const command = `npm run ${how.script} -- --host 127.0.0.1 --port ${port} --strictPort`;
+    tLine(`$ ${command}`, 't-cmd');
+    tLine(`▶ Starting the project's own dev server (Vite). The Preview shows it once it's ready, and each change once it's saved. Other sites the app reaches are listed here.`, 't-sys');
+    setRunning(true, 'dev server ›');
+    try { await invoke('run_shell', { id, command, cwd: folder }); }
+    catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); return; }
+    site.mode = 'dev';
+    setFrame('site');
+    $('preview').src = `http://127.0.0.1:${relay}/`;
+    const bar = $('pvAddr');
+    bar.innerHTML = `<span class="pv-tag">Dev server</span><code class="pv-url">${escHtml(`http://127.0.0.1:${relay}/`)}</code><span class="pv-note">the project's own Vite, on this computer only</span>`;
+    bar.title = 'IntuaCode runs the project\'s npm run dev and shows it here through its own local address, which lists in the terminal each other site the app reaches (nothing is blocked). Project Link needs pages IntuaCode writes, so it doesn\'t work on a dev server\'s pages.';
+    bar.hidden = false;
+  }
+
   async function runShell(command) {   // (while a program runs, what is typed goes to it instead)
     const dir = desk.folder || desk.readFolder || await invoke('scratch_folder');
     const id = desk.nextId++;
@@ -6615,6 +6728,13 @@
     await TAURI.event.listen('tauri://drag-leave', () => $('impCard').classList.remove('dropping'));
     await TAURI.event.listen('tauri://drag-drop', (e) => openDropped((e.payload && e.payload.paths) || []));
     await TAURI.event.listen('preview-missing', (e) => noteMissing(e.payload));
+    // a dev server's app reaching another site (the relay's report-only policy): allowed, and said once each
+    await TAURI.event.listen('preview-host', (e) => {
+      const h = String(e.payload || '');
+      if (!h || dev.hosts.has(h) || dev.hosts.size >= 100) return;
+      dev.hosts.add(h);
+      tLine(`The app reached ${h}, another site (allowed: listed so you know).`, 't-sys');
+    });
     await TAURI.event.listen('proc-output', (e) => {
       const d = e.payload;
       if (!desk.proc || d.id !== desk.proc.id) return;
@@ -6646,7 +6766,13 @@
         return;
       }
       tLine(d.code === 0 ? '✓ Finished.' : d.code == null ? '■ Stopped.' : `■ Ended with exit code ${d.code}.`, d.code === 0 ? 't-ok' : 't-sys');
-      if (p.kind === 'shell' && d.code) shellHints(p.err + '\n' + (p.out || ''));
+      if (p.kind === 'dev') {
+        if (site.mode === 'dev') site.mode = null;
+        previewShown = null;   // (the Preview says how to start it again, instead of the address that's gone)
+        if (webOn()) runWebsite(false);
+        tLine('The dev server has stopped. Run starts it again.', 't-sys');
+      }
+      if ((p.kind === 'shell' || p.kind === 'dev') && d.code) shellHints(p.err + '\n' + (p.out || ''));
     });
     try { desk.python = await invoke('find_python'); } catch (_) { desk.python = null; }
     try { desk.git = await invoke('find_git'); } catch (_) { desk.git = null; }
@@ -6658,6 +6784,8 @@
 
   /* After a command fails: what to do about the usual reasons on Linux (pip, venv, sudo). */
   function shellHints(all) {
+    // (Windows: "'npm' is not recognized…"; bash: "npm: command not found"; zsh: "command not found: npm")
+    if (/'npm' is not recognized|npm: (?:command )?not found|not found: npm/.test(all)) tLine('npm comes with Node.js, which isn\'t installed here (or isn\'t on the PATH): get it from nodejs.org, restart IntuaCode, then type $ npm install in the project.', 't-sys');
     if (!desk.linux) return;
     const venvPackage = (all.match(/apt install (python3[\w.]*-venv)/) || [])[1];
     if (venvPackage) tLine(`Making one needs Python's venv support, which isn't installed yet. Type $ sudo apt install ${venvPackage}, then $ python3 -m venv .venv again.`, 't-sys');
