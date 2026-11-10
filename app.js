@@ -3807,7 +3807,13 @@
       if (!out.ok) return { ok: false, reason: out.error };
       return { ok: true, text: out.text, exact: !!out.check.same, reason: out.check.same ? null : 'the check found code that comes back different, so it stays as exact code' };
     }
-    const r = window.IntuiConvert.toSentences(kind, source, await convertEnv());
+    const env = await convertEnv(), web = compiled && compiled.web, sec = uSec();
+    // a website's Styling and Mechanics are read knowing the page's names, so "Quote" is said as Quote
+    if (web && sec && (kind === 'js' || kind === 'css') && (sec.file === 'styling' || sec.file === 'mechanics')) {
+      env.ids = Object.fromEntries(Object.entries(web.ids || {}).map(([k, v]) => [k, v.tag]));
+      env.groups = Object.keys({ ...web.groups, ...web.cssGroups });
+    }
+    const r = window.IntuiConvert.toSentences(kind, source, env);
     return r.ok ? r : { ok: false, reason: r.error || r.reason };
   }
 
