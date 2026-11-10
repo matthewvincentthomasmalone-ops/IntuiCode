@@ -49,3 +49,23 @@ test('a name set with a hyphen is that name wherever it is used', () => {
 test('a hyphen between two names that are also one name is asked about', () => {
   problem('set high to 1\nset score to 2\nset high-score to 0\nshow high-score', /"high-score" could be the name `high_score` or `high` minus `score`\. Write high_score for the name, or "high minus score" to take away/);
 });
+
+test('a number written with thousands commas is that number', () => {
+  becomes('set budget to 1,000', 'budget = 1000', /A comma in Python separates two values, so 1,000 is written 1000\./);
+  becomes('set big to 12,345,678\nset cost to 1,000.50', 'big = 12345678\ncost = 1000.50');
+  becomes('set total to 0\nif total is more than 1,000\n    show "big"', 'total = 0\nif total > 1000:\n    print("big")');
+  becomes('show 1,000', 'print(1000)');
+  // where commas separate items too, items separated by ", " make each group one number
+  becomes('create list xs with 1,000, 2,000', 'xs = [1000, 2000]');
+  becomes('set xs to [1,000, 2,000]\nset m to max(1,500, 2,500)', 'xs = [1000, 2000]\nm = max(1500, 2500)');
+  // a comma that isn't between groups of three digits separates items, as before
+  becomes('show 1, 2\nshow 1,2\ncreate list ys with 1, 2', 'print(1, 2)\nprint(1, 2)\nys = [1, 2]');
+  // Python's own list in brackets, text, and python: lines stay as written
+  becomes('set xs to [100,200]\nshow "1,000"\npython: t = 1,000', 'xs = [100,200]\nprint("1,000")\nt = 1,000');
+  assert.equal(run(py('set n to 12,345\nshow n plus 1').code), '12346');
+});
+
+test('a list sentence whose items have no spaces between them is asked about', () => {
+  problem('create list xs with 1,000', /In a list, "1,000" could be one number \(1000\) or 2 items\. Write 1000 for the number, or put a space after each comma between items\./);
+  problem('create list xs with 100,200,300', /could be one number \(100200300\) or 3 items/);
+});

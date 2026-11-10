@@ -1529,6 +1529,51 @@
     return clean;
   }
 
+  /* "1,000" is one number to a person but two values to Python (1 and 0), so a number's commas are left out:
+     1,000 and 12,345,678.50 (only commas between groups of three digits). Where commas also separate items (a
+     list sentence, the inside of brackets), that's clear when the items are separated by ", ": "1,000, 2,000"
+     is two numbers. With no spaces at all, a list sentence's "100,200" could be either, so it's asked, and in
+     brackets it's Python's own list: [100,200]. */
+  function thousands(s, x) {
+    const ms = mask(s);
+    const groups = [...ms.matchAll(/(?<![\w.]|\d,)\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\w.]|,\d)/g)];
+    if (!groups.length) return s;
+    const OPEN = '([{', CLOSE = ')]}';
+    // the inside of the innermost brackets around position i (or the whole line, outside every bracket)
+    const around = (i) => {
+      for (let j = i - 1, d = 0; j >= 0; j--) {
+        if (CLOSE.includes(ms[j])) d++;
+        else if (OPEN.includes(ms[j])) {
+          if (d) { d--; continue; }
+          let e = j + 1;
+          for (let k = 0; e < ms.length; e++) { if (OPEN.includes(ms[e])) k++; else if (CLOSE.includes(ms[e])) { if (!k) break; k--; } }
+          return { from: j + 1, to: e, inside: true };
+        }
+      }
+      return { from: 0, to: ms.length, inside: false };
+    };
+    // a comma with a space after it, between items at this level
+    const spaced = ({ from, to }) => {
+      for (let j = from, d = 0; j < to; j++) {
+        if (OPEN.includes(ms[j])) d++;
+        else if (CLOSE.includes(ms[j])) d--;
+        else if (!d && ms[j] === ',' && /\s/.test(ms[j + 1] || '')) return true;
+      }
+      return false;
+    };
+    const listSentence = /^(?:create|make|start)\b.*\blist\b/i.test(ms);
+    for (const g of groups.reverse()) {
+      const n = g[0].replace(/,/g, ''), at = around(g.index);
+      if ((at.inside || listSentence) && !spaced(at)) {
+        if (!at.inside) x.err(`In a list, "${g[0]}" could be one number (${n}) or ${g[0].split(',').length} items. Write ${n} for the number, or put a space after each comma between items.`);
+        continue;
+      }
+      s = s.slice(0, g.index) + n + s.slice(g.index + g[0].length);
+      x.note(`A comma in Python separates two values, so ${g[0]} is written ${n}.`);
+    }
+    return s;
+  }
+
   function tLine(text, x) {
     const s0 = text.trim();
     // raw Python, notes and descriptions are never touched (raw Python keeps any spaces at its end)
@@ -1536,11 +1581,8 @@
       const m = (r === RULES[0] ? text.replace(/^\s+/, '').replace(/\r$/, '') : s0).match(r.re);
       if (m) return r.fn(m, x);
     }
-    const { text: s, removed } = stripFiller(s0);
-    // "1,000" is two values in Python (1 and 0), so a number is written without its commas
-    const ms = mask(s), depthAt = (i) => [...ms.slice(0, i)].reduce((d, c) => d + ('([{'.includes(c)) - (')]}'.includes(c)), 0);
-    const big = [...ms.matchAll(/(?<![\w.,])\d{1,3}(?:,\d{3})+(?![\w.,])/g)].find(b => !depthAt(b.index));   // (inside brackets it's Python's own [100,200])
-    if (big && !/^(?:create|make|start)\b.*\blist\b/i.test(s)) x.err(`Write numbers without commas: ${big[0].replace(/,/g, '')}, not ${big[0]}. (In Python a comma separates two values, so ${big[0]} would be ${big[0].split(',').length} numbers.)`);
+    let { text: s, removed } = stripFiller(s0);
+    s = thousands(s, x);
     const parts = splitSteps(s);
     const said = [...new Set(removed)];
     const fillerNote = () => { if (said.length) x.note(`Left out filler: ${said.map(w => '"' + w + '"').join(', ')}. You can write words like these; Python doesn't need them.`); };

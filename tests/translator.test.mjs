@@ -149,7 +149,8 @@ const ERRORS = [
   ['set name to "Bob"\nif name contains "a" and "b"\n    show "both"', /Say the whole test each time/],
   ['set x to 5\nif x is more than 1 or 2\n    show "?"', /could mean two things/],
   ['define stats using xs\n    set total to 1\n    set count to 2\n    give back total and count', /separate them with a comma: give back total, count/],
-  ['set budget to 1,000', /Write numbers without commas: 1000, not 1,000/],
+  // (set budget to 1,000 is 1000: see python-natural.test.mjs)
+  ['create list budgets with 100,200', /In a list, "100,200" could be one number \(100200\) or 2 items/],
   ['set n to 3\ncount i from n to 1\n    show i', /can't tell which way this counts/],
   ['set no to 5', /a word sentences read as `False`/],
   ['set times to 2', /a word sentences read as `\*`/],
