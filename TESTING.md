@@ -6,7 +6,8 @@ how it feels, and your own machine.
 
 ## 1. Install
 
-From the repository's **Releases** page, take the newest `v0.x` pre-release:
+From the repository's **Releases** page, signed in to GitHub, take the newest `v0.x` release (releases are drafts, so
+only the owner sees them; or `gh release download <tag>`):
 
 - **Windows:** `IntuaCode_…_x64-setup.exe` (or the `.msi`). SmartScreen will warn because the app
   isn't signed yet: **More info → Run anyway**.
@@ -68,7 +69,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       Unity too).
 - [ ] **+ Step** with **Check it's done** filled in: the new step shows that line. Left empty: the depth's own line shows.
 - [ ] Save, close the app, open the folder again: the same ticks, and the map is scrolled to the first step not done.
-- [ ] **Hand to my AI** (under the map's count, or Menu → Hand to my AI…): tasks.md lists `- [x] 1.1 …` for ticked steps
+- [ ] **Hand to my AI** (under the map's count): tasks.md lists `- [x] 1.1 …` for ticked steps
       and `- [ ] …` for the rest, each with `Check: …`; proposal.md has Why, What Changes and Impact. **Copy** copies the
       file shown.
 - [ ] Desktop, unsaved project: the button says **Save the project…** and saves first. Saved: **Write to the project

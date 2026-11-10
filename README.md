@@ -9,7 +9,8 @@ the same result. The aim is to let intuition and plain language lead, while you 
 directly connected to every part of the code.
 
 **Get it:** the public website is offline while IntuaCode becomes a paid product. The installers for Windows, Linux
-and macOS are on the repository's **Releases** page, each with its SHA-256, and `npm run site` runs the website and
+and macOS are draft releases on GitHub, each with its SHA-256: only the owner sees them until one is published
+by hand. `npm run site` runs the website and
 the browser version on this computer only (http://127.0.0.1:8080; see "Run it"). [SECURITY.md](SECURITY.md) says what
 IntuaCode does with your code (nothing leaves your computer), how to check a download, and how to report a problem.
 
@@ -470,7 +471,8 @@ app's commands. See "nothing untrusted runs in the desktop window" in [ARCHITECT
 
 Installers are built by GitHub for Windows, macOS and Linux: go to
 **Actions → Desktop app → Run workflow**, or push a tag like `v0.1.0`. When it finishes,
-the files are on the repository's **Releases** page.
+the files are on a **draft** release: private until it's published by hand (Releases → Edit → Publish), and
+`gh release download <tag>` fetches them while signed in.
 
 To try a branch or pull request before it is released, open its **Desktop app tests** run:
 under **Artifacts**, `IntuaCode-windows-exe` is the app as a single `intuicode.exe` that runs
