@@ -4,14 +4,15 @@
 //! - run programs (Python, shell commands) with live output and typed input
 //! - find the Python, C++ compiler (g++, clang++ or Visual Studio's cl) and
 //!   arduino-cli installed on this computer, and compile C++ with it
-//! - serve the website preview from its own address
+//! - serve the website preview's files at a local address of its own (http://127.0.0.1:<port>)
 //! - open files and folders dropped on the window
 //! - ask the page before the window closes with changes not saved
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(target_os = "linux")]
 use std::ffi::{OsStr, OsString};
 use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -808,10 +809,253 @@ fn find_git() -> Option<String> {
 /* The website preview                                                 */
 /* ------------------------------------------------------------------ */
 
-/// The page in the preview, served at preview://localhost/page-N.html (http://preview.localhost/…
-/// on Windows). Served from there it has no Content-Security-Policy of its own, while the editor's
-/// forbids inline scripts. The preview frame is sandboxed without allow-same-origin, so the page
-/// runs in an origin of its own: it can't reach the editor or use these commands.
+/// The project's files, served from memory at http://127.0.0.1:<port>/ while the app is open, so a page
+/// loads its other files (modules, JSON, pictures, sounds) as it would from any web server. The page
+/// sends them with preview_site, only the ones that changed. That address is an origin of its own, apart
+/// from the editor's, and a real one, so the page keeps what needs one (Web MIDI and Web Serial need a
+/// secure context, which 127.0.0.1 is). Tauri treats it as a remote site, so no command runs from it,
+/// although on Windows its scripts are in the frame too. Only this computer can reach it, and only pages
+/// from that address can read its files: the Host must be the address itself (so another site can't
+/// borrow it with DNS rebinding) and every answer has Cross-Origin-Resource-Policy: same-origin.
+#[derive(Default)]
+struct Site {
+    files: Mutex<HashMap<String, Served>>,
+    /// what the page asked for since it last loaded (found or not), so an edit reloads it only when it matters
+    asked: Mutex<HashSet<String>>,
+    port: Mutex<Option<u16>>,
+}
+
+#[derive(Clone)]
+struct Served {
+    kind: String,
+    body: Arc<Vec<u8>>,
+}
+
+#[derive(serde::Deserialize)]
+struct SiteFile {
+    path: String,
+    kind: String,
+    text: Option<String>,
+    /// base64, for pictures
+    data: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SiteState {
+    port: u16,
+    /// a file the page asked for changed, came or went
+    reload: bool,
+}
+
+/// The preview's files from now on: `put` (new or changed), and the ones in `keep` as they were.
+#[tauri::command]
+fn preview_site(app: AppHandle, site: State<Site>, put: Vec<SiteFile>, keep: Vec<String>) -> Result<SiteState, String> {
+    let mut next = HashMap::new();
+    let mut changed = Vec::new();
+    {
+        let files = site.files.lock().unwrap();
+        for path in keep {
+            if let Some(f) = files.get(&path) {
+                next.insert(path, f.clone());
+            }
+        }
+        changed.extend(files.keys().filter(|p| !next.contains_key(*p)).cloned());
+    }
+    for f in put {
+        let body = match (f.text, f.data) {
+            (Some(text), _) => text.into_bytes(),
+            (None, Some(data)) => STANDARD.decode(data.as_bytes()).map_err(|e| format!("{} could not be read: {e}", f.path))?,
+            (None, None) => Vec::new(),
+        };
+        changed.push(f.path.clone());
+        next.insert(f.path, Served { kind: f.kind, body: Arc::new(body) });
+    }
+    *site.files.lock().unwrap() = next;
+    // (IntuaCode's own script in the page, .intuicode/preview.js, holds what the page saved: no reload for that)
+    let reload = {
+        let asked = site.asked.lock().unwrap();
+        changed.iter().any(|p| !p.starts_with(".intuicode/") && asked.contains(p))
+    };
+    Ok(SiteState { port: site_port(&app, &site)?, reload })
+}
+
+/// The preview's port, opening it the first time.
+fn site_port(app: &AppHandle, site: &Site) -> Result<u16, String> {
+    let mut port = site.port.lock().unwrap();
+    if let Some(p) = *port {
+        return Ok(p);
+    }
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| format!("The preview's local address could not be opened: {e}"))?;
+    let p = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let app = app.clone();
+            std::thread::spawn(move || answer(&app, stream, p));
+        }
+    });
+    *port = Some(p);
+    Ok(p)
+}
+
+/// One request to the preview's address: GET or HEAD, then the connection closes.
+fn answer(app: &AppHandle, mut stream: TcpStream, port: u16) {
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(15)));
+    let mut head = Vec::new();
+    let mut buf = [0u8; 4096];
+    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+        if head.len() > 32 * 1024 {
+            return;
+        }
+        match stream.read(&mut buf) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => head.extend_from_slice(&buf[..n]),
+        }
+    }
+    let text = String::from_utf8_lossy(&head).to_string();
+    let mut first = text.lines().next().unwrap_or("").split(' ');
+    let (method, target) = (first.next().unwrap_or("").to_string(), first.next().unwrap_or("").to_string());
+    let header = |name: &str| {
+        text.split("\r\n").skip(1).find_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_string())
+        })
+    };
+    let ask = Ask {
+        method: &method,
+        target: &target,
+        host: header("host"),
+        worker: header("service-worker").is_some(),
+    };
+    let site = app.state::<Site>();
+    let reply = respond(&site.files.lock().unwrap(), &ask, port);
+    if let Some(path) = &reply.path {
+        let mut asked = site.asked.lock().unwrap();
+        // a page loading (in the frame, or anywhere else) starts the list again
+        if matches!(header("sec-fetch-dest").as_deref(), Some("iframe" | "document" | "frame")) {
+            asked.clear();
+        }
+        if asked.len() < 5000 {
+            asked.insert(path.clone());
+        }
+        if reply.status == 404 {
+            let _ = app.emit("preview-missing", path);
+        }
+    }
+    let _ = stream.write_all(&reply.head());
+    if method != "HEAD" {
+        let _ = stream.write_all(&reply.body);
+    }
+    let _ = stream.flush();
+}
+
+struct Ask<'a> {
+    method: &'a str,
+    target: &'a str,
+    host: Option<String>,
+    /// a service worker's script: the preview doesn't run them (one would stay and answer for the next project)
+    worker: bool,
+}
+
+struct Reply {
+    status: u16,
+    kind: String,
+    body: Arc<Vec<u8>>,
+    location: Option<String>,
+    /// the project path asked for, when the request named one
+    path: Option<String>,
+}
+
+impl Reply {
+    fn text(status: u16, text: &str, path: Option<String>) -> Reply {
+        Reply { status, kind: "text/plain; charset=utf-8".into(), body: Arc::new(text.as_bytes().to_vec()), location: None, path }
+    }
+
+    fn head(&self) -> Vec<u8> {
+        let reason = match self.status {
+            200 => "OK",
+            301 => "Moved Permanently",
+            400 => "Bad Request",
+            403 => "Forbidden",
+            404 => "Not Found",
+            _ => "Method Not Allowed",
+        };
+        let mut h = format!(
+            "HTTP/1.1 {} {reason}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nCross-Origin-Resource-Policy: same-origin\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n",
+            self.status,
+            self.kind,
+            self.body.len()
+        );
+        if let Some(to) = &self.location {
+            h.push_str(&format!("Location: {to}\r\n"));
+        }
+        if self.status == 405 {
+            h.push_str("Allow: GET, HEAD\r\n");
+        }
+        h.push_str("\r\n");
+        h.into_bytes()
+    }
+}
+
+/// %XX in a URL's path, as UTF-8 text (None if it isn't).
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// What the preview's address answers: a project file by its path (a folder's index.html for the folder),
+/// or a plain 404, as any web server would.
+fn respond(files: &HashMap<String, Served>, ask: &Ask, port: u16) -> Reply {
+    let own = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
+    if !ask.host.as_ref().is_some_and(|h| own.iter().any(|o| o.eq_ignore_ascii_case(h))) {
+        return Reply::text(403, "This address is IntuaCode's preview, for pages from this address only.", None);
+    }
+    if ask.method != "GET" && ask.method != "HEAD" {
+        return Reply::text(405, "The preview serves files (GET and HEAD), as a plain web server does.", None);
+    }
+    if ask.worker {
+        return Reply::text(403, "IntuaCode's preview doesn't run service workers.", None);
+    }
+    let raw = ask.target.split(['?', '#']).next().unwrap_or("");
+    let Some(decoded) = raw.strip_prefix('/').and_then(percent_decode) else {
+        return Reply::text(400, "That isn't a path.", None);
+    };
+    let parts: Vec<&str> = decoded.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.iter().any(|p| *p == "." || *p == ".." || p.contains('\\') || p.contains('\0')) {
+        return Reply::text(404, "Not found.", None);
+    }
+    let mut path = parts.join("/");
+    if path.is_empty() || decoded.ends_with('/') {
+        path = if path.is_empty() { "index.html".into() } else { format!("{path}/index.html") };
+    }
+    if let Some(f) = files.get(&path) {
+        return Reply { status: 200, kind: f.kind.clone(), body: f.body.clone(), location: None, path: Some(path) };
+    }
+    if files.contains_key(&format!("{path}/index.html")) {
+        let mut r = Reply::text(301, "", None);
+        r.location = Some(format!("{raw}/"));
+        return r;
+    }
+    Reply::text(404, &format!("Not found: /{path}\n(It isn't one of the project's files.)\n"), Some(path))
+}
+
+/// The page in the preview when the local address can't be used: served at preview://localhost/page-N.html
+/// (http://preview.localhost/… on Windows), one page with its CSS and JavaScript inlined. Served from
+/// there it has no Content-Security-Policy of the editor's, which forbids inline scripts. Its answers
+/// sandbox it into an origin of its own, whatever frame it's in: Tauri treats preview: as the app's own,
+/// so a page there with a real origin could use the app's commands.
 #[derive(Default)]
 struct Preview(Mutex<String>);
 
@@ -832,8 +1076,41 @@ fn preview_page<R: tauri::Runtime>(app: &AppHandle<R>, path: &str) -> tauri::htt
         .status(if page { 200 } else { 404 })
         .header("Content-Type", "text/html; charset=utf-8")
         .header("Cache-Control", "no-store")
+        .header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-modals")
         .body(body)
         .unwrap()
+}
+
+/// The preview's address in the computer's own browser (where a page can use what the app's window
+/// doesn't have). Only ever this address: the path is the page's, with anything but plain characters
+/// written as %XX, and no shell reads it.
+#[tauri::command]
+fn open_preview(site: State<Site>, path: String) -> Result<(), String> {
+    let port = (*site.port.lock().unwrap()).ok_or("The preview isn't running.")?;
+    let safe: String = path
+        .bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"/._-".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect();
+    let url = format!("http://127.0.0.1:{port}/{}", safe.trim_start_matches('/'));
+    #[cfg(windows)]
+    let mut cmd = {
+        let mut c = Command::new("rundll32.exe");
+        c.args(["url.dll,FileProtocolHandler", &url]);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    quiet(&mut cmd).spawn().map(|_| ()).map_err(|e| format!("The browser could not be opened: {e}"))
 }
 
 /* ------------------------------------------------------------------ */
@@ -864,6 +1141,7 @@ pub fn run() {
         .manage(Compiler::default())
         .manage(Access::default())
         .manage(Preview::default())
+        .manage(Site::default())
         .manage(CloseGuard::default())
         .register_uri_scheme_protocol("preview", |ctx, request| preview_page(ctx.app_handle(), request.uri().path()))
         .setup(|_app| {
@@ -890,7 +1168,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_folder, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
-            run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
+            preview_site, open_preview, run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
             compile_cpp, find_arduino, run_capture, find_venv, guard_close, close_window
         ])
         .build(tauri::generate_context!())
@@ -944,6 +1222,39 @@ mod tests {
         assert!(access.program(&at(&project.join("program"))).is_ok());
         assert!(access.program(&at(&other.join("program"))).is_err());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_preview_serves_the_projects_files_and_nothing_else() {
+        let served = |kind: &str, text: &str| Served { kind: kind.into(), body: Arc::new(text.as_bytes().to_vec()) };
+        let mut files = HashMap::new();
+        files.insert("index.html".to_string(), served("text/html; charset=utf-8", "<p>home</p>"));
+        files.insert("app.js".to_string(), served("text/javascript; charset=utf-8", "export {}"));
+        files.insert("my page.html".to_string(), served("text/html; charset=utf-8", "<p>spaces</p>"));
+        files.insert("docs/index.html".to_string(), served("text/html; charset=utf-8", "<p>docs</p>"));
+        let host = Some("127.0.0.1:5000".to_string());
+        let get = |target: &str| respond(&files, &Ask { method: "GET", target, host: host.clone(), worker: false }, 5000);
+        let home = get("/");
+        assert_eq!((home.status, home.body.as_slice()), (200, b"<p>home</p>".as_slice()));
+        assert_eq!(get("/app.js?v=20260927").status, 200);   // a query (cache-busting) isn't part of the path
+        assert_eq!(get("/my%20page.html").status, 200);
+        assert_eq!(get("/docs/").body.as_slice(), b"<p>docs</p>");
+        let folder = get("/docs");
+        assert_eq!((folder.status, folder.location.as_deref()), (301, Some("/docs/")));
+        // not in the project: a plain 404, and the path is noted (the page asked for it)
+        let missing = get("/assets/audio/omni-84/c4.ogg");
+        assert_eq!((missing.status, missing.path.as_deref()), (404, Some("assets/audio/omni-84/c4.ogg")));
+        assert_eq!(get("/../secret.txt").status, 404);
+        assert_eq!(get("/%2e%2e/secret.txt").status, 404);
+        assert_eq!(get("/bad%zz").status, 400);
+        // another site's name for this address (DNS rebinding) gets nothing
+        let other = respond(&files, &Ask { method: "GET", target: "/", host: Some("evil.example:5000".into()), worker: false }, 5000);
+        assert_eq!(other.status, 403);
+        assert_eq!(respond(&files, &Ask { method: "GET", target: "/", host: None, worker: false }, 5000).status, 403);
+        assert_eq!(respond(&files, &Ask { method: "POST", target: "/", host: host.clone(), worker: false }, 5000).status, 405);
+        assert_eq!(respond(&files, &Ask { method: "GET", target: "/app.js", host: host.clone(), worker: true }, 5000).status, 403);
+        let head = String::from_utf8(home.head()).unwrap();
+        assert!(head.contains("Cross-Origin-Resource-Policy: same-origin\r\n") && head.contains("Content-Length: 11\r\n"));
     }
 
     #[cfg(target_os = "linux")]

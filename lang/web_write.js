@@ -2734,14 +2734,44 @@
     return { results: Object.fromEntries(project.sections.map(s => [s.id, results[s.file]])), syms, shared };
   }
 
-  /* The page with its CSS and JS inlined, for the live preview. */
+  /* A file a page names (href="styles.css?v=2", "../css/site.css"), as a path in the project, from the page's
+     path; null for an address elsewhere (https://…, //cdn…, data:…). */
+  function pagePath(page, ref) {
+    if (typeof ref !== 'string' || !ref || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(ref)) return null;
+    let p = ref.split(/[?#]/)[0];
+    try { p = decodeURIComponent(p); } catch (_) { return null; }
+    const parts = p.startsWith('/') ? [] : String(page || '').split('/').slice(0, -1);
+    for (const seg of p.split('/')) {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
+    }
+    return parts.join('/') || null;
+  }
+
+  /* The page with its CSS and JS inlined, for the live preview. extra (optional): { page: its path, styles: { path:
+     css } of the project's style sheets, styling: the main one's path }: every style sheet the page links that is
+     the project's is inlined where it's linked (marked data-ic-file, for Project Link), the main one only once. */
   /* Returns { html, jsLine }: jsLine is the document line where script.js starts (to map errors back). */
-  function previewDocument(compiled, helperScript) {
+  function previewDocument(compiled, helperScript, extra) {
     const r = compiled.results;
     const st = r.structure || { text: '' };
-    const html = st.previewText || st.text, css = (r.styling || { text: '' }).text, js = (r.mechanics || { text: '' }).text;
+    let html = st.previewText || st.text;
+    const css = (r.styling || { text: '' }).text, js = (r.mechanics || { text: '' }).text;
+    const styleTag = (path, text) => `<style${path ? ` data-ic-file="${path.replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]))}"` : ''}>\n${text.replace(/<\/style/gi, '<\\/style')}</style>`;
+    const inlined = new Set();
+    if (extra && extra.styles) {
+      html = html.replace(/<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (tag) => {
+        if (!/\srel\s*=\s*["']?stylesheet\b/i.test(tag)) return tag;
+        const m = tag.match(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+        const path = m && pagePath(extra.page, m[1] ?? m[2] ?? m[3]);
+        if (!path || !Object.prototype.hasOwnProperty.call(extra.styles, path) || inlined.has(path)) return tag;
+        inlined.add(path);
+        return styleTag(path, extra.styles[path]);
+      });
+    }
     // functions, not replacement strings: $&, $' and $$ in the code must stay as they are
-    const withCss = html.replace(/<link\b[^>]*\bhref\s*=\s*["']?style\.css["']?[^>]*>/i, () => `<style>\n${css.replace(/<\/style/gi, '<\\/style')}</style>`);
+    const main = extra && extra.styling;
+    const withCss = html.replace(/<link\b[^>]*\bhref\s*=\s*["']?style\.css["']?[^>]*>/i, () => (main && inlined.has(main) ? '' : styleTag(main || '', css)));
     const helper = helperScript ? `<script>${helperScript}</script>\n` : '';
     const inline = `${helper}<script>\n${js.replace(/<\/script/gi, '<\\/script')}</script>`;
     const tag = withCss.match(/<script\b[^>]*\bsrc\s*=\s*["']?script\.js["']?[^>]*><\/script>/i);
