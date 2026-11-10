@@ -16,7 +16,9 @@
  *   tasks(plan, info)                 -> tasks.md's text
  *   ticksFrom(text, steps)            -> the steps a tasks.md ticks (ticked by an AI, say) that the map hasn't
  *   files(plan, info)                -> [{ path, content }], the paths under openspec/changes/<name>/
- *   zip(files, date)                  -> Uint8Array: a .zip of them (stored, not compressed)
+ *   zip(files, date)                  -> Uint8Array: a .zip of them (stored, not compressed); Save in the
+ *                                        browser uses it for the whole project
+ *   unzip(bytes)                      -> [{ path, method, size, data }]: what a .zip holds, or null
  *
  * plan: { title, path: [answers], steps: [{ n, name, depth, summary, usual, check, done }] }
  * info: { name: the project's name, files: [paths of its code files], date: 'YYYY-MM-DD' }
@@ -137,7 +139,8 @@
     ];
   }
 
-  /* A .zip of text files, stored as they are (no compression: they're small), names in UTF-8. */
+  /* A .zip of files, stored as they are (no compression: they're small), names in UTF-8. Each file is
+   * { path, content } (text) or { path, bytes } (a Uint8Array: a picture, say). */
   const CRC = (() => {
     const t = new Uint32Array(256);
     for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
@@ -157,7 +160,7 @@
     let offset = 0;
     const header = (size) => { const b = new Uint8Array(size); return { b, v: new DataView(b.buffer) }; };
     for (const f of list) {
-      const name = enc.encode(f.path), data = enc.encode(f.content), crc = crc32(data);
+      const name = enc.encode(f.path), data = f.bytes || enc.encode(f.content), crc = crc32(data);
       const loc = header(30);
       loc.v.setUint32(0, 0x04034b50, true); loc.v.setUint16(4, 20, true); loc.v.setUint16(6, 0x0800, true); loc.v.setUint16(8, 0, true);
       loc.v.setUint16(10, time, true); loc.v.setUint16(12, day, true); loc.v.setUint32(14, crc, true);
@@ -182,5 +185,29 @@
     return out;
   }
 
-  root.IntuiOpenSpec = { DEPTH, changeName, progress, proposal, tasks, ticksFrom, files, zip, crc32 };
+  /* The files in a .zip: [{ path, method, size, data }], data being the bytes as they are in the .zip (method 0:
+   * stored, so the file itself; 8: deflated, for DecompressionStream('deflate-raw')). null for what this can't
+   * read: not a .zip, a damaged one, or a zip64 one (over 4 GB). */
+  function unzip(bytes) {
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), dec = new TextDecoder();
+    let end = -1;
+    for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 0xFFFF); i--) if (v.getUint32(i, true) === 0x06054b50) { end = i; break; }
+    if (end < 0) return null;
+    const count = v.getUint16(end + 10, true), out = [];
+    let at = v.getUint32(end + 16, true);
+    for (let n = 0; n < count; n++) {
+      if (at + 46 > bytes.length || v.getUint32(at, true) !== 0x02014b50) return null;
+      const method = v.getUint16(at + 10, true), packed = v.getUint32(at + 20, true), size = v.getUint32(at + 24, true);
+      const nameLen = v.getUint16(at + 28, true), local = v.getUint32(at + 42, true);
+      const path = dec.decode(bytes.subarray(at + 46, at + 46 + nameLen));
+      at += 46 + nameLen + v.getUint16(at + 30, true) + v.getUint16(at + 32, true);
+      if (packed === 0xFFFFFFFF || size === 0xFFFFFFFF || local + 30 > bytes.length || v.getUint32(local, true) !== 0x04034b50) return null;
+      const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+      if (start + packed > bytes.length) return null;
+      if (!path.endsWith('/')) out.push({ path, method, size, data: bytes.subarray(start, start + packed) });
+    }
+    return out;
+  }
+
+  root.IntuiOpenSpec = { DEPTH, changeName, progress, proposal, tasks, ticksFrom, files, zip, unzip, crc32 };
 })(typeof window !== 'undefined' ? window : globalThis);
