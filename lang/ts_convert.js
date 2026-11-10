@@ -1,0 +1,343 @@
+/* IntuaCode — TypeScript (and React, for .tsx and JSX) said in sentences: the parts lang/convert.js's JavaScript
+ * reader doesn't know. convert.js asks these first, for every value (ex) and statement (one); anything they leave
+ * (undefined) is said the JavaScript way. Everything said here is checked like the rest: the sentences are
+ * written back (lang/ts_write.js) and the syntax trees compared, types and all.
+ *
+ *   ext(kind) -> { ex(node, C), one(node, depth, lvl, C) }   kind: 'ts', 'tsx' or 'js' (JavaScript: no types)
+ *   sayType(node, pos) -> words for a type, or null when it stays as code
+ *
+ * C is the JavaScript reader's own toolkit (see `C` in convert.js): its output, ex, block, inside, say helpers.
+ * No DOM here.
+ */
+(function (root) {
+  'use strict';
+
+  const named = (n) => { const out = []; for (let i = 0; i < n.namedChildCount; i++) out.push(n.namedChild(i)); return out; };
+  const kids = (n) => { const out = []; for (let i = 0; i < n.childCount; i++) out.push(n.child(i)); return out; };
+  const F = (n, f) => (n ? n.childForFieldName(f) : null);
+  const isComment = (n) => n.type === 'comment';
+  const real = (n) => named(n).filter(x => !isComment(x));
+  const has = (n, t) => kids(n).some(k => k.type === t);
+  const one1 = (s) => !/\n/.test(s);
+  /* "a" or "an", by how the name sounds: an Event, a User, an HTMLInputElement (said letter by letter). The writer
+     takes either. */
+  const art = (w) => {
+    const acronym = /^[A-Z]{2}/.test(w);
+    const an = acronym ? /^[AEFHILMNORSX]/.test(w) : /^[aeio]/i.test(w) || (/^u/i.test(w) && !/^u(?:s|ni|ti|r|ku|ga)/i.test(w));
+    return `${an ? 'an' : 'a'} ${w}`;
+  };
+  const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
+  const plainQuoted = (s) => /^(["'])[^"'\\\n]*\1$/.test(s);
+
+  /* ---------- Types ---------- */
+
+  const PREDEF = { number: 'a number', string: 'text', boolean: 'true or false', any: 'anything', unknown: 'something unknown', object: 'an object' };
+  const LIST_OF = { number: 'numbers', string: 'text', boolean: 'true or false', any: 'anything' };
+  const typeName = (t) => (t && (t.type === 'type_identifier' || (t.type === 'nested_type_identifier' && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(t.text))) ? t.text : null);
+  const flatUnion = (t) => (t.type === 'union_type' ? real(t).flatMap(flatUnion) : [t]);
+
+  /* A type in words. pos: 'ret' (what a tool gives back) and 'promise' (what a promise gives) read "nothing" as
+     void, so null is never said there; anywhere else "nothing" is null and void stays code. */
+  function sayType(t, pos) {
+    if (!t) return null;
+    switch (t.type) {
+      case 'predefined_type':
+        if (t.text === 'void') return pos === 'ret' || pos === 'promise' ? 'nothing' : null;
+        return PREDEF[t.text] || null;
+      case 'literal_type': {
+        const c = real(t)[0];
+        if (!c) return null;
+        if (c.type === 'null') return pos === 'ret' || pos === 'promise' ? null : 'nothing';
+        if (c.type === 'undefined') return 'undefined';
+        if (c.type === 'string' && plainQuoted(c.text)) return c.text;
+        if (c.type === 'number') return c.text;
+        return null;
+      }
+      case 'type_identifier': case 'nested_type_identifier': { const n = typeName(t); return n && art(n); }
+      case 'array_type': {
+        const e = real(t)[0];
+        const w = e && e.type === 'predefined_type' ? LIST_OF[e.text] : typeName(e);
+        return w ? `a list of ${w}` : null;
+      }
+      case 'union_type': {
+        const parts = flatUnion(t).map(p => sayType(p, 'union'));
+        if (parts.some(p => p == null || /^a tool\b/.test(p))) return null;
+        return `${parts.slice(0, -1).join(', ')} or ${parts[parts.length - 1]}`;
+      }
+      case 'generic_type': {
+        const n = typeName(real(t)[0]), ta = real(t).find(x => x.type === 'type_arguments');
+        const as = ta ? real(ta) : [];
+        if (!n || !as.length || as.length > 2) return null;
+        const ws = as.map(a => sayType(a, n === 'Promise' ? 'promise' : 'arg'));
+        if (ws.some(w => w == null || / or |^a tool\b| and /.test(w.replace(/^true or false$/, '')))) return null;
+        return `${art(n)} of ${ws.join(' and ')}`;
+      }
+      case 'function_type': {
+        const ps = real(t).find(x => x.type === 'formal_parameters'), r = real(t).filter(x => x !== ps).pop();
+        const words = ps ? real(ps).map(p => paramWords(p)) : [];
+        const back = sayType(r, 'ret');
+        if (words.some(w => w == null) || back == null || / giving back /.test(words.join(' '))) return null;
+        return `a tool${words.length ? ' using ' + words.join(', ') : ''} giving back ${back}`;
+      }
+      default: return null;
+    }
+  }
+  /* A tool's input in words: name, name (a number), name (text, if any), name = 1, name (a number) = 1. */
+  function paramWords(p) {
+    if (p.type !== 'required_parameter' && p.type !== 'optional_parameter') return null;
+    const ks = kids(p), id = ks[0];
+    if (!id || id.type !== 'identifier') return null;
+    let type = null, value = null, q = false;
+    for (let k = 1; k < ks.length; k++) {
+      const c = ks[k];
+      if (c.type === '?') q = true;
+      else if (c.type === 'type_annotation') type = real(c)[0];
+      else if (c.type === '=') { value = ks[k + 1]; k++; }
+      else if (!isComment(c)) return null;
+    }
+    if (p.type === 'optional_parameter' && !q) return null;
+    const tw = type ? sayType(type, 'arg') : null;
+    if (type && tw == null) return null;
+    if (value && (!one1(value.text) || /[()]/.test(value.text) && q)) return null;
+    const inner = [tw, q ? 'if any' : null].filter(Boolean).join(', ');
+    return `${id.text}${inner ? ` (${inner})` : ''}${value ? ` = ${value.text}` : ''}`;
+  }
+  const typeOfAnnotation = (n) => { const a = n && real(n).find(x => x.type === 'type_annotation'); return a ? real(a)[0] : null; };
+  const hasTypes = (fn) => {
+    const ps = F(fn, 'parameters') || real(fn).find(x => x.type === 'formal_parameters');
+    return !!(real(fn).some(x => x.type === 'type_annotation') || (ps && real(ps).some(p => p.type === 'optional_parameter' || real(p).some(x => x.type === 'type_annotation'))));
+  };
+
+  /* ---------- React and JSX: what is shared by the converter and the words ---------- */
+
+  const JSX_TYPES = ['jsx_element', 'jsx_self_closing_element'];
+  const unparen = (n) => { while (n && n.type === 'parenthesized_expression' && real(n).length === 1) n = real(n)[0]; return n; };
+  const isJsx = (n) => { const u = unparen(n); return !!u && JSX_TYPES.includes(u.type); };
+  const hasJsx = (n) => !!n && (JSX_TYPES.includes(n.type) || n.descendantsOfType(JSX_TYPES).length > 0);
+  const capital = (s) => /^[A-Z]/.test(s);
+  const usualSetter = (n) => 'set' + n[0].toUpperCase() + n.slice(1);
+  const plainName = (p) => (p && p.type === 'identifier' ? p.text : p && p.type === 'required_parameter' && real(p).length === 1 && real(p)[0].type === 'identifier' && kids(p).length === 1 ? real(p)[0].text : null);
+  const arrowParams = (fn) => (F(fn, 'parameters') ? real(F(fn, 'parameters')) : F(fn, 'parameter') ? [F(fn, 'parameter')] : []);
+  const isNull = (n) => { const u = unparen(n); return !!u && u.type === 'null'; };
+  // a value a prop can have when it is left out: true, 0, "md", [], a name
+  const SIMPLE_DEFAULT = /^(?:true|false|null|-?\d+(?:\.\d+)?|"[^"\\\n]*"|'[^'\\\n]*'|\[\]|\{\}|[A-Za-z_$][\w$.]*)$/;
+  // React's events, by the word sentences use (and onSomethingChange: "when something changes")
+  const JSX_EVENTS = { onClick: 'clicked', onDoubleClick: 'double-clicked', onChange: 'changed', onInput: 'typed in', onSubmit: 'sent', onFocus: 'focused', onBlur: 'unfocused', onMouseEnter: 'hovered', onKeyDown: 'a key is pressed', onKeyUp: 'a key is released', onScroll: 'scrolled' };
+  function eventWords(name) {
+    if (JSX_EVENTS[name]) return JSX_EVENTS[name];
+    const m = name.match(/^on((?:[A-Z][a-z]+)+)Change$/);
+    return m ? `${m[1].replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()} changes` : null;
+  }
+
+  /* A component's props: ({ a, b = false }: Props) -> { said: 'a and b = false', type: 'Props' }, () -> { said: '' },
+     or null when its inputs aren't props. */
+  function propsOf(fn) {
+    if (F(fn, 'parameter')) return null;
+    const ps = F(fn, 'parameters') || real(fn).find(x => x.type === 'formal_parameters');
+    if (!ps) return null;
+    const list = real(ps);
+    if (!list.length) return { said: '', type: null };
+    if (list.length !== 1 || list[0].type !== 'required_parameter') return null;
+    const [pat, ann, more] = real(list[0]);
+    if (!pat || pat.type !== 'object_pattern' || more || (ann && ann.type !== 'type_annotation') || kids(list[0]).some(k => k.type === '=')) return null;
+    const names = [];
+    for (const p of real(pat)) {
+      if (p.type === 'shorthand_property_identifier_pattern') names.push(p.text);
+      else if (p.type === 'object_assignment_pattern') {
+        const [k, v] = real(p);
+        if (!k || k.type !== 'shorthand_property_identifier_pattern' || !v || !SIMPLE_DEFAULT.test(v.text)) return null;
+        names.push(`${k.text} = ${v.text}`);
+      } else return null;
+    }
+    if (!names.length) return null;
+    const t = ann ? typeName(real(ann)[0]) : null;
+    if (ann && !t) return null;
+    return { said: andList(names), type: t };
+  }
+  /* The component (or other function) a line is in, for "when Card first appears": its name when it is a
+     component's, otherwise "this". */
+  function whoOf(n) {
+    for (let p = n.parent; p; p = p.parent) {
+      if (p.type === 'function_declaration') { const nm = F(p, 'name'); return nm && capital(nm.text) ? nm.text : 'this'; }
+      if (p.type === 'arrow_function' || p.type === 'function_expression' || p.type === 'function') {
+        if (p.parent && p.parent.type === 'arguments') continue;   // (the effect's own little function)
+        const d = p.parent && p.parent.type === 'variable_declarator' ? F(p.parent, 'name') : null;
+        return d && d.type === 'identifier' && capital(d.text) ? d.text : 'this';
+      }
+    }
+    return 'this';
+  }
+  /* Is this return inside a useEffect's function (the effect's clean-up)? */
+  const inEffect = (n) => {
+    const b = n.parent, fn = b && b.parent, args = fn && fn.parent, call = args && args.parent;
+    return !!(b && b.type === 'statement_block' && fn && fn.type === 'arrow_function' && args && args.type === 'arguments' && call && call.type === 'call_expression' && F(call, 'function').text === 'useEffect' && real(args)[0] && real(args)[0].startIndex === fn.startIndex);
+  };
+
+  /* ---------- Statements and values ---------- */
+
+  function ext(kind) {
+    const typed = kind !== 'js';
+    const setters = new Map();   // setCount -> count, from the "keep" sentences said so far
+
+    function ex(n, C) {
+      if (!typed) return undefined;
+      if (n.type === 'as_expression') {
+        const [v, t] = real(n);
+        if (!t || t.type === 'const') return undefined;
+        const a = C.ex(v), w = sayType(t, 'arg');
+        if (a == null || w == null || / assumed to be /.test(a)) return null;
+        return C.W(`${C.opx(a)} assumed to be ${w}`);
+      }
+      // x! : x is there for sure (not null or undefined), TypeScript is told
+      if (n.type === 'non_null_expression') {
+        const a = C.ex(real(n)[0]);
+        if (a == null || / for sure$/.test(a)) return null;
+        return C.W(`${C.opx(a)} for sure`);
+      }
+      return undefined;
+    }
+
+    /* A tool's inputs in words (null when one of them stays code). */
+    const paramsOf = (fn) => { const ps = F(fn, 'parameters') || real(fn).find(x => x.type === 'formal_parameters'); if (!ps) return null; const w = real(ps).map(paramWords); return w.some(x => x == null) ? null : w; };
+
+    function one(n, depth, lvl, C) {
+      const say = (t) => { C.o.say(depth, t); return true; };
+      switch (n.type) {
+        case 'lexical_declaration': {
+          if (!typed) return undefined;
+          const d = real(n).filter(x => x.type === 'variable_declarator');
+          if (d.length !== 1) return undefined;
+          const name = F(d[0], 'name'), v = F(d[0], 'value'), t = typeOfAnnotation(d[0]);
+          const constant = kids(n)[0].type === 'const';
+          // a little tool with typed inputs: "constant handle is a tool using e (a React.FormEvent)"
+          if (!t && v && v.type === 'arrow_function' && !lvl && name.type === 'identifier' && hasTypes(v)) {
+            if (real(v).some(x => x.type === 'type_annotation' || x.type === 'type_parameters')) return false;
+            const ps = paramsOf(v), body = F(v, 'body');
+            if (!ps || !body) return false;
+            const head = `${constant ? 'constant' : 'set'} ${name.text} ${constant ? 'is' : 'to'} a tool${ps.length ? ' using ' + ps.join(', ') : ''}`;
+            if (body.type === 'statement_block') { say(head); C.inside(null, () => C.block(real(body), depth + 1, n.startIndex)); return true; }
+            const g = C.val(body);
+            return g != null && !/\sgiving back\s/.test(g) && say(`${head} giving back ${g}`);
+          }
+          if (!t) return undefined;
+          if (name.type !== 'identifier' || !v) return false;
+          const w = sayType(t, 'arg'), e = C.val(v);
+          if (w == null || e == null) return false;
+          return say(constant ? `constant ${name.text} (${w}) is ${e}` : `set ${name.text} (${w}) to ${e}`);
+        }
+        case 'function_declaration': {
+          if (!typed || !hasTypes(n)) return undefined;
+          if (real(n).some(x => x.type === 'type_parameters') || has(n, '*')) return false;
+          const ps = paramsOf(n);
+          const rt = real(n).find(x => x.type === 'type_annotation');
+          const back = rt ? sayType(real(rt)[0], 'ret') : null;
+          if (!ps || (rt && back == null)) return false;
+          say(`define ${F(n, 'name').text}${ps.length ? ' using ' + ps.join(', ') : ''}${back ? ' giving back ' + back : ''}`);
+          C.inside(null, () => C.block(real(F(n, 'body')), depth + 1, n.startIndex));
+          return true;
+        }
+        // define shape Note (an interface), its parts indented under it: "id is text", "read-only created is a Date"
+        case 'interface_declaration': {
+          if (!typed || lvl) return false;
+          const name = real(n).find(x => x.type === 'type_identifier'), ext_ = real(n).find(x => x.type === 'extends_type_clause'), body = real(n).find(x => x.type === 'interface_body' || x.type === 'object_type');
+          if (!name || !body || real(n).some(x => x.type === 'type_parameters')) return false;
+          const bases = ext_ ? real(ext_).map(typeName) : [];
+          if (bases.some(b => b == null)) return false;
+          say(`define shape ${name.text}${bases.length ? ' based on ' + andList(bases) : ''}`);
+          shapeParts(body, depth + 1, n.startIndex, C);
+          return true;
+        }
+        // define type Filter as "all", "open" or "done"; define type Props as a shape (its parts indented under it)
+        case 'type_alias_declaration': {
+          if (!typed || lvl) return false;
+          const name = real(n).find(x => x.type === 'type_identifier'), t = real(n).filter(x => x !== name && x.type !== 'type_parameters').pop();
+          if (!name || !t || real(n).some(x => x.type === 'type_parameters')) return false;
+          if (t.type === 'object_type') { say(`define type ${name.text} as a shape`); shapeParts(t, depth + 1, n.startIndex, C); return true; }
+          const w = sayType(t, 'arg');
+          return w != null && say(`define type ${name.text} as ${w}`);
+        }
+        // bring in: the main part of a file (import X), everything (import * as N), names as others (a as b), types,
+        // and a file for what it does (import "./index.css"). Plain names are the JavaScript sentence.
+        case 'import_statement': {
+          const clause = real(n).find(x => x.type === 'import_clause'), from = real(n).find(x => x.type === 'string');
+          if (!from || !plainQuoted(from.text)) return false;
+          if (!clause) return kids(n).length <= 3 && say(`bring in ${from.text}`);
+          const parts = real(clause), only = has(n, 'type');
+          if (only && !typed) return false;
+          if (parts.length === 1 && parts[0].type === 'namespace_import' && !only) {
+            const nm = real(parts[0])[0];
+            return !!nm && say(`bring in everything from ${from.text} as ${nm.text}`);
+          }
+          const main = parts[0].type === 'identifier' ? parts[0] : null, list = parts.find(x => x.type === 'named_imports');
+          if (parts.length !== (main ? 1 : 0) + (list ? 1 : 0) || (only && main)) return false;
+          const items = [];
+          if (main) items.push(`${main.text} (the main part)`);
+          for (const s of list ? real(list) : []) {
+            if (s.type !== 'import_specifier') return false;
+            const ks = kids(s), t = ks[0].type === 'type';
+            if (t && !typed) return false;
+            const ids = real(s);
+            if (!ids.length || ids.length > 2 || ids.some(x => x.type !== 'identifier')) return false;
+            items.push(`${t ? 'the type ' : ''}${ids[0].text}${ids[1] ? ' as ' + ids[1].text : ''}`);
+          }
+          if (only) return items.length > 0 && !items.some(x => / as /.test(x)) && say(`bring in the type${items.length > 1 ? 's' : ''} ${andList(items)} from ${from.text}`);
+          // ("bring in the type A …" is a list of types only, so a list can't start with one when it has other names)
+          if (/^the type /.test(items[0])) return false;
+          // (plain names, "bring in a and b from …", are JavaScript's own sentence)
+          if (!main && items.every(x => !/ /.test(x))) return undefined;
+          return items.length > 0 && say(`bring in ${andList(items)} from ${from.text}`);
+        }
+        // shared (export) and main (export default): said on the line the thing is made with
+        case 'export_statement': {
+          const isDefault = has(n, 'default'), inner = real(n);
+          if (inner.length !== 1) return false;
+          const d = inner[0];
+          if (/^(?:function_declaration|lexical_declaration|class_declaration|interface_declaration|type_alias_declaration)$/.test(d.type)) {
+            if (isDefault && !/^(?:function_declaration|class_declaration)$/.test(d.type)) return false;
+            const m = C.o.mark(), at = C.o.lines.length;
+            C.o.parents.set(d.startIndex, n.startIndex);
+            if (!C.one(d, depth, lvl)) { C.o.undo(m); return false; }
+            const line = C.o.lines[at], pad = line.match(/^ */)[0], t = line.slice(pad.length);
+            const word = isDefault ? 'main' : 'shared';
+            const said = /^define (?!shared |main )/.test(t) ? t.replace(/^define /, `define ${word} `) : !isDefault && /^constant /.test(t) ? 'shared ' + t : null;
+            if (!said) { C.o.undo(m); return false; }
+            C.o.lines[at] = pad + said;
+            return true;
+          }
+          if (isDefault && d.type === 'identifier') return say(`share ${d.text} as the main part`);
+          if (!isDefault && d.type === 'export_clause' && kids(n).length <= 3) {
+            const specs = real(d);
+            if (!specs.length || specs.some(s => s.type !== 'export_specifier' || kids(s).length !== 1)) return false;
+            return say(`share ${andList(specs.map(s => s.text))}`);
+          }
+          return false;
+        }
+        default: return undefined;
+      }
+    }
+
+    /* The parts of a shape, one line each (comments as notes, anything else as code). */
+    function shapeParts(body, depth, key, C) {
+      C.walk(real(body).filter(x => x.type !== ',' && x.type !== ';'), depth, key, (p, d) => {
+        if (p.type !== 'property_signature') return false;
+        const ks = kids(p);
+        let ro = false, q = false, name = null, t = null;
+        for (const k of ks) {
+          if (k.type === 'readonly') ro = true;
+          else if (k.type === 'property_identifier') name = k.text;
+          else if (k.type === '?') q = true;
+          else if (k.type === 'type_annotation') t = real(k)[0];
+          else if (!isComment(k)) return false;
+        }
+        const w = t ? sayType(t, 'arg') : null;
+        if (!name || w == null) return false;
+        C.o.say(d, `${ro ? 'read-only ' : ''}${name} is ${w}${q ? ', if any' : ''}`);
+        return true;
+      });
+    }
+
+    return { ex, one };
+  }
+
+  root.IntuiTsConvert = { ext, sayType, paramWords };
+})(typeof window !== 'undefined' ? window : globalThis);

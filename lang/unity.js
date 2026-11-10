@@ -30,10 +30,10 @@
 (function (root) {
   'use strict';
 
-  const LANGS = ['python', 'html', 'css', 'js', 'cpp', 'arduino'];
-  const RAW = { python: 'python: ', html: 'html: ', css: 'css: ', js: 'js: ', cpp: 'c++: ', arduino: 'c++: ' };
-  const UNIT = { python: 4, html: 2, css: 2, js: 2, cpp: 4, arduino: 4 };   // the writers' indentation per level
-  const KIND = { html: 'html', css: 'css', js: 'js', cpp: 'cpp', arduino: 'arduino', python: 'python' };
+  const LANGS = ['python', 'html', 'css', 'js', 'ts', 'tsx', 'cpp', 'arduino'];
+  const RAW = { python: 'python: ', html: 'html: ', css: 'css: ', js: 'js: ', ts: 'ts: ', tsx: 'tsx: ', cpp: 'c++: ', arduino: 'c++: ' };
+  const UNIT = { python: 4, html: 2, css: 2, js: 2, ts: 2, tsx: 2, cpp: 4, arduino: 4 };   // the writers' indentation per level
+  const KIND = { html: 'html', css: 'css', js: 'js', ts: 'ts', tsx: 'tsx', cpp: 'cpp', arduino: 'arduino', python: 'python' };
 
   // an exact line in a sentence file, as each writer reads it: its indentation, and the code after the prefix
   const EXACT = {
@@ -41,6 +41,8 @@
     html: /^([ \t]*)(?:html|raw)\s*:\s?(.*)$/i,
     css: /^([ \t]*)(?:css|raw)\s*:\s?(.*)$/i,
     js: /^([ \t]*)(?:js|javascript|raw)\s*:\s?(.*)$/i,
+    ts: /^([ \t]*)ts\s*:\s?(.*)$/i,
+    tsx: /^([ \t]*)tsx\s*:\s?(.*)$/i,
     cpp: /^([ \t]*)(?:c\+\+|cpp|raw)\s*:\s?(.*)$/i,
     arduino: /^([ \t]*)(?:c\+\+|cpp|raw)\s*:\s?(.*)$/i,
   };
@@ -106,7 +108,7 @@
           if (e < 0) { inTriple = q; break; }
           i = e + 3; continue;
         }
-        if (c === '"' || c === "'" || (c === '`' && lang === 'js')) {
+        if (c === '"' || c === "'" || (c === '`' && /^(?:js|ts|tsx)$/.test(lang))) {
           let j = i + 1;
           while (j < s.length && s[j] !== c) j += s[j] === '\\' ? 2 : 1;
           i = j + 1; continue;
@@ -307,6 +309,7 @@
       const id = lang === 'arduino' ? 'sketch' : 'program';
       return W.CPP.compileCppProject({ kind: lang === 'arduino' ? 'arduino' : 'cpp', sections: [{ id, file: id, text }] }).results[id];
     }
+    if (lang === 'ts' || lang === 'tsx') return (W.TS || root.IntuiTs).compileTs({ id: 'x', file: 'typescript', text }, null, { lang });
     const role = { html: 'structure', css: 'styling', js: 'mechanics' }[lang];
     const sections = ['structure', 'styling', 'mechanics'].map(id => ({ id, file: id, text: id === role ? text : '' }));
     return W.WEB.compileWebsite({ sections }).results[role];

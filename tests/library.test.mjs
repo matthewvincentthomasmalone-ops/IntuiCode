@@ -9,7 +9,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { loadEngine, loadLibrary, loadTreeSitter, PYTHON, ROOT, LIBRARY_PACKS } from './helpers/engine.mjs';
 
-const { L, WEB, CPP } = loadEngine();
+const { L, WEB, CPP, TS: TSW } = loadEngine();
 const { LIB, LANGS, BUILDER, packs } = loadLibrary();
 const cat = LIB.catalog();
 const TS = await loadTreeSitter();
@@ -116,6 +116,7 @@ function translateAll() {
       if (v.lang === 'python') res = L.compileProject({ sections: [{ id: 'v', file: base(v.file), text: v.text }] }).results.v;
       else if (v.lang === 'cpp') res = CPP.compileCppProject({ sections: [{ id: 'v', file: 'program', text: v.text }] }).results.v;
       else if (v.lang === 'arduino') res = CPP.compileCppProject({ kind: 'arduino', sections: [{ id: 'v', file: 'sketch', text: v.text }] }).results.v;
+      else if (v.lang === 'ts' || v.lang === 'tsx') res = TSW.compileTs({ id: 'v', file: 'typescript', text: v.text }, null, { lang: v.lang });
       else {
         const r = WEB.compileWebsite({ sections: [
           { id: 'structure', file: 'structure', text: v.lang === 'html' ? v.text : html },
@@ -155,7 +156,7 @@ async function assertParses(grammar, source, label) {
 }
 
 test('library: the generated HTML, CSS, JavaScript, C++ and Arduino code parses', async () => {
-  const grammar = { html: 'html', css: 'css', js: 'javascript', cpp: 'cpp', arduino: 'cpp' };
+  const grammar = { html: 'html', css: 'css', js: 'javascript', ts: 'typescript', tsx: 'tsx', cpp: 'cpp', arduino: 'cpp' };
   for (const { part, v, code } of translated) {
     if (v.lang === 'python') continue;
     await assertParses(grammar[v.lang], code, `${part.id} ${v.file}`);

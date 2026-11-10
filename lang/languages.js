@@ -26,9 +26,9 @@
     L('js', 'JavaScript', ['js', 'mjs', 'cjs', 'jsx'], 'javascript', 'sentences', '//', 'web'),
     L('cpp', 'C++', ['cpp', 'cc', 'cxx', 'hpp', 'hh', 'hxx', 'h'], 'cpp', 'sentences', '//', 'systems'),
     L('arduino', 'Arduino', ['ino'], 'cpp', 'sentences', '//', 'hardware'),
+    L('ts', 'TypeScript', ['ts', 'mts', 'cts'], 'typescript', 'sentences', '//', 'web'),
+    L('tsx', 'TypeScript with JSX (React)', ['tsx'], 'tsx', 'sentences', '//', 'web'),
     // written as code, read in plain words
-    L('ts', 'TypeScript', ['ts', 'mts', 'cts'], 'typescript', 'code', '//', 'web'),
-    L('tsx', 'TypeScript with JSX (React)', ['tsx'], 'tsx', 'code', '//', 'web'),
     L('vue', 'Vue component', ['vue'], 'vue', 'code', '<!--', 'web'),
     L('php', 'PHP', ['php'], 'php', 'code', '//', 'web'),
     L('ruby', 'Ruby', ['rb', 'rake', 'gemspec'], 'ruby', 'code', '#', 'web'),

@@ -48,7 +48,7 @@
   const TEST_PART = /^\s*(?:(?:async\s+)?def\s+test_?\w*|(?:TEST|TEST_F|TEST_CASE|SECTION|BOOST_AUTO_TEST_CASE)\s*\(|(?:it|describe|test)\s*\(\s*['"`]|\[(?:Test|Fact)\]|@Test\b|func\s+Test\w*\(|#\[test\])/;
 
   // an exact line in a sentence file, read as its code (C++'s "above main:" and a page's "head:" too)
-  const EXACT = /^([ \t]*)(?:raw python|python|html|css|js|javascript|c\+\+|cpp|raw|above main|(?:in the )?head)\s*:\s?(.*)$/i;
+  const EXACT = /^([ \t]*)(?:raw python|python|html|css|js|javascript|tsx|ts|c\+\+|cpp|raw|above main|(?:in the )?head)\s*:\s?(.*)$/i;
 
   /* The words and calls that say what a line is for. Each list is tried on code and on sentences alike. */
   const SIGNS = {
@@ -270,7 +270,7 @@
     return merge(parts).map(({ single, count, first, imports, ...p }) => p);
   }
 
-  const SENTENCE_LANGS = new Set(['python', 'html', 'css', 'js', 'cpp', 'arduino']);
+  const SENTENCE_LANGS = new Set(['python', 'html', 'css', 'js', 'ts', 'tsx', 'cpp', 'arduino']);
   /* A sentence file that is nearly all exact lines (imported code) is read as code. */
   function looksLikeCode(lines) {
     const filled = lines.filter(l => l.trim());

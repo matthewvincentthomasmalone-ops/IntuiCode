@@ -814,7 +814,8 @@
     // what a dialect's sentences (D.ext) can use: the output, these values and statements, and the helpers
     const C = { o, src, force, prefix: D.prefix, kind: D.kind, ids, fileFns, asyncFns, ex, val, one, exprStmt, block, inside, args, bodyOf, paramList, handler, little,
       W, P, whole, phrase, topOf, simple, grouped, tight, opx, opd, item, inList, rest, long, isChain, plainString, holder,
-      breakIn: () => breakIn, walk: (nodes, depth, key, sayOne) => walkBlock(o, nodes, depth, key, force, D.prefix, src, sayOne) };
+      breakIn: () => breakIn, walk: (nodes, depth, key, sayOne) => walkBlock(o, nodes, depth, key, force, D.prefix, src, sayOne),
+      WEB: env.WEB, quote, jsxChildren, srcLines };
     walkBlock(o, named(tree), 0, null, force, D.prefix, src, one);
     return o;
   }
@@ -864,6 +865,80 @@
       }
       if (/^(if_statement|for_statement|for_in_statement|while_statement|do_statement)$/.test(n.type)) wrapBodies(o, n, ['consequence', 'body'], 'statement_block');
       if (n.type === 'else_clause') { const c = named(n).find(x => !isComment(x)); if (c && c.type !== 'statement_block' && c.type !== 'if_statement') { const i = o.c.findIndex(x => x.k === c.startIndex); if (i >= 0) o.c[i] = { t: 'statement_block', k: c.startIndex, block: true, c: [o.c[i]] }; } }
+    },
+  };
+
+  /* What counts as the same TypeScript (and JavaScript with JSX): the JavaScript rules, and only these more.
+     Types count: a type, a generic, `as`, `!`, `?` and `readonly` all stay in the tree, so a sentence that loses
+     or changes one is a different program, even where it runs the same (the compiler checks it differently).
+     - (x) => … and x => … are the same little function (x has no type, default or ? of its own).
+     - In a shape (an interface or an object type), ; and , between the parts are the same, and so is one after
+       the last part.
+     - JSX children are compared as React makes them: the text is what JSX keeps of it (each line trimmed, lines
+       joined by a space, lines of nothing but spaces left out, character references like &amp; read as their
+       character), and an element with nothing inside is the same as one that closes itself (<X></X> and <X />).
+       The text in an attribute's quotes is read the same way (&amp; is &). */
+  const TS_SKIP_COMMA = /^(?:interface_body|object_type|enum_body)$/;
+  const jsxText = (s) => {
+    const lines = String(s).split(/\r\n|\n|\r/);
+    let last = 0;
+    lines.forEach((l, i) => { if (/[^ \t]/.test(l)) last = i; });
+    let out = '';
+    lines.forEach((line, i) => {
+      let t = line.replace(/\t/g, ' ');
+      if (i > 0) t = t.replace(/^ +/, '');
+      if (i < lines.length - 1) t = t.replace(/ +$/, '');
+      if (t) out += t + (i !== last ? ' ' : '');
+    });
+    return out;
+  };
+  /* An element's children as JSX makes them: its texts (from the source between the other children, so the
+     spaces count as JSX counts them) and everything else in order. [{ node }] or [{ text, k }]. */
+  function jsxChildren(el) {
+    const kidsOf = named(el).filter(c => !/^jsx_(?:opening|closing)_element$/.test(c.type));
+    const open = named(el).find(c => c.type === 'jsx_opening_element'), close = named(el).find(c => c.type === 'jsx_closing_element');
+    if (!open || !close) return null;
+    const out = [];
+    let at = open.endIndex, textStart = null;
+    const flush = (end) => {
+      const t = jsxText(el.text.slice(at - el.startIndex, end - el.startIndex));
+      if (t) out.push({ text: decode(t, true), k: textStart != null ? textStart : at });
+      textStart = null;
+    };
+    for (const c of kidsOf) {
+      if (c.type === 'jsx_text' || c.type === 'html_character_reference') { if (textStart == null) textStart = c.startIndex; continue; }
+      flush(c.startIndex);
+      out.push({ node: c });
+      at = c.endIndex;
+    }
+    flush(close.startIndex);
+    return out;
+  }
+  const TS_RULES = {
+    skip: (c) => JS_RULES.skip(c) || (c.type === ',' && c.parent && TS_SKIP_COMMA.test(c.parent.type)),
+    rewrite: (n) => {
+      if (n.type === 'jsx_element' && n.namedChildCount) {
+        const ch = jsxChildren(n);
+        if (ch) {
+          const open = named(n).find(c => c.type === 'jsx_opening_element');
+          const parts = ch.map(c => (c.node ? normalise(c.node, TS_RULES) : { t: 'jsx_text', k: c.k, v: c.text })).filter(Boolean);
+          // nothing inside: the same as <X />
+          if (!parts.length) return { t: 'jsx_self_closing_element', k: n.startIndex, c: normalise(open, TS_RULES).c.filter(x => x.t !== '>').concat([{ t: '/>', k: open.endIndex, v: '/>' }]) };
+          return { t: 'jsx_element', k: n.startIndex, block: true, c: [normalise(open, TS_RULES), ...parts, { t: 'jsx_closing_element', k: n.endIndex, v: named(n).find(c => c.type === 'jsx_closing_element').text.replace(/\s+/g, '') }] };
+        }
+      }
+      // the text in an attribute's quotes, as JSX reads it
+      if (n.type === 'string' && n.parent && n.parent.type === 'jsx_attribute') return { t: 'string', k: n.startIndex, v: decode(n.text.slice(1, -1), true) };
+      return JS_RULES.rewrite(n);
+    },
+    block: JS_RULES.block,
+    after: (o, n) => {
+      JS_RULES.after(o, n);
+      // (x) => … is x => …: a TypeScript input with nothing of its own is a name
+      if (n.type === 'arrow_function') {
+        const i = o.c.findIndex(x => x.t === 'formal_parameters');
+        if (i >= 0 && o.c[i].c.length === 3 && o.c[i].c[1].t === 'required_parameter' && o.c[i].c[1].c && o.c[i].c[1].c.length === 1 && o.c[i].c[1].c[0].t === 'identifier') o.c[i] = o.c[i].c[1].c[0];
+      }
     },
   };
 
@@ -2357,12 +2432,21 @@
   /* The driver: convert, check, keep what differs as code, check again  */
   /* ================================================================== */
 
+  /* The dialect a kind of script is read in: its grammar, exact-code prefix and own sentences (TypeScript and
+     React, from lang/ts_convert.js, when it is loaded). Plain JavaScript gets React's sentences too, for JSX. */
+  const dialectOf = (kind) => {
+    const T = root.IntuiTsConvert;
+    return { kind, prefix: kind + ':', ext: T ? T.ext(kind) : null };
+  };
+  const isScript = (kind) => kind === 'js' || kind === 'ts' || kind === 'tsx';
+
   function compileBack(kind, text, env) {
-    const sec = { id: 'x', file: { html: 'structure', css: 'styling', js: 'mechanics', cpp: 'program', arduino: 'sketch' }[kind], text };
+    const sec = { id: 'x', file: { html: 'structure', css: 'styling', js: 'mechanics', ts: 'typescript', tsx: 'typescript', cpp: 'program', arduino: 'sketch' }[kind], text };
     const shared = () => ({ ids: Object.fromEntries(Object.entries(env.ids || {}).map(([k, t]) => [k, { tag: t, line: -1 }])), groups: Object.fromEntries((env.groups || []).map(g => [g, true])), cssGroups: {}, addGroups: {} });
     if (kind === 'html') return env.WEB.compileHtml(sec, { ids: {}, groups: {}, cssGroups: {}, addGroups: {} });
     if (kind === 'css') return env.WEB.compileCss(sec, shared());
-    if (kind === 'js') return env.WEB.compileJs(sec, shared());
+    if (kind === 'ts' || kind === 'tsx') return env.TS.compileTs(sec, shared(), { lang: kind });
+    if (kind === 'js') return env.TS ? env.TS.compileTs(sec, shared(), { lang: 'js' }) : env.WEB.compileJs(sec, shared());
     return env.CPP.compileCppProject({ kind: kind === 'arduino' ? 'arduino' : 'cpp', sections: [sec] }).results.x;
   }
 
@@ -2392,7 +2476,8 @@
       if (usingsOf(ta).join('\n') !== usingsOf(tb).join('\n')) return { same: false, why: 'the `using` lines' };
       usingStd = usingsOf(ta).includes('using namespace std;');
     }
-    const rules = lang === 'js' ? JS_RULES : lang === 'css' ? CSS_RULES : cppRules(usingStd);
+    // (JavaScript with JSX in it is compared as TypeScript compares JSX; without JSX the rules are the same)
+    const rules = lang === 'js' ? (ta.descendantsOfType('jsx_element').length || tb.descendantsOfType('jsx_element').length ? TS_RULES : JS_RULES) : lang === 'ts' || lang === 'tsx' ? TS_RULES : lang === 'css' ? CSS_RULES : cppRules(usingStd);
     const r = cmp(normalise(ta, rules), normalise(tb, rules));
     return r === true ? { same: true } : { same: false, culprits: r === false ? null : r };
   }
@@ -2402,7 +2487,7 @@
     const force = new Map();   // key -> 1 (say it the careful way) or 2 (keep it as code)
     let conv, last, gen;
     for (let round = 0; round < 40; round++) {
-      conv = kind === 'html' ? htmlConvert(src, env, force) : kind === 'css' ? cssConvert(src, env, force) : kind === 'js' ? jsConvert(src, env, force) : cppConvert(src, env, force, kind === 'arduino');
+      conv = kind === 'html' ? htmlConvert(src, env, force) : kind === 'css' ? cssConvert(src, env, force) : isScript(kind) ? jsConvert(src, env, force, dialectOf(kind)) : cppConvert(src, env, force, kind === 'arduino');
       if (conv.fail) return { ok: false, error: conv.fail };
       const text = conv.lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '') + '\n';
       gen = compileBack(kind, text, env);
@@ -2439,7 +2524,7 @@
   }
   function result(conv, text, exact, why) {
     const lines = conv.lines.filter(l => l.trim() && !/^\s*note:/.test(l));
-    const raw = lines.filter(l => /^\s*(?:html|css|js|c\+\+|above main|head):/.test(l)).length;
+    const raw = lines.filter(l => /^\s*(?:html|css|js|ts|tsx|c\+\+|above main|head):/.test(l)).length;
     return { ok: true, text, exact, reason: exact ? null : why ? `The sentences differ from the original in ${why}.` : 'Some parts could not be matched exactly.', lines: lines.length, words: lines.length - raw, kept: raw };
   }
 

@@ -50,7 +50,7 @@
   const LANGS = window.IntuiLanguages;
   const PRJ = window.IntuiProject;
   const { ENGINE, WEB_ROLE, isSentences, writeOf, roleOf, pathProblem } = PRJ;
-  const ENGINE_NAME = { python: 'Python', website: 'Website', cpp: 'C++', arduino: 'Arduino' };
+  const ENGINE_NAME = { python: 'Python', website: 'Website', typescript: 'TypeScript', cpp: 'C++', arduino: 'Arduino' };
   const langName = (id) => (LANGS.byId(id) || { name: id }).name;
   // An Arduino sketch must be named after its folder (blink/blink.ino).
   const sketchName = () => (desk.folder ? baseName(desk.folder) : project.name || 'sketch');
@@ -213,7 +213,7 @@
   /* ------------------------------------------------------------------ */
 
   const webTriple = PRJ.webTriple;
-  const compileAll = (p) => PRJ.compileAll(p, { LANG, WEB, CPP });
+  const compileAll = (p) => PRJ.compileAll(p, { LANG, WEB, CPP, TS: window.IntuiTs });
   /* The page the preview shows: the HTML file being edited, or the main page, with the main page's CSS
    * and JavaScript. */
   function previewPage() {
@@ -286,7 +286,7 @@
   const FILLER = new Set(LANG.FILLER.words);
   const STEP_WORDS = new Set(LANG.FILLER.steps);
 
-  const EXACT_LINE = /^(\s*)((?:raw python|python|html|head|css|js|javascript|c\+\+|cpp|above main|raw)\s*:\s?)(.*)$/i;
+  const EXACT_LINE = /^(\s*)((?:raw python|python|html|head|css|js|javascript|tsx|ts|c\+\+|cpp|above main|raw)\s*:\s?)(.*)$/i;
   function hlLine(line, mark, names) {
     names = names || NO_NAMES;
     if (/^\s*(?:note\s*:|comment\s*:|#)/i.test(line)) return `<span class="s-com">${escHtml(line)}</span>`;
@@ -1506,7 +1506,7 @@
   }
   /* Code being typed: in a code file, or after an exact line's python: / html: / js: … The language and the line
      up to the cursor, as the code completer wants them. */
-  const RAW_LANG = { python: 'python', 'raw python': 'python', html: 'html', head: 'html', css: 'css', js: 'js', javascript: 'js', 'c++': 'cpp', cpp: 'cpp', 'above main': 'cpp', raw: null };
+  const RAW_LANG = { python: 'python', 'raw python': 'python', html: 'html', head: 'html', css: 'css', js: 'js', javascript: 'js', ts: 'ts', tsx: 'tsx', 'c++': 'cpp', cpp: 'cpp', 'above main': 'cpp', raw: null };
   function codeContext(sec, lineBefore) {
     if (!COMPLETE) return null;
     const l = LANGS.byId(sec.lang) || {};
@@ -4586,11 +4586,11 @@
     return { ok: true, text: res.text, check, kept: force.length };
   }
 
-  /* HTML, CSS, JavaScript, C++ and Arduino code -> a Write-mode project, checked exact. */
+  /* HTML, CSS, JavaScript, TypeScript, C++ and Arduino code -> a Write-mode project, checked exact. */
   async function convertEnv() {
     const WR = await Runner.webReader((st) => setStatus(st));
-    await WR.loadLangs(['html', 'css', 'js', 'cpp']);
-    return { parse: WR.parse, WEB, CPP };
+    await WR.loadLangs(['html', 'css', 'js', 'ts', 'tsx', 'cpp']);
+    return { parse: WR.parse, WEB, CPP, TS: window.IntuiTs };
   }
   function reportConversion(parts) {
     for (const [label, r] of parts) {
@@ -5682,7 +5682,7 @@
     const code = f.source.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
     const id = newId();
     if (!UNITY || !UNITY.LANGS.includes(lang)) return { section: { id, path, lang, text: code + '\n' } };
-    if (lang === 'python' || lang === 'css' || lang === 'js') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    if (lang === 'python' || lang === 'css' || lang === 'js' || lang === 'ts' || lang === 'tsx') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
     let r;
     try { r = await uConvert(lang, code + '\n'); } catch (e) { r = { ok: false, reason: e.message }; }
     if (r.ok) return { section: { id, path, lang, text: r.text.replace(/\n+$/, '') + '\n' }, note: r.exact === false ? `${path} may not come back exactly: ${r.reason || 'check it'}.` : '' };

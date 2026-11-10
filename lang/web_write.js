@@ -2126,6 +2126,13 @@
         for (const v of c.matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(v[1]);
         if ((d = c.match(/\bcatch\s*\(\s*([A-Za-z_$][\w$]*)/))) x.vars.add(d[1]);
         if ((d = c.match(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/))) x.fns.add(d[1]);
+        // import express, { Request as Req, type Note } from "…", import * as React from "…": the names it brings in
+        if ((d = c.match(/^import\s+(?:type\s+)?([^'"]+?)\s+from\s+["']/))) {
+          for (const part of d[1].replace(/[{}]/g, ',').split(',')) {
+            const n = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop().trim();
+            if (/^[A-Za-z_$][\w$]*$/.test(n)) x.vars.add(n);
+          }
+        }
       }
       if ((m = s.match(/^(?:js|javascript|raw)\s*:(.*)$/i))) {
         for (const d of m[1].matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
