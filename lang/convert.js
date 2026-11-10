@@ -79,7 +79,7 @@
     o.rawLines = (depth, prefix, src, node, text) => {
       const html = prefix === 'html:' || prefix === 'head:';
       // (JavaScript: the lines inside a template literal are its text, so they are kept as they are)
-      const keep = html ? keepRanges(node) : prefix === 'js:' ? node.descendantsOfType('template_string').filter(t => t.startPosition.row !== t.endPosition.row).map(t => [t.startIndex, t.endIndex]) : [];
+      const keep = html ? keepRanges(node) : /^(?:js|ts|tsx):$/.test(prefix) ? node.descendantsOfType('template_string').filter(t => t.startPosition.row !== t.endPosition.row).map(t => [t.startIndex, t.endIndex]) : [];
       const { lines } = text != null ? { lines: text.trim().split('\n').map(l => l.trim()) } : srcLines(src, node, keep);
       for (const l of lines) { o.lines.push(IND.repeat(depth) + (l ? `${prefix} ${l}` : prefix)); o.keys.push(node.startIndex); o.raw++; }
     };
@@ -204,8 +204,15 @@
   const MADE_WORD = { li: 'list item', div: 'block', p: 'paragraph', span: 'text', a: 'link', img: 'picture', button: 'button', h1: 'big heading', h2: 'heading', h3: 'small heading', section: 'section', ul: 'list', ol: 'numbered list', label: 'label', option: 'option', tr: 'row', td: 'cell', canvas: 'drawing area' };
   const isChain = (n) => n && (n.type === 'identifier' || n.type === 'this' || (n.type === 'member_expression' && F(n, 'property').type === 'property_identifier' && isChain(F(n, 'object'))));
 
-  function jsConvert(src, env, force) {
-    const tree = env.parse('js', src);
+  /* A function's input as a plain name: x, or (in TypeScript) x with no type, default or ? of its own. */
+  const plainParam = (p) => (p && p.type === 'identifier' ? p : p && p.type === 'required_parameter' && p.namedChildCount === 1 && p.namedChild(0).type === 'identifier' ? p.namedChild(0) : null);
+
+  /* dialect (optional): { kind: the grammar ('js', 'ts', 'tsx'), prefix: the exact-code prefix ('js:', 'ts:', 'tsx:'),
+     ext: the dialect's own sentences (lang/ts_convert.js), asked first for each value (ext.ex) and statement
+     (ext.one); undefined from them means "say it the JavaScript way" }. */
+  function jsConvert(src, env, force, dialect) {
+    const D = dialect || { kind: 'js', prefix: 'js:', ext: null };
+    const tree = env.parse(D.kind, src);
     const o = Out();
     const ids = env.ids || {};
     const fileFns = new Set(tree.descendantsOfType('function_declaration').map(f => (F(f, 'name') || {}).text).filter(Boolean));   // this file's own tools
@@ -256,7 +263,7 @@
     const little = (fnNode) => {
       if (!fnNode || fnNode.type !== 'arrow_function' || kids(fnNode).some(k => k.type === 'async')) return null;
       const ps = F(fnNode, 'parameters'), p1 = F(fnNode, 'parameter');
-      const p = p1 && p1.type === 'identifier' ? p1 : ps && named(ps).length === 1 && named(ps)[0].type === 'identifier' ? named(ps)[0] : null;
+      const p = p1 && p1.type === 'identifier' ? p1 : ps && named(ps).length === 1 ? plainParam(named(ps)[0]) : null;
       const body = F(fnNode, 'body');
       if (!p || !body || body.type === 'statement_block') return null;
       return { p: p.text, body };
@@ -267,6 +274,7 @@
     const val = (n) => (n && n.type === 'array' && !named(n).length ? 'an empty list' : ex(n));   // a whole value: [] in words
     function ex(n) {
       if (!n) return null;
+      if (D.ext && D.ext.ex) { const own = D.ext.ex(n, C); if (own !== undefined) return own; }
       switch (n.type) {
         case 'identifier': case 'number': case 'true': case 'false': case 'undefined': case 'this': return n.text;
         case 'null': return 'nothing';
@@ -415,15 +423,15 @@
     }
     const args = (call) => named(F(call, 'arguments')).filter(x => !isComment(x));
     const bodyOf = (n) => (n.type === 'statement_block' ? named(n) : [n]);
-    const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, 'js:', src, one);
+    const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, D.prefix, src, one);
     let breakIn = null;   // what a break here ends: 'loop' or 'case' (of "depending on")
     const inside = (kind, fn) => { const was = breakIn; breakIn = kind; try { fn(); } finally { breakIn = was; } };
     const JUMP = /^(?:return_statement|break_statement|continue_statement|throw_statement)$/;
     // a tool's inputs: names, or a name with the value it has when it's left out (quantity = 1), as the writer copies them
     const paramList = (fn) => {
       const ps = named(F(fn, 'parameters')).filter(x => !isComment(x));
-      const ok = (p) => p.type === 'identifier' || (p.type === 'assignment_pattern' && F(p, 'left').type === 'identifier' && !/\n/.test(F(p, 'right').text));
-      return ps.every(ok) ? ps.map(p => (p.type === 'identifier' ? p.text : `${F(p, 'left').text} = ${F(p, 'right').text}`)) : null;
+      const ok = (p) => plainParam(p) || (p.type === 'assignment_pattern' && F(p, 'left').type === 'identifier' && !/\n/.test(F(p, 'right').text));
+      return ps.every(ok) ? ps.map(p => (plainParam(p) ? plainParam(p).text : `${F(p, 'left').text} = ${F(p, 'right').text}`)) : null;
     };
 
     /* () => { … }, (event) => { … }, or one expression, () => f(x), which counts as { f(x); } where nothing reads
@@ -432,10 +440,10 @@
       if (!fnNode || fnNode.type !== 'arrow_function') return null;
       const params = F(fnNode, 'parameters') || F(fnNode, 'parameter');
       const p = params ? (params.type === 'identifier' ? [params] : named(params)) : [];
-      if (p.length > most || (p.length && (!allowEvent || p.some(q => q.type !== 'identifier')))) return null;
+      if (p.length > most || (p.length && (!allowEvent || p.some(q => !plainParam(q))))) return null;
       const body = F(fnNode, 'body');
       if (!body) return null;
-      const name = p.length ? p[0].text : null;
+      const name = p.length ? plainParam(p[0]).text : null;
       if (body.type === 'statement_block') return { body: named(body), usesEvent: p.length === 1, name };
       if (body.type === 'update_expression' || /^(?:object|sequence_expression|parenthesized_expression)$/.test(body.type)) return null;
       const stmt = { type: 'expression_statement', startIndex: body.startIndex, endIndex: body.endIndex, startPosition: body.startPosition, endPosition: body.endPosition,
@@ -538,9 +546,9 @@
           if (prop === 'reverse' && !a.length) { const l = ex(obj); return l != null && say(`reverse ${l}`); }
           // .forEach(x => { … }): "do this for each x in xs", a little tool run for each item
           if (prop === 'forEach' && a.length === 1 && a[0].type === 'arrow_function') {
-            const ps = F(a[0], 'parameters') ? named(F(a[0], 'parameters')) : [F(a[0], 'parameter')];
+            const ps = (F(a[0], 'parameters') ? named(F(a[0], 'parameters')) : [F(a[0], 'parameter')]).map(plainParam);
             const l = ex(obj), h = handler(a[0], true, 2);
-            if (l == null || !h || !ps.length || ps.length > 2 || ps.some(p => !p || p.type !== 'identifier') || /\scounting with\s/.test(l)) return false;
+            if (l == null || !h || !ps.length || ps.length > 2 || ps.some(p => !p) || /\scounting with\s/.test(l)) return false;
             say(`do this for each ${ps[0].text} in ${l}${ps[1] ? ', counting with ' + ps[1].text : ''}`);
             inside(null, () => block(h.body, depth + 1, e.startIndex));
             return true;
@@ -600,6 +608,7 @@
 
     function one(n, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
+      if (D.ext && D.ext.one) { const own = D.ext.one(n, depth, lvl, C); if (own !== undefined) return own; }
       if (lvl && n.type !== 'lexical_declaration' && n.type !== 'expression_statement') return false;
       switch (n.type) {
         case 'expression_statement': {
@@ -736,7 +745,7 @@
           const base = heritage ? named(heritage)[0] : null;
           if (!name || (heritage && (named(heritage).length !== 1 || !isChain(base)))) return false;
           say(`define class ${name.text}${base ? ' based on ' + base.text : ''}`);
-          walkBlock(o, named(F(n, 'body')), depth + 1, n.startIndex, force, 'js:', src, (mem, d, lv) => {
+          walkBlock(o, named(F(n, 'body')), depth + 1, n.startIndex, force, D.prefix, src, (mem, d, lv) => {
             if (lv || mem.type !== 'method_definition' || kids(mem).some(k => /^(?:static|get|set|\*)$/.test(k.type)) || F(mem, 'name').type !== 'property_identifier') return false;
             const ps = paramList(mem);
             if (ps == null) return false;
@@ -802,7 +811,12 @@
         default: return false;
       }
     }
-    walkBlock(o, named(tree), 0, null, force, 'js:', src, one);
+    // what a dialect's sentences (D.ext) can use: the output, these values and statements, and the helpers
+    const C = { o, src, force, prefix: D.prefix, kind: D.kind, ids, fileFns, asyncFns, ex, val, one, exprStmt, block, inside, args, bodyOf, paramList, handler, little,
+      W, P, whole, phrase, topOf, simple, grouped, tight, opx, opd, item, inList, rest, long, isChain, plainString, holder,
+      breakIn: () => breakIn, walk: (nodes, depth, key, sayOne) => walkBlock(o, nodes, depth, key, force, D.prefix, src, sayOne),
+      WEB: env.WEB, TS: env.TS, quote, jsxChildren, srcLines };
+    walkBlock(o, named(tree), 0, null, force, D.prefix, src, one);
     return o;
   }
 
@@ -851,6 +865,80 @@
       }
       if (/^(if_statement|for_statement|for_in_statement|while_statement|do_statement)$/.test(n.type)) wrapBodies(o, n, ['consequence', 'body'], 'statement_block');
       if (n.type === 'else_clause') { const c = named(n).find(x => !isComment(x)); if (c && c.type !== 'statement_block' && c.type !== 'if_statement') { const i = o.c.findIndex(x => x.k === c.startIndex); if (i >= 0) o.c[i] = { t: 'statement_block', k: c.startIndex, block: true, c: [o.c[i]] }; } }
+    },
+  };
+
+  /* What counts as the same TypeScript (and JavaScript with JSX): the JavaScript rules, and only these more.
+     Types count: a type, a generic, `as`, `!`, `?` and `readonly` all stay in the tree, so a sentence that loses
+     or changes one is a different program, even where it runs the same (the compiler checks it differently).
+     - (x) => … and x => … are the same little function (x has no type, default or ? of its own).
+     - In a shape (an interface or an object type), ; and , between the parts are the same, and so is one after
+       the last part.
+     - JSX children are compared as React makes them: the text is what JSX keeps of it (each line trimmed, lines
+       joined by a space, lines of nothing but spaces left out, character references like &amp; read as their
+       character), and an element with nothing inside is the same as one that closes itself (<X></X> and <X />).
+       The text in an attribute's quotes is read the same way (&amp; is &). */
+  const TS_SKIP_COMMA = /^(?:interface_body|object_type|enum_body)$/;
+  const jsxText = (s) => {
+    const lines = String(s).split(/\r\n|\n|\r/);
+    let last = 0;
+    lines.forEach((l, i) => { if (/[^ \t]/.test(l)) last = i; });
+    let out = '';
+    lines.forEach((line, i) => {
+      let t = line.replace(/\t/g, ' ');
+      if (i > 0) t = t.replace(/^ +/, '');
+      if (i < lines.length - 1) t = t.replace(/ +$/, '');
+      if (t) out += t + (i !== last ? ' ' : '');
+    });
+    return out;
+  };
+  /* An element's children as JSX makes them: its texts (from the source between the other children, so the
+     spaces count as JSX counts them) and everything else in order. [{ node }] or [{ text, k }]. */
+  function jsxChildren(el) {
+    const kidsOf = named(el).filter(c => !/^jsx_(?:opening|closing)_element$/.test(c.type));
+    const open = named(el).find(c => c.type === 'jsx_opening_element'), close = named(el).find(c => c.type === 'jsx_closing_element');
+    if (!open || !close) return null;
+    const out = [];
+    let at = open.endIndex, textStart = null, textEnd = null;
+    const flush = (end) => {
+      const t = jsxText(el.text.slice(at - el.startIndex, end - el.startIndex));
+      if (t) out.push({ text: decode(t, true), k: textStart != null ? textStart : at, end: textEnd != null ? textEnd : end });
+      textStart = null; textEnd = null;
+    };
+    for (const c of kidsOf) {
+      if (c.type === 'jsx_text' || c.type === 'html_character_reference') { if (textStart == null) textStart = c.startIndex; textEnd = c.endIndex; continue; }
+      flush(c.startIndex);
+      out.push({ node: c });
+      at = c.endIndex;
+    }
+    flush(close.startIndex);
+    return out;
+  }
+  const TS_RULES = {
+    skip: (c) => JS_RULES.skip(c) || (c.type === ',' && c.parent && TS_SKIP_COMMA.test(c.parent.type)),
+    rewrite: (n) => {
+      if (n.type === 'jsx_element' && n.namedChildCount) {
+        const ch = jsxChildren(n);
+        if (ch) {
+          const open = named(n).find(c => c.type === 'jsx_opening_element');
+          const parts = ch.map(c => (c.node ? normalise(c.node, TS_RULES) : { t: 'jsx_text', k: c.k, v: c.text })).filter(Boolean);
+          // nothing inside: the same as <X />
+          if (!parts.length) return { t: 'jsx_self_closing_element', k: n.startIndex, c: normalise(open, TS_RULES).c.filter(x => x.t !== '>').concat([{ t: '/>', k: open.endIndex, v: '/>' }]) };
+          return { t: 'jsx_element', k: n.startIndex, block: true, c: [normalise(open, TS_RULES), ...parts, { t: 'jsx_closing_element', k: n.endIndex, v: named(n).find(c => c.type === 'jsx_closing_element').text.replace(/\s+/g, '') }] };
+        }
+      }
+      // the text in an attribute's quotes, as JSX reads it
+      if (n.type === 'string' && n.parent && n.parent.type === 'jsx_attribute') return { t: 'string', k: n.startIndex, v: decode(n.text.slice(1, -1), true) };
+      return JS_RULES.rewrite(n);
+    },
+    block: JS_RULES.block,
+    after: (o, n) => {
+      JS_RULES.after(o, n);
+      // (x) => … is x => …: a TypeScript input with nothing of its own is a name
+      if (n.type === 'arrow_function') {
+        const i = o.c.findIndex(x => x.t === 'formal_parameters');
+        if (i >= 0 && o.c[i].c.length === 3 && o.c[i].c[1].t === 'required_parameter' && o.c[i].c[1].c && o.c[i].c[1].c.length === 1 && o.c[i].c[1].c[0].t === 'identifier') o.c[i] = o.c[i].c[1].c[0];
+      }
     },
   };
 
@@ -2344,12 +2432,21 @@
   /* The driver: convert, check, keep what differs as code, check again  */
   /* ================================================================== */
 
+  /* The dialect a kind of script is read in: its grammar, exact-code prefix and own sentences (TypeScript and
+     React, from lang/ts_convert.js, when it is loaded). Plain JavaScript gets React's sentences too, for JSX. */
+  const dialectOf = (kind) => {
+    const T = root.IntuiTsConvert;
+    return { kind, prefix: kind + ':', ext: T ? T.ext(kind) : null };
+  };
+  const isScript = (kind) => kind === 'js' || kind === 'ts' || kind === 'tsx';
+
   function compileBack(kind, text, env) {
-    const sec = { id: 'x', file: { html: 'structure', css: 'styling', js: 'mechanics', cpp: 'program', arduino: 'sketch' }[kind], text };
+    const sec = { id: 'x', file: { html: 'structure', css: 'styling', js: 'mechanics', ts: 'typescript', tsx: 'typescript', cpp: 'program', arduino: 'sketch' }[kind], text };
     const shared = () => ({ ids: Object.fromEntries(Object.entries(env.ids || {}).map(([k, t]) => [k, { tag: t, line: -1 }])), groups: Object.fromEntries((env.groups || []).map(g => [g, true])), cssGroups: {}, addGroups: {} });
     if (kind === 'html') return env.WEB.compileHtml(sec, { ids: {}, groups: {}, cssGroups: {}, addGroups: {} });
     if (kind === 'css') return env.WEB.compileCss(sec, shared());
-    if (kind === 'js') return env.WEB.compileJs(sec, shared());
+    if (kind === 'ts' || kind === 'tsx') return env.TS.compileTs(sec, shared(), { lang: kind });
+    if (kind === 'js') return env.TS ? env.TS.compileTs(sec, shared(), { lang: 'js' }) : env.WEB.compileJs(sec, shared());
     return env.CPP.compileCppProject({ kind: kind === 'arduino' ? 'arduino' : 'cpp', sections: [sec] }).results.x;
   }
 
@@ -2379,7 +2476,8 @@
       if (usingsOf(ta).join('\n') !== usingsOf(tb).join('\n')) return { same: false, why: 'the `using` lines' };
       usingStd = usingsOf(ta).includes('using namespace std;');
     }
-    const rules = lang === 'js' ? JS_RULES : lang === 'css' ? CSS_RULES : cppRules(usingStd);
+    // (JavaScript with JSX in it is compared as TypeScript compares JSX; without JSX the rules are the same)
+    const rules = lang === 'js' ? (ta.descendantsOfType('jsx_element').length || tb.descendantsOfType('jsx_element').length ? TS_RULES : JS_RULES) : lang === 'ts' || lang === 'tsx' ? TS_RULES : lang === 'css' ? CSS_RULES : cppRules(usingStd);
     const r = cmp(normalise(ta, rules), normalise(tb, rules));
     return r === true ? { same: true } : { same: false, culprits: r === false ? null : r };
   }
@@ -2389,12 +2487,12 @@
     const force = new Map();   // key -> 1 (say it the careful way) or 2 (keep it as code)
     let conv, last, gen;
     for (let round = 0; round < 40; round++) {
-      conv = kind === 'html' ? htmlConvert(src, env, force) : kind === 'css' ? cssConvert(src, env, force) : kind === 'js' ? jsConvert(src, env, force) : cppConvert(src, env, force, kind === 'arduino');
+      conv = kind === 'html' ? htmlConvert(src, env, force) : kind === 'css' ? cssConvert(src, env, force) : isScript(kind) ? jsConvert(src, env, force, dialectOf(kind)) : cppConvert(src, env, force, kind === 'arduino');
       if (conv.fail) return { ok: false, error: conv.fail };
       const text = conv.lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '') + '\n';
       gen = compileBack(kind, text, env);
       last = check(kind, src, gen.text, env);
-      if (env.debug) env.debug({ round, text, generated: gen.text, check: last, errors: gen.info.flatMap((inf, i) => inf.errs.map(e => `${i + 1}: ${e}`)) });
+      if (env.debug) env.debug({ round, text, generated: gen.text, check: last, errors: gen.info.flatMap((inf, i) => inf.errs.map(e => `${i + 1}: ${e}`)), force: [...force], keys: conv.keys });
       // sentences the translator complains about are kept as code too
       const bad = new Set();
       gen.info.forEach((inf, i) => { if (inf.errs.length && conv.keys[i] != null) bad.add(conv.keys[i]); });
@@ -2407,7 +2505,8 @@
         force.set(key, conv.careful.has(key) && !force.has(key) ? 1 : 2);
         added++;
       };
-      let keys = [...bad, ...(!last.same && last.culprits ? last.culprits : [])];
+      // (each once: a line the translator complains about and the check finds different is one place, not its block)
+      let keys = [...new Set([...bad, ...(!last.same && last.culprits ? last.culprits : [])])];
       // C++: a name said with its type spelled out can put right the lines that use it ("length of input" needs
       // input to be text), so those go first and the rest are checked again
       if (kind === 'cpp' || kind === 'arduino') {
@@ -2426,7 +2525,7 @@
   }
   function result(conv, text, exact, why) {
     const lines = conv.lines.filter(l => l.trim() && !/^\s*note:/.test(l));
-    const raw = lines.filter(l => /^\s*(?:html|css|js|c\+\+|above main|head):/.test(l)).length;
+    const raw = lines.filter(l => /^\s*(?:html|css|js|ts|tsx|c\+\+|above main|head):/.test(l)).length;
     return { ok: true, text, exact, reason: exact ? null : why ? `The sentences differ from the original in ${why}.` : 'Some parts could not be matched exactly.', lines: lines.length, words: lines.length - raw, kept: raw };
   }
 

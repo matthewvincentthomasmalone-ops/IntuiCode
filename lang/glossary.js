@@ -10,7 +10,7 @@
 
   const OPS = ['#include', '===', '!==', '...', '::', '->', '=>', '<<', '>>', '==', '!=', '+=', '-=', '*=', '/=', '++', '--', '&&', '||', '**', '//',
     ':', ';', '{', '}', '(', ')', '[', ']', '=', '!', '%', '@', '?', '&', '*', '.'];
-  const LISTS = { python: ['python'], cpp: ['cpp'], arduino: ['arduino', 'cpp'], html: ['html'], css: ['css'], js: ['js'], ts: ['js'], say: ['say'] };
+  const LISTS = { python: ['python'], cpp: ['cpp'], arduino: ['arduino', 'cpp'], html: ['html'], css: ['css'], js: ['js', 'react'], ts: ['ts', 'react', 'js'], tsx: ['react', 'ts', 'js'], say: ['say'] };
 
   let built = null;
   function terms() { return (typeof window !== 'undefined' && window.IntuiGlossaryTerms) || {}; }
@@ -34,7 +34,7 @@
   function strip(text, lang) {
     let t = String(text);
     if (lang === 'python') t = t.replace(/#.*$/gm, '');
-    if (lang === 'cpp' || lang === 'arduino' || lang === 'js') t = t.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    if (lang === 'cpp' || lang === 'arduino' || lang === 'js' || lang === 'ts' || lang === 'tsx') t = t.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
     if (lang === 'css') t = t.replace(/\/\*[\s\S]*?\*\//g, '');
     if (lang === 'html') t = t.replace(/<!--[\s\S]*?-->/g, '');
     return t.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""');
@@ -81,7 +81,7 @@
       if (/^\s*("""|''')/m.test(src)) out.push('docstring');
       if (/^\s*@/m.test(src)) out.push('decorator');
     }
-    if ((lang === 'js' || lang === 'ts') && /`/.test(src)) out.push('template literal');
+    if ((lang === 'js' || lang === 'ts' || lang === 'tsx') && /`/.test(src)) out.push('template literal');
     const t = strip(src, lang);
     const re = /#include|[A-Za-z_]\w*(?:(?:\.|::)[A-Za-z_]\w*)*|\S/g;
     let m;

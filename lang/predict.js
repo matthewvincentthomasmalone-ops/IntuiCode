@@ -24,7 +24,7 @@
     const s = clean(line);
     if (s.length < 3 || /[‹›]/.test(s)) return false;
     if (/^(?:note|comment|description|teach)\s*:/i.test(s)) return false;
-    if (/^(?:python|html|css|js|c\+\+)\s*:/i.test(s)) return false;
+    if (/^(?:python|html|css|js|ts|tsx|c\+\+)\s*:/i.test(s)) return false;
     return true;
   }
 

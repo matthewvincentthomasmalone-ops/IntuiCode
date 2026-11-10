@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node tools/test.mjs",
-    "coverage": "node tools/coverage.mjs samples tests/corpus && node tools/coverage.mjs tests/heldout",
+    "coverage": "node tools/coverage.mjs samples tests/corpus && node tools/coverage.mjs tests/heldout && node tools/coverage.mjs tests/corpus_react && node tools/coverage.mjs tests/heldout_react",
     "vendor": "node tools/vendor.mjs",
     "site": "node tools/build_desktop.mjs && node tools/build_site.mjs && node tools/serve_site.mjs",
     "tauri": "tauri",

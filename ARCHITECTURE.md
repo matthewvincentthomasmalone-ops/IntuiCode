@@ -17,7 +17,9 @@ the desktop app.
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files (`compileAll`), Markdown, CSV and JSON shown as what they are |
 | `lang/unity.js` | Unity mode: a project file shown line for line (exact lines as code, sentences as regions) and written back; a selection grown to whole statements, turned into sentences in place, and back into code in the context of the code around it (the rest given to the writer as exact lines) |
 | `lang/cpp_write.js` | Sentences → C++ and Arduino sketches |
-| `lang/convert.js` | HTML, CSS, JavaScript, C++ and Arduino → sentences, checked exact |
+| `lang/convert.js` | HTML, CSS, JavaScript, TypeScript, React, C++ and Arduino → sentences, checked exact |
+| `lang/ts_write.js` | Sentences → TypeScript and React, built on the JavaScript writer through its dialect hook; the phrase packs for Tailwind, shadcn/ui, react-router, TanStack Query and Supabase; the TypeScript Index content |
+| `lang/ts_convert.js` | What TypeScript and React add to the JavaScript reader: types, shapes, components, state, effects, JSX; asked first for each value and statement |
 | `lang/blueprints.js` | Blueprint format and filling blanks |
 | `lang/tutor.js` | Style cards (a language's habits, and why) for Python and C++/Arduino, sentence cards (how to talk to the program), the C++ habit finder (on tree-sitter's parse), and how "Your turn" answers are checked |
 | `lang/glossary.js` | Finds a language's terms in code (tokens, tags, properties) or the less obvious words in sentences, for Ctrl+H and the code side of the explain strip |
@@ -73,7 +75,7 @@ preview serves them at their paths; the browser's one-page preview can't reach f
 *Decided 2026-11-04.*
 
 A project's files (`project.sections`) each have a `path` and a language id from `lang/languages.js`.
-The language says how the file is written: in **sentences** (Python, HTML, CSS, JavaScript, C++,
+The language says how the file is written: in **sentences** (Python, HTML, CSS, JavaScript, TypeScript, C++,
 Arduino), as **code** that IntuaCode reads to you, or as **text** (Markdown, CSV, JSON…), kept as
 written. The engines still work by role (Python by module name; a website by structure, styling and
 mechanics; C++ by program; Arduino by sketch), and the shell works a file's role out from its path and
@@ -271,6 +273,41 @@ tick a step, never untick one, so a tick made on the map after the export is nev
 Each step's tick (`done`) and check line (`check`, one line, at most 300 characters) are kept in the plan with
 the project, checked by `checkedProject` like the other fields. Kits give a step its check with `check:`; without
 one, the step's depth has a default (`DEPTHS[depth].check` in `lang/builder.js`).
+
+## Decision: TypeScript and React are the JavaScript sentences, plus their own
+
+*Decided 2026-11-10.*
+
+Most code people bring from an AI builder is React and TypeScript (Lovable's stack: React, TypeScript, Vite,
+Tailwind, shadcn/ui, react-router, TanStack Query, Supabase). `.ts` and `.tsx` files are sentence languages, and so
+is the React in `.jsx`/`.js`:
+
+- **One writer, extended, not forked.** `compileJs` takes an optional dialect (`ext`: `plain`, `names`, `line`,
+  `expr`). A dialect line can be written in full (a shape, what a component shows), or said as the Mechanics
+  sentence it stands for and its code then changed (`set total (a number) to 0` is `set total to 0`, then
+  `: number` goes in), so every Mechanics sentence means the same in all three. `lang/ts_write.js` is that
+  dialect. With no dialect loaded, the JavaScript writer is exactly as before.
+- **One reader, extended.** `jsConvert` takes a dialect too (grammar, exact-code prefix, and `lang/ts_convert.js`'s
+  sayings, asked first for each value and statement; anything they leave is said the JavaScript way).
+- **Exact lines are `ts:` and `tsx:`**, not `js:`: a typed line read back as JavaScript would lose its types, and
+  Unity's and Parts' exact-line patterns are per language.
+- **Types count.** The check uses the JavaScript rules plus three of TypeScript's own (`(x) =>` is `x =>` for an
+  input with nothing of its own; `;` and `,` in a shape; JSX compared as React reads it). Every type, generic,
+  `as`, `!`, `?`, `readonly`, `import type` and `export` stays in the tree; `tests/convert.test.mjs` has pairs for
+  each that must be reported as different.
+- **JSX is compared as React reads it**, not as tree-sitter splits it: tree-sitter drops the spaces round text,
+  so an element's text is recomputed from the source between its children, with JSX's own rules (lines trimmed,
+  joined by a space, character references read). The writer keeps text on one line where its edge spaces
+  matter, and writes `&`, `<`, `>`, `{`, `}` as character references (tree-sitter's TSX can't read a bare `&`).
+- **The fallback works on one element or text** inside what a component shows, so one prop with no words keeps
+  only its element as `tsx:` lines.
+- **Phrase packs** (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) are tables and patterns in
+  `lang/ts_write.js`, used by both directions; one Tailwind class is one phrase and back, and a class with no
+  words is said as written, in quotes.
+- **What a component shows has its own small grammar**, read as an indented tree (an element per line, its
+  settings after commas in order), not by Mechanics' line rules: so its words can't collide with them.
+- **Running React** (a bundler in the page) is not part of this: the Preview shows websites. TSX would need
+  transforming before it could run there, even at the desktop's local address (PR #32).
 
 ## Testing
 

@@ -1,11 +1,11 @@
 /* IntuaCode — a project: a tree of files, each in its own language.
  *
  * Each file (a "section") has an id, a path, a language id (lang/languages.js) and its text. The language
- * says how it's written: in sentences (Python, HTML, CSS, JavaScript, C++, Arduino), as code that IntuaCode
+ * says how it's written: in sentences (Python, HTML, CSS, JavaScript, TypeScript, C++, Arduino), as code that IntuaCode
  * reads to you, or as notes and data kept as written.
  *
  * The writers work by role: Python by module name (settings, tools, main…), a website by structure /
- * styling / mechanics, C++ by program, Arduino by sketch. A file's role (`file`) is worked out from its
+ * styling / mechanics, C++ by program, Arduino by sketch, TypeScript file by file. A file's role (`file`) is worked out from its
  * path and language, so projects saved before files had paths (where the id is the role: 'main',
  * 'structure'…) compile exactly as they always did.
  *
@@ -18,7 +18,7 @@
   // the files projects always had, by role
   const CLASSIC_PATH = { settings: 'settings.py', tools: 'tools.py', main: 'main.py', structure: 'index.html', styling: 'style.css', mechanics: 'script.js', program: 'main.cpp', sketch: 'sketch.ino' };
   const CLASSIC_LANG = { structure: 'html', styling: 'css', mechanics: 'js', program: 'cpp', sketch: 'arduino' };
-  const ENGINE = { python: 'python', html: 'website', css: 'website', js: 'website', cpp: 'cpp', arduino: 'arduino' };
+  const ENGINE = { python: 'python', html: 'website', css: 'website', js: 'website', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', arduino: 'arduino' };
   const WEB_ROLE = { html: 'structure', css: 'styling', js: 'mechanics' };
   const MAX_FILES = 200;
 
@@ -30,6 +30,7 @@
     if (WEB_ROLE[sec.lang]) return WEB_ROLE[sec.lang];
     if (sec.lang === 'cpp') return 'program';
     if (sec.lang === 'arduino') return 'sketch';
+    if (sec.lang === 'ts' || sec.lang === 'tsx') return 'typescript';
     return writeOf(sec);
   }
 
@@ -95,7 +96,8 @@
 
   /* Each engine compiles its own files: Python together (each file sees the ones before it, so the start
    * file goes last), the main page together and other pages, styles and scripts each against it, C++
-   * together, Arduino together. Code and notes files aren't compiled. W: { LANG, WEB, CPP }, the writers. */
+   * together, Arduino together, each TypeScript file on its own. Code and notes files aren't compiled.
+   * W: { LANG, WEB, CPP, TS }, the writers. */
   function compileAll(p, W) {
     const groups = {};
     for (const s of p.sections) if (ENGINE[s.lang]) (groups[ENGINE[s.lang]] = groups[ENGINE[s.lang]] || []).push(s);
@@ -116,6 +118,8 @@
     }
     if (groups.cpp) take(W.CPP.compileCppProject({ ...p, kind: 'cpp', sections: groups.cpp }));
     if (groups.arduino) take(W.CPP.compileCppProject({ ...p, kind: 'arduino', sections: groups.arduino }));
+    const TS = W.TS || root.IntuiTs;
+    if (groups.typescript && TS) for (const s of groups.typescript) results[s.id] = TS.compileTs(s, null, { lang: s.lang });
     return { results, syms, pySyms, page, web };
   }
 

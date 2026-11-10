@@ -35,10 +35,10 @@ export function loadEngine() {
   const ctx = { console };
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const f of ['lang/languages.js', 'lang/project.js', 'lang/python.js', 'lang/web_write.js', 'lang/cpp_write.js', 'lang/blueprints.js']) {
+  for (const f of ['lang/languages.js', 'lang/project.js', 'lang/python.js', 'lang/web_write.js', 'lang/ts_write.js', 'lang/cpp_write.js', 'lang/blueprints.js']) {
     vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   }
-  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints, WEB: ctx.IntuiWeb, CPP: ctx.IntuiCpp, LANGS: ctx.IntuiLanguages, PRJ: ctx.IntuiProject };
+  return { L: ctx.IntuiLang.python, BP: ctx.IntuiBlueprints, WEB: ctx.IntuiWeb, TS: ctx.IntuiTs, CPP: ctx.IntuiCpp, LANGS: ctx.IntuiLanguages, PRJ: ctx.IntuiProject };
 }
 
 /* Call the Python reader in bulk (one process per batch). */
@@ -106,11 +106,12 @@ export async function loadWebReader() {
 export async function loadConverter() {
   const W = await loadWebReader();
   await W.loadLangs(['cpp']);
+  vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/ts_convert.js'), 'utf8'), { filename: 'lang/ts_convert.js' });
   vm.runInThisContext(readFileSync(path.join(ROOT, 'lang/convert.js'), 'utf8'), { filename: 'lang/convert.js' });
-  const { WEB, CPP, BP } = loadEngine();
+  const { WEB, TS, CPP, BP } = loadEngine();
   const C = globalThis.IntuiConvert;
-  const env = (extra = {}) => ({ parse: W.parse, WEB, CPP, ...extra });
-  return { C, W, WEB, CPP, BP, env, convert: (kind, src, extra) => C.toSentences(kind, src, env(extra)) };
+  const env = (extra = {}) => ({ parse: W.parse, WEB, TS, CPP, ...extra });
+  return { C, W, WEB, TS, CPP, BP, env, convert: (kind, src, extra) => C.toSentences(kind, src, env(extra)) };
 }
 
 /* The Python reader's project analysis, for mixed projects. */

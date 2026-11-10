@@ -30,24 +30,25 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 2. [The sentence file format](#the-sentence-file-format)
 3. [Grammar: Python](#grammar-python)
 4. [Grammar: websites](#grammar-websites)
-5. [Grammar: C++ and Arduino](#grammar-c-and-arduino)
-6. [How a value is read: binding and precedence](#how-a-value-is-read-binding-and-precedence)
-7. [Context: what the writers remember](#context-what-the-writers-remember)
-8. [What IntuaCode has no words for](#what-intuacode-has-no-words-for)
-9. [Guarantees and limits](#guarantees-and-limits)
-10. [Known wrong translations](#known-wrong-translations)
-11. [About the examples](#about-the-examples)
-12. [Index](#index)
+5. [Grammar: TypeScript and React](#grammar-typescript-and-react)
+6. [Grammar: C++ and Arduino](#grammar-c-and-arduino)
+7. [How a value is read: binding and precedence](#how-a-value-is-read-binding-and-precedence)
+8. [Context: what the writers remember](#context-what-the-writers-remember)
+9. [What IntuaCode has no words for](#what-intuacode-has-no-words-for)
+10. [Guarantees and limits](#guarantees-and-limits)
+11. [Known wrong translations](#known-wrong-translations)
+12. [About the examples](#about-the-examples)
+13. [Index](#index)
 
 ## Files and folders
 
 A project is a tree of files (`lang/project.js`). Each file has a path and a language from
 `lang/languages.js`, and the language says how it is written: in **sentences** (Python, HTML, CSS, JavaScript,
-C++, Arduino: each sentence file becomes one code file of that name), as **code** that IntuaCode reads to you
+TypeScript, C++, Arduino: each sentence file becomes one code file of that name), as **code** that IntuaCode reads to you
 (Rust, Go, C#, Swift… 30+), or as **text** kept as written (Markdown, CSV, JSON, YAML, TOML). A project can mix
 them. Each writer compiles its own files: the Python files together, each seeing the ones before it and the
 start file last; a website's main page with its styling and mechanics, and its other pages, styles and
-scripts against it; the C++ files as one program; the Arduino files as one sketch.
+scripts against it; each TypeScript file on its own; the C++ files as one program; the Arduino files as one sketch.
 
 The usual starting layouts, and the names their files get:
 
@@ -58,6 +59,7 @@ The usual starting layouts, and the names their files get:
 | Website | Structure, Styling, Mechanics | `index.html`, `style.css`, `script.js` | `lang/web_write.js` | `lang/convert.js` |
 | C++ program | Program | `main.cpp` | `lang/cpp_write.js` | `lang/convert.js` |
 | Arduino sketch | Sketch | `‹folder›.ino`, named after the project folder | `lang/cpp_write.js` | `lang/convert.js` |
+| TypeScript and React | each file by its path | `‹name›.ts`, `‹name›.tsx` (React in `.jsx` too) | `lang/ts_write.js` | `lang/convert.js` with `lang/ts_convert.js` |
 
 - **The code files are the source of truth.** The sentences are kept in `.intuicode/project.json` beside
   them and rebuilt from the code when the code changes elsewhere (see `ARCHITECTURE.md`).
@@ -76,6 +78,9 @@ The usual starting layouts, and the names their files get:
   needs them; tools and classes go above `int main()`, everything else inside it, then `return 0;`.
 - **Arduino.** Lines at the left edge are settings (global values); `when the board starts` becomes
   `setup()` and `over and over` becomes `loop()`. A missing one is added empty.
+- **TypeScript and React.** A `.ts` or `.tsx` file is its own: nothing is added round it (no imports, no
+  wrapper), so what you say is the whole file. Imported ones come in as exact lines, ready to translate in Unity.
+  IntuaCode doesn't bundle or run them: the Preview shows websites, not React apps (yet).
 
 ## The sentence file format
 
@@ -120,6 +125,7 @@ check it; the language does, when the program runs or is compiled.
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
 | `css:`, `raw:` | Styling | as the line, at its indentation, or inside the current `on screens …` block if any. Blank lines between them are kept. |
 | `js:`, `javascript:`, `raw:` | Mechanics | as the line, at its indentation, or at the indent of the sentence block it is in. Blank lines between them are kept. `let`, `const`, `var` and `function` names it makes become known; the lines inside a template literal (`` `…` `` over several lines) are its text, copied exactly, without a sentence block's indent. |
+| `ts:` (a `.ts` file), `tsx:` (a `.tsx` file) | TypeScript | as `js:` in Mechanics. Inside what a component shows (`show:`), a line of JSX where it stands. |
 | `c++:`, `cpp:`, `raw:` | C++ | where it stands |
 | `above main:`, `outside main:`, `at the top:` | C++ | above `main` (left edge only) |
 
@@ -811,6 +817,280 @@ document.getElementById("name").addEventListener("input", (e) => {
 });
 const first = document.querySelector("p");
 ```
+
+## Grammar: TypeScript and React
+
+A `.ts` or `.tsx` file is written in sentences, and so is the React in a `.jsx` or `.js` file. Every Mechanics
+sentence above works the same here (`lang/ts_write.js` builds on the JavaScript writer); this section is what
+TypeScript and React add. Exact lines are `ts:` in a `.ts` file and `tsx:` in a `.tsx` file (`js:` in JavaScript),
+so a typed line is never read back as JavaScript. Types count: a sentence that loses or changes a type, a generic,
+`as`, `!`, `?` or `readonly` isn't the same program, even where it runs the same, so it stays as exact code (see
+[What counts as the same](#what-counts-as-the-same-typescript-and-jsx)).
+
+### Types
+
+```ebnf
+(* Types in words. Unions are read first, then the rest, so "a list of numbers or nothing" is (number[]) | null *)
+type        = one { ( "," | "or" ) one } ;                              (* → a | b | c *)
+one         = "a number" | "text" | "true or false" | "anything" | "something unknown" | "an object"
+            | "nothing"                                                 (* → null; void where a tool gives back nothing *)
+            | "undefined" | text | number                               (* → "all", 3: a literal type *)
+            | "a list of" ( "numbers" | "text" | "true or false" | "anything" | Name )        (* → number[], Note[] *)
+            | ( "a" | "an" ) Name [ "of" type { "and" type } ]          (* → Note, React.FormEvent, Promise<void>, Record<string, number> *)
+            | "a tool" [ "using" inputs ] "giving back" type ;          (* → (id: string) => void *)
+
+(* Names made with a type: the sentence is the Mechanics one, the type in brackets after the name *)
+typed-set   = ( "set" | "let" | "make" ) name "(" type ")" ( "to" | "be" ) value ;   (* → let total: number = 0; *)
+typed-const = "constant" name "(" type ")" "is" value ;                              (* → const label: string = "x"; *)
+define      = "define" name [ "using" inputs ] [ "giving back" type ] ;              (* → function add(a: number): number { *)
+tool        = ( "constant" | "set" ) name ( "is" | "to" ) "a tool using" inputs [ "giving back" value ] ;
+input       = name [ "(" [ "the rest," ] [ type ] [ ", if any" ] ")" ] [ "=" code ] ;  (* → name, name: T, name?: T, ...name: T[] *)
+inputs      = input { "," input } ;
+
+(* Shapes and type names: their parts one per line, indented under them *)
+shape       = "define" [ "shared" ] "shape" Name [ "based on" Name { ( "," | "and" ) Name } ] ;  (* → interface Note extends A { *)
+type-shape  = "define" [ "shared" ] "type" Name "as a shape" ;                       (* → type Props = { … }; *)
+part        = [ "read-only" ] name "is" type [ ", if any" ] ;                        (* → readonly id: string; / email?: string; *)
+type-name   = "define" [ "shared" ] "type" Name "as" type ;                          (* → type Filter = "all" | "done"; *)
+
+(* Values *)
+assumed     = value "assumed to be" type ;                                           (* → value as T *)
+sure        = "(" value "for sure" ")" ;                                             (* → value! *)
+
+(* Other files *)
+import-main = "bring in" name "(the main part)" [ ( "," | "and" ) names ] "from" text ;   (* → import App, { a } from "./App"; *)
+import-all  = "bring in everything from" text "as" name ;                            (* → import * as React from "react"; *)
+import-as   = "bring in" name "as" name { … } "from" text ;                          (* → import { Toaster as Sonner } … *)
+import-type = "bring in the type" [ "s" ] names "from" text ;                        (* → import type { Note } from …; *)
+import-file = "bring in" text ;                                                      (* → import "./index.css"; *)
+shared      = "define" ( "shared" | "main" ) … | "shared constant" … ;             (* → export … / export default … *)
+share       = "share" names | "share" name "as the main part" ;                      (* → export { a, b }; / export default App; *)
+```
+
+```intuicode ts
+bring in the type User from "./types"
+
+define shared shape Note
+    read-only id is text
+    title is text
+    done is true or false
+    tags is a list of text, if any
+    owner is a User or nothing
+
+define type Filter as "all", "open" or "done"
+
+define shared countDone using notes (a list of Note), filter (a Filter) = "all" giving back a number
+    set n (a number) to 0
+    for each note in notes
+        if note.done
+            increase n
+    give back n
+```
+
+```typescript
+import type { User } from "./types";
+
+export interface Note {
+  readonly id: string;
+  title: string;
+  done: boolean;
+  tags?: string[];
+  owner: User | null;
+}
+
+type Filter = "all" | "open" | "done";
+
+export function countDone(notes: Note[], filter: Filter = "all"): number {
+  let n: number = 0;
+  for (const note of notes) {
+    if (note.done) {
+      n++;
+    }
+  }
+  return n;
+}
+```
+
+### Components, state and effects
+
+```ebnf
+component   = "define" [ "shared" | "main" ] "component" Name [ "using" props ] [ "from" Name ] ;
+                                                     (* → function Card({ title, children }: CardProps) { *)
+arrow       = [ "shared" ] "constant" Name "is a component" [ "using" props ] [ "from" Name ] [ ", showing" ] ;
+                                                     (* → const Card = (…) => { …   ", showing:" → const Card = (…) => ( JSX ); *)
+props       = prop { ( "," | "and" ) prop } ;        prop = name [ "=" code ] ;      (* a value when it is left out *)
+show        = "show:" ;                                                              (* → return ( … ); what it shows, under it *)
+state       = "keep" name [ "(" type ")" ] "," ( "starting at" value | "with no starting value" ) [ ", changed with" name ] ;
+                                                     (* → const [count, setCount] = useState<number>(0); *)
+change      = "change" name "to" value | "change" name "from" name "to" value ;     (* → setCount(…) / setCount((c) => …) *)
+reference   = "keep a reference" name [ "(to" type ")" ] [ ", starting at" value ] ;  (* → const box = useRef<T>(null); *)
+first       = "when" ( Name | "this" | "it" ) "first appears" ;                      (* → useEffect(() => { … }, []); *)
+whenever    = "whenever" value { "or" value } "changes" ;                             (* → useEffect(() => { … }, [a, b]); *)
+away        = "when" ( Name | "this" | "it" ) "goes away" [ "," step ] ;             (* in an effect → return () => { … }; *)
+memo        = "constant" name "is" value ", worked out" ( "again whenever" value { "or" value } "changes" | "once" ) ;
+                                                     (* → const v = useMemo(() => value, [deps]); *)
+take        = "take" part { ( "," | "and" ) part } "from" value ;                     (* → const { a, b } = value; *)
+wait-take   = "wait for" value [ "," ] "and take" part { … } "from it" ;              (* → const { a, b } = await value; *)
+part        = name [ "as" name ] [ "(or" value ")" ] ;                                (* → data: notes = [] *)
+step        = "change" … | "run" name [ "with" values ] | "show" values ;             (* one step, written in place *)
+start       = "show" ( "a" | "an" ) Name "in" value ;                                 (* → createRoot(value).render(<App />); *)
+```
+
+```intuicode tsx
+bring in useEffect and useState from "react"
+
+define main component Counter using label and start = 0 from CounterProps
+    keep count (a number), starting at start
+    whenever count changes
+        run console.log with count
+    show:
+        a block, styled as flexible layout, items centred, gap 2
+            a heading saying "{label}: {count}"
+            a button saying "Add one", when clicked: change count from c to c plus 1
+            only if count is more than 9
+                a paragraph saying "That's a lot."
+```
+
+```tsx
+import { useEffect, useState } from "react";
+
+export default function Counter({ label, start = 0 }: CounterProps) {
+  const [count, setCount] = useState<number>(start);
+  useEffect(() => {
+    console.log(count);
+  }, [count]);
+  return (
+    <div className="flex items-center gap-2">
+      <h2>{label}: {count}</h2>
+      <button onClick={() => setCount((c) => c + 1)}>Add one</button>
+      {count > 9 && <p>That's a lot.</p>}
+    </div>
+  );
+}
+```
+
+### What a component shows (JSX)
+
+Under `show:` (or `, showing:`), one thing per line; what goes inside an element is indented under it.
+
+```ebnf
+thing       = element | text | "{" value "}" | "a space" | note | only-if | either | each | "nothing" | "tsx:" code ;
+element     = word [ ( "to" | "of" ) text ] [ "saying" ( text | "{" value "}" ) ] { "," setting } ;
+word        = html-word                        (* the Structure words: a block, a heading, a link, a picture, bold text … *)
+            | ( "a" | "an" ) Name              (* a component: a Button, a Card.Header *)
+            | ( "a" | "an" ) variant Name      (* shadcn/ui: a ghost Button → <Button variant="ghost"> *)
+            | "a Route for" text "showing" ( "a" | "an" ) Name   (* → <Route path="/" element={<Index />} /> *)
+            | ( "a" | "an" ) tag "element" | "together" ;        (* any other tag; together → <> … </> *)
+text        = quoted text, with {value} fill-ins ;                     (* "Hi {name}!" → Hi {name}! *)
+setting     = "styled" ( text | "{" value "}" )                        (* → className="…" / className={…} *)
+            | "styled as" style { "," style }                          (* Tailwind classes in words: see Phrase packs *)
+            | "keyed by" value                                         (* → key={…} *)
+            | "running" value "when" event                             (* → onClick={save} *)
+            | "when" event [ "with" name ] ":" step                    (* → onClick={() => …} / onChange={(e) => …} *)
+            | "with everything in" value                               (* → {...props} *)
+            | "with" prop [ text | "{" value "}" ] ;                   (* → prop="…" / prop={…} / prop *)
+event       = "clicked" | "double-clicked" | "changed" | "typed in" | "sent" | "focused" | "unfocused" | "hovered"
+            | "a key is pressed" | "a key is released" | "scrolled" | words "changes" ;   (* → onClick … onOpenChange *)
+only-if     = "only if" value ;                                        (* one thing under it → {value && …} *)
+either      = "if" value  …  "otherwise"  … ;                          (* one thing under each → {value ? … : …} *)
+each        = "for each" name "in" value [ ", counting with" name ] ; (* one thing under it → {list.map((x, i) => …)} *)
+```
+
+JSX keeps its text the way React reads it: each line is trimmed and lines are joined by a space. So the writer puts
+an element's children on lines of their own, except when a text starts or ends with a space that matters: then
+they share one line. Characters JSX would read as something else (`<`, `>`, `{`, `}`, `&`) are written as
+character references (`&lt;`, `&amp;`…).
+
+```intuicode tsx
+constant NoteList is a component using notes and onDelete from NoteListProps, showing:
+    a list, styled as 2 apart top to bottom
+        for each note in notes
+            a list item, keyed by note.id
+                if note.done
+                    text saying {note.title}, styled as crossed out
+                otherwise
+                    text saying {note.title}
+                a ghost Button saying "Delete", when clicked: run onDelete with note.id
+```
+
+```tsx
+const NoteList = ({ notes, onDelete }: NoteListProps) => (
+  <ul className="space-y-2">
+    {notes.map((note) => (
+      <li key={note.id}>
+        {note.done ? <span className="line-through">{note.title}</span> : <span>{note.title}</span>}
+        <Button variant="ghost" onClick={() => onDelete(note.id)}>Delete</Button>
+      </li>
+    ))}
+  </ul>
+);
+```
+
+### Phrase packs: Tailwind, shadcn/ui, react-router, TanStack Query, Supabase
+
+- **Tailwind** (`styled as …`): one class is one phrase, in order, and a class with no words is written as it is,
+  in quotes: `styled as flexible layout, items centred, gap 2, "data-[state=open]:bg-accent"`. Some of them:
+
+  | Words | Class | Words | Class |
+  |---|---|---|---|
+  | `flexible layout` | `flex` | `space inside 4` / `… across` / `… up and down` | `p-4` / `px-4` / `py-4` |
+  | `items top to bottom` | `flex-col` | `space above 2`, `space below 2` | `mt-2`, `mb-2` |
+  | `items centred`, `spread out` | `items-center`, `justify-between` | `gap 2`, `4 apart top to bottom` | `gap-2`, `space-y-4` |
+  | `grid layout`, `3 columns` | `grid`, `grid-cols-3` | `text size sm`, `bold`, `semi-bold` | `text-sm`, `font-bold`, `font-semibold` |
+  | `full width`, `width 4`, `height 4` | `w-full`, `w-4`, `h-4` | `text colour muted-foreground` | `text-muted-foreground` |
+  | `at most 3xl wide`, `centred` | `max-w-3xl`, `mx-auto` | `background colour primary` | `bg-primary` |
+  | `a border`, `a border at the bottom` | `border`, `border-b` | `rounded corners lg`, `fully rounded` | `rounded-lg`, `rounded-full` |
+  | `a shadow md`, `hand cursor` | `shadow-md`, `cursor-pointer` | `underlined on hover` | `hover:underline` |
+
+  After the words: `on hover`, `on focus`, `while pressed`, `while disabled`, `in dark mode`, `on small screens and
+  up` (also medium, large, extra large): `hover:`, `focus:`, `active:`, `disabled:`, `dark:`, `sm:` (`md:`, `lg:`, `xl:`).
+- **shadcn/ui**: a component's `variant` before its name: `a ghost Button`, `an outline Badge`.
+- **react-router**: `a Route for "/about" showing an About`; `a Link to "/about" saying "About"`.
+- **TanStack Query**: `the query ["notes"] loaded by fetchNotes` (`useQuery`), `a change made by addNote`
+  (`useMutation`); `give back a change made by addNote` with `when it works` and `when it fails` under it;
+  `mark the query ["notes"] in queryClient as out of date` (`invalidateQueries`).
+- **Supabase**: `every row of the "notes" table in supabase`, `the "id, title" of every row of …`, `adding note to
+  the "notes" table in supabase`, `changing { done } in …`, `adding or replacing … in …`, `deleting from …`; then
+  any of `where "id" is id` (`is not`), `sorted by "created_at"` (`from the end`, `from the start`), `at most 20`,
+  `giving back the result`, `as a single row`, `as one row or none`. `fail with error as it is` is `throw error;`.
+
+```intuicode ts
+define shared fetchNotes giving back a Promise of a list of Note
+    wait for every row of the "notes" table in supabase sorted by "created_at" from the end, and take data and error from it
+    if error
+        fail with error as it is
+    give back data assumed to be a list of Note
+
+define shared useNotes
+    give back the query ["notes"] loaded by fetchNotes
+```
+
+```typescript
+export async function fetchNotes(): Promise<Note[]> {
+  const { data, error } = await supabase.from("notes").select("*").order("created_at", { ascending: false });
+  if (error) {
+    throw error;
+  }
+  return data as Note[];
+}
+export function useNotes() {
+  return useQuery({ queryKey: ["notes"], queryFn: fetchNotes });
+}
+```
+
+### What counts as the same (TypeScript and JSX)
+
+The JavaScript rules (see [Guarantees and limits](#guarantees-and-limits)), and only these more:
+
+- `(x) => …` and `x => …`, where `x` has no type, default or `?` of its own.
+- `;` and `,` between the parts of a shape, and one after the last part.
+- JSX as React reads it: an element's texts as JSX keeps them (lines trimmed, joined by a space, lines of nothing
+  but spaces left out, character references like `&amp;` read as their character), and an element with nothing
+  inside the same as one that closes itself (`<X></X>` and `<X />`). The text in an attribute's quotes is read the
+  same way.
+
+Everything else counts: every type, generic, `as`, `!`, `?`, `readonly`, `import type`, `export`; the order of an
+element's props (`<A b c>` and `<A c b>` differ); `{" "}` and a space in the text differ, as do `{"a"}` and `a`.
 
 ## Grammar: C++ and Arduino
 
@@ -1640,7 +1920,7 @@ The writers don't guess what an unknown sentence means. For each line, one of th
    names in it are still checked.
 2. **No rule fits.** The line is an error and the code gets a `???` placeholder until the line is fixed
    or written as exact code.
-3. **The line is exact code** (`python:`, `js:`, `css:`, `html:`, `c++:` …). It is copied unchecked.
+3. **The line is exact code** (`python:`, `js:`, `ts:`, `tsx:`, `css:`, `html:`, `c++:` …). It is copied unchecked.
 
 Where the language needs something the sentence doesn't say, context fills it in: the kind of value
 (Python, C++), which element a name means, `let` or `const`, `async`, a type, an import, a `global`, an
@@ -1676,13 +1956,17 @@ translated back with the writers, and the trees compared. Each statement, elemen
 and each sentence the writer reports an error on, is kept as exact code, up to 40 rounds. A few
 differences are counted as the same because they can't change what the code does (attribute order, spaces
 a browser ignores, braces round one-line bodies, `std::` under `using namespace std` …); `ROADMAP.md`,
-step 6, lists them.
+step 6, lists them. TypeScript and JSX add only three, and types always count: see
+[What counts as the same](#what-counts-as-the-same-typescript-and-jsx).
+- In JSX, the fallback works on one element (or one text) at a time: an element that can't be said keeps its
+  own lines as `tsx:` code, inside the sentences around it. A value with no words (`x satisfies T`, an arrow
+  function given as a prop) is kept as its code inside the sentence, and checked like the rest.
 
 **So** sentences that came from code are exact, or reported as not exact: a mistake in a writer shows up
 as a difference, and the part stays as code. A sentence written or edited by hand is the writing
 direction, with the limits below.
 
-**Writing** (`lang/python.js`, `lang/web_write.js`, `lang/cpp_write.js`):
+**Writing** (`lang/python.js`, `lang/web_write.js`, `lang/ts_write.js`, `lang/cpp_write.js`):
 
 - Rules are regular expressions tried in order; the first that fits wins. There is no grammar check
   beyond that, so phrases can collide (see `ROADMAP.md`, Known risks).
@@ -1695,6 +1979,9 @@ direction, with the limits below.
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
   `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above` or number words. C++ has no
   `contains`, `is in` or `nothing`. These are errors or warnings, not silent.
+- TypeScript's types are written as they are said; nothing checks them (TypeScript's own checker does, when you
+  build). What a component shows is checked for its shape (one thing under "only if", an "otherwise" after "if"),
+  not for whether the props a component takes exist.
 
 ## Known wrong translations
 
@@ -1858,15 +2145,15 @@ Nothing known today. (`x = n ** 3` used to give sentences the writer couldn't re
 
 `tests/language-doc.test.mjs` (part of `npm test`) translates every example in this file:
 
-- An example is a fenced block tagged ` ```intuicode python `, `js`, `html`, `css`, `cpp` or `arduino`,
-  followed by the next fenced block, which holds the expected code.
+- An example is a fenced block tagged ` ```intuicode python `, `js`, `ts`, `tsx`, `html`, `css`, `cpp` or
+  `arduino`, followed by the next fenced block, which holds the expected code.
 - It must translate with no errors to exactly that code. Warnings are allowed.
 - **Python** is one Main program folder: the whole `main.py`, imports included.
 - **HTML**: the expected block is what goes inside `<body>`, without the `script.js` line and with the
   body's own indent removed, unless it starts with `<!DOCTYPE` or `<html`: then it is the whole page.
 - **CSS and JavaScript** use the page of the nearest `intuicode html` example above them in the same
   `##` section (an empty page if there is none) and are the whole `style.css` or `script.js`.
-- **C++ and Arduino** are the whole file.
+- **TypeScript** (`ts`, `tsx`) and **C++ and Arduino** are the whole file.
 
 The same test checks that the index below is up to date.
 
@@ -2401,6 +2688,86 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | `$5` | `5` |
 | `50%` | `0.5` |
 | `15% of total` | `0.15 * total` |
+
+### TypeScript and React
+
+A TypeScript file → `‹name›.ts or ‹name›.tsx`. Writer: `lang/ts_write.js`.
+
+- **A TypeScript file:** A TypeScript file, in sentences. Every Mechanics (JavaScript) sentence works here too; exact lines start with ts: (tsx: in a .tsx file).
+
+#### TypeScript and React sentences
+
+| Topic | Say | Becomes | Note |
+|---|---|---|---|
+| **Types** | `set ‹total› (‹a number›) to ‹0›` | `let total: number = 0;` | A name made with set or constant can say its type in brackets: a number, text, true or false, a list of ‹Note›, a ‹User› or nothing. |
+|  | `define ‹add› using ‹a› (‹a number›), ‹b› (‹text, if any›) giving back ‹a number›` | `function add(a: number, b?: string): number {` | "if any": an input that can be left out (?). "giving back …": the type of what it gives back. |
+|  | `constant ‹handle› is a tool using ‹e› (‹a React.FormEvent›)` | `const handle = (e: React.FormEvent) => {` | A little tool with typed inputs; its steps go under it. |
+|  | `define shape ‹Note›` | `interface Note {` | Its parts go under it, one per line: id is text, read-only created is a Date, email is text, if any. "based on ‹Base›" builds on another shape. |
+|  | `define type ‹Filter› as ‹"all" or "done"›` | `type Filter = "all" \| "done";` | "define type ‹Props› as a shape", with its parts under it, names an object type. |
+|  | `‹data› assumed to be ‹a list of Note›` | `data as Note[]` | Tells TypeScript what the value is. Nothing checks it when the program runs. |
+|  | `(‹el› for sure)` | `el!` | Tells TypeScript the value is there (not null or undefined). |
+| **Files** | `bring in ‹App› (the main part) from "‹./App›"` | `import App from "./App";` | Also: bring in everything from "‹react›" as ‹React›; bring in ‹Toaster› as ‹Sonner› from …; bring in "‹./index.css›"; bring in the type ‹Note› from …. |
+|  | `define shared ‹formatDate› using ‹iso› (‹text›)` | `export function formatDate(iso: string) {` | "shared" lets other files bring it in; "main" makes it the file's main part (export default). Also: shared constant …, share ‹a› and ‹b›, share ‹App› as the main part. |
+| **Components** | `define component ‹Card› using ‹title› and ‹children› from ‹CardProps›` | `function Card({ title, children }: CardProps) {` | What it shows goes under "show:". "define main component ‹App›" is the file's main part. |
+|  | `constant ‹Index› is a component` | `const Index = () => {` | Add ", showing:" for one that only shows something, with what it shows under it. |
+|  | `show:` | `return ( … );` | What the component shows, one thing per line, indented under it. |
+| **State** | `keep ‹count›, starting at ‹0›` | `const [count, setCount] = useState(0);` | Its type in brackets: keep ‹notes› (a list of Note), starting at an empty list. ", changed with ‹setX›" when the setter has another name. |
+|  | `change ‹count› to ‹count plus 1›` | `setCount(count + 1);` | "change ‹count› from ‹c› to ‹c plus 1›" works from its value at the time: setCount((c) => c + 1). |
+|  | `keep a reference ‹box› (to ‹an HTMLDivElement›), starting at nothing` | `const box = useRef<HTMLDivElement>(null);` | Give it to an element with: with ref {‹box›}. |
+|  | `constant ‹visible› is ‹…›, worked out again whenever ‹notes› changes` | `const visible = useMemo(() => …, [notes]);` |  |
+|  | `take ‹toast› from the result of ‹useToast›` | `const { toast } = useToast();` | "take ‹data› as ‹notes› (or an empty list) and ‹isLoading› from …" renames a part and gives its value when it is missing. |
+| **Effects** | `when ‹Card› first appears` | `useEffect(() => { … }, []);` | The steps under it run once, after the component is first shown. |
+|  | `whenever ‹query› changes` | `useEffect(() => { … }, [query]);` | "whenever ‹a› or ‹b› changes" for several. |
+|  | `when ‹Card› goes away` | `return () => { … };` | Inside an effect: its clean-up. One step can go after a comma. |
+| **Show** | `‹a heading› saying "‹Hi {name}›"` | `<h2>Hi {name}</h2>` | Any element's words (a block, a paragraph, a button, a list item, a link to "/") or a component by name: a ‹Button›. |
+|  | `‹a Button› saying "‹Save›", running ‹save› when clicked` | `<Button onClick={save}>Save</Button>` | Settings go after commas, in order: styled "…", keyed by …, with ‹name› "…" or {…}, with everything in ‹props›. |
+|  | `‹a button›, when clicked: change ‹open› to ‹true›` | `<button onClick={() => setOpen(true)} />` | "when changed with ‹e›: change ‹title› to ‹e.target.value›" names the event. |
+|  | `only if ‹loading›` | `{loading && …}` | What shows only while it is true goes under it. |
+|  | `if ‹done›` | `{done ? … : …}` | Then "otherwise" at the same indent; "nothing" under either side shows nothing. |
+|  | `for each ‹note› in ‹notes›` | `{notes.map((note) => …)}` | Give what it shows a key: keyed by ‹note.id›. Add ", counting with ‹i›" for its place. |
+|  | `together` | `<> … </>` | Several things shown as one. |
+|  | `{‹title›}` | `{title}` | A value on its own line. "a space" is {" "}. |
+| **Packs** | `styled as ‹flexible layout, items centred, gap 2›` | `className="flex items-center gap-2"` | Tailwind classes in words, in order. A class with no words is written in quotes: "hover:bg-accent". |
+|  | `a ‹ghost› ‹Button›` | `<Button variant="ghost">` | A shadcn/ui component's variant, before its name. |
+|  | `a Route for "‹/about›" showing an ‹About›` | `<Route path="/about" element={<About />} />` | react-router. A link in the app: a Link to "‹/about›". |
+|  | `every row of the "‹notes›" table in ‹supabase› sorted by "‹created_at›" from the end` | `supabase.from("notes").select("*").order("created_at", { ascending: false })` | Also: adding ‹note› to …, changing ‹{ done }› in …, deleting from …; then where "‹id›" is ‹id›, at most ‹10›, as a single row. |
+|  | `wait for ‹…›, and take ‹data› and ‹error› from it` | `const { data, error } = await …;` |  |
+|  | `give back the query ‹["notes"]› loaded by ‹fetchNotes›` | `return useQuery({ queryKey: ["notes"], queryFn: fetchNotes });` | TanStack Query. |
+|  | `give back a change made by ‹addNote›` | `return useMutation({ mutationFn: addNote, … });` | Under it: "when it works" and "when it fails", each with its steps. |
+|  | `mark the query ‹["notes"]› in ‹queryClient› as out of date` | `queryClient.invalidateQueries({ queryKey: ["notes"] });` |  |
+|  | `fail with ‹error› as it is` | `throw error;` | "fail with "…"" makes a new error: throw new Error(…). |
+|  | `show an ‹App› in (the element called "‹root›" for sure)` | `createRoot(document.getElementById("root")!).render(<App />);` | Where a React app starts. |
+
+#### TypeScript and React words inside sentences
+
+| Say | Becomes |
+|---|---|
+| `a number` | `number` |
+| `text` | `string` |
+| `true or false` | `boolean` |
+| `anything` | `any` |
+| `something unknown` | `unknown` |
+| `a list of Note` | `Note[]` |
+| `a User or nothing` | `User \| null` |
+| `"all" or "done"` | `"all" \| "done"` |
+| `a Promise of nothing` | `Promise<void>` |
+| `a Record of text and a number` | `Record<string, number>` |
+| `a tool using id (text) giving back nothing` | `(id: string) => void` |
+| `name (text, if any)` | `name?: string` |
+| `inputs (the rest, a list of X)` | `...inputs: X[]` |
+| `read-only id is text` | `readonly id: string;` |
+| `data assumed to be a Note` | `data as Note` |
+| `(el for sure)` | `el!` |
+| `shared` | `export` |
+| `main` | `export default` |
+| `styled as …` | `className="…" (Tailwind)` |
+| `keyed by note.id` | `key={note.id}` |
+| `with everything in props` | `{...props}` |
+| `a space` | `{" "}` |
+| `together` | `<>…</>` |
+| `running save when clicked` | `onClick={save}` |
+| `when open changes` | `onOpenChange` |
+| `nothing (under if / otherwise)` | `null` |
 
 ### C++
 
