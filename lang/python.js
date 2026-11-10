@@ -526,6 +526,53 @@
     return walk(q, '');
   }
 
+  /* What's inside {…} in text: a value, then maybe how Python shows it (from a : or !r outside brackets and
+     quotes, as in {n plus 1:>3} or {rate:.1%}). That part is Python's own, not sentence words. */
+  function fillIn(e, x) {
+    for (let i = 0, d = 0, q = null; i < e.length; i++) {
+      const c = e[i];
+      if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+      if (c === '"' || c === "'") q = c;
+      else if ('([{'.includes(c)) d++;
+      else if (')]}'.includes(c)) d--;
+      else if (!d && (c === ':' || /^![rsa](?::|$)/.test(e.slice(i)))) return tExpr(e.slice(0, i), x) + e.slice(i);
+    }
+    return tExpr(e, x);
+  }
+
+  /* A percentage as a decimal, by moving the point two places ("12.5" -> "0.125", "100" -> "1"), so it is
+     exact: never 0.30000000000000004. */
+  function hundredth(n) {
+    const [w, f = ''] = n.split('.'), whole = w.padStart(3, '0');
+    const int = whole.slice(0, -2).replace(/^0+(?=\d)/, ''), frac = (whole.slice(-2) + f).replace(/0+$/, '');
+    return frac ? `${int}.${frac}` : int;
+  }
+  // what follows "50%" when the % is Python's remainder (50 % 3, 10 % n): a value, not a sentence word
+  const VALUE_NEXT = /^\s*(?:[([⟦]|-?\.?\d|(?!(?:plus|minus|times|multiplied|divided|mod|modulo|is|isn't|are|and|or|not|if|else|otherwise|than|to|for|in|by|of|as|rounded|squared|cubed|then|from|with|at|on)\b)[A-Za-z_])/i;
+  /* Money and percentages, as people write them: $5 is 5 (a Python number has no currency sign; text like "$5"
+     shows it), 50% is 0.5, and 15% of total is 0.15 * total. % before a value stays Python's remainder. */
+  function amounts(q, x) {
+    q = q.replace(/(?<![\w.⟧])([$€£¥]) ?(\d+(?:\.\d+)?)(?![\w.])|(?<![\w.$€£¥])(\d+(?:\.\d+)?) ?([$€£¥])(?![\w⟦(])/g, (m, s1, n1, n2, s2) => {
+      const n = n1 || n2, said = m.trim();
+      x.note(`Python numbers have no ${s1 || s2} sign, so ${said} is written ${n}. Text like "${said}" shows the sign.`);
+      return n;
+    });
+    q = q.replace(/(?<![\w.⟧])(\d+(?:\.\d+)?) ?(%|per ?cent\b)( of\b)?/gi, (m, n, sign, of, off, all) => {
+      if (!of && sign === '%' && VALUE_NEXT.test(all.slice(off + m.length))) return m;   // 7 % 2: the remainder after dividing
+      const v = hundredth(n);
+      x.note(of ? `${n}% of something is ${v} times it, so "${n}% of" is written ${code(v + ' *')}.` : `${n}% is written ${v} (${n} divided by 100).`);
+      return of ? ` ${v} * ` : v;
+    });
+    // "n%": a % with no value after it, after something that isn't a number written here
+    for (const m of q.matchAll(/(?<![\w.])([A-Za-z_]\w*|[)\]]) ?%/g)) {
+      if (VALUE_NEXT.test(q.slice(m.index + m[0].length))) continue;
+      const what = /^\w/.test(m[1]) ? m[1] : 'that';
+      x.err(`Python reads % as the remainder after dividing (7 % 2 is 1), so "${m[0].replace(/[)\]]/, '…)')}" needs a value after it. For ${what} as a percentage, write ${what} divided by 100.`);
+      break;
+    }
+    return q;
+  }
+
   function tExpr(src, x, opts = {}) {
     let s = String(src == null ? '' : src).trim();
     if (!s) { x.err('Something is missing here: a value or a condition.'); return 'None'; }
@@ -538,6 +585,8 @@
     let q = s.replace(/(?<![\w])[rRbBuUfF]{0,2}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     if (/["]/.test(q)) { x.err('A piece of text is missing its closing quote mark (").'); q = q.replace(/"/g, ''); }
     if (/(^|\s)'|'(\s|$)/.test(q)) { x.err("A piece of text is missing its closing quote mark (')."); }
+    // 1a. $5 is 5 and 50% is 0.5: Python numbers have no signs like these
+    q = amounts(q, x);
 
     // 1b. "high-score" is the name high_score when that's been set (Python would read it as high minus score).
     //     When high and score are both names too, it could be either, so that's asked.
@@ -700,7 +749,7 @@
       if (str[0] !== '"' || !/[{}]/.test(str)) return str;   // only double-quoted text fills in {names}; 'single' stays exact
       if (!fillsIn(str)) return str.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
       x.note('Text with {…} inside becomes an f-string (the `f` before the quotes). Python swaps in the current value of whatever is in the curly brackets. (A brace itself is written twice: {{ or }}.)');
-      return 'f' + str.replace(FILL, (mm, e) => (e != null ? '{' + tExpr(e, x) + '}' : mm.length === 2 ? mm : mm + mm));
+      return 'f' + str.replace(FILL, (mm, e) => (e != null ? '{' + fillIn(e, x) + '}' : mm.length === 2 ? mm : mm + mm));
     });
     return q;
   }
@@ -1574,6 +1623,19 @@
     return s;
   }
 
+  /* "show $5" and "show 50%" show what was typed, so each is text ("$5", "50%"): as numbers they'd show as 5
+     and 0.5. Only an amount shown on its own (or between commas or "and"); "show 15% of total" is worked out. */
+  const SHOWN_AMOUNT = /(?<=^(?:show|print|display|say|output)\s+|,\s*|\sand\s+)(?:[$€£¥] ?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)? ?(?:%|[$€£¥]|per ?cent\b))(?=\s*$|\s*,|\s+and\s)/gi;
+  function shownAsTyped(s, x) {
+    if (!/^(?:show|print|display|say|output)\s/i.test(s)) return s;
+    for (const m of [...mask(s).matchAll(SHOWN_AMOUNT)].reverse()) {
+      s = s.slice(0, m.index) + `"${m[0]}"` + s.slice(m.index + m[0].length);
+      const sign = m[0].match(/[$€£¥]/);
+      x.note(sign ? `${m[0]} is shown as the text "${m[0]}": a Python number can't have a ${sign[0]} sign.` : `${m[0]} is shown as the text "${m[0]}": as a number it would be ${hundredth(m[0].replace(/[^\d.]/g, ''))}.`);
+    }
+    return s;
+  }
+
   function tLine(text, x) {
     const s0 = text.trim();
     // raw Python, notes and descriptions are never touched (raw Python keeps any spaces at its end)
@@ -1582,7 +1644,7 @@
       if (m) return r.fn(m, x);
     }
     let { text: s, removed } = stripFiller(s0);
-    s = thousands(s, x);
+    s = thousands(shownAsTyped(s, x), x);
     const parts = splitSteps(s);
     const said = [...new Set(removed)];
     const fillerNote = () => { if (said.length) x.note(`Left out filler: ${said.map(w => '"' + w + '"').join(', ')}. You can write words like these; Python doesn't need them.`); };

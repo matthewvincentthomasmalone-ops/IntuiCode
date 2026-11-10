@@ -65,6 +65,35 @@ test('a number written with thousands commas is that number', () => {
   assert.equal(run(py('set n to 12,345\nshow n plus 1').code), '12346');
 });
 
+test('money is the number, without its sign', () => {
+  becomes('set price to $5', 'price = 5', /Python numbers have no \$ sign, so \$5 is written 5\. Text like "\$5" shows the sign\./);
+  becomes('set a to $5.50\nset b to €5\nset c to £5\nset d to 5€\nset e to -$5\nset f to $1,000', 'a = 5.50\nb = 5\nc = 5\nd = 5\ne = -5\nf = 1000');
+  becomes('set price to 10\nif price is more than $5\n    show "dear"', 'price = 10\nif price > 5:\n    print("dear")');
+  // inside quotes it's text, as written
+  becomes('show "$5"', 'print("$5")');
+});
+
+test('a percentage is the decimal it means, exactly', () => {
+  becomes('set rate to 50%', 'rate = 0.5', /50% is written 0\.5 \(50 divided by 100\)\./);
+  becomes('set a to 12.5%\nset b to 1.1%\nset c to 100%\nset d to 7 percent\nset e to 250 per cent', 'a = 0.125\nb = 0.011\nc = 1\nd = 0.07\ne = 2.5');
+  becomes('set total to 10\nset tip to 15% of total', 'total = 10\ntip = 0.15 * total', /"15% of" is written `0\.15 \*`/);
+  becomes('set x to 50% plus 1', 'x = 0.5 + 1');
+  // % before a value is Python's remainder, as before
+  becomes('set n to 3\nset a to 7 % 2\nset b to 10 % n\nset c to 7%2', 'n = 3\na = 7 % 2\nb = 10 % n\nc = 7%2');
+  // and in {…}, what follows a : is how Python shows the value
+  becomes('set rate to 0.5\nshow "{rate:.1%} and {rate!r} and {rate:5%}"', 'rate = 0.5\nprint(f"{rate:.1%} and {rate!r} and {rate:5%}")');
+  assert.equal(run(py('set total to 200\nset tip to 15% of total\nshow tip').code), '30.0');
+});
+
+test('a % after a name, with no value after it, says what to write', () => {
+  problem('set n to 7\nset r to n%', /Python reads % as the remainder after dividing \(7 % 2 is 1\), so "n%" needs a value after it\. For n as a percentage, write n divided by 100\./);
+});
+
+test('money or a percentage shown on its own is shown as typed', () => {
+  becomes('show $5\nshow 50%\nshow "Total:" and $1,000', 'print("$5")\nprint("50%")\nprint("Total:", "$1,000")', /50% is shown as the text "50%": as a number it would be 0\.5\./);
+  becomes('show 15% of 200', 'print(0.15 * 200)');
+});
+
 test('a list sentence whose items have no spaces between them is asked about', () => {
   problem('create list xs with 1,000', /In a list, "1,000" could be one number \(1000\) or 2 items\. Write 1000 for the number, or put a space after each comma between items\./);
   problem('create list xs with 100,200,300', /could be one number \(100200300\) or 3 items/);
