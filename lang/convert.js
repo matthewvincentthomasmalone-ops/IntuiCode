@@ -78,7 +78,9 @@
     o.raw = 0;
     o.rawLines = (depth, prefix, src, node, text) => {
       const html = prefix === 'html:' || prefix === 'head:';
-      const { lines } = text != null ? { lines: text.trim().split('\n').map(l => l.trim()) } : srcLines(src, node, html ? keepRanges(node) : []);
+      // (JavaScript: the lines inside a template literal are its text, so they are kept as they are)
+      const keep = html ? keepRanges(node) : prefix === 'js:' ? node.descendantsOfType('template_string').filter(t => t.startPosition.row !== t.endPosition.row).map(t => [t.startIndex, t.endIndex]) : [];
+      const { lines } = text != null ? { lines: text.trim().split('\n').map(l => l.trim()) } : srcLines(src, node, keep);
       for (const l of lines) { o.lines.push(IND.repeat(depth) + (l ? `${prefix} ${l}` : prefix)); o.keys.push(node.startIndex); o.raw++; }
     };
     o.blank = () => { if (o.lines.length && o.lines[o.lines.length - 1] !== '') { o.lines.push(''); o.keys.push(null); } };
@@ -260,6 +262,8 @@
       return { p: p.text, body };
     };
     const rest = (a) => a.map(ex).map(item);
+    // a list or record written over several lines stays as code when it would make one long sentence (a table of data)
+    const long = (n, parts) => n.startPosition.row !== n.endPosition.row && parts.join(', ').length > 100;
     const val = (n) => (n && n.type === 'array' && !named(n).length ? 'an empty list' : ex(n));   // a whole value: [] in words
     function ex(n) {
       if (!n) return null;
@@ -352,7 +356,7 @@
               if (m === 'toFixed' && a.length === 1 && one != null) return P(`${opx(on)} to ${opx(one)} decimal places`);
               if (m === 'split' && a.length === 1 && one != null) return P(`${opx(on)} split at ${opx(one)}`);
               if (m === 'trim' && !a.length) return P(`${opx(on)} trimmed`);
-              if (/^to(?:Upper|Lower)Case$/.test(m) && !a.length && opd(on) != null) return P(`${opd(on)} in ${m === 'toUpperCase' ? 'capitals' : 'lowercase'}`);
+              if (/^to(?:Upper|Lower)Case$/.test(m) && !a.length) return P(`${opx(on)} in ${m === 'toUpperCase' ? 'capitals' : 'lowercase'}`);
               if (m === 'includes' && a.length === 1 && opd(on) != null && opd(one) != null) return `${opd(on)} contains ${opd(one)}`;
               if (m === 'test' && obj.type === 'regex' && a.length === 1 && opd(one) != null) return `${opd(one)} matches ${on}`;
               if (m === 'contains' && F(obj, 'property') && F(obj, 'property').text === 'classList' && a.length === 1 && plainString(a[0]) && simpleName(a[0].text.slice(1, -1)) && opd(ex(F(obj, 'object'))) != null && simple(ex(F(obj, 'object')))) return `${ex(F(obj, 'object'))} is in group ${a[0].text.slice(1, -1)}`;
@@ -384,7 +388,7 @@
           const v = rest(args(n));
           return v.some(x => x == null) ? null : W(`a new ${c.text}${v.length ? ' with ' + v.join(', ') : ''}`);
         }
-        case 'array': { const items = named(n).filter(x => !isComment(x)).map(ex).map(inList); return items.some(a => a == null) ? null : `[${items.join(', ')}]`; }
+        case 'array': { const items = named(n).filter(x => !isComment(x)).map(ex).map(inList); return items.some(a => a == null) || long(n, items) ? null : `[${items.join(', ')}]`; }
         case 'object': {
           const parts = [];
           for (const p of named(n).filter(x => !isComment(x))) {
@@ -394,7 +398,7 @@
             if (v == null) return null;
             parts.push(`${F(p, 'key').text}: ${v}`);
           }
-          return parts.length ? `{ ${parts.join(', ')} }` : '{}';
+          return long(n, parts) ? null : parts.length ? `{ ${parts.join(', ')} }` : '{}';
         }
         case 'await_expression': {
           const c = named(n)[0];
@@ -600,9 +604,12 @@
           const e = named(n)[0], c = e && e.type === 'await_expression' ? named(e)[0] : e;
           if (e && e.type === 'string' && /^use strict$/.test(e.text.slice(1, -1))) return say('use strict rules');
           // (function () { … })(): run straight away, with names of its own
-          const wrapped = e && e.type === 'call_expression' && !args(e).length && F(e, 'function').type === 'parenthesized_expression' ? named(F(e, 'function'))[0] : null;
-          if (!lvl && wrapped && /^function(?:_expression)?$/.test(wrapped.type) && !F(wrapped, 'name') && !kids(wrapped).some(k => k.type === 'async' || k.type === '*') && !named(F(wrapped, 'parameters')).length) {
-            say('run this now, keeping its names private');
+          // (one input, given a value: (function (root) { … })(window) is "with root set to window")
+          const wrapped = e && e.type === 'call_expression' && args(e).length <= 1 && F(e, 'function').type === 'parenthesized_expression' ? named(F(e, 'function'))[0] : null;
+          const wps = wrapped && /^function(?:_expression)?$/.test(wrapped.type) ? named(F(wrapped, 'parameters')).filter(x => !isComment(x)) : null;
+          const given = wps && wps.length === 1 && wps[0].type === 'identifier' && args(e).length === 1 ? item(ex(args(e)[0])) : null;
+          if (!lvl && wps && !F(wrapped, 'name') && !kids(wrapped).some(k => k.type === 'async' || k.type === '*') && wps.length === args(e).length && (!wps.length || given != null) && !/keeping its names private/.test(given || '')) {
+            say(`run this now, ${wps.length ? `with ${wps[0].text} set to ${given}, ` : ''}keeping its names private`);
             inside(null, () => block(named(F(wrapped, 'body')), depth + 1, n.startIndex));
             return true;
           }

@@ -1196,6 +1196,28 @@
     }
   }
 
+  /* Exact JavaScript over several lines: is a template literal (`…`) still open at the end of this line? Gives
+     back what is open (templates, and ${ … } inside them), or null; open: the same, at the start of the line. */
+  function templateOpenAfter(line, open) {
+    const st = open ? [...open] : [];   // '`': a template's text; a number: braces open inside its ${ … }
+    let q = null;
+    for (let k = 0; k < line.length; k++) {
+      const c = line[k], top = st[st.length - 1];
+      if (q) { if (c === '\\') k++; else if (c === q) q = null; continue; }
+      if (top === '`') {
+        if (c === '\\') k++;
+        else if (c === '`') st.pop();
+        else if (c === '$' && line[k + 1] === '{') { st.push(0); k++; }
+        continue;
+      }
+      if (c === '"' || c === "'") q = c;
+      else if (c === '`') st.push('`');
+      else if (c === '/' && line[k + 1] === '/') break;
+      else if (typeof top === 'number') { if (c === '{') st[st.length - 1]++; else if (c === '}') { if (top === 0) st.pop(); else st[st.length - 1]--; } }
+    }
+    return st.includes('`') ? st : null;
+  }
+
   /* s with quoted text and everything inside brackets hidden (the same length), so a phrase is only found at
      the top level of a value. */
   function topMask(s) {
@@ -1304,6 +1326,8 @@
     const strs = [];
     let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^]|\bmatches)\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     q = wholeGroups(q, strs, x, inf);
+    // the keys of a record ({ equals: 1, is: 2 }) are names, never sentence words
+    q = q.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(?=\s*:(?!:))/g, (m, pre, k) => { strs.push(k); return `${pre}⟦${strs.length - 1}⟧`; });
     // An operand: quoted text, a number or a name (a page element's may have dashes), then any .names, calls and
     // indexes, with brackets inside brackets (see PAREN).
     const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|${nameSource(x)})(?:\.[\w$]+|${PAREN}|${SQUARE})*`;
@@ -1379,7 +1403,7 @@
       }
     }
     q = q.replace(R(String.raw`(OPD) as (?:a )?number\b`), 'Number($1)').replace(R(String.raw`(OPD) as text\b`), 'String($1)');
-    q = q.replace(R(String.raw`(OPD) in (?:capitals|uppercase)\b`), '$1.toUpperCase()').replace(R(String.raw`(OPD) in lowercase\b`), '$1.toLowerCase()');
+    q = q.replace(RX(String.raw`(OPX) in (?:capitals|uppercase)\b`), '$1.toUpperCase()').replace(RX(String.raw`(OPX) in lowercase\b`), '$1.toLowerCase()');
     // text and lists: "s trimmed", "s split at ",", "xs joined by ", "", "n to 2 decimal places", JSON
     q = q.replace(RX(String.raw`(OPX) trimmed\b`), '$1.trim()').replace(RX(String.raw`(OPX) split at (OPX)`), (m, a, b) => `${a}.split(${unwrap(b)})`);
     q = q.replace(RX(String.raw`(OPX) joined by (OPX)`), (m, a, b) => { note(inf, '`.join` puts the items together as one text, with the separator between them.'); return `${a}.join(${unwrap(b)})`; });
@@ -1602,7 +1626,8 @@
     // a case of "depending on" ends with break, unless its last step leaves anyway or it goes on into the next case
     const closeOf = (b) => [].concat(typeof b.close === 'function' ? b.close() : b.close);
     const caseEnd = (b) => () => { const last = out[out.length - 1]; return b.fall || (last !== b.head && /^\s*(?:return\b|break;|continue;|throw\b)/.test(last.text)) ? [] : ['  break;']; };
-    const FAILS =/^(?:if|when) (?:it|that|this|anything|something) fails\b/i, FINALLY = /^(?:finally|in any case|either way|whatever happens)[.:]?$/i;
+    let inTemplate = null;   // (exact code: a template literal that carries on to the next line, see templateOpenAfter)
+    const FAILS = /^(?:if|when) (?:it|that|this|anything|something) fails\b/i, FINALLY = /^(?:finally|in any case|either way|whatever happens)[.:]?$/i;
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) { push('', i); return; }
@@ -1623,10 +1648,14 @@
       let m;
       if ((m = raw.trim().match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) {
         const d = m[1].match(/^(let|const|var)\s+([A-Za-z_$][\w$]*)/);
-        if (d) declare(d[2], d[1] === 'const' ? 'const' : 'let');   // so a later "set …" changes it instead of making it again
+        if (d && !inTemplate) declare(d[2], d[1] === 'const' ? 'const' : 'let');   // so a later "set …" changes it instead of making it again
         note(inf, 'Raw JavaScript: copied exactly as written.');
-        return say(m[1]);
+        // a line inside a template literal (`…` over several lines) is its text: copied without the block's indent
+        const was = inTemplate;
+        inTemplate = templateOpenAfter(m[1], inTemplate);
+        return was ? push(m[1], i) : say(m[1]);
       }
+      inTemplate = null;
       // a description: what a tool is for, written as a JSDoc comment just above its function
       if ((m = raw.trim().match(/^description\s*:\s?(.*)$/i))) {
         const b = stack[stack.length - 1];
@@ -1705,9 +1734,12 @@
         return;
       }
       // a script's steps wrapped so its names stay its own, run straight away: (function () { … })();
-      if (/^run this now,? keeping its names private$/i.test(s)) {
-        note(inf, 'A function run as soon as it is made: the names made inside it don\'t clash with other scripts\' names.');
-        return open('(function () {', '})();', 'fn');
+      if ((m = M(/^run this now,?(?:\s+with\s+([A-Za-z_$][\w$]*)\s+set to\s+(.+?),?)?\s+keeping its names private$/i))) {
+        note(inf, 'A function run as soon as it is made: the names made inside it don\'t clash with other scripts\' names.' + (m[1] ? ` Inside, ${code(m[1])} is the value given.` : ''));
+        const given = m[1] ? E(m[2], inf) : '';
+        open(`(function (${m[1] || ''}) {`, `})(${given});`, 'fn');
+        if (m[1]) declare(m[1]);
+        return;
       }
       if (/^use (?:JavaScript's )?strict rules$/i.test(s)) { note(inf, '`"use strict"` makes JavaScript stop with an error on some easy mistakes (like a name used before it is made).'); return say('"use strict";'); }
       if (/^every frame$/i.test(s)) {
@@ -2318,7 +2350,7 @@
     T('Events', 'when ‹name› is double-clicked', 'name.addEventListener("dblclick", …)', 'Also "is focused", "is unfocused" (blur), "is scrolled"; and "when the window is resized".', ['mechanics']),
     T('Events', 'when the window has loaded', 'window.addEventListener("load", …)', 'Once everything is in, pictures too. "when the page has loaded" is sooner.', ['mechanics']),
     T('Page', 'remove ‹name› from the page', 'name.remove();', 'Takes the element off the page.', ['mechanics']),
-    T('Logic', 'run this now, keeping its names private', '(function () { … })();', 'Indent the steps under it: the names made there don\'t clash with other scripts\'. "use strict rules" first, for "use strict".', ['mechanics']),
+    T('Logic', 'run this now, keeping its names private', '(function () { … })();', 'Indent the steps under it: the names made there don\'t clash with other scripts\'. "run this now, with root set to window, keeping …" gives it a value. "use strict rules" first, for "use strict".', ['mechanics']),
   ];
   const GUIDES = {
     structure: {

@@ -2492,7 +2492,7 @@
           "folders": [
             "mechanics"
           ],
-          "tip": "Indent the steps under it: the names made there don't clash with other scripts'. \"use strict rules\" first, for \"use strict\"."
+          "tip": "Indent the steps under it: the names made there don't clash with other scripts'. \"run this now, with root set to window, keeping …\" gives it a value. \"use strict rules\" first, for \"use strict\"."
         }
       ],
       "words": [

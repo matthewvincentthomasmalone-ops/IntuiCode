@@ -106,6 +106,23 @@ test('mechanics: tools kept in a name (arrow functions), more events, named time
     'const double = (n) => n * 2;\nconst load = async (url) => {\n  const reply = await fetch(url);\n  if (!reply.ok) {\n    throw new Error("Request failed");\n  }\n  return await reply.json();\n};\nconst box = document.getElementById("search");\nbox.addEventListener("keydown", (e) => {\n  if (e.key === "Enter") {\n    box.blur();\n  }\n});\nbox.addEventListener("focus", () => {\n  box.classList.add("active");\n});\nbox.addEventListener("blur", () => {\n  box.classList.remove("active");\n});\nbox.addEventListener("dblclick", () => {\n  box.remove();\n});\nwindow.addEventListener("resize", () => {\n  console.log("resized");\n});\nwindow.addEventListener("load", () => {\n  console.log("loaded");\n});\nlet timer = null;\ntimer = setInterval(() => {\n  console.log("tick");\n}, 1000);\nclearInterval(timer);\nif (/moz/i.test("Mozilla")) {\n  console.log(1);\n}\n');
   // a script wrapped so its names stay its own, and strict rules
   both('run this now, keeping its names private\n    use strict rules\n    constant n is 1\n    show n', '(function () {\n  "use strict";\n  const n = 1;\n  console.log(n);\n})();\n');
+  both('run this now, with root set to window if typeof window is not "undefined" otherwise globalThis, keeping its names private\n    set root.ready to true',
+    '(function (root) {\n  root.ready = true;\n})(typeof window !== "undefined" ? window : globalThis);\n');
+});
+
+test('mechanics: exact code inside a block keeps a template literal\'s lines as they are, and record keys stay names', () => {
+  // the lines inside `…` are its text: the block's indent isn't added to them
+  const code = 'function card(t) {\n  const html = `<li>\n  ${t}\n</li>`;\n  return html;\n}\n';
+  const r = convert('js', code);
+  assert.equal(r.exact, true, r.reason);
+  assert.match(r.text, /^define card using t\n    js: const html = `<li>\n    js:   \$\{t\}\n    js: <\/li>`;\n    give back html$/m);
+  assert.equal(js(r.text).text, code);
+  // a key that is a sentence word ({ equals: 1 }) is a key, not "==="
+  both('constant words is { equals: 1, is: 2, and: 3 }', 'const words = { equals: 1, is: 2, and: 3 };\n');
+  // a record or list of data over several lines, too long for one sentence, stays code
+  const t = convert('js', 'const table = {\n  first: "a fairly long piece of text, to make it long",\n  second: "another fairly long piece of text, to make it longer",\n};\n');
+  assert.equal(t.exact, true, t.reason);
+  assert.match(t.text, /^js: const table = \{$/m);
 });
 
 test('templates: the new Mechanics templates, filled in with their own words, have no problems', () => {

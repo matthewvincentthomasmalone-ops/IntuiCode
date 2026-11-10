@@ -117,7 +117,7 @@ check it; the language does, when the program runs or is compiled.
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
 | `css:`, `raw:` | Styling | as a line, inside the current `on screens …` block if any |
-| `js:`, `javascript:`, `raw:` | Mechanics | as a line. `let`, `const`, `var` and `function` names it makes become known. |
+| `js:`, `javascript:`, `raw:` | Mechanics | as a line, at the indent of the block it is in. `let`, `const`, `var` and `function` names it makes become known; the lines inside a template literal (`` `…` `` over several lines) are its text, copied exactly, without the block's indent. |
 | `c++:`, `cpp:`, `raw:` | C++ | where it stands |
 | `above main:`, `outside main:`, `at the top:` | C++ | above `main` (left edge only) |
 
@@ -747,7 +747,8 @@ sort        = "sort" value ( "from smallest to biggest" | "from biggest to small
                                     (* → .sort((a, b) => a - b), b - a, .sort() *)   reverse = "reverse" value ;
 arrow-tool  = ( "constant" name "is" | "set" name "to" ) "a tool" [ "using" params ] [ "giving back" value ] ;
                                     (* → const name = (params) => value; without "giving back", the steps go under it *)
-private     = "run this now" [ "," ] "keeping its names private" ;                  (* → (function () { … })(); *)
+private     = "run this now" [ "," ] [ "with" name "set to" value [ "," ] ] "keeping its names private" ;
+                                    (* → (function ([name]) { … })([value]); *)
 strict      = "use" [ "JavaScript's" ] "strict rules" ;                             (* → "use strict"; *)
 return      = ( "give back" | "return" ) [ value ] ;
 break       = "stop the loop" ;   continue = "skip to next" ;
@@ -766,7 +767,11 @@ show        = "show" items ;                                                    
 ```
 
 In Mechanics, `items` split at commas only, except in `show`, which also splits at `and` before a word or
-a quote.
+a quote. A value that has commas or `and` of its own goes in brackets: `show (the result of f with a, b), c`.
+In a record, the keys are names (`{ equals: 1 }` stays `equals`).
+
+Reading code, Mechanics says JavaScript with these sentences where it can, and keeps the rest as `js:`
+lines: a list or record written over several lines stays code when it would make one long line.
 
 ```intuicode html
 add a text box called name with hint "Your name"
@@ -2217,7 +2222,7 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 |  | `when ‹name› is double-clicked` | `name.addEventListener("dblclick", …)` | Also "is focused", "is unfocused" (blur), "is scrolled"; and "when the window is resized". |
 |  | `when the window has loaded` | `window.addEventListener("load", …)` | Once everything is in, pictures too. "when the page has loaded" is sooner. |
 | **Page** | `remove ‹name› from the page` | `name.remove();` | Takes the element off the page. |
-| **Logic** | `run this now, keeping its names private` | `(function () { … })();` | Indent the steps under it: the names made there don't clash with other scripts'. "use strict rules" first, for "use strict". |
+| **Logic** | `run this now, keeping its names private` | `(function () { … })();` | Indent the steps under it: the names made there don't clash with other scripts'. "run this now, with root set to window, keeping …" gives it a value. "use strict rules" first, for "use strict". |
 
 #### JavaScript words inside sentences
 
