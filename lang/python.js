@@ -61,6 +61,8 @@
   /* ------------------------------------------------------------------ */
 
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // a Python name: letters (any alphabet's, not only A–Z), digits and _, not starting with a digit
+  const NAME = /^[\p{XID_Start}_]\p{XID_Continue}*$/u;
   const isNum = s => /^-?\d+(\.\d+)?$/.test(String(s).trim());
   const code = s => '`' + s + '`';
 
@@ -343,14 +345,18 @@
     const slot = t.match(/‹[^›]*›/);
     if (slot) { x.err(`Fill in the ${slot[0]} slot.`); return '_'; }
     // Sentence-style names with spaces become snake_case; single words keep their case (API_KEY stays API_KEY).
-    let py = /\s/.test(t) ? t.toLowerCase().replace(/[\s\-]+/g, '_') : t.replace(/-/g, '_');
+    // (letters beyond A–Z are fine: café, π. Python reads them in one standard form, as written here)
+    let py = (/\s/.test(t) ? t.toLowerCase().replace(/[\s\-]+/g, '_') : t.replace(/-/g, '_')).normalize('NFKC');
     const same = (BUILTINS.has(py) || ALWAYS_KNOWN.has(py)) && !x.syms.map.has(py) ? undefined : x.syms.get(py);
     if (same && same.py !== py) {
       if (!opts.define) py = same.py;
       else if (same.kind !== 'class' && same.kind !== 'function') x.warn(`${code(py)} and ${code(same.py)} are different names in Python, because capital letters matter.`);
     }
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(py)) {
-      x.err(`"${t}" can't be a name. Names use letters, numbers and spaces, and can't start with a number or contain quotes.`);
+    if (!NAME.test(py)) {
+      const bad = [...py].find((c, i) => !(i ? /\p{XID_Continue}/u : /[\p{XID_Start}_]/u).test(c));
+      x.err(/\d/.test(py[0]) ? `"${t}" can't be a name, because names can't start with a number.`
+        : /["']/.test(bad) ? `${t} can't be a name, because names aren't in quotes. Write it without them: ${t.replace(/["']/g, '')}.`
+        : `"${t}" can't be a name, because ${bad} isn't a letter or a number. Names use letters, numbers and spaces.`);
       return '_';
     }
     if (PY_KEYWORDS.has(py) || PY_KEYWORDS.has(py[0].toUpperCase() + py.slice(1))) {
@@ -540,12 +546,47 @@
     return tExpr(e, x);
   }
 
-  /* A percentage as a decimal, by moving the point two places ("12.5" -> "0.125", "100" -> "1"), so it is
-     exact: never 0.30000000000000004. */
-  function hundredth(n) {
-    const [w, f = ''] = n.split('.'), whole = w.padStart(3, '0');
-    const int = whole.slice(0, -2).replace(/^0+(?=\d)/, ''), frac = (whole.slice(-2) + f).replace(/0+$/, '');
+  /* A number divided by 10, 100, 1000…, by moving its point (a percentage: "12.5" -> "0.125", "100" -> "1"),
+     so it is exact: never 0.30000000000000004. */
+  function shiftPoint(n, places) {
+    const [w, f = ''] = n.split('.'), whole = w.padStart(places + 1, '0');
+    const int = whole.slice(0, -places).replace(/^0+(?=\d)/, ''), frac = (whole.slice(-places) + f).replace(/0+$/, '');
     return frac ? `${int}.${frac}` : int;
+  }
+  const hundredth = (n) => shiftPoint(n, 2);
+
+  /* Numbers as phones, Macs and people write them, which Python can't read as typed. */
+  const SIGNS = { '×': '*', '÷': '/', '−': '-', '≤': '<=', '≥': '>=', '≠': '!=' };
+  const FRACTIONS = { '½': [1, 2], '⅓': [1, 3], '⅔': [2, 3], '¼': [1, 4], '¾': [3, 4], '⅕': [1, 5], '⅖': [2, 5], '⅗': [3, 5], '⅘': [4, 5], '⅙': [1, 6], '⅚': [5, 6], '⅐': [1, 7], '⅛': [1, 8], '⅜': [3, 8], '⅝': [5, 8], '⅞': [7, 8], '⅑': [1, 9], '⅒': [1, 10] };
+  const TIME_UNIT = /(?<![\w.⟦])(\d+(?:\.\d+)?) (milliseconds?|ms|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)\b(?!\s*[=(])/i;
+  function numberForms(q, x) {
+    // × ÷ − ≤ ≥ ≠: Python's * / - <= >= !=
+    q = q.replace(/[×÷−≤≥≠]/g, (c) => { x.note(`${c} is written ${code(SIGNS[c])} in Python.`); return ` ${SIGNS[c]} `; });
+    // ½ and 1½ are decimals when they have an exact one (0.5, 1.5); ⅓ is 1 / 3
+    q = q.replace(/(?<![\w.⟧])(?:(\d+) ?)?([½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅐⅛⅜⅝⅞⅑⅒])(?![\w.])/g, (m, whole, f, off, all) => {
+      const [a, b] = FRACTIONS[f], exact = [2, 4, 5, 8, 10].includes(b);
+      const alone = !all.slice(0, off).trim() && !all.slice(off + m.length).trim();
+      const v = exact ? String((whole ? +whole : 0) + a / b) : `${whole ? whole + ' + ' : ''}${a} / ${b}`;
+      const out = exact || alone ? v : `(${v})`;
+      x.note(`${m} is written ${code(out)}${exact ? '' : ' (it has no exact decimal)'}.`);
+      return ` ${out} `;
+    });
+    // a date or a time of day, which Python would work out as sums (2024-12-25 is 1987) or can't read (10:30)
+    const OPEN = '([{', CLOSE = ')]}', depth = (i) => [...q.slice(0, i)].reduce((d, c) => d + OPEN.includes(c) - CLOSE.includes(c), 0);
+    const when = [...q.matchAll(/(?<![\w.⟦/:-])(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}:\d{2}(?::\d{2})?)(?![\w.⟧/:-])/g)].find(m => !depth(m.index));
+    if (when) x.err(`${when[0]} looks like a ${/:/.test(when[0]) ? 'time' : 'date'}, which Python can't take as written${/:/.test(when[0]) ? '' : ` (it would work it out as a sum)`}. Put it in quotes, "${when[0]}", to keep it as text.`);
+    // 007: Python 3 can't read a whole number starting with 0 (it may be a code, so its zeros may matter)
+    const zero = !when && q.match(/(?<![\w.⟦])0\d*[1-9]\d*(?![\w.])/);
+    if (zero) x.err(`Python can't read ${zero[0]}: a whole number can't start with 0. Write ${zero[0].replace(/^0+/, '')}, or put it in quotes ("${zero[0]}") to keep the zeros.`);
+    // "5 minutes" where a number goes: in what unit does the program count?
+    const unit = q.match(TIME_UNIT);
+    if (unit && !x.syms.has(unit[2])) {
+      const n = unit[1], u = unit[2].toLowerCase();
+      const secs = /^(?:ms|milli)/.test(u) ? `${n} divided by 1000` : /^sec/.test(u) ? `just ${n}` : /^min/.test(u) ? `${n} times 60` : /^h/.test(u) ? `${n} times 3600` : /^d/.test(u) ? `${n} times 86400` : `${n} times 604800`;
+      x.err(`"${unit[0]}" isn't a value in Python. Write a plain number in the unit it's counted in: for seconds, ${secs}.`);
+      q = q.replace(unit[0], n);   // (so the unit isn't reported as a name too)
+    }
+    return q;
   }
   // what follows "50%" when the % is Python's remainder (50 % 3, 10 % n): a value, not a sentence word
   const VALUE_NEXT = /^\s*(?:[([⟦]|-?\.?\d|(?!(?:plus|minus|times|multiplied|divided|mod|modulo|is|isn't|are|and|or|not|if|else|otherwise|than|to|for|in|by|of|as|rounded|squared|cubed|then|from|with|at|on)\b)[A-Za-z_])/i;
@@ -604,8 +645,8 @@
       }
       x.err("A piece of text is missing its closing quote mark (').");
     }
-    // 1a. $5 is 5 and 50% is 0.5: Python numbers have no signs like these
-    q = amounts(q, x);
+    // 1a. $5 is 5 and 50% is 0.5: Python numbers have no signs like these. And ½, ×, 007, "5 minutes"…
+    q = numberForms(amounts(q, x), x);
 
     // 1b. "high-score" is the name high_score when that's been set (Python would read it as high minus score).
     //     When high and score are both names too, it could be either, so that's asked.
@@ -628,6 +669,16 @@
       const kind = x.syms.get(id)?.kind;
       return (kind ? kind === 'function' || kind === 'class' : BUILTINS.has(id)) ? id + '(' : w;
     });
+    // 2c. A name with letters beyond A–Z (café, π) stands in as a plain one (__u0__) while the rules below,
+    //     written for A–Z, read the line, so none of them splits it ("noël" isn't no + ël). It's checked in 6
+    //     and put back after 7.
+    const uni = [];
+    q = q.replace(/(?<![\p{XID_Continue}⟦])[\p{XID_Start}_]\p{XID_Continue}*/gu, (w) => {
+      if (!/[^\x00-\x7f]/.test(w)) return w;
+      uni.push({ said: w.normalize('NFKC') });
+      return `__u${uni.length - 1}__`;
+    });
+    const UNI = /__u(\d+)__/g, unAlias = (id) => id.replace(UNI, (m, i) => uni[+i].said);
 
     // 3. Filler words ("my score" is score, as when it was set).
     q = q.replace(/\bthe\b/gi, ' ').replace(/\bmy\s+(?=[A-Za-z_])/gi, ' ').replace(/\s+/g, ' ').trim();
@@ -708,13 +759,13 @@
     //     (only a name joined on its own: in "#" * filled + "-", filled belongs to the * first)
     q = q.replace(/(⟦\d+⟧) \+ ([A-Za-z_]\w*)(?![\w.(\[])(?!\s*(?:\*\*?|\/\/?|%))|(?<![*/%] )(?<![\w.⟦])([A-Za-z_]\w*) \+ (⟦\d+⟧)/g, (all, s1, n1, n2, s2) => {
       const name = n1 || n2, str = strs[+(s1 || s2).slice(1, -1)];
-      if (kindHere(x, name) !== 'number' || /^[bB]/.test(str)) return all;   // (b"…" is bytes, not text)
-      x.note(`${code(name)} is a number, and Python only joins text to text, so it is turned into text first: ${code('str(' + name + ')')}.`);
+      if (kindHere(x, unAlias(name)) !== 'number' || /^[bB]/.test(str)) return all;   // (b"…" is bytes, not text)
+      x.note(`${code(unAlias(name))} is a number, and Python only joins text to text, so it is turned into text first: ${code('str(' + unAlias(name) + ')')}.`);
       return s1 ? `${s1} + str(${name})` : `str(${name}) + ${s2}`;
     });
     // 5c. Text compared with a number is never equal: "5" is not 5.
     if (x.pass === 2) for (const m of q.matchAll(/(?<![\w.⟦])([A-Za-z_]\w*) (==|!=|<=|>=|<|>) (-?\d+(?:\.\d+)?)(?![\w.])|(?<![\w.⟦])(-?\d+(?:\.\d+)?) (==|!=|<=|>=|<|>) ([A-Za-z_]\w*)(?![\w.(])/g)) {
-      const name = m[1] || m[6], num = m[3] || m[4];
+      const name = unAlias(m[1] || m[6]), num = m[3] || m[4];
       if (kindHere(x, name) === 'text') x.warn(`${code(name)} holds text${x.syms.get(name)?.asked ? ' (an answer from "ask" is always text)' : ''}, so it is never equal to the number ${num}: "${num}" and ${num} are different. Ask for a number, or turn it into one with "${name} as number".`);
     }
 
@@ -723,10 +774,12 @@
       if (PY_KEYWORDS.has(id) || bound.has(id)) return id;
       if (id === '_' && x.info.errs.some(e => e.startsWith('Fill in the'))) return id; // an unfilled ‹slot›, already reported
       if (/^\s*=(?!=)/.test(whole.slice(off + m.length))) return id; // keyword argument, e.g. end=""
-      const low = id.toLowerCase();
+      // (a name beyond A–Z is checked as it was said, and its stand-in stays until the end)
+      const u = id.match(/^__u(\d+)__$/), name = u ? uni[+u[1]].said : id;
+      const low = name.toLowerCase();
       // Python's own tools are found by their exact spelling only: max is never MAX = 10
-      const s = (BUILTINS.has(id) || ALWAYS_KNOWN.has(id)) && !x.syms.map.has(id) ? undefined : x.syms.get(id);
-      if (s && !(s.kind === 'class' && s.py !== id)) {   // (a class isn't found by another spelling: point is not Point)
+      const s = (BUILTINS.has(name) || ALWAYS_KNOWN.has(name)) && !x.syms.map.has(name) ? undefined : x.syms.get(name);
+      if (s && !(s.kind === 'class' && s.py !== name)) {   // (a class isn't found by another spelling: point is not Point)
         if (x.pass === 2 && s.scope === 'module' && FILE_ORDER[s.file] > FILE_ORDER[x.file]) {
           x.warn(`${code(s.py)} is set in ${sectionTitle(s.file)}, which this section can't see. Set it here, or pass it into the tool as an input.`);
         }
@@ -736,14 +789,15 @@
           const tools = places.map(w => code(w.split('/').pop()));
           x.warn(`${code(s.py)} is only set inside ${tools.length > 1 ? 'the tools ' + tools.join(', ') : 'the tool ' + tools[0]}, so it doesn't exist here. To use it here, give it back from the tool ("give back ${s.py}") and store it where you run the tool.`);
         }
+        if (u) { uni[+u[1]].py = s.py; return id; }
         return s.py;
       }
-      if (BUILTINS.has(id) || ALWAYS_KNOWN.has(id)) return id;
-      if (MODULES.has(id)) { x.use(id); return id; }
+      if (BUILTINS.has(name) || ALWAYS_KNOWN.has(name)) return id;
+      if (MODULES.has(name)) { x.use(id); return id; }
       if (low in WORD_NUMBERS) return String(WORD_NUMBERS[low]);
       if (x.pass === 2) {
         const guess = closest(low, [...x.syms.values()].map(v => v.py), 2);
-        x.warn(`${code(id)} hasn't been set anywhere yet.` + (guess ? ` Did you mean ${code(guess)}?` : ' Set it first, for example "set ' + id + ' to 0".'));
+        x.warn(`${code(name)} hasn't been set anywhere yet.` + (guess ? ` Did you mean ${code(guess)}?` : ' Set it first, for example "set ' + name + ' to 0".'));
       }
       return id;
     });
@@ -752,11 +806,22 @@
     // two numbers side by side can't be Python ("x = 20 1"): say so here, rather than when it runs
     const pair = q.match(/(?<![\w.⟦])(\d+(?:\.\d+)?) (\d+(?:\.\d+)?)(?![\w.⟧])/);
     if (pair) x.err(`"${pair[1]} ${pair[2]}" is two numbers side by side, which isn't a value. Write one number (${pair[1]}${pair[2]}?), or join them with a word like plus.`);
+    // a sign Python doesn't have, outside quotes (★, $price, an invisible character pasted in): say so, never
+    // code that only fails when it runs
+    const sign = q.match(/[^\x20-\x7e⟦⟧‹›]|[$?`]/u);
+    if (sign) {
+      const c = sign[0], hex = 'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+      x.err(/[\p{Cf}\p{Cc}\p{Z}]/u.test(c) ? `There's an invisible character here (${hex}), as copying text sometimes leaves. Delete it, or type the line again.`
+        : `Python can't read ${c} outside quotes. If it's part of some text, put the text in quotes.`);
+    }
 
     // 7. Tidy spacing. A lone = left now is a keyword argument, like end="".
     q = q.replace(/\s*(?<![=!<>])=(?!=)\s*/g, '=');
     q = q.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+,/g, ',').replace(/\[\s+/g, '[').replace(/\s+\]/g, ']').replace(/⟧\s+\.(?=[A-Za-z_])/g, '⟧.').trim();   // ", ".join(x) keeps its dot next to the text
     q = q.replace(/\{\s+(?=⟦)/g, '{').replace(/⟧\s+([:}])/g, '⟧$1');   // {"ok": True}, not { "ok" : True}
+    q = q.replace(/(^|[([]|, )- (?=[\w(⟦[])/g, '$1-');   // "minus 5" on its own is -5, not - 5
+    // the names beyond A–Z, as found (or as said)
+    q = q.replace(UNI, (m, i) => uni[+i].py || uni[+i].said);
 
     // 8. Put the text back. Text with {name} inside becomes an f-string; {{ and }} are braces.
     q = q.replace(/⟦(\d+)⟧/g, (m, i, off, all) => {
@@ -785,7 +850,7 @@
     if (/^(True|False)$/.test(t)) return 'yesno';
     if (/^(int|float|len|sum|abs|round|random\.randint|random\.random|math\.)\b/.test(t)) return 'number';
     if (/^(str|input)\(|\.(upper|lower)\(\)$/.test(t)) return 'text';
-    if (/^[A-Za-z_]\w*$/.test(t) && x.syms.has(t)) return kindHere(x, t);
+    if (NAME.test(t) && x.syms.has(t)) return kindHere(x, t);
     const run = t.match(/^([A-Za-z_]\w*)\(.*\)$/), ran = run && x.syms.get(run[1]);
     if (ran && ran.kind === 'function' && ran.returns) return ran.returns;   // a tool's result: what it gives back
     // lists made from other things: words.split(), list(…), a copy, the keys of a dictionary
@@ -845,7 +910,7 @@
     else value = tExpr(valueRaw, x);
     // "set count, sides to …": several names at once, one for each value (unpacking)
     const many = splitItems(nameRaw, false);
-    if (many.length > 1 && /,/.test(mask(nameRaw)) && many.every(n => /^[A-Za-z_][\w ]*$/.test(n.trim()))) {
+    if (many.length > 1 && /,/.test(mask(nameRaw)) && many.every(n => /^[\p{XID_Start}_][\p{XID_Continue} ]*$/u.test(n.trim()))) {
       const pys = many.map(n => toName(n, x, { define: true }));
       pys.forEach((py, i) => { declare(x, py, many[i].trim(), 'value'); assigned(x, py); });
       x.note(`The value holds ${pys.length} values, so they are unpacked: one into each of ${pys.map(code).join(', ')}.`);
@@ -1485,6 +1550,20 @@
   });
 
   // --- Time ----------------------------------------------------------------
+  // "wait 5 minutes", "wait half a second": time.sleep counts in seconds, so the amount is worked out in seconds
+  rule(/^(?:wait|pause|sleep)\s+(?:for\s+)?(.+?)\s+(milliseconds?|ms|seconds?|secs?|minutes?|mins?|hours?|hrs?)$/i, (m, x) => {
+    const said = m[1].trim(), u = m[2].toLowerCase();
+    const n = /^half an?$/i.test(said) ? '0.5' : /^(?:an?|one)$/i.test(said) ? '1' : null;
+    const sec = /^sec/.test(u);
+    if (sec && !n) return null;   // "wait 5 seconds": the sentence below
+    const amount = n || tExpr(said, x);
+    const by = (k) => (amount === '1' ? k : `${sumBrackets(amount)} * ${k}`);
+    const py = sec ? amount : /^(?:ms|milli)/.test(u) ? (isNum(amount) ? shiftPoint(amount, 3) : `${sumBrackets(amount)} / 1000`) : /^min/.test(u) ? by('60') : by('60 * 60');
+    x.use('time');
+    if (!sec) x.note(`\`time.sleep()\` counts in seconds, so ${said} ${m[2]} is written ${code(py)}.`);
+    x.note('`time.sleep()` pauses the program. (In this browser preview pauses are skipped, so output appears all at once.)');
+    return { py: `time.sleep(${py})` };
+  });
   rule(/^(?:wait|pause|sleep)\s+(?:for\s+)?(.+?)(?:\s+(?:seconds?|secs?)|(?<=\d)\s*s)$/i, (m, x) => {
     x.use('time');
     x.note('`time.sleep()` pauses the program. (In this browser preview pauses are skipped, so output appears all at once.)');
@@ -1719,6 +1798,8 @@
   function tOne(text, x) {
     let s = text.trim();
     s = s.replace(/\s*:\s*$/, '')
+      // a question or exclamation mark ending the sentence ("if it's done?"), outside quotes
+      .replace(/\s*(?:[?!]+|,)$/, (m) => { x.note(`The ${m.trim()} at the end is left out${m.trim() === ',' ? ' (in Python it would make the value a group of one)' : ": Python doesn't need it"}.`); return ''; })
       .replace(/(?<!\.)\.\s*$/, '')   // a sentence's full stop, after a number too: "set lives to 3." is 3
       .replace(/\s+(?:then|do)$/i, '');
     for (const r of RULES.slice(3)) {
