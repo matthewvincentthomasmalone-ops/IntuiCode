@@ -2409,7 +2409,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. |
+| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin. |
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
@@ -2461,6 +2461,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 |  | `above main: ‹C++ code›` | `code (outside main)` | C++ copied exactly, outside main. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
+| **Time** | `wait ‹500› milliseconds` | `std::this_thread::sleep_for(std::chrono::milliseconds(500));` | Or "wait 2 seconds", "wait half a second". Brings in <thread> and <chrono>. |
 
 #### C++ words inside sentences
 
@@ -2487,6 +2488,8 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `"Hi " plus name` | `"Hi " + name` |
 | `square root of x` | `std::sqrt(x)` |
 | `absolute value of x` | `std::abs(x)` |
+| `a to the power of b` | `std::pow(a, b)` |
+| `x is between 1 and 5` | `x >= 1 && x <= 5` |
 
 ### Arduino
 
@@ -2498,7 +2501,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. |
+| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin. |
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
@@ -2548,7 +2551,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `read pin ‹A0› and call it ‹level› (a whole number)` | `int level = analogRead(A0);` | A0 to A5 read 0 to 1023; other pins read on or off (digitalRead). "read analog pin SENSOR" for a named analog pin; "… and store it in level" changes a name made before. |
 |  | `scale ‹reading› from ‹0›–‹1023› to ‹0›–‹255› and store it in ‹level›` | `level = map(reading, 0, 1023, 0, 255);` | Moves a value from one range to another. Also "… and call it level (a whole number)". |
 |  | `set ‹duration› to how long pin ‹echo› stays on` | `duration = pulseIn(echo, HIGH);` | In microseconds: for distance sensors. |
-| **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds". |
+| **Time** | `wait ‹500› milliseconds` | `delay(500);` | Or "wait 2 seconds", "wait 500ms", "wait half a second". |
 |  | `wait ‹10› microseconds` | `delayMicroseconds(10);` | Millionths of a second, for timing a sensor's pulse. |
 |  | `if at least ‹500› milliseconds have passed since ‹last›` | `if (millis() - last >= 500) {` | On time without stopping the board. Also "more than", "less than", "at most". |
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
@@ -2587,5 +2590,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `the result of f with a, b` | `f(a, b)` |
 | `t as a whole number` | `(int)t` |
 | `square root of x` | `sqrt(x)` |
+| `a to the power of b` | `pow(a, b)` |
+| `x is between 1 and 5` | `x >= 1 && x <= 5` |
 
 <!-- index:end -->

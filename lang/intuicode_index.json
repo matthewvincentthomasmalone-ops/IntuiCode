@@ -2853,7 +2853,7 @@
           "folders": [
             "program"
           ],
-          "tip": "The kind (int, double, std::string, bool) is worked out from the value."
+          "tip": "The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like \"led pin\", is written ledPin."
         },
         {
           "topic": "Values",
@@ -3313,6 +3313,15 @@
             "program"
           ],
           "tip": "Write C++ directly."
+        },
+        {
+          "topic": "Time",
+          "say": "wait ‹500› milliseconds",
+          "becomes": "std::this_thread::sleep_for(std::chrono::milliseconds(500));",
+          "folders": [
+            "program"
+          ],
+          "tip": "Or \"wait 2 seconds\", \"wait half a second\". Brings in <thread> and <chrono>."
         }
       ],
       "words": [
@@ -3399,6 +3408,14 @@
         {
           "say": "absolute value of x",
           "becomes": "std::abs(x)"
+        },
+        {
+          "say": "a to the power of b",
+          "becomes": "std::pow(a, b)"
+        },
+        {
+          "say": "x is between 1 and 5",
+          "becomes": "x >= 1 && x <= 5"
         }
       ]
     },
@@ -3422,7 +3439,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "The kind (int, double, std::string, bool) is worked out from the value."
+          "tip": "The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like \"led pin\", is written ledPin."
         },
         {
           "topic": "Values",
@@ -3872,7 +3889,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "Or \"wait 2 seconds\"."
+          "tip": "Or \"wait 2 seconds\", \"wait 500ms\", \"wait half a second\"."
         },
         {
           "topic": "Time",
@@ -4087,6 +4104,14 @@
         {
           "say": "square root of x",
           "becomes": "sqrt(x)"
+        },
+        {
+          "say": "a to the power of b",
+          "becomes": "pow(a, b)"
+        },
+        {
+          "say": "x is between 1 and 5",
+          "becomes": "x >= 1 && x <= 5"
         }
       ]
     }
