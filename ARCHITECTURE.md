@@ -153,8 +153,10 @@ own wrapping (a C++ `main`, a page's head) is never shown, as in Split Mode. Reg
 code they make as their original; regions made in Unity keep the code they came from (kept per file in
 `intuicode.unity.v2` while the file is still what Unity made), so looking still never changes code. In C++ a
 file's exact lines go inside `main`, so a part whose code goes above it (a tool, a class, an include) stays as
-sentences, and C++ regions are one statement each. The Arduino writer keeps exact lines' own indentation and
-doesn't add an empty `setup()` or `loop()` to a sketch whose exact lines write one.
+sentences, and C++ regions are one statement each. The Arduino, JavaScript and CSS writers keep exact lines' own
+indentation outside a sentence block (and the JavaScript and CSS ones the blank lines between them), so an imported
+file compiles back to its own text. The Arduino writer doesn't add an empty `setup()` or `loop()` to a sketch
+whose exact lines write one.
 
 ## Decision: two modes, Unity first; imported code is the project's own
 

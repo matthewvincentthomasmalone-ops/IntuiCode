@@ -106,10 +106,11 @@
     let page = null, web = null;
     if (groups.website) {
       const t = webTriple(groups.website), main = Object.values(t).filter(Boolean);
-      web = take(W.WEB.compileWebsite({ ...p, sections: main })).shared || null;   // the page's names, groups and elements
+      const files = p.sections.map(s => ({ path: s.path, lang: s.lang }));   // (a page links the style sheets and scripts it loads)
+      web = take(W.WEB.compileWebsite({ ...p, files, sections: main })).shared || null;   // the page's names, groups and elements
       for (const s of groups.website) {
         if (main.includes(s)) continue;
-        results[s.id] = W.WEB.compileWebsite({ ...p, sections: [...main.filter(m => m.file !== s.file), s] }).results[s.id];
+        results[s.id] = W.WEB.compileWebsite({ ...p, files, sections: [...main.filter(m => m.file !== s.file), s] }).results[s.id];
       }
       page = t;
     }

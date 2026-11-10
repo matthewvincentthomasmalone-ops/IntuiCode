@@ -68,7 +68,9 @@ The usual starting layouts, and the names their files get:
   imported at the top, after the file's description.
 - **Website.** `index.html` gets the doctype, `<html lang="en">`, the character set and viewport,
   a title ("My page" unless one is given), `<link rel="stylesheet" href="style.css">` at the end of
-  `<head>` and `<script src="script.js"></script>` at the end of `<body>`. The three folders share names:
+  `<head>` and `<script src="script.js"></script>` at the end of `<body>`. A page that loads its project's
+  own style sheet or script by another name (an imported one with `styles.css?v=2` and `app.js`) doesn't
+  get them, unless the project's main one is `style.css` or `script.js`. The three folders share names:
   `called save` in Structure is `#save` in Styling and the element `save` in Mechanics.
 - **C++.** `#include <iostream>` and `<string>` always, other includes and small helpers when a sentence
   needs them; tools and classes go above `int main()`, everything else inside it, then `return 0;`.
@@ -116,8 +118,8 @@ check it; the language does, when the program runs or is compiled.
 | `body attributes:`, `body has:` / `html attributes:` | Structure | onto `<body>` / `<html>` (the page's groups are said `the page is in group dark`: `<body class="dark">`) |
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
-| `css:`, `raw:` | Styling | as a line, inside the current `on screens …` block if any |
-| `js:`, `javascript:`, `raw:` | Mechanics | as a line, at the indent of the block it is in. `let`, `const`, `var` and `function` names it makes become known; the lines inside a template literal (`` `…` `` over several lines) are its text, copied exactly, without the block's indent. |
+| `css:`, `raw:` | Styling | as the line, at its indentation, or inside the current `on screens …` block if any. Blank lines between them are kept. |
+| `js:`, `javascript:`, `raw:` | Mechanics | as the line, at its indentation, or at the indent of the sentence block it is in. Blank lines between them are kept. `let`, `const`, `var` and `function` names it makes become known; the lines inside a template literal (`` `…` `` over several lines) are its text, copied exactly, without a sentence block's indent. |
 | `c++:`, `cpp:`, `raw:` | C++ | where it stands |
 | `above main:`, `outside main:`, `at the top:` | C++ | above `main` (left edge only) |
 

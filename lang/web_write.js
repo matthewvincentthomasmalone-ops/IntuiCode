@@ -114,6 +114,21 @@
   /* Shared line machinery: indentation, info per line, output lines with their source line. */
   function makeInfo(lines) { return lines.map((_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] })); }
   function note(inf, s) { if (!inf.notes.includes(s)) inf.notes.push(s); }
+  /* The blank lines that belong to exact code (js: …, css: …): the next line with something on it is exact, and so
+     is the one before (or it's the start of the file). Their line numbers. */
+  function blanksBetween(lines, isExact) {
+    const out = new Set();
+    let before = true;   // (the start of the file counts as exact)
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim()) { before = isExact(lines[i]); continue; }
+      if (!before) continue;
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && isExact(lines[j])) for (; i < j; i++) out.add(i);
+      i = j - 1;
+    }
+    return out;
+  }
 
   /* Curly quotes from phones, Macs and Word (“ ” ‘ ’), used as quote marks, are straight ones: “Hi” is "Hi".
      Text already in straight quotes keeps its curly ones, and so does an apostrophe in a word (It’s). A curly
@@ -732,6 +747,33 @@
   const STYLE_LINK = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*?\shref\s*=\s*["']?style\.css["'\s>]/i, SCRIPT_TAG = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*?\ssrc\s*=\s*["']?script\.js["'\s>]/i;
   const CHARSET_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\scharset\s*=/i, VIEWPORT_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\sname\s*=\s*["']?viewport["'\s>]/i;
 
+  /* The project file an address on a page names ("styles.css?v=2", "../css/site.css"), from the page's path, in
+     lower case (as the project compares paths); null for an address elsewhere (https://…, //cdn…, data:…). */
+  function linkedFile(page, ref) {
+    if (!ref || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(ref)) return null;
+    let p = ref.split(/[?#]/)[0];
+    try { p = decodeURIComponent(p); } catch (_) { return null; }
+    const parts = p.startsWith('/') ? [] : String(page).split('/').slice(0, -1);
+    for (const seg of p.split('/')) { if (seg === '..') parts.pop(); else if (seg && seg !== '.') parts.push(seg); }
+    return parts.join('/').toLowerCase() || null;
+  }
+  /* Does the page get the style.css link (kind 'css') or the script.js tag ('js') the writer adds? Yes when the
+     project's main style sheet (script) is that file, or the page loads none of the project's own. Not for a page
+     that loads its own by other names (imported, with styles.css?v=2 and app.js): those files aren't there.
+     site: from compileWebsite; null (no paths): yes, as always. */
+  function addsLink(kind, site, page) {
+    if (!site) return true;
+    const main = kind === 'css' ? site.styling : site.mechanics;
+    if (main && linkedFile(site.page, kind === 'css' ? 'style.css' : 'script.js') === main.toLowerCase()) return true;
+    const own = new Set(site.files.filter(f => f.lang === kind).map(f => f.path.toLowerCase()));
+    const tags = page.replace(/<!--[\s\S]*?-->/g, '').match(kind === 'css' ? /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi : /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || [];
+    return !tags.some(t => {
+      if (kind === 'css' && !/\srel\s*=\s*(?:"[^"]*\bstylesheet\b[^"]*"|'[^']*\bstylesheet\b[^']*'|stylesheet\b)/i.test(t)) return false;
+      const m = t.match(kind === 'css' ? /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i : /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      return !!m && own.has(linkedFile(site.page, m[1] ?? m[2] ?? m[3]));
+    });
+  }
+
   // lines copied exactly (and notes), where curly quotes are left as they are
   const RAW_HTML = /^(?:(?:in the )?head|doctype|html|raw|note|comment|(?:the )?(?:page )?body (?:attributes|has)|(?:the )?html (?:tag )?attributes)\s*:/i;
 
@@ -837,7 +879,7 @@
     if (title != null) push(`  <title>${esc(title)}</title>`, ti);
     let open = null;
     for (const h of head) { push(open ? h.text : '  ' + h.text, h.src); open = rawOpen(h.text, open); }
-    if (!raws.some(r => STYLE_LINK.test(r))) push('  <link rel="stylesheet" href="style.css">', -1);   // unless a head: or html: line places it
+    const styleAt = out.length;   // Styling's link goes here, once the whole page is known (see addsLink)
     push('</head>', -1);
     push(`<body${pageGroups.length ? ` class="${pageGroups.join(' ')}"` : ''}${bodyAttrs ? ' ' + bodyAttrs : ''}>`, info.findIndex(x => x.target === 'body'));
     const attrs = (e) => {
@@ -891,9 +933,14 @@
       else ls.forEach(l => push(l.text, l.src));
       lastTop = c;
     }
-    if (!raws.some(r => SCRIPT_TAG.test(r))) push('  <script src="script.js"></script>', -1);   // unless a head: or html: line places it
+    // Styling's link and Mechanics' script, unless a head: or html: line places them. The preview always has them:
+    // it puts Styling and Mechanics there (previewDocument)
+    const page = out.map(o => o.text).join('\n');
+    const adds = (kind) => shared.mark || addsLink(kind, shared.site, page);
+    if (!raws.some(r => SCRIPT_TAG.test(r)) && adds('js')) push('  <script src="script.js"></script>', -1);
     push('</body>', -1);
     push('</html>', -1);
+    if (!raws.some(r => STYLE_LINK.test(r)) && adds('css')) out.splice(styleAt, 0, { text: '  <link rel="stylesheet" href="style.css">', src: -1 });
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
     return { lines: out, info, text: out.map(o => o.text).join('\n') + '\n', title };
   }
@@ -1279,9 +1326,11 @@
     let media = null, mediaInd = -1;
     // first pass: groups defined here
     for (const raw of lines) { const g = raw.trim().match(/^(?:create|make|add) (?:a )?(?:new )?(?:colou?r |style )?group\s+(?:called\s+|named\s+)?(.+?)\s*(?::|$)/i); if (g) shared.cssGroups[toId(g[1])] = true; }
+    const EXACT = /^([ \t]*)(?:css|raw)\s*:\s?(.*?)\r?$/i;
+    const exactBlank = blanksBetween(lines, (l) => EXACT.test(l));
     lines.forEach((raw, i) => {
       const inf = info[i];
-      if (!raw.trim()) return;
+      if (!raw.trim()) { if (exactBlank.has(i)) rules.push({ blank: true, src: i, media }); return; }
       const ind = raw.match(/^ */)[0].length;
       let s = raw.trim();
       // curly quotes count as straight ones, except in CSS copied exactly
@@ -1292,7 +1341,12 @@
       if (media && ind <= mediaInd) media = null;
       let m;
       if ((m = s.match(/^(?:note|comment)\s*:\s*(.*)$/i))) { rules.push({ comment: m[1], src: i, media }); return; }
-      if ((m = s.match(/^(?:css|raw)\s*:\s?(.*)$/i))) { rules.push({ raw: m[1], src: i, media }); return; }
+      // exact CSS, to the end of the line; it keeps its own indentation, unless it's under "on screens …"
+      if ((m = s.match(/^(?:css|raw)\s*:\s?(.*)$/i))) {
+        const e = raw.match(EXACT) || [null, '', m[1]];   // (after filler: "then css: …")
+        rules.push({ raw: e[2], ind: e[1], src: i, media });
+        return;
+      }
       if ((m = s.match(/^on (?:screens|phones|devices) (narrower|smaller|wider|bigger) than\s+(\S+?|-?[\d.]+\s+[a-z]+)\s*:?$/i))) {
         const w = unit(m[2], inf);
         media = /narrower|smaller/i.test(m[1]) ? `(max-width: ${w})` : `(min-width: ${w})`;
@@ -1416,13 +1470,16 @@
       push('}', vars[0][2]);
       push('', -1);
     }
+    // a blank line between exact lines stays when both are in the same place (under the same "on screens …", or neither)
+    for (let k = rules.length - 1, next; k >= 0; k--) { if (!rules[k].blank) next = rules[k].media; else if (rules[k].media !== next) rules.splice(k, 1); }
     let curMedia = null;
     const close = () => { if (curMedia) { push('}', -1); push('', -1); curMedia = null; } };
     for (const r of rules) {
+      if (r.blank) { push('', r.src); continue; }
       if (r.media !== curMedia) { close(); if (r.media) { push(`@media ${r.media} {`, r.src); curMedia = r.media; } }
       const pad = curMedia ? '  ' : '';
       if (r.comment != null) { push(`${pad}/* ${r.comment} */`, r.src); continue; }
-      if (r.raw != null) { push(pad + r.raw, r.src); continue; }
+      if (r.raw != null) { push((curMedia ? pad : r.ind) + r.raw, r.src); continue; }
       push(`${pad}${r.sel} {`, r.src);
       for (const [p, v] of r.props) push(`${pad}  ${p}: ${v};`, r.src);
       push(`${pad}}`, r.src);
@@ -1999,9 +2056,17 @@
   }
 
   function compileJs(sec, shared) {
-    // (a tab at the start of a line counts as 4 spaces, as in the other writers)
-    let lines = sec.text.split('\n').map(l => l.replace(/^[ \t]+/, (w) => w.replace(/\t/g, '    ')));
+    // (a tab at the start of a line counts as 4 spaces, as in the other writers; exact lines keep their own)
+    const given = sec.text.split('\n');
+    let lines = given.map(l => l.replace(/^[ \t]+/, (w) => w.replace(/\t/g, '    ')));
     const info = makeInfo(lines);
+    // exact code (js: …), and the blank lines between exact lines, which are the code's own (see the end)
+    const EXACT = /^[ \t]*(?:js|javascript|raw)\s*:/i;
+    const exactBlank = blanksBetween(lines, (l) => EXACT.test(l));
+    // in a file that ends in exact code, the newline at its end ends that code: it isn't a blank line of its own
+    let lastSolid = lines.length - 1;
+    while (lastSolid >= 0 && !lines[lastSolid].trim()) lastSolid--;
+    const endNewline = lastSolid >= 0 && lastSolid < lines.length - 1 && EXACT.test(lines[lastSolid]) ? lines.length - 1 : -1;
     // sentences as people type them (not exact code, or notes): curly quotes, "1,000", names of several words
     const RAW_JS = /^\s*(?:js|javascript|raw|note|comment|description)\s*:/i;
     lines = lines.map((l, i) => { if (RAW_JS.test(l)) return l; const st = straightQuotes(l, true); if (st !== l) note(info[i], CURLY_NOTE); return digitGroups(st, info[i]); });
@@ -2144,7 +2209,7 @@
     lines.forEach((raw, i) => {
       const inf = info[i];
       sayer = /^\s*(?:js|javascript|raw)\s*:/i.test(raw) ? null : inf;
-      if (!raw.trim()) { push('', i); return; }
+      if (!raw.trim()) { if (i !== endNewline) out.push({ text: '', src: i, kept: exactBlank.has(i) }); return; }
       const ind = raw.match(/^ */)[0].length;
       while (stack.length && ind <= stack[stack.length - 1].ind) {
         const b = stack.pop();
@@ -2160,14 +2225,17 @@
       const open = (head, close, kind, extra = {}) => { push(pad + head, i); stack.push({ ind, close, kind, src: i, head: out[out.length - 1], ...extra }); scopes.push(new Map()); };
       const say = (t) => push(pad + t, i);
       let m;
-      if ((m = raw.trim().match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) {
-        const d = m[1].match(/^(let|const|var)\s+([A-Za-z_$][\w$]*)/);
+      if ((m = given[i].match(/^([ \t]*)(?:js|javascript|raw)\s*:\s?(.*?)\r?$/i))) {
+        const d = m[2].match(/^(let|const|var)\s+([A-Za-z_$][\w$]*)/);
         if (d && !inTemplate) declare(d[2], d[1] === 'const' ? 'const' : 'let');   // so a later "set …" changes it instead of making it again
         note(inf, 'Raw JavaScript: copied exactly as written.');
+        // outside every sentence block it keeps its own indentation (code written as code, as Unity mode and an
+        // imported file have it); inside one it's indented to fit the block
+        const code = (stack.length ? '' : m[1]) + m[2];
         // a line inside a template literal (`…` over several lines) is its text: copied without the block's indent
         const was = inTemplate;
-        inTemplate = templateOpenAfter(m[1], inTemplate);
-        return was ? push(m[1], i) : say(m[1]);
+        inTemplate = templateOpenAfter(m[2], inTemplate);
+        return push(was ? code : pad + code, i);
       }
       inTemplate = null;
       // a description: what a tool is for, written as a JSDoc comment just above its function
@@ -2702,7 +2770,15 @@
     });
     while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src); }
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
-    return { lines: out, info, text: out.map(o => o.text).join('\n').replace(/\n{3,}/g, '\n\n') + '\n' };
+    // at most one blank line in a row, except between exact lines: those are the code's own (in a template literal
+    // they're part of its text)
+    const runs = [];
+    for (const o of out) {
+      if (o.kept) runs.push('');
+      else if (Array.isArray(runs[runs.length - 1])) runs[runs.length - 1].push(o.text);
+      else runs.push([o.text]);
+    }
+    return { lines: out, info, text: runs.map(r => (Array.isArray(r) ? r.join('\n').replace(/\n{3,}/g, '\n\n') : r)).join('\n') + '\n' };
   }
 
   /* ================================================================== */
@@ -2711,6 +2787,10 @@
 
   function compileWebsite(project) {
     const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {}, addIds: {}, wanted: {} };
+    // where the page and the project's files are, for the links Structure adds (addsLink): project.files is every
+    // file ({ path, lang }); without paths (a check, an older caller) the page is written as it always was
+    const pathOf = (f) => (project.sections.find(s => s.file === f) || {}).path || null;
+    if (pathOf('structure') && Array.isArray(project.files)) shared.site = { page: pathOf('structure'), styling: pathOf('styling'), mechanics: pathOf('mechanics'), files: project.files };
     const held = {};
     const sec = (f) => {
       if (!held[f]) { const s = project.sections.find(s => s.file === f) || { id: f, file: f, text: '' }; const h = holdBlanks(s.text); held[f] = { sec: { ...s, text: h.text }, blanks: h.blanks, strays: h.strays }; }
