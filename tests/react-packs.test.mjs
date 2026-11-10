@@ -74,7 +74,7 @@ test('Supabase: queries said as what they ask the database', () => {
     '}',
     '',
   ].join('\n'));
-  exact('ts', 'async function f() {\n  const { data, error } = await supabase\n    .from("notes")\n    .select("*")\n    .order("created_at", { ascending: false });\n  if (error) throw error;\n  return data;\n}\n',
+  exact('ts', 'async function f() {\n  const { data, error } = await supabase.from("notes").select("*").order("created_at", { ascending: false });\n  if (error) throw error;\n  return data;\n}\n',
     /^    wait for every row of the "notes" table in supabase sorted by "created_at" from the end, and take data and error from it\n    if error, fail with error as it is$/m);
 });
 
@@ -184,15 +184,87 @@ test('Layout: a Lovable-style file comes back byte for byte from its sentences',
       else assert.notEqual(got.code, text, `${f}: says its layout differs, and it does`);
     }
   }
-  assert.ok(same >= 15, `only ${same} of ${all} files come back byte for byte`);
+  assert.ok(same >= 19, `only ${same} of ${all} files come back byte for byte`);
+});
+
+test('Layout: names brought in, a call\'s inputs, a record\'s parts and a query\'s parts, a line each', () => {
+  const src = [
+    'import {',
+    '  Card,',
+    '  CardContent as Content,',
+    '  type CardProps,',
+    '} from "@/components/ui/card";',
+    'import { supabase } from "@/integrations/supabase/client";',
+    'import { toast } from "sonner";',
+    '',
+    'export async function load(id: string) {',
+    '  const { data, error } = await supabase',
+    '    .from("notes")',
+    '    .select("*")',
+    '    .eq("id", id)',
+    '    .order("created_at", { ascending: false });',
+    '  if (error) {',
+    '    console.error(',
+    '      "Couldn\'t load the notes:",',
+    '      error.message',
+    '    );',
+    '    toast({',
+    '      title: "Couldn\'t load",',
+    '      description: error.message,',
+    '      variant: "destructive",',
+    '    });',
+    '  }',
+    '  await fetch("/api/seen", {',
+    '    method: "POST",',
+    '    headers: { "Content-Type": "application/json" },',
+    '    body: JSON.stringify({ id }),',
+    '  });',
+    '  return data;',
+    '}',
+    '',
+  ].join('\n');
+  const { r, code } = back('ts', src);
+  assert.equal(code, src, r.text);
+  assert.deepEqual(plain(r.layout), []);
+  for (const said of [
+    // the names under "bring in from …:", one a line
+    /^bring in from "@\/components\/ui\/card":\n    Card\n    CardContent as Content\n    the type CardProps\nbring in supabase from/m,
+    // the query's parts after its table, one a line: one call a line in the code
+    /^    wait for every row of the "notes" table in supabase, and take data and error from it\n        where "id" is id\n        sorted by "created_at" from the end$/m,
+    // a call's inputs under "with:", one a line
+    /^        run console\.error with:\n            "Couldn't load the notes:"\n            error\.message$/m,
+    // a record given last: its parts under "with:" (or "… and:" after other inputs), one a line
+    /^        run toast with:\n            title: "Couldn't load"\n            description: error\.message\n            variant: "destructive"$/m,
+    /^    wait for fetch with "\/api\/seen" and:\n        method: "POST"\n        headers: \{ "Content-Type": "application\/json" \}\n        body: \(\{ id \}\) as JSON text\n    give back data$/m,
+  ]) assert.match(r.text, said);
+  // the same program on one line each is said on one line each (and a fetch like this one is "send … to …")
+  const flat = 'async function f(id: string) {\n  await fetch("/api/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });\n  console.error("No", id);\n}\n';
+  const f1 = back('ts', flat);
+  assert.equal(f1.code, flat);
+  assert.match(f1.r.text, /^    send \{ id \} to "\/api\/seen"\n    run console\.error with "No", id$/m);
+  // a query waited for on its own, or given back, its parts under it too
+  const q = 'async function f(id: string) {\n  await supabase\n    .from("notes")\n    .delete()\n    .eq("id", id);\n  return supabase\n    .from("notes")\n    .select("id, title")\n    .limit(5);\n}\n';
+  const q1 = back('ts', q);
+  assert.equal(q1.code, q, q1.r.text);
+  assert.match(q1.r.text, /^    wait for deleting from the "notes" table in supabase\n        where "id" is id\n    give back the "id, title" of every row of the "notes" table in supabase\n        at most 5$/m);
+});
+
+test('Layout: the lines under "with:" and "bring in from …:" are checked, never guessed', () => {
+  const e = (text) => errs(write(text, 'ts'));
+  // inputs and a record's parts can't be mixed; "… and:" is followed by a record's parts
+  assert.match(e('define f\n    run g with:\n        title: "x"\n        "y"').join(), /its inputs, one per line, or the parts of a record/);
+  assert.match(e('define f using u\n    wait for fetch with u and:\n        "x"').join(), /go the parts of a record/);
+  // a name a line under "bring in from …:"
+  assert.match(e('bring in from "./x":\n    a and b').join(), /Name one thing to bring in on each line/);
+  assert.match(e('bring in from "./x":').join(), /Put the names to bring in on the lines under it/);
+  // typed by a person: the forms make the code they say
+  const w = write('bring in from "./ui":\n    Card\n    Badge as Tag\n\ndefine f\n    run Card with:\n        1\n        Tag\n    constant x is the result of Card with 1 and:\n        a: 2\n        Tag', 'ts');
+  assert.deepEqual(errs(w), []);
+  assert.equal(w.text, 'import {\n  Card,\n  Badge as Tag,\n} from "./ui";\n\nfunction f() {\n  Card(\n    1,\n    Tag\n  );\n  const x = Card(1, {\n    a: 2,\n    Tag,\n  });\n}\n');
 });
 
 test('Layout: what sentences can\'t say about the layout is said, with the lines and why', () => {
   const src = [
-    'import {',
-    '  Card,',
-    '  CardContent,',
-    '} from "@/components/ui/card";',
     'import { supabase } from "@/integrations/supabase/client";',
     '',
     'export async function load() {',
@@ -200,18 +272,23 @@ test('Layout: what sentences can\'t say about the layout is said, with the lines
     '    .from("notes")',
     '    .select("*");',
     '  if (error) throw error;',
+    '  console.error(',
+    '    "No notes:",',
+    '    error,',
+    '  );',
     '  return data;',
     '}',
     '',
   ].join('\n');
   const { r, code } = back('ts', src);
   assert.notEqual(code, src);
-  // the code's lines (from, to), and the sentence lines that say them (said)
+  // the code's lines (from, to), and the sentence lines that say them (said): a query split over lines with no part
+  // after its table, and a call's inputs one per line with a comma after the last
   assert.deepEqual(plain(r.layout), [
-    { from: 1, to: 4, why: 'names brought in one per line', said: { from: 1, to: 1 } },
-    { from: 8, to: 10, why: 'a value written over several lines', said: { from: 5, to: 5 } },
+    { from: 4, to: 6, why: 'a value written over several lines', said: { from: 4, to: 4 } },
+    { from: 8, to: 11, why: 'a value written over several lines', said: { from: 6, to: 6 } },
   ]);
-  assert.match(r.text.split('\n')[4], /^    wait for every row of the "notes" table in supabase, and take data and error from it$/);
+  assert.match(r.text.split('\n')[3], /^    wait for every row of the "notes" table in supabase, and take data and error from it$/);
   // the rest is as it was: the blank line, the one-line if
   assert.match(code, /client";\n\nexport async function load\(\) \{$/m);
   assert.match(code, /^  if \(error\) throw error;$/m);
@@ -300,11 +377,12 @@ test('A Lovable-style project in Unity: a file translated whole, then written fr
     const laid = d.done.flatMap(p => plain(p.layout));
     // (where: lines of the translated text, the sentences that say that code)
     for (const x of laid) assert.ok(d.lines.slice(x.from, x.to + 1).every(l => l.trim()), `${f}: ${JSON.stringify(x)}`);
-    if (/[\\/]lib[\\/]notes\.ts$/.test(f)) assert.match(d.lines[laid[0].from], /^    wait for every row of the "notes" table/);
+    // (the query split over lines: its part after the table on the line under it, and back as it was)
+    if (/[\\/]lib[\\/]notes\.ts$/.test(f)) { assert.match(d.lines.join('\n'), /^    wait for every row of the "notes" table in supabase, and take data and error from it\n        sorted by "created_at" from the end$/m); assert.equal(laid.length, 0, JSON.stringify(laid)); }
     if (laid.length) assert.notEqual(out.text, code + '\n', `${f}: says its layout differs, and it does`);
     else { assert.equal(out.text, code + '\n', `${sec.path}: the same file`); same++; }
   }
-  assert.ok(same >= 9, `only ${same} files the same`);
+  assert.ok(same >= 11, `only ${same} files the same`);
 
   // translated whole and one sentence changed: Original Code writes the file from its sentences, and only that line
   // of code changes (the diff a commit would show)

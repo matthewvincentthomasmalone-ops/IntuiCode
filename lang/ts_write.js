@@ -237,34 +237,40 @@
 
     const Q = String.raw`(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`;
     let linedInf = null;   // the info of the line whose query goes on over the line under it (see queryOnLines)
+    let linedChain = null;   // … whose Supabase query has its parts on the lines under it, a call a line (see chainOnLines)
     const SUPA =new RegExp(String.raw`^(every row of|the (${Q}) of every row of|adding (.+?) to|changing (.+?) in|adding or replacing (.+?) in|deleting from) the (${Q}) table in (${NAME})((?: .*)?)$`, 'i');
     const SUPA_NEXT = / (?:where|sorted by|at most)\s| (?:giving back the result|as a single row|as one row or none)(?=$| )/i;
+    // one part of a query after its table, on a line of its own
+    const SUPA_PART = new RegExp(String.raw`^(?:where ${Q} is(?: not)? \S.*|sorted by ${Q}(?: from the end| from the start)?|at most \d+|giving back the result|as a single row|as one row or none)$`, 'i');
     function packValue(s, inf, E) {
       let m;
+      if (s === LINED && lined && inf === lined.inf) return lined.code(E);
       if ((m = s.match(SUPA))) {
         const [, head, cols, ins, upd, ups, table, client, mods] = m;
-        let js = `${client}.from(${table})`;
-        if (/^every row of$/i.test(head)) js += '.select("*")';
-        else if (cols) js += `.select(${cols})`;
-        else if (ins != null) js += `.insert(${E(ins)})`;
-        else if (upd != null) js += `.update(${E(upd)})`;
-        else if (ups != null) js += `.upsert(${E(ups)})`;
-        else js += '.delete()';
+        const calls = [`from(${table})`];
+        if (/^every row of$/i.test(head)) calls.push('select("*")');
+        else if (cols) calls.push(`select(${cols})`);
+        else if (ins != null) calls.push(`insert(${E(ins)})`);
+        else if (upd != null) calls.push(`update(${E(upd)})`);
+        else if (ups != null) calls.push(`upsert(${E(ups)})`);
+        else calls.push('delete()');
         let rest = mods || '';
         const until = (r) => { const at = mask(r).search(SUPA_NEXT); return at < 0 ? r.length : at; };
         for (let guard = 0; rest.trim() && guard < 20; guard++) {
           let mm;
-          if ((mm = rest.match(new RegExp(`^ where (${Q}) is( not)? `, 'i')))) { rest = rest.slice(mm[0].length); const end = until(rest); js += `.${mm[2] ? 'neq' : 'eq'}(${mm[1]}, ${E(rest.slice(0, end))})`; rest = rest.slice(end); continue; }
-          if ((mm = rest.match(new RegExp(`^ sorted by (${Q})( from the end| from the start)?`, 'i')))) { js += `.order(${mm[1]}${mm[2] ? `, { ascending: ${/end/i.test(mm[2]) ? 'false' : 'true'} }` : ''})`; rest = rest.slice(mm[0].length); continue; }
-          if ((mm = rest.match(/^ at most (\d+)/i))) { js += `.limit(${mm[1]})`; rest = rest.slice(mm[0].length); continue; }
-          if ((mm = rest.match(/^ giving back the result/i))) { js += '.select()'; rest = rest.slice(mm[0].length); continue; }
-          if ((mm = rest.match(/^ as a single row/i))) { js += '.single()'; rest = rest.slice(mm[0].length); continue; }
-          if ((mm = rest.match(/^ as one row or none/i))) { js += '.maybeSingle()'; rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(new RegExp(`^ where (${Q}) is( not)? `, 'i')))) { rest = rest.slice(mm[0].length); const end = until(rest); calls.push(`${mm[2] ? 'neq' : 'eq'}(${mm[1]}, ${E(rest.slice(0, end))})`); rest = rest.slice(end); continue; }
+          if ((mm = rest.match(new RegExp(`^ sorted by (${Q})( from the end| from the start)?`, 'i')))) { calls.push(`order(${mm[1]}${mm[2] ? `, { ascending: ${/end/i.test(mm[2]) ? 'false' : 'true'} }` : ''})`); rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ at most (\d+)/i))) { calls.push(`limit(${mm[1]})`); rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ giving back the result/i))) { calls.push('select()'); rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ as a single row/i))) { calls.push('single()'); rest = rest.slice(mm[0].length); continue; }
+          if ((mm = rest.match(/^ as one row or none/i))) { calls.push('maybeSingle()'); rest = rest.slice(mm[0].length); continue; }
           err(inf, `I don't understand "${rest.trim()}" in this query. After the table: where "id" is id, sorted by "created_at" (from the end), at most 10, giving back the result, as a single row.`);
           break;
         }
+        const js = client + calls.map(x => '.' + x).join('');
         note(inf, `A Supabase query: ${code(js.length > 90 ? js.slice(0, 87) + '…' : js)}. It asks the database and gives back { data, error } once it answers (so it is waited for).`);
-        return js;
+        // (its parts on the lines under the sentence: a call a line, one step in)
+        return inf && inf === linedChain ? client + calls.map(x => '\n  .' + x).join('') : js;
       }
       const lb = topIndex(s, / loaded by /);
       if ((m = s.match(/^the query (.+) loaded by (.+)$/i)) && lb) {
@@ -765,8 +771,103 @@
       return `${s} loaded by ${m[1]}`;
     }
 
+    /* The lines under this one, one after another, each one step in with nothing under it: { ks, j } (their
+       indexes, the last one), or null. (Exact code and notes are lines of their own; "description: …" is a part
+       here, as in toast's { title, description }: a tool's description only goes right under its "define".) */
+    function linesUnder(c) {
+      const j = blockEnd(c.lines, c.i), ks = [];
+      for (let k = c.i + 1; k <= j; k++) { if (!c.lines[k].trim()) return null; ks.push(k); }
+      if (!ks.length) return null;
+      const ind = c.lines[ks[0]].match(/^ */)[0].length;
+      return ks.every(k => c.lines[k].match(/^ */)[0].length === ind && !/^\s*(?:js|javascript|raw|note|comment)\s*:/i.test(c.lines[k])) ? { ks, j } : null;
+    }
+
+    /* bring in from "@/components/ui/card":
+           Card
+           CardContent
+       is import { one name per line } from "…": a name (or "a as b", "the type Note") a line. */
+    const ITEM = new RegExp(`^(the type )?(${NAME})(?: as (${NAME}))?$`, 'i');
+    function importOnLines(s, c) {
+      const m = s.match(new RegExp(String.raw`^bring in from (${Q})$`, 'i'));
+      if (!m) return null;
+      const u = linesUnder(c), inf = c.inf;
+      if (c.stack.length) err(inf, '"bring in" goes at the left edge, near the top.');
+      if (!u) { err(inf, 'Put the names to bring in on the lines under it, one per line, one step further in.'); c.say(`import {} from ${m[1]};`); return true; }
+      note(inf, '`import { … }` brings in what another file shares, by name: here one name per line, as the sentences have them.');
+      c.say('import {');
+      for (const k of u.ks) {
+        const q = c.lines[k].trim().match(ITEM);
+        if (!q) { err(c.info[k], 'Name one thing to bring in on each line: a name, "a as b", or "the type Note".'); c.push(c.pad + '  // ??? ' + c.lines[k].trim(), k); continue; }
+        if (q[1] && !typed) err(c.info[k], 'Types are TypeScript: a JavaScript file brings in none.');
+        if (!q[1]) { c.declare(q[3] || q[2], 'const'); c.x.vars.add(q[3] || q[2]); }
+        note(c.info[k], `${code(q[2])}${q[3] ? `, named ${code(q[3])} here` : ''}${q[1] ? ' (a type)' : ''}, brought in on a line of its own.`);
+        c.push(`${c.pad}  ${q[1] ? 'type ' : ''}${q[2]}${q[3] ? ' as ' + q[3] : ''},`, k);
+      }
+      c.say(`} from ${m[1]};`);
+      c.skip(u.j);
+      return true;
+    }
+
+    /* A call's inputs, or the parts of the record it is given last, on the lines under its sentence:
+         run console.error with:           run toast with:              wait for fetch with "/api" and:
+             "Not found:"                      title: "Saved"               method: "POST"
+             path                              variant: "destructive"       body: note as JSON text
+       is the sentence with them in place of the colon, and its code has them a line each:
+       console.error(\n  "Not found:",\n  path\n) and toast({\n  title: "Saved",\n  variant: "destructive",\n}).
+       -> the sentence joined up (LINED standing for what is under it, which packValue writes), or null. */
+    const LINED = '⟪under⟫';
+    let lined = null;   // { inf, code(E) }: the value written over the lines under its sentence
+    const PART = new RegExp(String.raw`^(${NAME}|${Q}|\d+):\s+(\S.*)$`);
+    function partsOnLines(s, c) {
+      const m = s.match(/^(.*\S)\s+(with|and)$/i);
+      if (!m || !/:\s*$/.test(c.raw)) return null;
+      const u = linesUnder(c);
+      if (!u) return null;
+      const said = u.ks.map(k => c.lines[k].trim()), pairs = said.map(t => t.match(PART));
+      const record = pairs.some(Boolean), inf = c.inf;
+      if (record && said.some((t, k) => !pairs[k] && !new RegExp(`^${NAME}$`).test(t))) {
+        err(inf, 'Under "with:" go its inputs, one per line, or the parts of a record (name: value), one per line, not both.');
+        return null;
+      }
+      if (!record && /^and$/i.test(m[2])) { err(inf, 'Under "… and:" go the parts of a record, one per line, like: title: "Saved".'); return null; }
+      c.skip(u.j);
+      if (record) {
+        note(inf, 'The last thing it is given is a record (`{ … }`), its parts on the lines under it: the code has a part per line too.');
+        u.ks.forEach(k => note(c.info[k], 'One part of the record: its name, then its value.'));
+        lined = { inf, code: (E) => `{\n${said.map((t, k) => `  ${pairs[k] ? `${pairs[k][1]}: ${E(pairs[k][2])}` : t},`).join('\n')}\n}` };
+        return /^with$/i.test(m[2]) ? `${m[1]} with ${LINED}` : `${m[1]}, ${LINED}`;
+      }
+      note(inf, 'What it is given, one per line under it: the code has each on a line of its own too.');
+      u.ks.forEach(k => note(c.info[k], 'One of the things it is given.'));
+      lined = { inf, code: (E) => `\n${said.map(t => '  ' + E(t)).join(',\n')}\n` };
+      return `${m[1]} with ${LINED}`;
+    }
+
+    /* A Supabase query with its parts after the table on the lines under it, one per line:
+         wait for every row of the "notes" table in supabase, and take data and error from it
+             sorted by "created_at" from the end
+       is the sentence with them after the table, and its code is one call per line:
+       supabase\n  .from("notes")\n  .select("*")\n  .order(…). -> the sentence joined up, or null. */
+    function chainOnLines(s, c) {
+      const u = linesUnder(c);
+      if (!u) return null;
+      const parts = u.ks.map(k => c.lines[k].trim().replace(/[.]$/, ''));
+      if (!parts.every(p => SUPA_PART.test(p))) return null;
+      const mk = mask(s);
+      let at = -1;
+      for (const x of mk.matchAll(new RegExp(`(?:^| )the \u0001+ table in ${NAME}`, 'g'))) at = x.index + x[0].length;
+      if (at < 0 || mask(s.slice(at)).search(SUPA_NEXT) === 0) return null;
+      note(c.inf, 'A query with its parts on the lines under it: the code has each of its calls on a line of its own.');
+      u.ks.forEach(k => note(c.info[k], 'One part of the query, on a line of its own: one call in the code.'));
+      c.skip(u.j);
+      linedChain = c.inf;
+      return `${s.slice(0, at)} ${parts.join(' ')}${s.slice(at)}`;
+    }
+
     function line(s0, c) {
-      const joined = queryOnLines(s0, c), s = joined || s0;
+      const own = importOnLines(s0, c);
+      if (own) return own;
+      const joined = queryOnLines(s0, c) || partsOnLines(s0, c) || chainOnLines(s0, c), s = joined || s0;
       const r = lineOf(s, c);
       // (a sentence these sentences write: the joined one)
       return joined && r === false ? { s } : r;
@@ -928,6 +1029,12 @@
     function names(s, x) {
       const t = String(s).trim().replace(/[.:]$/, '');
       let m;
+      // the names under "bring in from "…":", one per line (the lines come in order: they are the ones after it)
+      if (x.bringing) {
+        if ((m = t.match(ITEM))) { if (!m[1]) x.vars.add(m[3] || m[2]); return; }
+        x.bringing = false;
+      }
+      if (new RegExp(String.raw`^bring in from ${Q}$`, 'i').test(t)) { x.bringing = true; return; }
       if ((m = t.match(new RegExp(`^bring in everything from .+ as (${NAME})$`, 'i')))) x.vars.add(m[1]);
       else if ((m = t.match(/^bring in\s+(.+?)\s+from\s+["']/i)) && !/^the types?\s/i.test(m[1])) {
         for (const it of topSplit(m[1], /,\s*|\s+and\s+/g)) {
