@@ -27,6 +27,10 @@ jobs:
             args: ""
     runs-on: ${{ matrix.platform }}
     env:
+      # Code signing turns on by itself once its secrets are in the repository (see SECURITY.md); without them the
+      # installers are built unsigned, as before.
+      WINDOWS_SIGNING: ${{ secrets.ESIGNER_CREDENTIAL_ID != '' }}
+      MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
       RELEASE_BODY: |
         Installers for IntuaCode (also at https://intuacode.com).
         - Windows: the -setup.exe file (or the .msi for managed PCs)
@@ -35,7 +39,7 @@ jobs:
 
         **Check a download:** SHA256SUMS.txt lists every file's SHA-256 (`sha256sum -c SHA256SUMS.txt --ignore-missing`, or `Get-FileHash` in PowerShell). Each installer also has a signed record of the GitHub build that made it from this source: `gh attestation verify <file> --repo ${{ github.repository }}`.
 
-        These installers aren't code-signed yet (code signing policy: https://intuacode.com/code-signing.html), so Windows and macOS warn the first time they're opened: check the checksum or the attestation first. See the README for how to open them.
+        Code signing policy: https://intuacode.com/code-signing.html. If Windows or macOS warns the first time an installer is opened, check the checksum or the attestation first. See the README for how to open them.
         A 15-minute checklist for trying it out is in TESTING.md.
         C++ on Windows uses Visual Studio's compiler (the free Build Tools are enough); Arduino uses the arduino-cli inside the Arduino IDE 2.
     steps:
@@ -67,6 +71,41 @@ jobs:
           npm run vendor
           python tools/fetch_pyodide.py
 
+      # Windows signing: Tauri signs the app, its uninstaller and both installers with tools/sign-windows.ps1,
+      # which uses Jsign and SSL.com's eSigner cloud signing. Jsign is checked against its SHA-256 before use.
+      - name: Set up Windows code signing
+        if: matrix.platform == 'windows-latest' && env.WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          $jar = Join-Path $env:RUNNER_TEMP 'jsign-7.6.jar'
+          Invoke-WebRequest 'https://repo1.maven.org/maven2/net/jsign/jsign/7.6/jsign-7.6.jar' -OutFile $jar
+          $hash = (Get-FileHash $jar -Algorithm SHA256).Hash
+          if ($hash -ne '6CF58AA080E7FF82656F320CFF8D4A3BFF30408DF8766806DCBA3740DD839FA5') { throw "jsign-7.6.jar isn't the expected file (SHA-256 $hash)" }
+          $script = Join-Path $env:GITHUB_WORKSPACE 'tools\sign-windows.ps1'
+          $conf = Join-Path $env:RUNNER_TEMP 'sign-windows.json'
+          @{ bundle = @{ windows = @{ signCommand = @{ cmd = 'pwsh'; args = @('-NoProfile', '-NonInteractive', '-File', $script, '%1') } } } } |
+            ConvertTo-Json -Depth 6 | Set-Content -Path $conf -Encoding utf8
+          Get-Content $conf
+          Add-Content -Path $env:GITHUB_ENV -Value "JSIGN_JAR=$jar"
+          Add-Content -Path $env:GITHUB_ENV -Value "SIGN_ARGS=--config $conf"
+
+      # macOS signing and notarisation: Tauri does both when these are set (it imports the certificate into a
+      # keychain of its own). They're only set when the secrets exist: Tauri treats an empty one as set.
+      - name: Set up macOS code signing and notarisation
+        if: matrix.platform == 'macos-latest' && env.MACOS_SIGNING == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then echo "::error::The secret $name is missing: macOS signing needs all six (see SECURITY.md)"; exit 1; fi
+            printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"
+          done
+
       # Bundling downloads its tools from GitHub (NSIS and WiX on Windows, AppImage's helpers on Linux), which
       # now and then answers 504: if this fails, the step below tries once more, a minute later.
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
@@ -74,13 +113,18 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ESIGNER_USERNAME: ${{ secrets.ESIGNER_USERNAME }}
+          ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
+          ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
+          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          ESIGNER_ENDPOINT: ${{ vars.ESIGNER_ENDPOINT }}
         with:
           tagName: v__VERSION__
           releaseName: "IntuaCode v__VERSION__"
           releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: false
           prerelease: true
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} ${{ env.SIGN_ARGS }}
 
       - name: Wait a minute before trying again
         if: steps.bundle.outcome == 'failure'
@@ -91,73 +135,47 @@ jobs:
         if: steps.bundle.outcome == 'failure'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ESIGNER_USERNAME: ${{ secrets.ESIGNER_USERNAME }}
+          ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
+          ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
+          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          ESIGNER_ENDPOINT: ${{ vars.ESIGNER_ENDPOINT }}
         with:
           tagName: v__VERSION__
           releaseName: "IntuaCode v__VERSION__"
           releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: false
           prerelease: true
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} ${{ env.SIGN_ARGS }}
 
-      # SignPath signs only what this workflow run built (it checks): the Windows installers, kept as an artifact
-      - name: Keep the Windows installers for signing
-        if: matrix.platform == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: windows-unsigned
-          path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: error
-
-  # Windows code signing through a SignPath.io plan (see SECURITY.md). Off until the
-  # project is set up there: repository variable SIGNPATH_ORGANIZATION_ID and secret SIGNPATH_API_TOKEN
-  # (SIGNPATH_PROJECT_SLUG and SIGNPATH_POLICY_SLUG if they aren't intuacode and release-signing). Each request
-  # waits for an approver to approve it in SignPath, then the signed installers replace the unsigned ones.
-  sign-windows:
-    needs: build
-    if: vars.SIGNPATH_ORGANIZATION_ID != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 300
-    permissions:
-      contents: write        # the signed installers on the release
-      actions: read          # the run's artifacts
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-
-      - name: Find the unsigned installers
-        id: unsigned
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # When signing is on, a file that isn't properly signed stops the release here, before its checksums and
+      # attestations are made and before the website offers it.
+      - name: Check the Windows signatures
+        if: matrix.platform == 'windows-latest' && env.WINDOWS_SIGNING == 'true'
+        shell: pwsh
         run: |
-          echo "TAG=v$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_ENV"
-          echo "artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "windows-unsigned") | .id')" >> "$GITHUB_OUTPUT"
+          $files = Get-ChildItem 'src-tauri/target/release/intuicode.exe', 'src-tauri/target/release/bundle/nsis/*-setup.exe', 'src-tauri/target/release/bundle/msi/*.msi'
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            "$($f.Name): $($s.Status), $($s.SignerCertificate.Subject), timestamped by $($s.TimeStamperCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { throw "$($f.Name) isn't properly signed: $($s.StatusMessage)" }
+            if (-not $s.TimeStamperCertificate) { throw "$($f.Name) has no timestamp, so its signature would stop working when the certificate expires" }
+          }
+          "### Windows: signed by $($s.SignerCertificate.Subject)" >> $env:GITHUB_STEP_SUMMARY
 
-      - uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'intuacode' }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
-          github-artifact-id: ${{ steps.unsigned.outputs.artifact }}
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 14400   # four hours for an approver to approve it
-          output-artifact-directory: signed
-
-      - name: Put the signed installers on the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check the macOS signature and notarisation
+        if: matrix.platform == 'macos-latest' && env.MACOS_SIGNING == 'true'
         run: |
-          ls -l signed
-          gh release upload "$TAG" signed/* --repo "$GITHUB_REPOSITORY" --clobber
-          echo "### $TAG: Windows installers signed through SignPath" >> "$GITHUB_STEP_SUMMARY"
+          app="src-tauri/target/universal-apple-darwin/release/bundle/macos/IntuaCode.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=4 "$app"   # passes only for a notarised Developer ID app
+          xcrun stapler validate "$app"
+          echo "### macOS: signed and notarised ($(codesign -dv "$app" 2>&1 | grep '^Authority=' | head -1))" >> "$GITHUB_STEP_SUMMARY"
 
-  # Once every installer is attached (and the Windows ones signed, if that's set up): their checksums, a signed
-  # provenance record for each (built here, from this commit), and the website rebuilt so the home page's
-  # buttons give the new version.
+  # Once every installer is attached (signed, where signing is set up): their checksums, a signed provenance record
+  # for each (built here, from this commit), and the website rebuilt so the home page's buttons give the new version.
   checksums:
-    needs: [build, sign-windows]
-    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.sign-windows.result == 'success' || needs.sign-windows.result == 'skipped') }}
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write        # SHA256SUMS.txt on the release

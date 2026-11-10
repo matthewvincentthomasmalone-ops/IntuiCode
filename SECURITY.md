@@ -35,26 +35,56 @@ Each release has:
 
 The installers aren't code-signed yet ([code signing policy](https://intuacode.com/code-signing.html)), so Windows
 SmartScreen and macOS Gatekeeper warn the first time they're opened: check the checksum or the attestation first.
+Signing is set up in the release workflow and starts once the certificates are bought (below).
 
-## Code signing later (for the maintainer)
+## Code signing (for the maintainer)
 
-IntuaCode is no longer open source (it's under the Business Source License 1.1 from the version after 0.6.0), so
-SignPath Foundation's free signing for open-source projects doesn't apply. Windows code signing needs a paid
-certificate instead: a commercial [SignPath.io](https://about.signpath.io) plan (the release workflow's
-`sign-windows` step in `.github/workflows/desktop.yml` already uses it), or Microsoft's Trusted Signing, which
-would need its own workflow step. The step stays off until one is set up. With SignPath:
+The release workflow (`.github/workflows/desktop.yml`) signs the installers by itself once the secrets below are in
+the repository (Settings → Secrets and variables → Actions). Without them, it builds unsigned installers as before.
+Each platform turns on separately. When signing is on, the workflow checks every signature after the build and stops
+the release if one isn't valid. Turn on multi-factor authentication for GitHub first: these secrets can sign code in
+your name.
 
-1. Turn on multi-factor authentication for GitHub and SignPath.
-2. Take a SignPath.io plan that issues or hosts a code signing certificate for an individual or business publisher.
-3. In SignPath: a project with the slug `intuacode` linked to this GitHub repository, a signing
-   policy `release-signing` (manual approval, the approver from the policy page), and an artifact configuration
-   from `.signpath/artifact-configuration.xml`. Create a CI user and an API token for it.
-4. In this repository's settings (Secrets and variables → Actions): the variable `SIGNPATH_ORGANIZATION_ID` and the
-   secret `SIGNPATH_API_TOKEN` (and `SIGNPATH_PROJECT_SLUG` / `SIGNPATH_POLICY_SLUG` if you chose other names).
+### Windows: an SSL.com certificate with eSigner cloud signing
 
-From then on each release (Actions → Desktop app → Run workflow) sends the Windows installers to SignPath and waits
-up to four hours for the approver to approve the request there; the signed installers then replace the unsigned
-ones on the release before the checksums and attestations are made.
+Tauri signs the app, its uninstaller, the setup `.exe` and the `.msi` with `tools/sign-windows.ps1`. That script
+uses [Jsign](https://ebourg.github.io/jsign/) (downloaded by the workflow and checked against its SHA-256) and
+SSL.com's eSigner, so the key stays in SSL.com's cloud HSM and no USB token is needed.
+
+1. Buy a code signing certificate from [SSL.com](https://www.ssl.com/certificates/code-signing/buy/): Individual
+   Validation (IV) in your own name, or Organization Validation (OV) in a registered business's name. The name on it
+   is what Windows shows as the publisher. Choose **eSigner cloud signing** when it's issued, and take an eSigner plan
+   that covers about 5 signatures per release (the first 30 days are free).
+2. Enrol the certificate in eSigner for automated signing. Keep the **TOTP secret** (the base64 text under the QR
+   code); it's shown only once.
+3. Add four secrets: `ESIGNER_USERNAME` and `ESIGNER_PASSWORD` (your SSL.com login), `ESIGNER_CREDENTIAL_ID` (the
+   certificate's credential ID in eSigner) and `ESIGNER_TOTP_SECRET`.
+4. Optional, to rehearse first: SSL.com has a sandbox with a test certificate. Add the variable (not a secret)
+   `ESIGNER_ENDPOINT` = `https://cs-try.ssl.com` with the sandbox's login in the secrets, run a release, then delete
+   the variable and put the real login back. The rehearsal's installers aren't trusted by Windows, so delete that
+   release afterwards.
+
+Windows' SmartScreen trusts a new certificate gradually, as people download signed releases, so the first signed
+versions may still be warned about. No certificate gets instant trust since 2024.
+
+### macOS: Apple Developer ID and notarisation
+
+Tauri signs the app with a Developer ID certificate, sends it to Apple to be notarised, and staples the result, so
+macOS opens it without warnings.
+
+1. Join the [Apple Developer Program](https://developer.apple.com/programs/) (US$99 a year).
+2. On a Mac, create a **Developer ID Application** certificate (Xcode → Settings → Accounts → Manage Certificates),
+   export it from Keychain Access as a `.p12` with a password, and turn it into one line of text:
+   `base64 -i certificate.p12 | tr -d '\n'`.
+3. At [account.apple.com](https://account.apple.com), create an app-specific password for notarisation.
+4. Add six secrets: `APPLE_CERTIFICATE` (the base64 text), `APPLE_CERTIFICATE_PASSWORD` (the `.p12`'s password),
+   `APPLE_SIGNING_IDENTITY` (the certificate's name, like `Developer ID Application: Your Name (TEAMID)`),
+   `APPLE_ID` (your Apple Account's email), `APPLE_PASSWORD` (the app-specific password) and `APPLE_TEAM_ID`.
+
+### Once both are set up
+
+Update the [code signing policy](https://intuacode.com/code-signing.html) (`site/code-signing.html`) to name the
+publisher and the certificates, and the README's "These builds aren't code-signed yet" section.
 
 ## How the project keeps itself safe
 
