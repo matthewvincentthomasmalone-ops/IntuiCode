@@ -8,8 +8,9 @@
  * it makes are known, and only the region's own lines are taken back.
  *
  *   expand(lang, lines, from, to)                  -> { from, to }: the selection grown to whole statements
- *   toWords(lang, lines, from, to, convert)        -> Promise<{ words, exact, reason, original, base }>
- *        convert(kind, source) -> { text, exact, reason } (or a promise of it): the readers, from the shell
+ *   toWords(lang, lines, from, to, convert)        -> Promise<{ words, exact, reason, original, base, layout }>
+ *        convert(kind, source) -> { text, exact, reason, layout } (or a promise of it): the readers, from the shell;
+ *        layout: [{ from, to, why }], the lines whose code, written from the sentences, is laid out differently
  *   toCode(lang, lines, regions, i, W)             -> { code, needs, problems }: region i as code
  *   reRegex(lang, lines, regions, i, W)            -> { ok, lines, regions, needs, problems }
  *   deRegex(lang, lines, regions, from, to, convert, opts) -> Promise<{ lines, regions, done, failed, blocked }>:
@@ -54,8 +55,9 @@
   // nesting, by indentation, still line up)
   const orig = (r) => r.original || r.words.map(l => (blank(l) ? '' : indentOf(l) + '…'));
 
-  /* The indentation one level is in this text: a tab, or the commonest step between lines (2 or 4 spaces). */
-  function unitOf(lines) {
+  /* The indentation one level is in this text: a tab, or the commonest step between lines (2 or 4 spaces; none:
+     fallback spaces). */
+  function unitOf(lines, fallback = 4) {
     if (lines.some(l => /^\t/.test(l))) return '\t';
     const steps = {};
     let last = 0;
@@ -66,7 +68,7 @@
       last = w;
     }
     const best = Object.entries(steps).filter(([d]) => +d === 2 || +d === 4).sort((a, b) => b[1] - a[1])[0];
-    return ' '.repeat(best ? +best[0] : 4);
+    return ' '.repeat(best ? +best[0] : fallback);
   }
 
   /* ---------- Code shape: brackets and tags, outside text and comments ---------- */
@@ -247,7 +249,11 @@
     // blank lines between sentences: as many as the code had between those statements is impossible to
     // know, so they're kept where the reader put them, at most one in a row
     words = words.filter((l, i) => !blank(l) || !blank(words[i - 1] || 'x'));
-    return { words: words.map(l => (l ? base + l : l)), exact: res.exact !== false, reason: res.reason || null, original, base };
+    // where its code, written from these sentences, is laid out differently (the same program): the sentences that
+    // say it (said: indexes in words), and its code's lines in `lines`
+    const lead = res.text.split('\n').findIndex(l => !blank(l));
+    const layout = inside ? [] : (res.layout || []).map(x => ({ from: from + x.from - 1, to: from + x.to - 1, why: x.why, said: x.said ? { from: x.said.from - 1 - Math.max(0, lead), to: x.said.to - 1 - Math.max(0, lead) } : null }));
+    return { words: words.map(l => (l ? base + l : l)), exact: res.exact !== false, reason: res.reason || null, original, base, layout };
   }
 
   /* ---------- Sentences -> code ---------- */
@@ -367,7 +373,10 @@
     const got = res.lines.filter(o => mine.has(o.src));
     const solid = got.filter(o => o.text.trim());
     const low = solid.reduce((m, o) => Math.min(m, width(indentOf(o.text))), Infinity);
-    const unit = unitOf(codeView(lines, regions)), per = UNIT[lang];
+    // the file's own step in, from its code (sentences with no code yet don't count: theirs is the sentences' 4
+    // spaces), or the writer's own when there's no code to tell
+    const shape = codeView(lines, regions.map(x => (x.original ? x : { ...x, words: x.words.map(() => '') })));
+    const unit = unitOf(shape, UNIT[lang]), per = UNIT[lang];
     const code = got.map(o => {
       if (!o.text.trim()) return '';
       const lv = Math.round((width(indentOf(o.text)) - low) / per);
@@ -497,7 +506,10 @@
       out = out.slice(0, p.from).concat(p.w.words, out.slice(p.to + 1));
     }
     rest = rest.slice().sort((a, b) => a.from - b.from);
-    return { lines: out, regions: rest, failed, blocked, done: done.map(p => ({ from: p.from, to: p.to, exact: p.w.exact, reason: p.w.reason, absorbed: p.absorbs.length })) };
+    // (layout: the lines of the new text, its sentences, whose code is laid out differently once written from them)
+    const at = (p, x) => (x.said ? { from: p.from + x.said.from, to: p.from + x.said.to } : { from: p.from + x.from - p.cFrom, to: p.from + x.to - p.cFrom });
+    const shift = (p) => done.filter(q => q.from < p.from).reduce((n, q) => n + q.w.words.length - (q.to - q.from + 1), 0);
+    return { lines: out, regions: rest, failed, blocked, done: done.map(p => ({ from: p.from, to: p.to, exact: p.w.exact, reason: p.w.reason, absorbed: p.absorbs.length, layout: (p.w.layout || []).map(x => { const l = at(p, x), d = shift(p); return { from: l.from + d, to: l.to + d, why: x.why }; }) })) };
   }
 
   /* ---------- Keeping regions in place while the text is edited ---------- */

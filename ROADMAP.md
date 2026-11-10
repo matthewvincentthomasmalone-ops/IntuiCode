@@ -111,6 +111,14 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 - Corpus (`tests/corpus_react/`, a Lovable-style notes app) and a held-out set (`tests/heldout_react/`, written after
   the rules): see the table below. `tests/react-packs.test.mjs` takes the corpus through Unity as a project: every
   file translated, put back byte for byte, and an edit written in its file's context and checked exact.
+- Layout (2026-11-10): written back from its sentences, a file is the same file, not just the same program. One line
+  of sentences is one line of code: blank lines (after a block's `}` too), `if error, fail with error as it is`
+  (`if (error) throw error;`), `show: …` on one line (`return <p>…</p>;`), an element's text or settings on lines of
+  their own, a query with `loaded by …` under it (`useQuery({` one part per line). Where the sentences can't say
+  it, TypeScript is written as Prettier writes it (`(n) =>`, no brackets a value doesn't need). Byte for byte: 11 of
+  13 corpus files and 4 of 8 held-out ones (1 of 21 before); the rest say which lines and why (`layout` in the
+  converter's result, shown by Translate): calls or chains split over lines, import lists one name per line, text
+  and an element sharing a line between tags. `tests/react-packs.test.mjs` checks both.
 
 ## What could come next
 
@@ -143,6 +151,7 @@ before each measurement.
 | 2026-09-29 after step 2 | 98% (297/304) | 18/18 | 87% on first sight, one exactness bug found; 96% after fixes | 5/5 |
 | 2026-09-30 after the audit (docstrings now count as statements) | 98% (306/313) | 18/18 | 96% (120/125) | 5/5 |
 | 2026-11-10 TypeScript and React (`tests/corpus_react`, `tests/heldout_react`) | 99% (197/199) | 13/13 | 89% (219/247) on first sight; 89% (220/247) after one fix | 8/8 |
+| 2026-11-10 React layout kept (lines said one part per line count too; the same 2 and 27 stay code) | 99% (213/215) | 13/13 | 89% (224/251) | 8/8 |
 
 The app has a safety net: if converting a file to sentences ever isn't exact, the
 statements that differ are kept as `python:` lines automatically and the check runs again.

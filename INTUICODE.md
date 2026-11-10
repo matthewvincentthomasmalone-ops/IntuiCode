@@ -1073,10 +1073,68 @@ export async function fetchNotes(): Promise<Note[]> {
   }
   return data as Note[];
 }
+
 export function useNotes() {
   return useQuery({ queryKey: ["notes"], queryFn: fetchNotes });
 }
 ```
+
+#### Layout: the code comes back as it was written
+
+Sentences carry the code's layout where they can, so a file translated in Unity and written back from its sentences
+is the same file, not just the same program (git shows no change). One line of sentences is one line of code:
+
+- A blank line between sentences is a blank line in the code, after a block's `}` too.
+- `if error, fail with error as it is` (the step after a comma) is `if (error) throw error;`. The step is one of
+  `give back`, `fail with`, `run`, `change … to`, `show: …`, `stop the loop`, `skip to next`.
+- `show: a paragraph saying "Loading…"` (the element on the same line) is `return <p>Loading…</p>;`, and
+  `constant A is a component, showing: …` is `const A = () => <…>;`. With the element under `show:`, the code is
+  `return (` … `);`.
+- An element's text on a line of its own under it is the text on a line of its own between the tags; `saying …` keeps
+  it on the tag's line.
+- An element's settings on lines of their own under it (before anything it shows) are its props one per line:
+
+```intuicode tsx
+define component Field
+    show:
+        an Input
+            with id "title"
+            with value {title}
+```
+
+```typescript
+function Field() {
+  return (
+    <Input
+      id="title"
+      value={title}
+    />
+  );
+}
+```
+
+- A query with `loaded by …` on the line under it is `useQuery({` with each part on its own line:
+
+```intuicode ts
+define shared useNotes
+    give back the query ["notes"]
+        loaded by fetchNotes
+```
+
+```typescript
+export function useNotes() {
+  return useQuery({
+    queryKey: ["notes"],
+    queryFn: fetchNotes,
+  });
+}
+```
+
+TypeScript is written the way Prettier writes it where the sentences can't say: `(n) => …` for a little function's
+input, no brackets a value doesn't need (`notes.filter(…).length`), two spaces a step in. Where the code is laid out
+some other way (a long chain of calls split over lines, a call's inputs one per line, an import list one name per
+line, text and an element sharing a line between tags), the program still comes back exactly, and Translate says
+which lines will be laid out differently and why.
 
 ### What counts as the same (TypeScript and JSX)
 
