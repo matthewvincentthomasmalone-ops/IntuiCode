@@ -567,7 +567,9 @@
             return v != null && say(`set the ${{ textContent: 'text', value: 'value', innerHTML: 'HTML', className: 'groups' }[prop]} of ${h} to ${v}`);
           }
           if (prop === 'hidden' && /^(true|false)$/.test(right.text) && holder(F(left, 'object'))) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${holder(F(left, 'object'))}`);
-          if (left.text === 'window.location.href') { const v = ex(right); return v != null && say(`go to ${v}`); }
+          // (an address "go to" would change, like "google.com", is said as it is: set window.location.href to …)
+          const lit = right.type === 'string' && /^(["'])([^"'\\]*)\1$/.exec(right.text);
+          if (left.text === 'window.location.href' && !(lit && env.WEB.addressFor(lit[2], 'href') !== lit[2])) { const v = ex(right); return v != null && say(`go to ${v}`); }
           if (isChain(left) && !id) { const v = val(right); return v != null && say(`set ${left.text} to ${v}`); }
           // a value inside one item: "set done of item index of todos to …" (todos[index].done)
           if (obj.type === 'subscript_expression' && F(left, 'property').type === 'property_identifier' && !kids(left).some(k => k.type === 'optional_chain')) {
@@ -1346,12 +1348,15 @@
           o.say(depth, `add a button${called}${extra}${gl}${grp}`);
           return kids.length ? holds() : true;
         }
-        if (tag === 'a' && get('href') != null && a.filter(x => x.name === 'href').length === 1) {
+        // (an address the sentence would change, like google.com, which "link to" makes https://google.com, is said
+        // as it is: ", with href google.com")
+        const asIs = (k) => WEB.addressFor(get(k), k) === get(k);
+        if (tag === 'a' && get('href') != null && a.filter(x => x.name === 'href').length === 1 && asIs('href')) {
           const h = quote(get('href'));
           if (textOnly && kids.length) return say(`add a link${called} to ${h} saying ${text()}`, others(['href']));
           if (kids.length) { const extra = others(['href']); if (extra == null) return false; o.say(depth, `add a link${called} to ${h}${extra}${gl}${grp}`); return holds(); }
         }
-        if (tag === 'img' && get('src') != null) {
+        if (tag === 'img' && get('src') != null && asIs('src')) {
           const s = quote(get('src')), al = get('alt');
           const extra = others(['src', 'alt']);
           return say(`add a picture${called} of ${s}${al ? ' described as ' + quote(al) : ''}`, extra == null ? null : extra + (al == null ? ', with no description' : ''));
@@ -1387,7 +1392,7 @@
           }
         }
         if (tag === 'label' && textOnly && kids.length && (get('for') == null || simpleName(get('for')))) return say(`add a label${called} ${text()}${get('for') ? ' for ' + get('for') : ''}`, others(['for']));
-        if (tag === 'video' && get('src') != null && a.some(x => x.name === 'controls' && !x.value) && !kids.length) return say(`add a video${called} of ${quote(get('src'))}`, others(['src', 'controls']));
+        if (tag === 'video' && get('src') != null && asIs('src') && a.some(x => x.name === 'controls' && !x.value) && !kids.length) return say(`add a video${called} of ${quote(get('src'))}`, others(['src', 'controls']));
         if (tag === 'canvas' && !kids.length) {
           const w = get('width'), h = get('height');
           const both = w != null && h != null && /^\d+$/.test(w) && /^\d+$/.test(h) && a.findIndex(x => x.name === 'height') === a.findIndex(x => x.name === 'width') + 1;
