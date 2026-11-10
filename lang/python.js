@@ -581,10 +581,29 @@
 
     // 1. Protect text in quotes so nothing inside is swapped. A .name or [ right after the text stays attached,
     //    so it is part of the same operand: length of "a b".split() is len("a b".split()), not len("a b").split().
-    const strs = [];
-    let q = s.replace(/(?<![\w])[rRbBuUfF]{0,2}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
-    if (/["]/.test(q)) { x.err('A piece of text is missing its closing quote mark (").'); q = q.replace(/"/g, ''); }
-    if (/(^|\s)'|'(\s|$)/.test(q)) { x.err("A piece of text is missing its closing quote mark (')."); }
+    const strs = [], spans = [];
+    let q = s.replace(/(?<![\w])[rRbBuUfF]{0,2}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, (m, off, all) => { spans.push([off, off + m.length]); strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    // Text with the same quote marks inside it ("She said "hi" to me") ends early. Say how to write it, and read
+    // the line as written that way, so nothing else is reported for the words that fell outside the text.
+    if (/["]/.test(q)) {
+      let p = -1;   // the first " that doesn't start or end a text, and the text just before it
+      for (let i = 0; i < s.length && p < 0; i++) if (s[i] === '"' && !spans.some(([a, b]) => i >= a && i < b)) p = i;
+      const before = spans.filter(([a, b]) => b <= p && s[a] === '"').pop(), last = s.lastIndexOf('"');
+      if (before && last > p) {
+        const t = s.slice(before[0] + 1, last), fixed = t.replace(/(?<!\\)"/g, "'");
+        x.err(`This text has quote marks inside it, so it ends early. Write "${fixed}", or put a \\ before each one inside: "${t.replace(/(?<!\\)"/g, '\\"')}".`);
+        return tExpr(s.slice(0, before[0]) + `"${fixed}"` + s.slice(last + 1), x, opts);
+      }
+      x.err('A piece of text is missing its closing quote mark (").'); q = q.replace(/"/g, '');
+    }
+    if (/(^|\s)'|'(\s|$)/.test(q)) {
+      const t = s.length > 2 && s[0] === "'" && s.endsWith("'") ? s.slice(1, -1) : '';
+      if (t.includes("'") && !t.includes('"')) {
+        x.err(`This text has a ' inside it, so it ends early. Write it in double quotes, "${t}", or put a \\ before each ' inside: '${t.replace(/(?<!\\)'/g, "\\'")}'.`);
+        return tExpr(`"${t}"`, x, opts);
+      }
+      x.err("A piece of text is missing its closing quote mark (').");
+    }
     // 1a. $5 is 5 and 50% is 0.5: Python numbers have no signs like these
     q = amounts(q, x);
 
@@ -1623,6 +1642,35 @@
     return s;
   }
 
+  /* Curly quote marks, as phones, Macs and Word type them, used as quotes are Python's straight ones: “Hi” is
+     "Hi" and ‘Sam’ is 'Sam'. An apostrophe in a word (It’s) and anything inside straight quotes stay as they
+     are; a straight quote inside curly ones gets a \ so it stays part of the text. */
+  const CURLY_QUOTE = /[“”„‟‘’‚‛]/;
+  function straightQuotes(s, x) {
+    if (!CURLY_QUOTE.test(s)) return s;
+    const ms = mask(s), dq = '“”„‟', sq = '‘’‚‛';
+    const letter = (c) => !!c && /[\p{L}\p{N}]/u.test(c);
+    const apostrophe = (i) => letter(s[i - 1]) && letter(s[i + 1]);   // It’s, don’t
+    const used = new Set();
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (ms[i] === '\u0001' || !CURLY_QUOTE.test(c)) { out += c; continue; }   // straight-quoted text, or not a quote mark
+      const double = dq.includes(c);
+      if (!double && (apostrophe(i) || !s[i + 1] || /\s/.test(s[i + 1]))) { out += c; continue; }   // not one that opens
+      // where it closes: the next curly mark of the same kind (outside straight quotes) that isn't an apostrophe
+      let j = i + 1;
+      for (; j < s.length; j++) if (ms[j] !== '\u0001' && (double ? dq.includes(s[j]) : sq.includes(s[j]) && !apostrophe(j) && !/\s/.test(s[j - 1]))) break;
+      const mark = double ? '"' : "'";
+      used.add(double ? '“ ”' : '‘ ’');
+      if (j >= s.length) { out += mark; continue; }   // never closed: said where the text is checked
+      out += mark + s.slice(i + 1, j).replace(new RegExp(`(?<!\\\\)${mark}`, 'g'), '\\' + mark) + mark;
+      i = j;
+    }
+    if (used.size) x.note(`Curly quote marks (${[...used].join(', ')}) are written as straight ones (${[...used].map(u => (u[0] === '“' ? '"' : "'")).join(' ')}): Python only reads those.`);
+    return out;
+  }
+
   /* "show $5" and "show 50%" show what was typed, so each is text ("$5", "50%"): as numbers they'd show as 5
      and 0.5. Only an amount shown on its own (or between commas or "and"); "show 15% of total" is worked out. */
   const SHOWN_AMOUNT = /(?<=^(?:show|print|display|say|output)\s+|,\s*|\sand\s+)(?:[$€£¥] ?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)? ?(?:%|[$€£¥]|per ?cent\b))(?=\s*$|\s*,|\s+and\s)/gi;
@@ -1643,7 +1691,7 @@
       const m = (r === RULES[0] ? text.replace(/^\s+/, '').replace(/\r$/, '') : s0).match(r.re);
       if (m) return r.fn(m, x);
     }
-    let { text: s, removed } = stripFiller(s0);
+    let { text: s, removed } = stripFiller(straightQuotes(s0, x));
     s = thousands(shownAsTyped(s, x), x);
     const parts = splitSteps(s);
     const said = [...new Set(removed)];

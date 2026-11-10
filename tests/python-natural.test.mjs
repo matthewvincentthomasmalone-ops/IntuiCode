@@ -94,6 +94,30 @@ test('money or a percentage shown on its own is shown as typed', () => {
   becomes('show 15% of 200', 'print(0.15 * 200)');
 });
 
+test('curly quote marks used as quotes are straight ones', () => {
+  becomes('show “Hello there”', 'print("Hello there")', /Curly quote marks \(“ ”\) are written as straight ones \("\): Python only reads those\./);
+  becomes('show ‘Sam’\nshow ’Sam’\nshow „Hallo“', "print('Sam')\nprint('Sam')\nprint(\"Hallo\")", /Curly quote marks \(‘ ’\) are written as straight ones \('\)/);
+  becomes('set name to “Sam”\nif name is “Sam”\n    show “Hi {name}”', 'name = "Sam"\nif name == "Sam":\n    print(f"Hi {name}")');
+  becomes('create list xs with “a”, “b”\nshow "a" plus “b”', 'xs = ["a", "b"]\nprint("a" + "b")');
+  // an apostrophe in a word stays, and so does anything in straight quotes
+  becomes('show “It’s here”\nshow ‘It’s Sam’s’\nshow "It’s “here”"', 'print("It’s here")\nprint(\'It’s Sam’s\')\nprint("It’s “here”")');
+  // a straight quote inside curly ones stays part of the text
+  becomes('show “She said "hi"”\nshow ‘it\'s’', 'print("She said \\"hi\\"")\nprint(\'it\\\'s\')');
+  // notes and python: lines are as written
+  becomes('note: “curly” stays\npython: s = "‘a’"', '# “curly” stays\ns = "‘a’"');
+  assert.equal(run(py('set name to ‘Sam’\nshow “Hi {name}”').code), 'Hi Sam');
+});
+
+test('text with the same quote marks inside it says how to write it', () => {
+  const out = problem('show "She said "hi" to me"', /This text has quote marks inside it, so it ends early\. Write "She said 'hi' to me", or put a \\ before each one inside: "She said \\"hi\\" to me"\./);
+  assert.deepEqual(out.warnings, [], 'the words that fell outside the text aren\'t reported as names');
+  problem('show "She said "hi""', /Write "She said 'hi'"/);
+  problem('set x to "a" plus "b "c" d"', /Write "b 'c' d"/);
+  problem("show 'it's'", /This text has a ' inside it, so it ends early\. Write it in double quotes, "it's", or put a \\ before each ' inside: 'it\\'s'\./);
+  // a text that's only missing its end says so, as before
+  problem('show "a" and "b', /missing its closing quote mark \("\)/);
+});
+
 test('a list sentence whose items have no spaces between them is asked about', () => {
   problem('create list xs with 1,000', /In a list, "1,000" could be one number \(1000\) or 2 items\. Write 1000 for the number, or put a space after each comma between items\./);
   problem('create list xs with 100,200,300', /could be one number \(100200300\) or 3 items/);
