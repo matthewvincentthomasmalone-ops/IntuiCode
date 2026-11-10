@@ -1619,15 +1619,16 @@
       reportBlanks(results[sec.id].info, h.blanks, h.strays);
     }
     const syms = new Map();
-    for (const [k, t] of Object.entries(x.types)) syms.set(k, { py: k, display: k, kind: /int|double|long/.test(t) ? 'number' : /string|String/.test(t) ? 'text' : /vector|\[\]/.test(t) ? 'list' : 'value' });
-    for (const f of x.fns) syms.set(f, { py: f, display: f, kind: 'function' });
+    const said = new Map([...(x.spaced || [])].map(([words, one]) => [one, words]));   // ledPin is said "led pin"
+    for (const [k, t] of Object.entries(x.types)) syms.set(k, { py: k, display: said.get(k) || k, kind: /int|double|long/.test(t) ? 'number' : /string|String/.test(t) ? 'text' : /vector|\[\]/.test(t) ? 'list' : 'value' });
+    for (const f of x.fns) syms.set(f, { py: f, display: said.get(f) || f, kind: 'function' });
     for (const c of x.classes) syms.set(c, { py: c, display: c, kind: 'class' });
     return { results, syms };
   }
 
   const T = (group, pattern, c, tip, sections = ['program']) => ({ group, pattern, py: c, tip, sections });
   const TEMPLATES = [
-    T('Values', 'set ‹name› to ‹value›', 'int name = value;', 'The kind (int, double, std::string, bool) is worked out from the value.', ['program', 'sketch']),
+    T('Values', 'set ‹name› to ‹value›', 'int name = value;', 'The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin.', ['program', 'sketch']),
     T('Values', 'constant ‹NAME› is ‹value›', 'const int NAME = value;', 'A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14".', ['program', 'sketch']),
     T('Values', 'set ‹decimal› ‹name› to ‹value›', 'double name = value;', 'Name the kind yourself: whole number, decimal, text, yes/no.', ['program', 'sketch']),
     T('Values', 'increase ‹name› by ‹amount›', 'name += amount;', '', ['program', 'sketch']),

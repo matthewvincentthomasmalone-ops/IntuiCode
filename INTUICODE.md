@@ -2398,7 +2398,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. |
+| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin. |
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |
@@ -2490,7 +2490,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. |
+| **Values** | `set ‹name› to ‹value›` | `int name = value;` | The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like "led pin", is written ledPin. |
 |  | `constant ‹NAME› is ‹value›` | `const int NAME = value;` | A value that never changes. Say the kind too if you like: "constant decimal PI is 3.14". |
 |  | `set ‹decimal› ‹name› to ‹value›` | `double name = value;` | Name the kind yourself: whole number, decimal, text, yes/no. |
 |  | `increase ‹name› by ‹amount›` | `name += amount;` |  |

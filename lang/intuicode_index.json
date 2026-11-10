@@ -2813,7 +2813,7 @@
           "folders": [
             "program"
           ],
-          "tip": "The kind (int, double, std::string, bool) is worked out from the value."
+          "tip": "The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like \"led pin\", is written ledPin."
         },
         {
           "topic": "Values",
@@ -3399,7 +3399,7 @@
           "folders": [
             "sketch"
           ],
-          "tip": "The kind (int, double, std::string, bool) is worked out from the value."
+          "tip": "The kind (int, double, std::string, bool) is worked out from the value. A name of several words, like \"led pin\", is written ledPin."
         },
         {
           "topic": "Values",
