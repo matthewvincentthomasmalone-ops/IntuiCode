@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { loadEngine, loadWebReader, pyProject, ROOT } from './helpers/engine.mjs';
 
-const { WEB, BP } = loadEngine();
+const { WEB, BP, PRJ, L, CPP } = loadEngine();
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const site = (structure, styling = '', mechanics = '') => WEB.compileWebsite({ sections: [
   { id: 'structure', file: 'structure', text: structure }, { id: 'styling', file: 'styling', text: styling }, { id: 'mechanics', file: 'mechanics', text: mechanics }] });
@@ -629,4 +629,34 @@ test('mechanics: a name in other capitals, or something by its text', () => {
   assert.deepEqual(problems(r, 'mechanics'), []);
   assert.match(r.results.mechanics.text, /document\.getElementById\("Quote"\)\.addEventListener\("click"/);
   assert.match(r.results.structure.text, /<h2 id="quote-generator">Quote Generator<\/h2>/);
+});
+
+test('exact lines keep their own indentation, blank lines and spaces at the end: imported code is saved as it was', () => {
+  assert.equal(site('', '', 'js: import {\n  js: a,\njs: } from "./x.js";').results.mechanics.text, 'import {\n  a,\n} from "./x.js";\n');
+  assert.equal(site('', 'css: @media (max-width: 600px) {\n  css: p { color: red; }\ncss: }').results.styling.text, '@media (max-width: 600px) {\n  p { color: red; }\n}\n');
+  // a template literal's text, two blank lines, a tab, spaces at the end; the file's last newline is no extra line
+  const js = site('', '', 'js: const page = `\n  js: <ul>\n    js: <li>${x}</li>  \n  js: </ul>`;\n\n\njs: function f() {\n\tjs: return page;\njs: }\n');
+  assert.equal(js.results.mechanics.text, 'const page = `\n  <ul>\n    <li>${x}</li>  \n  </ul>`;\n\n\nfunction f() {\n\treturn page;\n}\n');
+  // inside a sentence block (or "on screens …") an exact line is indented to fit it, as before
+  const inBlock = site('add a button called go', '', 'when go is clicked\n    js: console.log(1);\n\n\nshow 1\n\n\nshow 2');
+  assert.equal(inBlock.results.mechanics.text, 'document.getElementById("go").addEventListener("click", () => {\n  console.log(1);\n});\nconsole.log(1);\n\nconsole.log(2);\n', 'blank sentence lines: still one at most');
+  const media = site('add a paragraph "x"', 'on screens narrower than 600:\n  css: p { color: red; }\n\n  css: a { }\ncss: b { }\n\nstyle p: bold\n\n\nstyle a: italic');
+  assert.equal(media.results.styling.text, '@media (max-width: 600px) {\n  p { color: red; }\n\n  a { }\n}\n\nb { }\np {\n  font-weight: bold;\n}\n\na {\n  font-style: italic;\n}\n');
+});
+
+test('the page links style.css and script.js when the project has them, or the page loads none of its own', () => {
+  const compile = (files) => PRJ.compileAll(PRJ.normalized({ sections: files.map(([path, lang, text], i) => ({ id: 's' + i, path, lang, text })) }), { LANG: L, WEB, CPP }).results;
+  // an imported page loads its own styles.css?v=2 and app.js: no style.css or script.js to ask for
+  const page = 'head: <link rel="stylesheet" href="styles.css?v=2">\nadd a paragraph "x"\nadd a script, of type module, from "app.js?v=3"';
+  const imported = compile([['index.html', 'html', page], ['styles.css', 'css', 'css: p { color: red; }\n'], ['app.js', 'js', 'js: console.log(1);\n'], ['docs/about.html', 'html', 'head: <link rel="stylesheet" href="../styles.css">\nadd a paragraph "y"']]);
+  assert.doesNotMatch(imported.s0.text, /"style\.css"|"script\.js"/);
+  assert.match(imported.s0.text, /href="styles\.css\?v=2"[\s\S]*src="app\.js\?v=3"/);
+  assert.doesNotMatch(imported.s3.text, /"style\.css"/, 'a page in a folder links the same sheet from there');
+  // the preview still has them: it puts Styling and Mechanics there
+  assert.match(imported.s0.previewText, /<link rel="stylesheet" href="style\.css">\n<\/head>[\s\S]*<script src="script\.js"><\/script>\n<\/body>/);
+  // a classic project, and a page that loads none of the project's files: as always
+  for (const files of [[['index.html', 'html', 'add a paragraph "x"'], ['style.css', 'css', 'style p: bold'], ['script.js', 'js', 'show 1']],
+    [['index.html', 'html', 'head: <link rel="stylesheet" href="https://cdn.example/x.css">\nadd a paragraph "x"'], ['css/site.css', 'css', 'style p: bold'], ['app.js', 'js', 'show 1']]]) {
+    assert.match(compile(files).s0.text, /  <link rel="stylesheet" href="style\.css">\n<\/head>[\s\S]*  <script src="script\.js"><\/script>\n<\/body>/);
+  }
 });

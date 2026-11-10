@@ -247,3 +247,13 @@ test('Unity: sentences that write no code of their own stay as sentences (nothin
   assert.ok(r.problems.some(p => p.errs.some(e => /no code of its own/.test(e))));
   assert.ok(U.reRegex('cpp', f.lines, f.regions, 1, W).ok, 'the statement after it still becomes code');
 });
+
+test('Unity: an imported JavaScript or CSS file (all exact lines) is written back exactly as it was', () => {
+  const js = ['import {', '  chordFor,', '} from "./chords.js";', '', '', 'const page = `', '  <ul>', '\t<li>${chordFor("C")}</li>  ', '  </ul>`;', 'export function show() {', '    return page;', '}'].join('\n');
+  const css = ['@media (max-width: 600px) {', '  .key {', '    color: red;', '  }', '}', '', '', '.pad { }  '].join('\n');
+  for (const [lang, code, role] of [['js', js, 'mechanics'], ['css', css, 'styling']]) {
+    const file = U.toFile(lang, code.split('\n'), []) + '\n';   // as importing makes it (importSection in app.js)
+    const sections = ['structure', 'styling', 'mechanics'].map(id => ({ id, file: id, text: id === role ? file : '' }));
+    assert.equal(WEB.compileWebsite({ sections }).results[role].text, code + '\n', lang);
+  }
+});
