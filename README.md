@@ -339,6 +339,15 @@ Markdown), comes in as it is, and the help reads it to you part by part (`lang/c
 secrets file is never brought in. Pasted code and files whose name doesn't say are **auto-detected** from
 their text, with the reason shown.
 
+**Saving and Backups**
+
+The open project is kept in the browser as you work. **Menu → Save** (Ctrl+S) in a browser downloads it as a
+`.zip`, laid out as the desktop app saves a folder (the code files, your sentences in `.intuicode/`, pictures
+in `images/`); Import → Open a `.zip` opens it again exactly as it was. Leaving the page with changes since the
+last Save asks first. **Menu → Backups…** lists a copy of the project from every 2 minutes it changed, the last
+15 (half an hour), kept in this browser (or the desktop app) for whichever project was open; Restore brings one
+back, after keeping a copy of what's open now.
+
 **Parts: the project by what each piece is for**
 
 Every file is split into **parts** (a function, a page section, a style rule, a block of settings, a sentence
@@ -399,7 +408,8 @@ The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can'
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
   program or an Arduino sketch that wasn't made with IntuaCode opens as sentences; any other
   folder of code comes in as a new project, as Import does. Folders and `.zip` files dropped on the window
-  come in as projects; single files join the open one.
+  come in as projects; single files join the open one. Closing the window with changes since the last
+  Save asks whether to save them first (they're in Backups either way).
 - **Real Python.** Programs run with the Python installed on the computer, with live
   output, typed input and a Stop button, so web servers and packages work. Without Python
   installed, the built-in one is used. Stop, or closing IntuaCode, ends a program and anything it

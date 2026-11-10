@@ -47,7 +47,18 @@ Files on disk hold real code. Sentences are an editable **view** of that code:
   produced hasn't changed underneath them.
 
 This keeps IntuaCode compatible with Git, other editors and people who don't use it.
-The web version stores projects in the browser; the desktop app works on real folders.
+The web version stores projects in the browser; the desktop app works on real folders. Save in a browser
+downloads the same layout as a `.zip` (written with `zip` in `lang/openspec.js`); opening a `.zip` or folder
+that has `.intuicode/project.json` restores that project as it was saved, before the code readers are tried.
+
+Backups are a second IndexedDB database (`intuicode-backups`): every 2 minutes, if the project changed, its
+JSON (as `localStorage` holds it) goes in `copies` and a small record (time, name, file count, folder, the
+picture hashes it uses) in `backups`, under the same key; the oldest beyond 15 are deleted. A project can be
+megabytes, more than `localStorage` holds. Pictures a backup uses aren't pruned. In the desktop app the page
+tells the Rust layer (`guard_close`) whether there are changes since the last Save; while there are, the
+window's close is held and the page is asked (`ask-to-close`), and it closes the window itself
+(`close_window`) after Save or Don't save. The guard is off until the page turns it on, so a page whose
+script never got that far doesn't keep the window open. Under WebDriver (the end-to-end tests) it stays off.
 
 Pictures live in the project's `images/` folder and are named in sentences by that path. The
 project lists them (name, size and a SHA-256 of the content); the browser keeps the pictures

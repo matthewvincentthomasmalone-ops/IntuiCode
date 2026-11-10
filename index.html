@@ -32,6 +32,7 @@
           <button type="button" role="menuitem" id="btnHandAI2" title="The project map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
+          <button type="button" role="menuitem" id="btnBackups" title="A copy of the project every 2 minutes it changes, for the last 30 minutes: go back to any of them">Backups…</button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">New file…</button>
           <button type="button" role="menuitem" id="btnAddFolder" title="Add a folder">New folder…</button>
@@ -360,6 +361,36 @@
         <button type="button" class="btn hand-take" id="handTake" hidden title="Tick the steps on the map that the folder's tasks.md has ticked">Take its ticks</button>
         <label class="btn file-btn hand-take" id="handTakeFile" hidden title="Choose a tasks.md your AI has ticked: those steps are ticked on the map">Take ticks from a tasks.md…<input type="file" id="handTicksFile" accept=".md,.markdown,.txt,text/markdown,text/plain"></label>
         <button type="button" class="btn primary" id="handGo">Download .zip</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="bkModal" hidden>
+    <div class="modal-card narrow" role="dialog" aria-modal="true" aria-labelledby="bkTitle">
+      <div class="modal-h">
+        <div>
+          <h2 id="bkTitle">Backups</h2>
+          <p>A copy of the project every 2 minutes while it changes. The last 15 are kept: 30 minutes. Restoring one keeps a copy of what's open first.</p>
+        </div>
+        <button type="button" class="btn small" id="bkClose">Close</button>
+      </div>
+      <ol class="bk-list" id="bkList"></ol>
+      <p class="hand-note" id="bkNote" role="status"></p>
+    </div>
+  </div>
+
+  <div class="modal" id="closeModal" hidden>
+    <div class="modal-card narrow" role="alertdialog" aria-modal="true" aria-labelledby="closeTitle" aria-describedby="closeText">
+      <div class="modal-h">
+        <div>
+          <h2 id="closeTitle">Save before closing?</h2>
+          <p id="closeText">Your changes since the last save are in Backups for 30 minutes either way.</p>
+        </div>
+      </div>
+      <div class="imp-actions close-actions">
+        <button type="button" class="btn" id="closeCancel">Cancel</button>
+        <button type="button" class="btn" id="closeDiscard">Don't save</button>
+        <button type="button" class="btn primary" id="closeSave">Save</button>
       </div>
     </div>
   </div>

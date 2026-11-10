@@ -20,6 +20,8 @@
     arduino: new URLSearchParams(location.search).has('arduino') ? ['arduino-cli', 'arduino-cli  Version: 1.1.1'] : undefined,
   };
   const emit = (ev, payload) => (window.mock.listeners[ev] || []).forEach(cb => cb({ payload }));
+  // as the desktop layer does: with changes not saved the page is asked, otherwise the window just closes
+  window.mock.closeWindow = () => { if (window.mock.guard) emit('ask-to-close', null); else window.mock.closed = true; };
   window.__TAURI__ = {
     event: { listen: async (ev, cb) => { (window.mock.listeners[ev] = window.mock.listeners[ev] || []).push(cb); return () => {}; } },
     core: {
@@ -56,6 +58,9 @@
           }
           case 'write_stdin': emit('proc-output', { id: args.id, stream: 'stdout', text: `got: ${args.text}` }); emit('proc-exit', { id: args.id, code: 0 }); return null;
           case 'stop_program': emit('proc-exit', { id: args.id, code: null }); return null;
+          // closing the window: mock.closeWindow() is the window's close button
+          case 'guard_close': m.guard = args.on; return null;
+          case 'close_window': m.closed = true; return null;
           default: throw new Error('unknown command ' + cmd);
         }
       },

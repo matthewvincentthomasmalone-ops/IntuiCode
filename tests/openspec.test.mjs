@@ -7,9 +7,10 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
+import zlib from 'node:zlib';
 import { ROOT, PYTHON, loadBuilder } from './helpers/engine.mjs';
 
-const ctx = { console, TextEncoder };
+const ctx = { console, TextEncoder, TextDecoder };
 ctx.window = ctx;
 vm.createContext(ctx);
 vm.runInContext(readFileSync(path.join(ROOT, 'lang/openspec.js'), 'utf8'), ctx, { filename: 'lang/openspec.js' });
@@ -174,6 +175,29 @@ test('zip: a .zip any unzipper reads back, file for file', () => {
     const got = JSON.parse(execFileSync(PYTHON, ['-c', read, at], { encoding: 'utf8' }));
     assert.deepEqual(got.map(g => [g[0], g[1]]), files.map(f => [f.path, f.content]));
     assert.deepEqual(got[0][2], [2026, 11, 9, 15, 30, 0]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('zip and unzip: a saved project comes back file for file, pictures too; a deflated .zip is found as one', () => {
+  const picture = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255, 13, 10]);
+  const files = [
+    { path: 'demo/main.py', content: 'print("héllo")\n' },
+    { path: 'demo/.intuicode/project.json', content: '{"name":"demo"}' },
+    { path: 'demo/images/dot.png', bytes: picture },
+  ];
+  const got = OS.unzip(OS.zip(files));
+  assert.deepEqual(plain(got.map(f => [f.path, f.method, f.size])), [['demo/main.py', 0, 16], ['demo/.intuicode/project.json', 0, 15], ['demo/images/dot.png', 0, 8]]);
+  assert.equal(new TextDecoder().decode(got[0].data), 'print("héllo")\n');
+  assert.deepEqual([...got[2].data], [...picture]);
+  assert.equal(OS.unzip(new TextEncoder().encode('not a zip at all, just some text')), null);
+  // one made elsewhere (Python's zipfile, compressed): the entries, still deflated
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'intuicode-unzip-'));
+  try {
+    const at = path.join(dir, 'p.zip');
+    execFileSync(PYTHON, ['-c', 'import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1],"w",zipfile.ZIP_DEFLATED) as z:\n  z.writestr("p/","")\n  z.writestr("p/a.py","x = 1\\n" * 50)', at]);
+    const list = OS.unzip(new Uint8Array(readFileSync(at)));
+    assert.deepEqual(plain(list.map(f => [f.path, f.method, f.size])), [['p/a.py', 8, 300]]);
+    assert.equal(zlib.inflateRawSync(list[0].data).toString(), 'x = 1\n'.repeat(50));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

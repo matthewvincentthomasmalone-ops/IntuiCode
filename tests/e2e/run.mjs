@@ -97,9 +97,10 @@ try {
       document.getElementById('newName').value = 'e2e new project';
       document.getElementById('newSave').checked = false;   // (a folder dialog can't be answered from here)
       document.getElementById('newGo').click();
-      return { files: [...document.querySelectorAll('#tree .ti-file')].map(x => x.textContent), folder: document.getElementById('folderName').textContent, sentences: document.getElementById('ta').value };
+      return { files: [...document.querySelectorAll('#tree .ti-file')].map(x => x.textContent), folder: document.getElementById('folderName').hidden ? null : document.getElementById('folderName').textContent, sentences: document.getElementById('ta').value };
     });
-    if (r.files.join() !== 'settings.py,tools.py,main.py' || r.folder !== 'not saved yet' || r.sentences !== '') throw new Error(JSON.stringify(r));
+    // no folder yet: the header shows no folder name
+    if (r.files.join() !== 'settings.py,tools.py,main.py' || r.folder !== null || r.sentences !== '') throw new Error(JSON.stringify(r));
   });
 
   let hasPython = false;
@@ -517,6 +518,16 @@ try {
     await drop([elsewhere]);
     await waitFor('the refusal', logHas('Nothing to import there'));
     if (await listed('private.py')) throw new Error('a pretend drop read a folder the page may not');
+  });
+
+  // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the
+  // close (so the tests can end the app): this is the page's side, asked as the desktop layer asks it.
+  await check('closing with changes not saved asks first; Cancel keeps the window', async () => {
+    await setSentences('show "not saved yet"');
+    await js(() => { window.__TAURI__.event.emit('ask-to-close'); return true; });
+    await waitFor('the question', inPage(() => !document.getElementById('closeModal').hidden && document.getElementById('closeTitle').textContent === 'Save before closing?'), 10000);
+    await click('closeCancel');
+    if (!(await js(() => document.getElementById('closeModal').hidden))) throw new Error('Cancel left the question open');
   });
 
   // (last: it ends the app)
