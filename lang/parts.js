@@ -7,6 +7,7 @@
  *   mechanics  Backend & Mechanics   what works behind the scenes: logic, calculations, data handling, saving, timing
  *   setup      Setup & Settings      what gets things ready: imports, settings, pins, configuration, build files
  *   data       Data & Notes          data files, content and notes, kept as written
+ *   tests      Tests & Checks        test files, test functions and benchmarks
  *
  * It reads code in any language and IntuaCode's sentences alike (a sentence file's exact lines, python: …, are read
  * as their code), line for line, so a part's lines are the file's own lines in Unity and in Split Mode.
@@ -28,6 +29,7 @@
     { id: 'mechanics', name: 'Backend & Mechanics', short: 'Mechanics', about: 'What works behind the scenes: logic, calculations, data handling, saving, timing and talking to other programs.' },
     { id: 'setup', name: 'Setup & Settings', short: 'Setup', about: 'What gets things ready: imports, settings, pins, configuration and build files.' },
     { id: 'data', name: 'Data & Notes', short: 'Data', about: 'Data files, content and notes, kept as written.' },
+    { id: 'tests', name: 'Tests & Checks', short: 'Tests', about: 'Code that checks the rest works: test files, test functions and benchmarks.' },
   ];
   const BY_ID = Object.fromEntries(TYPES.map(t => [t.id, t]));
   const typeOf = (id) => BY_ID[id] || BY_ID.mechanics;
@@ -40,9 +42,13 @@
   };
   const CONFIG_FILE = /(^|\/)(package(-lock)?\.json|tsconfig[\w.-]*\.json|jsconfig\.json|\.?eslintrc[\w.]*|\.?prettierrc[\w.]*|vite\.config\.\w+|webpack\.config\.\w+|babel\.config\.\w+|next\.config\.\w+|tailwind\.config\.\w+|postcss\.config\.\w+|Cargo\.toml|pyproject\.toml|setup\.(py|cfg)|requirements[\w.-]*\.txt|Pipfile|Gemfile|go\.mod|platformio\.ini|Makefile|CMakeLists\.txt|Dockerfile|docker-compose\.ya?ml|[\w.-]*\.config\.[jt]s|settings\.py|config\.\w+)$/i;
   const DOC_FILE = /(^|\/)(readme|license|licence|changelog|contributing|notes?)(\.\w+)?$/i;
+  // a file of tests: in a tests folder, or named as one (test_x.py, x_test.go, x.test.js, x.spec.ts, XTests.cpp, XBenchmark.cpp)
+  const TEST_FILE = /(^|\/)(tests?|specs?|__tests__|testing|benchmarks?)\/|(^|\/)test_[^/]*$|_tests?\.\w+$|\.(test|spec)\.\w+$|[A-Za-z0-9](Tests?|Spec|Benchmark)\.\w+$/;
+  // a test inside any file: def test_x, TEST(…), it("…"), describe("…"), test("…"), [Test], @Test
+  const TEST_PART = /^\s*(?:(?:async\s+)?def\s+test_?\w*|(?:TEST|TEST_F|TEST_CASE|SECTION|BOOST_AUTO_TEST_CASE)\s*\(|(?:it|describe|test)\s*\(\s*['"`]|\[(?:Test|Fact)\]|@Test\b|func\s+Test\w*\(|#\[test\])/;
 
-  // an exact line in a sentence file, read as its code
-  const EXACT = /^([ \t]*)(?:raw python|python|html|css|js|javascript|c\+\+|cpp|raw)\s*:\s?(.*)$/i;
+  // an exact line in a sentence file, read as its code (C++'s "above main:" and a page's "head:" too)
+  const EXACT = /^([ \t]*)(?:raw python|python|html|css|js|javascript|c\+\+|cpp|raw|above main|(?:in the )?head)\s*:\s?(.*)$/i;
 
   /* The words and calls that say what a line is for. Each list is tried on code and on sentences alike. */
   const SIGNS = {
@@ -84,7 +90,7 @@
       /^\s*<(!doctype|html|head|meta|link|title|base)\b/i, /^\s*<script[^>]*\bsrc=/i, /^\s*"(name|version|scripts|dependencies|devDependencies|main|type|private|license)"\s*:/,
       /\b(config|settings|options|environment|env)\b\s*[=:]/i, /^\s*(module\.)?exports\b|^\s*export\s+(default\s+)?\{/,
       // sentences
-      /^\s*when the (board|program|page|app) starts\b/i, /^\s*(page title is|page language|no page language|head\s*:|leave out the viewport)/i, /^\s*(start the serial monitor|make pin \w+ an? (input|output)|use the \w+ (library|toolkit)|include |load the \w+ (library|toolkit)|bring in)\b/i,
+      /^\s*when the (board|program|page|app) starts\b/i, /^\s*(page title is|page language|no page language|head\s*:|leave out the (?:viewport|character set|doctype)|no doctype|no title)/i, /^\s*(start the serial monitor|make pin \w+ an? (input|output)|use the \w+ (library|toolkit)|include |load the \w+ (library|toolkit)|bring in)\b/i,
       /^\s*set [\w ]+ to (-?\d+(\.\d+)?|"[^"]*"|'[^']*'|true|false|yes|no|LED_BUILTIN|A\d|D\d+)\s*$/i,
     ],
     data: [
@@ -104,7 +110,7 @@
     // bringing in a library is setup, whatever the library is for
     if (/^\s*(import\s|from\s+\S+\s+import\b|#include\b|(const|let|var)\s+[\w${}\s,]+=\s*require\(|using\s|use\s|package\s|@import\b)/.test(line)) return { setup: 5 };
     // so is a page's head: its title, language and links
-    if (/^\s*(head\s*:|page title is|page language|no page language|leave out the viewport|<(head|meta|link|title|base)\b)/i.test(line)) return { setup: 5 };
+    if (/^\s*(head\s*:|page title is|page language|no page language|leave out the (?:viewport|character set|doctype)|no doctype|no title|<(head|meta|link|title|base)\b)/i.test(line)) return { setup: 5 };
     for (const [type, list] of Object.entries(SIGNS)) {
       let n = 0;
       for (const re of list) if (re.test(line)) n++;
@@ -131,13 +137,26 @@
   /* The file's lines in top-level runs: an indented or bracketed block stays with the line that opens it. */
   function blocks(lang, lines, byIndent) {
     const out = [];
-    let cur = null, depth = 0;
+    let cur = null, depth = 0, wraps = 0;   // wraps: namespaces open around the parts (their braces don't count)
     const useBraces = BRACES.has(lang) && !byIndent;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (blankLine(line)) { if (cur && depth > 0) cur.to = i; continue; }
-      // a line at the left edge starts a part; so does a closing bracket's line ending one (in Python, "]" or ")")
-      const top = useBraces ? depth <= 0 : indentOf(line) === 0 && !/^\s*[)\]}]/.test(line);
+      if (useBraces && depth <= 0) {
+        // namespace x { … } and extern "C" { … } hold parts rather than being one: their own lines aren't parts
+        if (/^\s*(?:(?:inline\s+)?namespace\b[\w\s:]*|extern\s+"C"\s*)\{\s*(?:\/\/.*)?$/.test(line)) { wraps++; cur = null; continue; }
+        if (/^\s*(?:inline\s+)?namespace\b[\w\s:]*$/.test(line)) {   // its "{" on the next line
+          let k = i + 1;
+          while (k < lines.length && blankLine(lines[k])) k++;
+          if (k < lines.length && /^\s*\{\s*(?:\/\/.*)?$/.test(lines[k])) { wraps++; cur = null; i = k; continue; }
+        }
+        if (wraps && /^\s*\}\s*;?\s*(?:\/\/.*)?$/.test(line)) { wraps--; cur = null; continue; }
+      }
+      // a line at the left edge starts a part; so does a closing bracket's line ending one (in Python, "]" or ")").
+      // In braces, a part's head can run on: a "{" on its own line, a constructor's ": member (x)" list, a
+      // signature over several lines (one not yet ended by ";" or "}")
+      const runsOn = useBraces && cur && /^\s*[{:,)]|^\s+\S/.test(line) && !/[;}]\s*(?:\/\/.*)?$/.test(lines[cur.to]);
+      const top = useBraces ? depth <= 0 && !runsOn : indentOf(line) === 0 && !/^\s*[)\]}]/.test(line);
       if (top || !cur) { cur = { from: i, to: i }; out.push(cur); }
       else cur.to = i;
       if (useBraces) depth = Math.max(0, depth + braceDelta(line));
@@ -148,10 +167,15 @@
   /* A part's name: its first line, without the code's punctuation. */
   function titleOf(line) {
     let t = String(line).trim();
-    const fn = t.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:def|function|fn|func|sub|procedure|class|struct|interface|enum|trait|impl|module)\s+([\w$.]+)/);
+    const fn = t.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:(?:template\s*<[^>]*>\s*)?(?:def|function|fn|func|sub|procedure|class|struct|interface|enum(?:\s+class)?|trait|impl|module|namespace))\s+([\w$.:]+)/);
     if (fn) return fn[1];
-    const cfn = t.match(/^(?:[\w:<>,*&\s]+?)\s+\**([A-Za-z_]\w*)\s*\([^;]*\)\s*(?:const\s*)?\{?\s*$/);
-    if (cfn && !/^(if|for|while|switch|return|else)$/.test(cfn[1])) return cfn[1] + '()';
+    // C++ and the like: a function or method, Class::method or Class::Class (no return type), with what's after its name
+    const cfn = t.match(/^(?:[\w:<>,*&\s~]+?\s+)?[*&]*((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)\s*\([^;]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?::[^{]*)?\{?\s*$/);
+    if (cfn && !/^(if|for|while|switch|return|else|catch|sizeof|TEST\w*|it|describe|test)$/.test(cfn[1].split('::').pop())) return cfn[1] + '()';
+    const named = t.match(/^\s*(?:it|describe|test|TEST_CASE|SECTION)\s*\(\s*(['"`])(.*?)\1/);   // it("adds"), TEST_CASE("fader", "[tags]")
+    if (named) return `test: ${named[2]}`;
+    const gtest = t.match(/^\s*(?:TEST|TEST_F|TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)/);   // TEST(Suite, Name)
+    if (gtest) return `test: ${gtest[1]}.${gtest[2]}`;
     const arrow = t.match(/^(?:export\s+)?(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>/);
     if (arrow) return arrow[1];
     const tag = t.match(/^<([A-Za-z][\w.-]*)([^>]*)>?/);
@@ -188,6 +212,7 @@
     // split by its brackets, like code, and one of sentences by its indentation
     const lines = sentenceFile ? raw.map(codeOf) : raw;
     const byIndent = sentenceFile && !looksLikeCode(raw);
+    const testFile = !!path && TEST_FILE.test(path);
     let fallback = LANG_DEFAULT[lang] || 'mechanics';
     if (path && CONFIG_FILE.test(path)) fallback = 'setup';
     else if (path && DOC_FILE.test(path)) fallback = 'data';
@@ -210,6 +235,8 @@
       if (lang === 'html' && type !== 'setup') type = 'display';
       if (type === 'data' && own.length < 4) type = best({ ...total, data: 0 }, fallback);
       const lineTypes = own.map((l, i) => (blankLine(l) || isComment(l) ? null : lang === 'css' ? 'display' : best(scores[i], null) || type));
+      // a test file is tests through and through; elsewhere, a test function is
+      if (testFile || TEST_PART.test(own[0])) { type = 'tests'; lineTypes.forEach((t, i) => { if (t) lineTypes[i] = 'tests'; }); }
       return { from: b.from, to: b.to, type, title: titleOf(own[0]), first: own[0], lines: lineTypes, single: b.from === b.to, count: 1 };
     });
     return merge(parts).map(({ single, count, first, ...p }) => p);

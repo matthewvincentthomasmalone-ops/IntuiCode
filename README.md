@@ -61,7 +61,7 @@ when copy is clicked
         set the text of copied to "Select it and copy it yourself."
 ```
 
-Everything you can start from is in **Project Templates**, by kind of project: Games, Productivity, Money,
+Everything you can start from is in **Project Templates** (in the Menu), by kind of project: Games, Productivity, Money,
 Health & habits, Learning, Creative & media, Social & sharing, Tools & utilities, Websites, Online
 services and Gadgets, then One idea at a time and Starting points. Each project says where it runs (PC,
 Phone, Web or Board), and the chips at the top show only those. A **kit** plans a whole kind of project
@@ -124,7 +124,8 @@ uploads it to a board plugged in by USB, and shows what the board sends in the t
 
 **Files and folders: one project, several languages**
 
-A project is a tree of files. **+ File** and **+ Folder** (beside Project) add them; a file goes in a folder
+A project is a tree of files. **Menu → New file** and **New folder** add them, and **Import** (beside Project)
+brings in files or a whole folder; a file goes in a folder
 when its name says so (`docs/plan.md`, `dsp/gain.py`). Each file has a language, from its ending or chosen
 in the list, and the language decides how it's written:
 
@@ -140,12 +141,12 @@ deletes it with what's in it. Run starts the start file in its own way: a page i
 (from the project's folder, so `open("data/scores.csv")` works), C++ or a sketch; only problems in the
 files that run stop it. Python files can use what the Python files before them define (the import is
 added for you; the start file comes last), and a website's other pages, styles and scripts work with its
-main page (`index.html`, `style.css`, `script.js`). **File → New project → Your own files** starts with
+main page (`index.html`, `style.css`, `script.js`). **Menu → New project → Your own files** starts with
 just a README.
 
 **The Library: parts to add to a project**
 
-**Library** (in the menu bar) is what goes *into* a project, where Project Templates is what you start
+**Library** (in the Menu) is what goes *into* a project, where Project Templates is what you start
 *from*. Two ways in:
 
 - **Kinds of project** (web pages, phone apps and games, audio tools and DAWs, plug-ins, desktop apps,
@@ -244,7 +245,7 @@ palette and a picker. Alt+↓ opens the list for the value at the cursor. What's
 `lang/values.js`. (A plain CSS property given a value too many, like `line-height: 1.1 #000000`, is pointed
 out with what was probably meant.)
 
-**Images:** **File → Add an image…** (or **Add an image…** under the project's folders) adds a PNG, JPEG,
+**Images:** **Menu → Add an image…** (or **Add an image…** under the project's folders) adds a PNG, JPEG,
 GIF, WebP or SVG to the project's `images/` folder, with a thumbnail. **Use** puts in a sentence that uses
 it, for the folder you're in: `add a picture of "images/cat.png" described as "…"` (Structure),
 `style page: background picture images/sky.jpg` (Styling), `load the picture "images/ship.png" as ship`
@@ -327,7 +328,7 @@ sentences, because their code goes above `main`; each statement in it is its own
 
 **Import: code from anywhere becomes the project's own files**
 
-**File → Import code…** (or **Import** beside + File) brings in a single file, pasted code, a whole folder, a
+**Import** (beside Project, or **Menu → Import code…**) brings in a single file, pasted code, a whole folder, a
 `.zip` or the example project, such as code an AI wrote for you. A folder, `.zip` or example becomes a new
 project (the one before is kept: type `restore` to swap back); single files join the open project. Python,
 CSS and JavaScript come in as their exact lines, ready to translate any part in Unity; HTML pages, C++ programs
@@ -349,17 +350,33 @@ and the sentences under it), and each part has a type (`lang/parts.js`):
 | **Backend & Mechanics** | what works behind the scenes: logic, calculations, data, saving, timing, other programs |
 | **Setup & Settings** | what gets things ready: imports, settings, pins, configuration and build files |
 | **Data & Notes** | data files, content and notes |
+| **Tests & Checks** | test files, test functions and benchmarks (a `tests/` folder, `test_x.py`, `x.test.js`, `XTests.cpp`, `TEST(…)`, `it("…")`) |
 
-**Parts**, under Project, lists every part of every file, **by Type** or **by Language** (each language with
-what it does in the project: "HTML: the page", "CSS: how it looks"). Click one to open it. Each file in the tree
-shows a dot for Interface and one for Mechanics if it has them.
+The side panel has two views. The seafoam button beside **Import** switches between them:
 
-The two buttons at the top, **Interface & Display** and **Backend & Mechanics**, show one side of the project:
-the tree keeps only the files and folders with that kind of code, Parts only those parts, the Library only
-parts with that kind of code, and in the editor (Unity and both panes of Split Mode) everything else steps
-back, with the lines of a shown part that do something else (the `delay` in a loop that lights an LED) half
-dimmed. Press the button again to show everything. Most people reading code an AI wrote start with
-**Interface & Display**: it's the part you can see change.
+- **File View** shows the project's files and folders.
+- **CodeParts** lists every part of every file. It can group them **by Type**, **by File** or **by
+  Language** (each language with what it does in the project: "HTML: the page", "CSS: how it looks").
+  **Find a part** searches names, files and the parts' own words. Click a part to open it. A long group
+  lists 80 parts, then more on request.
+
+Each file in the tree shows a dot for Interface and one for Mechanics if it has them. A C++ function is
+named as `Class::method()`, even when its `{` is on the next line or it sits in a `namespace`. A test is
+named by what it tests.
+
+The buttons at the top (**Interface**, **Mechanics**, **Setup**, **Data** and **Tests**) show only that
+kind of part:
+
+- The side panel switches to CodeParts (and back when you press the button again) and lists only those
+  parts, file by file.
+- The main pane shows only them: each part with its own lines and line numbers, file by file, a page at a
+  time.
+- **Open** on a part, or **Edit whole files**, goes back to the editor. There the part's file is shown
+  whole, everything else stepped back, and the lines of a shown part that do something else (the `delay`
+  in a loop that lights an LED) half dimmed.
+- The Library keeps only parts with that kind of code.
+
+Most people reading code an AI wrote start with **Interface**: it's the part you can see change.
 
 **Project Link: what you're using, in the code**
 
@@ -375,7 +392,7 @@ turning one on turns the other off, so clicking around a running page never brin
 
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
 
-- **Real folders.** File → New project (Ctrl+N), Open folder (Ctrl+O) and Save (Ctrl+S). A new
+- **Real folders.** Menu → New project (Ctrl+N), Open folder (Ctrl+O) and Save (Ctrl+S). A new
   project can go straight into a folder you choose; IntuaCode won't save over another project's
   files. Your code files are the project;
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in

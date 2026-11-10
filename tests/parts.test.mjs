@@ -16,8 +16,8 @@ const plain = (x) => JSON.parse(JSON.stringify(x));   // (arrays from the engine
 const brief = (parts) => plain(parts.map(p => [p.from, p.to, p.type, p.title]));
 const exact = (prefix, lines) => lines.map(l => (l ? prefix + l : '')).join('\n');
 
-test('four types, in order, each with a name and what it is for', () => {
-  assert.deepEqual(plain(P.TYPES.map(t => t.id)), ['display', 'mechanics', 'setup', 'data']);
+test('five types, in order, each with a name and what it is for', () => {
+  assert.deepEqual(plain(P.TYPES.map(t => t.id)), ['display', 'mechanics', 'setup', 'data', 'tests']);
   for (const t of P.TYPES) assert.ok(t.name && t.short && t.about);
   assert.equal(P.typeOf('nope').id, 'mechanics');
 });
@@ -70,4 +70,21 @@ test('settings and notes files are one part each, of their own type', () => {
 test('lineTypes: each line of the file, blank lines none', () => {
   const parts = P.split('python', 'set score to 0\n\nrepeat 3 times\n    add 1 to score\nshow "Score: {score}"\n');
   assert.deepEqual(plain(P.lineTypes(parts, 6)), ['setup', null, 'mechanics', 'mechanics', 'display', null]);
+});
+
+const pfx = (code, p = 'c++: ') => code.split('\n').map(l => (l.trim() ? p + l : l)).join('\n');
+const names = (lang, text, path) => plain(P.split(lang, text, path).map(p => [p.type, p.title]));
+
+test('imported C++: a "{" on its own line, a constructor\'s list and namespaces keep a function whole', () => {
+  const src = pfx('namespace fec\n{\nvoid Mixer::paint (juce::Graphics& g)\n{\n    g.fillAll (juce::Colours::black);\n}\n\nMixer::Mixer()\n    : engine (48000)\n{\n    setSize (800, 600);\n}\n} // namespace fec');
+  assert.deepEqual(names('cpp', src, 'src/ui/Mixer.cpp').map(([, t]) => t), ['Mixer::paint()', 'Mixer::Mixer()']);
+  assert.deepEqual(names('cpp', pfx('#include <JuceHeader.h>\n\nclass MainWindow : public juce::DocumentWindow\n{\npublic:\n    MainWindow() {}\n};', 'above main: '), 'src/Main.cpp'),
+    [['setup', '#include <JuceHeader.h>'], ['mechanics', 'MainWindow']]);
+});
+
+test('tests: a test file, or a test inside any file, is Tests & Checks, named by what it tests', () => {
+  assert.deepEqual(names('c', 'TEST_CASE ("fader", "[mix]")\n{\n    REQUIRE (1 == 1);\n}\n', 'tests/DspTests.cpp'), [['tests', 'test: fader']]);
+  assert.deepEqual(names('c', 'TEST (Mixer, SumsChannels)\n{\n    EXPECT_EQ (1, 1);\n}\n', 'src/Mixer.cpp'), [['tests', 'test: Mixer.SumsChannels']]);
+  assert.deepEqual(names('python', 'def test_add():\n    assert 1 + 1 == 2\n\ndef helper():\n    return 3\n', 'tools/capture.py').map(([t]) => t), ['tests', 'mechanics']);
+  assert.deepEqual(names('js', 'describe("cart", () => {\n  it("adds", () => {});\n});\n', 'src/cart.spec.js'), [['tests', 'test: cart']]);
 });

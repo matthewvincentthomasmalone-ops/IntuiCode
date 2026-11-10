@@ -464,7 +464,11 @@ try {
     for (const f of ['static/index.html', 'static/style.css', 'static/app.js', 'app.py']) if (!files.some(x => x.startsWith(f))) throw new Error('missing ' + f + ': ' + files.join(', '));
     await js(() => { if (document.getElementById('modeUnity').getAttribute('aria-selected') !== 'true') document.getElementById('modeUnity').click(); [...document.querySelectorAll('#tree .tree-item')].find(x => /static\/index\.html/.test(x.textContent)).click(); return true; });
     await waitFor('the page in sentences, green in Unity', () => js(() => document.querySelectorAll('#uHl .u-region').length > 0));
+    await js(() => { if (document.getElementById('partsWrap').hidden) document.getElementById('btnSideView').click(); return true; });   // the side panel's CodeParts view
     await waitFor('its parts listed', () => js(() => document.querySelectorAll('#parts .part-row').length > 3));
+    await js(() => { document.getElementById('grpDisplay').click(); return true; });   // Interface only: the parts view
+    await waitFor('only its interface parts, in the parts view', () => js(() => !document.getElementById('partsView').hidden && document.querySelectorAll('#pvList .pv-part').length > 0 && [...document.querySelectorAll('#parts .part-row .pdot')].every(d => d.classList.contains('t-display'))));
+    await js(() => { document.getElementById('grpDisplay').click(); return true; });
   });
 
   const scratch = () => wd('POST', `/session/${session}/execute/async`, { script: 'const [done] = arguments; window.__TAURI__.core.invoke("scratch_folder").then(done, (e) => done("error: " + e));', args: [] });

@@ -14,27 +14,34 @@
         <button type="button" role="tab" id="modeWrite" aria-selected="false" title="Split Mode: sentences on the left, the code they make on the right">Split Mode</button>
       </div>
     </div>
-    <div class="groups" role="group" aria-label="Show one side of the project">
-      <button type="button" class="grp-btn" id="grpDisplay" data-group="display" aria-pressed="false" title="Show only the code people see and use: pages, screens, layout, styles, text, buttons and lights. Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Interface<span class="grp-more"> &amp; Display</span></span></button>
-      <button type="button" class="grp-btn" id="grpMechanics" data-group="mechanics" aria-pressed="false" title="Show only the code that works behind the scenes: logic, data, saving, timing and calculations. Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span><span class="grp-more">Backend &amp; </span>Mechanics</span></button>
+    <div class="groups" role="group" aria-label="Show only one kind of part">
+      <button type="button" class="grp-btn" id="grpDisplay" data-group="display" aria-pressed="false" title="Interface &amp; Display: only what people see and use (pages, screens, layout, styles, text, buttons, lights). Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Interface</span></button>
+      <button type="button" class="grp-btn" id="grpMechanics" data-group="mechanics" aria-pressed="false" title="Backend &amp; Mechanics: only what works behind the scenes (logic, calculations, saving, timing, talking to other programs). Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Mechanics</span></button>
+      <button type="button" class="grp-btn" id="grpSetup" data-group="setup" aria-pressed="false" title="Setup &amp; Settings: only what gets things ready (imports, settings, pins, configuration, build files). Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Setup</span></button>
+      <button type="button" class="grp-btn" id="grpData" data-group="data" aria-pressed="false" title="Data &amp; Notes: only data files, content and notes. Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Data</span></button>
+      <button type="button" class="grp-btn" id="grpTests" data-group="tests" aria-pressed="false" title="Tests &amp; Checks: only test files, test functions and benchmarks. Press again to show everything."><span class="grp-dot" aria-hidden="true"></span><span>Tests</span></button>
     </div>
     <div class="bar-actions">
       <span class="folder-name" id="folderName" hidden></span>
       <div class="menu" id="fileMenu">
-        <button type="button" id="btnFile" class="btn ghost" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList">File</button>
+        <button type="button" id="btnFile" class="btn ghost menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="fileList" title="File, Project Templates and Library"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Menu</button>
         <div class="menu-list" id="fileList" role="menu" aria-labelledby="btnFile" hidden>
+          <div class="menu-h" aria-hidden="true">File</div>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
           <button type="button" role="menuitem" id="btnBuilder" title="Plan a project step by step: what you're making, its steps, then build">Plan a project…</button>
           <button type="button" role="menuitem" id="btnHandAI2" title="The project map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
           <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">New file…</button>
+          <button type="button" role="menuitem" id="btnAddFolder" title="Add a folder">New folder…</button>
           <button type="button" role="menuitem" id="btnImport" title="Bring in code: a file, a folder or a .zip. It becomes the project's own files, in Unity and Split Mode">Import code…</button>
           <button type="button" role="menuitem" id="btnAddImage" title="Add a picture (PNG, JPEG, GIF, WebP or SVG) to the project's images/ folder">Add an image…</button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" id="btnBlueprints" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates…</button>
+          <button type="button" role="menuitem" id="btnLibrary" hidden title="Parts to add to your project: by kind of project or by what they do, in the languages they're written in, and code that joins two languages">Library…</button>
         </div>
       </div>
-      <button type="button" id="btnBlueprints" class="btn ghost" title="Everything you can start from: project kits and blueprints, on shelves by what you're making"><span class="bt-more">Project </span>Templates</button>
-      <button type="button" id="btnLibrary" class="btn ghost" hidden title="Parts to add to your project: by kind of project or by what they do, in the languages they're written in, and code that joins two languages">Library</button>
       <button type="button" id="btnTutor" class="btn ghost" aria-pressed="false" title="Tutor: notes on how the language likes things said, and now and then a line to write yourself">Tutor</button>
       <button type="button" id="btnIndex" class="btn" aria-expanded="false" aria-controls="index">Index</button>
       <button type="button" id="btnRun" class="btn primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Run</button>
@@ -44,11 +51,17 @@
   <div class="workspace">
     <aside class="side" aria-label="Project">
       <div id="writeSide">
-        <div class="side-h">Project <span class="side-acts"><button type="button" class="btn tiny" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">+ File</button><button type="button" class="btn tiny" id="btnAddFolder" title="Add a folder">+ Folder</button><button type="button" class="btn tiny" id="btnImport2" title="Import code: a file, a folder or a .zip">Import</button></span></div>
-        <div class="tree-root" id="treeRoot"></div>
-        <nav id="tree" class="tree"></nav>
-        <div id="partsWrap">
-          <div class="side-h">Parts <span id="partsCount" class="count"></span><span class="side-acts seg" role="tablist" aria-label="List the parts by"><button type="button" role="tab" id="partsByType" aria-selected="true" title="By what each part is for: interface and display, mechanics, setup, data">Type</button><button type="button" role="tab" id="partsByLang" aria-selected="false" title="By the kind of code each part is written in">Language</button></span></div>
+        <div class="side-h side-top"><span id="sideTitle">Project</span><span class="side-acts"><button type="button" class="btn tiny" id="btnImport2" title="Import code: files, a folder or a .zip">Import</button><button type="button" class="btn tiny view-btn" id="btnSideView" title="Switch between the project's files and its code, part by part">CodeParts</button></span></div>
+        <div id="filesView">
+          <div class="tree-root" id="treeRoot"></div>
+          <nav id="tree" class="tree"></nav>
+        </div>
+        <div id="partsWrap" hidden>
+          <div class="parts-h">
+            <span class="parts-showing" id="partsShowing">All parts</span><span id="partsCount" class="count"></span>
+            <span class="side-acts seg" role="tablist" aria-label="List the parts by"><button type="button" role="tab" id="partsByType" aria-selected="true" title="By what each part is for: interface, mechanics, setup, data, tests">Type</button><button type="button" role="tab" id="partsByFile" aria-selected="false" title="File by file">File</button><button type="button" role="tab" id="partsByLang" aria-selected="false" title="By the kind of code each part is written in">Language</button></span>
+          </div>
+          <input type="search" id="partsFind" class="parts-find" placeholder="Find a part: a name, a word, a file" aria-label="Find a part" autocomplete="off" spellcheck="false">
           <div id="parts" class="parts" aria-live="polite"></div>
         </div>
         <div id="imgWrap" hidden>
@@ -109,6 +122,14 @@
         </div>
       </section>
 
+      <section class="pv pane" id="partsView" hidden aria-label="Only the parts picked at the top">
+        <div class="pv-h">
+          <span class="pv-title" id="pvTitle"></span>
+          <span class="pv-sub" id="pvSub"></span>
+          <button type="button" class="btn small" id="pvWhole" title="Back to the whole file in the editor. The parts stay marked; press the button at the top again to see only them.">Edit whole files</button>
+        </div>
+        <div class="pv-list" id="pvList"></div>
+      </section>
       <section class="u-view pane" id="unityView" hidden>
         <div class="pane-h">
           <div class="pane-title">
