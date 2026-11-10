@@ -94,6 +94,7 @@
         // half a ‹blank› left behind (its words deleted, a mark kept): left out, and the line says so
         if ((c === '‹' || c === '›') && !(q && !fill)) { if (!strays.has(i)) strays.set(i, c); continue; }
         if (!q && (c === '"' || c === "'")) q = c;
+        else if (!q && c === '“') q = '”';   // (curly quotes count as quotes: see straightQuotes)
         else if (q && c === q && l[k - 1] !== '\\' && !fill) q = null;
         else if (q && (c === '{' || c === '}') && l[k + 1] === c && !fill) { out += c + c; k++; continue; }   // {{ and }} are braces themselves
         else if (q && c === '{') fill++;                                                                     // {name} in text is a value
@@ -113,6 +114,39 @@
   /* Shared line machinery: indentation, info per line, output lines with their source line. */
   function makeInfo(lines) { return lines.map((_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] })); }
   function note(inf, s) { if (!inf.notes.includes(s)) inf.notes.push(s); }
+
+  /* Curly quotes from phones, Macs and Word (“ ” ‘ ’), used as quote marks, are straight ones: “Hi” is "Hi".
+     Text already in straight quotes keeps its curly ones, and so does an apostrophe in a word (It’s). A curly
+     quote with no partner stays as it is. ticks: backticks are quotes too (Mechanics). */
+  const CURLY_NOTE = 'Curly quotes are taken as straight ones ("), which code needs.';
+  // a regular expression in a Mechanics sentence: a / where a value starts (after "to", "matches", "(", "="…)
+  const REGEX_LITERAL = /(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^]|\b(?:to|is|be|at|by|with|show|matches|and|or|not|of|in|from|than))\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g;
+  function straightQuotes(line, ticks) {
+    if (!/[“”‘]/.test(line)) return line;
+    const inWord = (k) => /[\p{L}\p{N}]/u.test(line[k] || '');
+    // (in Mechanics, a regular expression like /[“”]/g is kept exactly, as jsExpr keeps it)
+    const regexAt = new Map();
+    if (ticks) for (const r of line.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (s) => '\u0001'.repeat(s.length)).matchAll(REGEX_LITERAL)) regexAt.set(r.index, r[0].length);
+    let out = '', q = null;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (q) { out += c; if (c === '\\') out += line[++i] ?? ''; else if (c === q) q = null; continue; }
+      if (regexAt.has(i)) { out += line.slice(i, i + regexAt.get(i)); i += regexAt.get(i) - 1; continue; }
+      if (c === '"' || (ticks && c === '`') || (c === "'" && !inWord(i - 1))) { q = c; out += c; continue; }
+      if (c === '“' || (c === '”' && !inWord(i - 1))) {   // (some phones open with ” too)
+        const end = line.indexOf('”', i + 1);
+        if (end > i) { out += '"' + line.slice(i + 1, end).replace(/"/g, '\\"') + '"'; i = end; continue; }
+      }
+      if (c === '‘' && !inWord(i - 1)) {
+        // it closes at a ’ that isn't an apostrophe inside a word (It’s)
+        let end = -1;
+        for (let k = i + 1; k < line.length; k++) if (line[k] === '’' && !inWord(k + 1)) { end = k; break; }
+        if (end > i) { out += "'" + line.slice(i + 1, end).replace(/'/g, "\\'") + "'"; i = end; continue; }
+      }
+      out += c;
+    }
+    return out;
+  }
 
   /* ================================================================== */
   /* HTML: Structure                                                     */
@@ -179,6 +213,41 @@
   /* A value in a phrase: text in quotes, or one word or number as it is (#873044, .4, userSpaceOnUse). */
   const valueOf = (t) => { t = String(t).trim(); const q = strOf(t); return q != null ? q : /^[^\s"',]+$/.test(t) ? t : null; };
   const NUM = `-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[-+]?\\d+)?(?:%|px|em|rem)?|"[^"]*"`;
+
+  /* A link's or a picture's address as a sentence says it -> { value, note }: the address the page needs, and a
+     note when that isn't what was written. google.com is https://google.com (without it, the browser looks for a
+     file called "google.com" next to the page), me@example.com is mailto:…, a phone number is tel:…, localhost is
+     http://localhost, a place on the page (#main display) is a name, and a space is %20. Anything else stays as
+     it is: about.html, /, #top, https://…, javascript:… kind: 'href' (a link) or 'src' (a picture, a video). */
+  const TLDS = 'com|org|net|edu|gov|mil|int|io|co|app|dev|ai|me|info|biz|tv|xyz|site|online|store|shop|tech|blog|news|page|cloud|live|fm|gg|ly|cc|us|uk|au|nz|ca|de|fr|es|it|nl|se|no|dk|fi|ie|jp|cn|in|br|za|ch|at|be|pl|ru|kr|sg|hk|mx|ar|eu|asia';
+  const LABEL = '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?';
+  const WEB_ADDRESS = new RegExp(`^(?:www\\.)?${LABEL}(?:\\.${LABEL})*\\.(?:${TLDS})(?::\\d+)?(?:[/?#].*)?$`, 'i');
+  const EMAIL = /^[^\s@/:?#"<>]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\?\S*)?$/i;
+  function address(t, kind) {
+    const v = String(t);
+    if (!v.trim() || v !== v.trim()) return { value: v };
+    if (kind === 'href' && /^#/.test(v)) {
+      const id = toId(v.slice(1));
+      return /\s/.test(v) && id ? { value: '#' + id, note: `A place on the page is found by its name, and a name can't have spaces, so ${code(v)} is ${code('#' + id)}.` } : { value: v };
+    }
+    if (kind === 'href' && EMAIL.test(v)) return { value: 'mailto:' + v, note: `An email address in a link starts with mailto:, so it opens a new email: ${code('mailto:' + v)}.` };
+    // (a phone number: +61 400 123 456, 0400 123 456, (02) 9999 1234, 555-123-4567; not 2024-01-01 or an IP address)
+    if (kind === 'href' && /^\+?[\d\s()-]+$/.test(v) && (v.match(/\d/g) || []).length >= 6 && (/^[+0(]|\s/.test(v) || /^\d{3}-\d{3,4}(?:-\d{4})?$/.test(v))) {
+      const tel = 'tel:' + v.replace(/[\s()-]/g, '');
+      return { value: tel, note: `A phone number in a link starts with tel:, so phones offer to call it: ${code(tel)}.` };
+    }
+    let out = v, why = null;
+    // (this computer, or one on the network, is http://; anywhere else, https://)
+    const scheme = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?(?:[/?#].*)?$/i.test(v) ? 'http://' : WEB_ADDRESS.test(v) ? 'https://' : null;
+    if (scheme) { out = scheme + v; why = `Without ${scheme}, the browser would look for a file called ${code(v)} next to the page, so it's ${code(out)}.`; }
+    else if (/^[a-z][a-z0-9+.-]*:/i.test(v) && !/^https?:/i.test(v)) return { value: v };   // mailto:, tel:, javascript:… as written
+    if (/\s/.test(out)) {
+      out = out.replace(/\s/g, (c) => encodeURIComponent(c));
+      why = (why ? why + ' ' : '') + `An address can't have spaces, so each one is %20 (the browser reads it as a space): ${code(out)}.`;
+    }
+    return why ? { value: out, note: why } : { value: v };
+  }
+
   const EVENT_WORDS = { click: 'when clicked', change: 'when changed', input: 'when typed in', submit: 'when sent', load: 'when loaded' };
 
   /* One attribute phrase ("hidden from screen readers", "controls help-panel", "storing chord "C"") ->
@@ -210,8 +279,10 @@
       const ev = Object.keys(EVENT_WORDS).find(k => EVENT_WORDS[k] === m[2].toLowerCase()) || m[2].replace(/^on\s+/i, '').toLowerCase();
       return one('on' + ev, strOf(m[1]));
     }
-    if ((m = s.match(/^linking to\s+(.+)$/i))) return one('href', strOf(m[1]));
-    if ((m = s.match(/^from\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i))) return one('src', strOf(m[1]));
+    // (an address that isn't one a page can use as written comes with a note saying what it became: see address)
+    const at = (n, t, kind) => { if (t == null) return null; const a = address(t, kind); return [a.note ? [n, a.value, a.note] : [n, a.value]]; };
+    if ((m = s.match(/^linking to\s+(.+)$/i))) return at('href', strOf(m[1]), 'href');
+    if ((m = s.match(/^from\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i))) return at('src', strOf(m[1]), 'src');
     if ((m = s.match(/^described as\s+(.+)$/i))) return one('alt', strOf(m[1]));
     if (/^with no description$/i.test(s)) return [['alt', null]];
     if ((m = s.match(/^for\s+(.+)$/i))) return one('for', namesOf(m[1]));
@@ -249,7 +320,8 @@
   /* The phrase for one attribute (or null): the shortest that reads back as exactly it. */
   function sayAttr(name, value, ctx = {}) {
     const n = String(name), low = n.toLowerCase(), v = value == null ? '' : String(value);
-    const q = (t) => quoteText(t), val = (t) => (/^[^\s"',\\]+$/.test(t) && t !== '' ? t : quoteText(t));
+    // (a value with curly quotes goes in straight ones, or the curly ones would be read as quotes)
+    const q = (t) => quoteText(t), val = (t) => (/^[^\s"',\\“”‘’]+$/.test(t) && t !== '' ? t : quoteText(t));
     const names = (t) => { const ps = t.trim().split(/\s+/); return t.trim() && ps.every(p => toId(p) === p && /^[a-z]/.test(p)) ? ps.join(' and ') : q(t); };
     const tries = [];
     const ev = low.match(/^on([a-z]+)$/);
@@ -414,6 +486,22 @@
       (w) => `A ${w.toLowerCase()} is drawn inside a drawing: write "add a drawing sized 200 by 100" first and indent this under it.`],
   ];
 
+  /* "in group card", "in groups a, b and c", in group "main area": the groups (classes) at the end of a line.
+     A name in quotes is kept exactly, unless it has spaces, which a class can't: "main area" is main-area. */
+  const GROUP_PART = String.raw`(?:"[^"]*"|'[^']*'|[\w-]+(?:\s+[\w-]+)*)`;
+  const GROUP_LIST = String.raw`(${GROUP_PART}(?:\s*,\s*${GROUP_PART}|\s+and\s+${GROUP_PART})*)$`;
+  const IN_GROUPS = new RegExp(String.raw`\s+in groups?\s+` + GROUP_LIST, 'i'), PAGE_GROUPS = new RegExp(String.raw`^the (?:whole )?page is in groups?\s+` + GROUP_LIST, 'i');
+  function groupsOf(t, inf) {
+    const parts = outsideQuotes(t, (s) => s.replace(/\s*,\s*|\s+and\s+/gi, '\u0002')).split('\u0002').map(p => p.trim()).filter(Boolean);
+    return parts.map(p => {
+      const q = strOf(p);
+      if (q == null) return toId(p);
+      const g = /\s/.test(q.trim()) ? toId(q) : q.trim();
+      if (g !== q && inf) note(inf, `A group can't have spaces in a page, so ${code(q)} is ${code(g)}.`);
+      return g;
+    }).filter(Boolean);
+  }
+
   /* The settings after a box's name, in any order: "with hint "4.50", allowing decimals, from 0 to 100".
      Takes them off the end of t (quotes are kept whole) and gives back the attributes and what's left. */
   function inputSettings(t, inf) {
@@ -447,10 +535,10 @@
 
   function parseHtmlLine(s, inf) {
     let m;
-    // groups: "... in group a" / "in groups a, b"
+    // groups: "... in group a" / "in groups a, b" / in group "main area" (main-area)
     let groups = [];
-    const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
-    if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groups = g[1].split(/\s*,\s*|\s+and\s+/).map(toId).filter(Boolean); s = s.slice(0, g.index); }
+    const g = s.match(IN_GROUPS);
+    if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groups = groupsOf(g[1], inf); s = s.slice(0, g.index); }
     // a name: called save, called main area (two words become main-area), or called "helpToggle" (kept exactly)
     // (the name ends at a full stop or comma, or at a word that starts what it says: saying, says, reads, with …)
     const CALLED = /\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+(?:\s+(?!(?:saying|says|that|which|reads|reading|showing|shows|is|with|of|described|to)\b)[\w-]+)?)(?=[.,;:]|\s+(?:saying|says|that|which|reads|reading|showing|shows|is|with|of|described|to)\b|\s+["']|$)/i;
@@ -486,15 +574,27 @@
       if (!id) inf.warns.push('Give the button a name ("called save") so Styling and Mechanics can refer to it.');
       return el('button', { text: t || '', id, attrs: { type: 'button' } });
     }
+    // (an address is said the way people write it: google.com is https://google.com, see address)
+    const at = (t, kind) => { const a = address(t, kind); if (a.note) note(inf, a.note); return a.value; };
     if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+("[^"]*"|'[^']*')\s+(?:saying|showing)\s+(.+)$/i))) {
-      return el('a', { text: strOf(m[3]) ?? '', id: called(m[1]), attrs: { href: strOf(m[2]) } });
+      const t = strOf(m[3]); if (t == null) inf.errs.push('Put the link text in quotes, like: add a link to "https://example.com" saying "Example"');
+      return el('a', { text: t ?? '', id: called(m[1]), attrs: { href: at(strOf(m[2]), 'href') } });
     }
     // a link with other things in it, indented under it
-    if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+("[^"]*"|'[^']*')$/i)) && !/\S/.test(cut(m[1]))) return el('a', { id: called(m[1]), attrs: { href: strOf(m[2]) }, container: true });
+    if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+("[^"]*"|'[^']*')$/i)) && !/\S/.test(cut(m[1]))) return el('a', { id: called(m[1]), attrs: { href: at(strOf(m[2]), 'href') }, container: true });
+    // an address without quotes: google.com, /about, me@example.com are clearly one; anything else needs them
+    if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+([^"'].*?)(?:\s+(?:saying|showing)\s+(.+))?$/i)) && !/\S/.test(cut(m[1]))) {
+      const said = m[2].trim(), clear = /^\S+$/.test(said) && (/^(?:https?:\/\/|www\.|mailto:|tel:|[/#])/i.test(said) || WEB_ADDRESS.test(said) || EMAIL.test(said));
+      const t = m[3] != null ? strOf(m[3]) : null;
+      if (!clear) inf.errs.push(`Put the address in quotes, like: add a link to "${/^\S+$/.test(said) ? said : 'about.html'}" saying "${t ?? (m[3] != null ? m[3].trim() : 'About')}"`);
+      else if (m[3] != null && t == null) inf.errs.push('Put the link text in quotes, like: add a link to "https://example.com" saying "Example"');
+      else if (m[3] == null) return el('a', { id: called(m[1]), attrs: { href: at(said, 'href') }, container: true });
+      return el('a', { text: t ?? '', id: called(m[1]), attrs: { href: clear ? at(said, 'href') : '' } });
+    }
     if ((m = s.match(/^add\s+(?:a\s+)?(?:picture|image|photo)(.*?)\s+of\s+("[^"]*"|'[^']*')(?:\s+described as\s+(.+))?$/i))) {
       const alt = m[3] ? strOf(m[3]) : null;
       if (alt == null) inf.warns.push('Add "described as "…"" so people using screen readers know what the picture shows.');
-      return el('img', { id: called(m[1]), attrs: { src: strOf(m[2]), alt: alt ?? '' } });
+      return el('img', { id: called(m[1]), attrs: { src: at(strOf(m[2]), 'src'), alt: alt ?? '' } });
     }
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big\s+)?(?:(text|number|password|email|date|time|search|colou?r)\s+)?(text\s+)?(box|field|input)\b(.*)$/i)) &&
         !(/^box$/i.test(m[4]) && !m[1] && !m[2] && !m[3] && !Object.keys(inputSettings(m[5], { errs: [], notes: [], warns: [] }).attrs).length)) {   // "add a box called amount" alone is a block
@@ -540,7 +640,7 @@
     if ((m = s.match(/^add\s+(?:a\s+)?(?:list )?item\s+(.+)$/i))) return el('li', { text: strOf(m[1]) ?? m[1] });
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the label\'s text in quotes.'); return el('label', { id: nameOf(m[1]), text: t || '', attrs: m[3] ? { for: toId(m[3]) } : {} }); }
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) return el('label', { text: strOf(m[1]) ?? m[1], attrs: m[2] ? { for: toId(m[2]) } : {} });
-    if ((m = s.match(/^add\s+(?:a\s+)?video(.*?)\s+of\s+("[^"]*")$/i))) return el('video', { id: called(m[1]), attrs: { src: strOf(m[2]), controls: '' } });
+    if ((m = s.match(/^add\s+(?:a\s+)?video(.*?)\s+of\s+("[^"]*")$/i))) return el('video', { id: called(m[1]), attrs: { src: at(strOf(m[2]), 'src'), controls: '' } });
     if ((m = s.match(/^add\s+(?:a\s+)?(?:drawing area|canvas)(.*?)(?:\s+(\d+)\s*(?:by|x)\s*(\d+))?$/i))) return el('canvas', { id: called(m[1]), attrs: m[2] ? { width: m[2], height: m[3] } : {} });
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(?:data\s+)?(?:chart|graph|plot)(.*?)(?:\s+(\d+)\s*(?:by|x)\s*(\d+))?$/i)) && !/\S/.test(cut(m[1]))) {
       note(inf, 'A chart is drawn on a drawing area (`<canvas>`): Mechanics draws its bars and lines with "draw a rectangle …" and "draw a line …", or a chart library draws on it.');
@@ -563,7 +663,7 @@
      generic way, each with its attribute phrases after commas and its groups at the end. */
   function parseLine(s, inf, ctx) {
     let groupPart = '';
-    const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
+    const g = s.match(IN_GROUPS);
     if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groupPart = g[0]; s = s.slice(0, g.index); }
     // a drawing's own settings are drawing settings (filled with, outlined in), as are those of everything in it
     const { rest, attrs, glued } = takePhrases(s, /^add\s+(?:a\s+)?drawing(?!\s+area)(?=[\s,]|$)/i.test(s) ? { ...ctx, svg: true } : ctx);
@@ -575,7 +675,7 @@
       const specific = () => { const x = scratch(); const e = parseHtmlLine(rest + groupPart, x); if (e) tries.push([e, x]); };
       const generic = () => {
         const x = scratch(); const e = genericElement(rest, x, ctx);
-        if (e) { const gr = groupPart ? parseHtmlLine('add a block' + groupPart, scratch()) : null; e.groups = gr ? gr.groups : []; tries.push([e, x]); }
+        if (e) { const gr = groupPart ? parseHtmlLine('add a block' + groupPart, x) : null; e.groups = gr ? gr.groups : []; tries.push([e, x]); }
       };
       if (ctx.svg) { generic(); specific(); } else { specific(); generic(); }
       const pick = tries.find(([, x]) => !x.errs.length) || tries[0];
@@ -591,7 +691,8 @@
       if (attrs.length) inf.errs.push('Text on its own can\'t have settings: put it in an element ("add text "…", hidden from screen readers").');
     } else {
       el.attrs = { ...(el.attrs || {}) };
-      for (const [k, v] of attrs) {
+      for (const [k, v, said] of attrs) {
+        if (said) note(inf, said);
         if (v == null) delete el.attrs[k];
         else if (k === 'id' && !el.id) {
           // an id can't have spaces in a page: "main display" is main-display, as "called main display" is
@@ -631,6 +732,9 @@
   const STYLE_LINK = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*?\shref\s*=\s*["']?style\.css["'\s>]/i, SCRIPT_TAG = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*?\ssrc\s*=\s*["']?script\.js["'\s>]/i;
   const CHARSET_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\scharset\s*=/i, VIEWPORT_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\sname\s*=\s*["']?viewport["'\s>]/i;
 
+  // lines copied exactly (and notes), where curly quotes are left as they are
+  const RAW_HTML = /^(?:(?:in the )?head|doctype|html|raw|note|comment|(?:the )?(?:page )?body (?:attributes|has)|(?:the )?html (?:tag )?attributes)\s*:/i;
+
   function compileHtml(sec, shared) {
     shared.elements = [];   // each element made: { tag, id, text, line }, so Styling and Mechanics can find one by its text
     const lines = sec.text.split('\n');
@@ -644,6 +748,8 @@
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) return;
+      // curly quotes count as straight ones, except in HTML copied exactly
+      if (!RAW_HTML.test(raw.trim())) { const st = straightQuotes(raw); if (st !== raw) { raw = st; note(inf, CURLY_NOTE); } }
       const ind = raw.match(/^ */)[0].length;
       const t = raw.trim(), exact = raw.replace(/^\s+|\r$/g, '');   // raw HTML keeps any spaces at its end
       let hm;
@@ -657,8 +763,8 @@
         return;
       }
       if ((hm = t.match(/^(?:the )?(?:page )?body (?:attributes|has)\s*:\s?(.*)$/i))) { bodyAttrs = hm[1].trim(); note(inf, 'Attributes copied exactly onto the page\'s <body> tag.'); inf.target = 'body'; return; }
-      if ((hm = t.match(/^the (?:whole )?page is in groups?\s+([\w\s,-]+)$/i))) {
-        pageGroups = hm[1].split(/\s*,\s*|\s+and\s+/).map(toId).filter(Boolean);
+      if ((hm = t.match(PAGE_GROUPS))) {
+        pageGroups = groupsOf(hm[1], inf);
         for (const g of pageGroups) shared.groups[g] = true;
         note(inf, `The page's <body> is in ${pageGroups.length > 1 ? 'these groups' : 'this group'} (a class), so styles for ${pageGroups.length > 1 ? 'them' : 'it'} apply to the whole page.`);
         inf.target = 'body'; return;
@@ -796,7 +902,26 @@
   /* CSS: Styling                                                        */
   /* ================================================================== */
 
-  const NAMED = new Set(['black', 'white', 'red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'grey', 'gray', 'brown', 'navy', 'teal', 'transparent', 'gold', 'silver', 'crimson', 'coral', 'salmon', 'tomato', 'turquoise', 'violet', 'indigo', 'lime', 'olive', 'maroon', 'beige', 'ivory', 'lavender', 'tan', 'khaki', 'aqua', 'cyan', 'magenta', 'lightgrey', 'darkgrey', 'whitesmoke', 'skyblue', 'hotpink']);
+  // every colour CSS names (148, with the grey spellings), and transparent
+  const NAMED = new Set(('aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue ' +
+    'chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta ' +
+    'darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink ' +
+    'deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray grey green greenyellow ' +
+    'honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow ' +
+    'lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime ' +
+    'limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen ' +
+    'mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid ' +
+    'palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue ' +
+    'saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle ' +
+    'tomato turquoise violet wheat white whitesmoke yellow yellowgreen transparent').split(' '));
+  // the colours a shade is named after: "navy blue" is navy, a shade of blue; "red orange" is between two, so it's asked
+  const HUES = new Set(['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'brown', 'grey', 'gray', 'black', 'white', 'violet']);
+  // colours people say that CSS has no name for, and the names nearest them
+  const NEAR = { lightred: 'lightcoral or salmon', lightorange: 'lightsalmon or peachpuff', lightpurple: 'plum or thistle', lightbrown: 'tan or burlywood', lightviolet: 'plum or violet',
+    darkyellow: 'goldenrod or darkgoldenrod', darkpink: 'deeppink or mediumvioletred', darkpurple: 'indigo or rebeccapurple', darkbrown: 'saddlebrown or sienna', darkwhite: 'gainsboro or lightgray',
+    bluegreen: 'teal or lightseagreen', greenblue: 'teal or cadetblue', babyblue: 'lightblue or powderblue', babypink: 'pink or lightpink', mintgreen: 'palegreen or mediumaquamarine', mint: 'mintcream or palegreen',
+    peach: 'peachpuff or lightsalmon', cream: 'cornsilk or ivory', lilac: 'plum or thistle', mauve: 'plum or thistle', burgundy: 'maroon or darkred', rose: 'mistyrose or palevioletred', sand: 'sandybrown or wheat' };
+  const isColourWord = (t) => NAMED.has(String(t).toLowerCase().replace(/[\s-]+/g, ''));
   const TAG_WORDS = { buttons: 'button', button: 'button', headings: 'h1, h2, h3', heading: 'h1, h2, h3', 'big headings': 'h1', 'big heading': 'h1', 'small headings': 'h3', 'small heading': 'h3', image: 'img', 'text box': 'input, textarea', list: 'ul, ol', 'list item': 'li', blocks: 'div', block: 'div', boxes: 'div', 'drop-downs': 'select', 'drop-down': 'select', links: 'a', link: 'a', paragraphs: 'p', paragraph: 'p', pictures: 'img', images: 'img', 'text boxes': 'input, textarea', inputs: 'input', lists: 'ul, ol', 'list items': 'li', sections: 'section', 'the page': 'body', page: 'body', everything: '*', header: 'header', footer: 'footer', 'navigation bar': 'nav', forms: 'form', labels: 'label' };
   const CSS_MORE = 'accent-color align-content all animation-delay animation-direction animation-duration animation-fill-mode animation-iteration-count animation-name animation-timing-function appearance backface-visibility background-attachment background-blend-mode background-clip background-origin background-repeat block-size border-bottom-color border-bottom-left-radius border-bottom-right-radius border-bottom-style border-bottom-width border-collapse border-image border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-spacing border-style border-top-color border-top-left-radius border-top-right-radius border-top-style border-top-width border-width caption-side caret-color clear clip-path color-scheme column-count column-gap columns content counter-increment counter-reset direction empty-cells fill flex-basis flex-flow flex-grow flex-shrink float font-feature-settings font-variant font-variant-numeric grid grid-area grid-auto-columns grid-auto-flow grid-auto-rows grid-column grid-column-end grid-column-start grid-gap grid-row grid-row-end grid-row-start grid-template grid-template-areas hyphens image-rendering inline-size inset isolation justify-items justify-self list-style-image list-style-position list-style-type margin-block margin-inline mask max-block-size max-inline-size min-block-size min-inline-size mix-blend-mode object-position order outline-color outline-offset outline-style outline-width overflow-wrap overflow-x overflow-y overscroll-behavior padding-block padding-inline perspective place-content place-items place-self pointer-events quotes resize rotate row-gap scale scroll-behavior scroll-margin scroll-padding scroll-snap-align scroll-snap-type scrollbar-color scrollbar-width stroke stroke-width tab-size table-layout text-align-last text-decoration-color text-decoration-line text-decoration-style text-decoration-thickness text-indent text-overflow text-rendering text-shadow text-underline-offset touch-action transform-origin transition-delay transition-duration transition-property transition-timing-function translate user-select vertical-align will-change word-break word-spacing word-wrap writing-mode'.split(' ');
   const HTML_TAGS = new Set('a abbr address article aside audio b blockquote body button canvas caption code dd details dialog div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html i iframe img input kbd label legend li main mark menu nav ol optgroup option output p picture pre progress q s section select small span strong sub summary sup svg table tbody td textarea tfoot th thead time tr u ul video'.split(' '));
@@ -805,7 +930,8 @@
 
   function color(v, inf) {
     v = v.trim();
-    const mv = v.match(/^(?:the colou?r|shared colou?r)\s+([\w-]+)$/i);
+    // a shared colour: "the colour main", "the colour main blue" (--main-blue)
+    const mv = v.match(/^(?:the colou?r|shared colou?r)\s+([\w-]+(?:\s+[\w-]+)*)$/i);
     if (mv) return `var(--${toId(mv[1])})`;
     if (/^#/.test(v)) {
       if (!/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) {
@@ -815,14 +941,78 @@
       return v.toLowerCase();
     }
     if (/^(rgb|rgba|hsl|hsla)\(/i.test(v) || /^var\(/.test(v)) return v;
-    const w = v.toLowerCase().replace(/\s+/g, '');
+    // "rgb 255 0 0", "rgba 0, 0, 0, 0.5": the numbers go in brackets
+    const fn = v.match(/^(rgba?|hsla?)\s+(-?[\d.]+(?:%|deg)?(?:\s*,\s*|\s+)-?[\d.]+%?(?:\s*,\s*|\s+)-?[\d.]+%?(?:(?:\s*,\s*|\s+)[\d.]+%?)?)$/i);
+    if (fn) {
+      const out = `${fn[1].toLowerCase()}(${fn[2].split(/\s*,\s*|\s+/).join(', ')})`;
+      note(inf, `${code(v)} is written ${code(out)} in CSS.`);
+      return out;
+    }
+    const words = v.toLowerCase().split(/[\s-]+/), w = words.join('');
     if (/^(?:currentcolou?r|thetextcolou?r|thesamecolou?rasthetext)$/.test(w)) { note(inf, '`currentColor` is the element\'s own text colour, so this follows it.'); return 'currentColor'; }
     if (/^(?:inherit|initial|unset|revert)$/.test(w)) { if (w === 'inherit') note(inf, '`inherit` takes the colour from the element around it.'); return w; }
-    if (NAMED.has(w) || /^(light|dark)?(grey|gray|blue|green|red)$/.test(w)) return w.replace('grey', 'gray');
-    inf.errs.push(`I don't know the colour ${code(v)}. Use a name like navy, or a code like #1a2b3c.`);
+    const gray = (t) => t.replace('grey', 'gray');
+    if (NAMED.has(w)) {
+      if (words.length > 1) note(inf, `CSS colour names are one word, so ${code(v)} is ${code(gray(w))}.`);
+      return gray(w);
+    }
+    // a colour code without its #: fff, 1a2b3c (one with a digit, or one letter over and over, never a word like "bad")
+    if (/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) && (/\d/.test(v) || /^(.)\1+$/.test(v))) {
+      note(inf, `A colour code starts with #, so ${code(v)} is ${code('#' + v.toLowerCase())}.`);
+      return '#' + v.toLowerCase();
+    }
+    // "navy blue": a shade CSS names (navy), then the colour it's a shade of
+    if (words.length === 2 && NAMED.has(words[0]) && !HUES.has(words[0]) && HUES.has(words[1])) {
+      note(inf, `CSS has no colour called ${code(w)}, so this is ${code(gray(words[0]))}, a shade of ${words[1]}.`);
+      return gray(words[0]);
+    }
+    // not a colour: the names CSS has with those words in them, if there are a few
+    const pool = [...NAMED].filter(n => n !== 'transparent' && !/grey/.test(n)), has = (ws) => pool.filter(n => ws.every(x => n.includes(gray(x))));
+    const both = words.length > 1 ? has(words) : [], last = has(words.slice(-1)), pick = both.length ? both : last.length <= 6 ? last : [];
+    const near = NEAR[w] || (pick.length && pick.length <= 6 ? pick.join(', ') : null);
+    inf.errs.push(`I don't know the colour ${code(v)}.` + (near ? ` CSS has ${near}.` : '') + (/^[0-9a-f]{3,8}$/i.test(v) ? ` For a colour code, put # first: #${v}.` : ' Use a name like navy, or a code like #1a2b3c.'));
     return v;
   }
-  const unit = (v, inf) => /^-?\d+(\.\d+)?$/.test(v.trim()) ? (v.trim() === '0' ? '0' : (note(inf, 'Numbers without a unit are taken as pixels (px).'), v.trim() + 'px')) : v.trim();
+  /* A size: a number (pixels), or a number and a unit: 20px, 50%, 2em. A unit said as a word is its CSS unit
+     ("50 percent" is 50%, "20 pixels" is 20px), and goes right after the number. */
+  const UNIT_WORDS = { percent: '%', 'per cent': '%', percentage: '%', pixel: 'px', pixels: 'px', point: 'pt', points: 'pt', ems: 'em', rems: 'rem' };
+  const CSS_UNITS = /^(?:px|%|em|rem|pt|pc|vw|vh|vmin|vmax|svh|lvh|dvh|svw|lvw|dvw|ch|ex|cm|mm|q|fr|deg|turn|s|ms)$/i;
+  const unitOf = (w) => { const l = String(w).toLowerCase().replace(/\s+/g, ' '); return UNIT_WORDS[l] || (CSS_UNITS.test(l) ? l : null); };
+  function unit(v, inf) {
+    const t = v.trim();
+    if (/^-?\d+(\.\d+)?$/.test(t)) return t === '0' ? '0' : (note(inf, 'Numbers without a unit are taken as pixels (px).'), t + 'px');
+    const m = t.match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))\s*([a-z%]+(?:\s+cent)?)$/i);
+    if (!m) return t;
+    const u = unitOf(m[2]);
+    if (!u) { inf.errs.push(`${code(m[2])} isn't a size CSS knows. After a number, write px (pixels), % (percent), em or rem, like ${m[1]}px.`); return t; }
+    const out = m[1] + u;
+    if (out !== t) note(inf, `${code(t)} is written ${code(out)} in CSS.`);
+    return out;
+  }
+  /* Sizes one after another ("space inside 10 20", "10 pixels 20 pixels"): each one a size, a number's unit word
+     kept with it. Other words (auto) stay as they are. */
+  function sizes(text, inf) {
+    const ws = String(text).trim().split(/\s+/), out = [];
+    for (let k = 0; k < ws.length; k++) {
+      const n = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(ws[k]);
+      if (n && /^per$/i.test(ws[k + 1] || '') && /^cent$/i.test(ws[k + 2] || '')) { out.push(unit(ws.slice(k, k + 3).join(' '), inf)); k += 2; }
+      else if (n && ws[k + 1] && /^(?:[a-z]+|%)$/i.test(ws[k + 1]) && !/^(?:auto|inherit|initial|unset|revert|none)$/i.test(ws[k + 1])) { out.push(unit(ws[k] + ' ' + ws[k + 1], inf)); k++; }
+      else out.push(unit(ws[k], inf));
+    }
+    return out.join(' ');
+  }
+  /* A size where only some words are CSS's own: "text size big" or "width full" would be dropped by the browser,
+     so they're problems that say what to write. */
+  const SIZE_WORDS = {
+    'font-size': [/^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|smaller|larger|math)$/i, 'a text size', 'a number (20 is 20px), or small, medium, large or x-large'],
+    length: [/^(?:auto|fit-content|min-content|max-content|stretch|none)$/i, 'a size', 'a number (200 is 200px), a share like 100% (of what it\'s in), or auto'],
+  };
+  function sizeOf(v, inf, kind) {
+    const out = unit(v, inf), w = out.trim();
+    const [ok, what, use] = SIZE_WORDS[kind] || SIZE_WORDS.length;
+    if (/^[a-z][a-z-]*$/i.test(w) && !ok.test(w) && !/^(?:inherit|initial|unset|revert|revert-layer)$/i.test(w)) inf.errs.push(`${code(w)} isn't ${what} CSS knows. Write ${use}.`);
+    return out;
+  }
   function withAlpha(c, pct) {
     const h = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
     if (!h) return null;
@@ -864,10 +1054,13 @@
       if (/\s/.test(c) && !depth) { if (cur) words.push(cur); cur = ''; } else cur += c;
     }
     if (cur) words.push(cur);
+    // a width's unit said as a word stays with it: "2 pixels dashed red" is 2px
+    for (let k = 0; k < words.length - 1; k++) if (/^-?[\d.]+$/.test(words[k]) && unitOf(words[k + 1])) words.splice(k, 2, words[k] + ' ' + words[k + 1]);
     let width = null, style = null;
     const rest = [];
     for (const w of words) {
-      if (width == null && /^(?:-?[\d.]+(?:px|em|rem|%)?|thin|medium|thick)$/i.test(w) && /\d|^[a-z]+$/i.test(w)) width = /^[a-z]+$/i.test(w) ? w.toLowerCase() : unit(w, inf);
+      const isWidth = /^(?:thin|medium|thick)$/i.test(w) || (/\d/.test(w) && (/^-?[\d.]+(?:px|em|rem|%)?$/i.test(w) || (/^-?[\d.]+\s+\S+$/.test(w) && unitOf(w.split(/\s+/)[1]))));
+      if (width == null && isWidth) width = /^[a-z]+$/i.test(w) ? w.toLowerCase() : unit(w, inf);
       else if (style == null && LINE_STYLES.test(w)) style = w.toLowerCase();
       else rest.push(w);
     }
@@ -883,6 +1076,8 @@
       if (pm && COMMA_LISTS.has(pm[1].toLowerCase()) && carriesOn(part.trim())) {
         parts[parts.length - 1] = prev.replace(/\.$/, '') + ', ' + part.trim();
         note(inf, `The commas after ${code(pm[1].toLowerCase() + ':')} are part of its value: ${code(pm[1].toLowerCase())} takes a list.`);
+      } else if (prev && /\b(?:rgba?|hsla?)\s+-?[\d.]+(?:%|deg)?(?:\s*,\s*-?[\d.]+%?)*$/i.test(prev) && /^-?[\d.]+%?$/.test(part.trim())) {
+        parts[parts.length - 1] = prev + ', ' + part.trim();   // "background rgb 255, 0, 0": one colour, not three styles
       } else parts.push(part);
     }
     for (let part of parts) {
@@ -905,24 +1100,24 @@
         out.push(['background', c]); continue;
       }
       if ((m = part.match(/^(?:text colou?r|colou?r|text)\s+(.+)$/i)) && !/^(size|centred|centered|bold|weight|aligned)\b/i.test(m[1])) { out.push(['color', color(m[1], inf)]); continue; }
-      if ((m = part.match(/^(?:text size|font size|size of text)\s+(.+)$/i))) { out.push(['font-size', unit(m[1], inf)]); continue; }
+      if ((m = part.match(/^(?:text size|font size|size of text)\s+(.+)$/i))) { out.push(['font-size', sizeOf(m[1], inf, 'font-size')]); continue; }
       if (/^bold( text)?$/i.test(part)) { out.push(['font-weight', 'bold']); continue; }
       if (/^italic( text)?$/i.test(part)) { out.push(['font-style', 'italic']); continue; }
       if (/^(?:capitals|all capitals|uppercase)( text)?$/i.test(part)) { out.push(['text-transform', 'uppercase']); continue; }
       if ((m = part.match(/^font\s+(.+?)\s+or any (serif|sans-serif|monospace|cursive) font$/i))) { const f = m[1].replace(/^["']|["']$/g, ''); out.push(['font-family', `"${f}", ${m[2].toLowerCase()}`]); continue; }
       if ((m = part.match(/^(?:text|font) weight\s+(\d{3}|normal|bold|bolder|lighter)$/i))) { out.push(['font-weight', m[1].toLowerCase()]); continue; }
-      if ((m = part.match(/^line height\s+(\S+)$/i))) { out.push(['line-height', m[1]]); note(inf, 'A line height without a unit is that many times the text size.'); continue; }
-      if ((m = part.match(/^letter spacing\s+(\S+)$/i))) { out.push(['letter-spacing', unit(m[1], inf)]); continue; }
+      if ((m = part.match(/^line height\s+(\S+|-?[\d.]+\s+[a-z]+(?:\s+cent)?)$/i))) { out.push(['line-height', /^\S+$/.test(m[1]) ? m[1] : unit(m[1], inf)]); note(inf, 'A line height without a unit is that many times the text size.'); continue; }
+      if ((m = part.match(/^letter spacing\s+(\S+|-?[\d.]+\s+[a-z]+)$/i))) { out.push(['letter-spacing', unit(m[1], inf)]); continue; }
       if ((m = part.match(/^text aligned (left|right|center|centre|justify|start|end)$/i))) { out.push(['text-align', m[1].toLowerCase().replace('centre', 'center')]); continue; }
       if (/^underlined( text)?$/i.test(part)) { out.push(['text-decoration', 'underline']); continue; }
       if (/^(?:struck through|crossed out)( text)?$/i.test(part)) { out.push(['text-decoration', 'line-through']); continue; }
       if (/^(?:its )?size includes (?:the |its )?padding plus border$/i.test(part)) { out.push(['box-sizing', 'border-box']); note(inf, '`box-sizing: border-box`: the width and height include the space inside and the border, so they are the size you see.'); continue; }
       if ((m = part.match(/^font\s+(.+)$/i))) { const f = m[1].replace(/^["']|["']$/g, ''); out.push(['font-family', `"${f}", sans-serif`]); continue; }
-      if ((m = part.match(/^(?:space inside|padding|inner space)\s+(.+)$/i))) { out.push(['padding', m[1].split(/\s+/).map(v => unit(v, inf)).join(' ')]); continue; }
-      if ((m = part.match(/^(?:space around|margin|outer space)\s+(.+)$/i))) { out.push(['margin', m[1].split(/\s+/).map(v => unit(v, inf)).join(' ')]); continue; }
+      if ((m = part.match(/^(?:space inside|padding|inner space)\s+(.+)$/i))) { out.push(['padding', sizes(m[1], inf)]); continue; }
+      if ((m = part.match(/^(?:space around|margin|outer space)\s+(.+)$/i))) { out.push(['margin', sizes(m[1], inf)]); continue; }
       if (/^(?:centred|centered|in the middle)$/i.test(part)) { out.push(['margin-left', 'auto'], ['margin-right', 'auto']); note(inf, 'Centring a block uses automatic space on its left and right. It needs a width or max-width to have an effect.'); continue; }
       if (/^(?:centre|center) the text|^(?:centred|centered) text$/i.test(part)) { out.push(['text-align', 'center']); continue; }
-      if ((m = part.match(/^rounded corners?(?:\s+(.+))?$/i))) { out.push(['border-radius', m[1] ? unit(m[1], inf) : '8px']); continue; }
+      if ((m = part.match(/^rounded corners?(?:\s+(.+))?$/i))) { out.push(['border-radius', m[1] ? sizes(m[1], inf) : '8px']); continue; }
       if (/^(?:round|circle|circular)$/i.test(part)) { out.push(['border-radius', '50%']); continue; }
       if ((m = part.match(/^no (border|outline)$/i))) { out.push([m[1].toLowerCase(), 'none']); continue; }
       if ((m = part.match(/^(?:(top|bottom|left|right) )?(border|outline)(?:\s+(.+))?$/i)) && !(m[1] && /^outline$/i.test(m[2]))) {
@@ -944,13 +1139,13 @@
         continue;
       }
       if (/^hidden$/i.test(part)) { out.push(['display', 'none']); continue; }
-      if ((m = part.match(/^(width|height)\s+(.+)$/i))) { out.push([m[1].toLowerCase(), unit(m[2], inf)]); continue; }
-      if ((m = part.match(/^at most\s+(.+?)\s+wide$/i))) { out.push(['max-width', unit(m[1], inf)]); continue; }
-      if ((m = part.match(/^at least\s+(.+?)\s+tall$/i))) { out.push(['min-height', unit(m[1], inf)]); continue; }
+      if ((m = part.match(/^(width|height)\s+(.+)$/i))) { out.push([m[1].toLowerCase(), sizeOf(m[2], inf)]); continue; }
+      if ((m = part.match(/^at most\s+(.+?)\s+wide$/i))) { out.push(['max-width', sizeOf(m[1], inf)]); continue; }
+      if ((m = part.match(/^at least\s+(.+?)\s+tall$/i))) { out.push(['min-height', sizeOf(m[1], inf)]); continue; }
       if (/^(?:in a row|side by side)$/i.test(part)) { out.push(['display', 'flex'], ['align-items', 'center']); note(inf, '`display: flex` lines the contents up in a row. It adapts to screen size, unlike fixed positions.'); continue; }
       if (/^(?:in a column|stacked)$/i.test(part)) { out.push(['display', 'flex'], ['flex-direction', 'column']); continue; }
       if ((m = part.match(/^in a grid of (\d+) columns?$/i))) { out.push(['display', 'grid'], ['grid-template-columns', `repeat(${m[1]}, 1fr)`]); continue; }
-      if ((m = part.match(/^(?:gap|space between)\s+(.+)$/i))) { out.push(['gap', unit(m[1], inf)]); continue; }
+      if ((m = part.match(/^(?:gap|space between)\s+(.+)$/i))) { out.push(['gap', sizes(m[1], inf)]); continue; }
       if (/^spread out$/i.test(part)) { out.push(['justify-content', 'space-between']); continue; }
       if (/^(?:hand cursor|clickable cursor|looks clickable)$/i.test(part)) { out.push(['cursor', 'pointer']); continue; }
       if (/^(?:smooth changes|smooth|animated changes)$/i.test(part)) { out.push(['transition', 'all 0.2s ease']); continue; }
@@ -1089,6 +1284,8 @@
       if (!raw.trim()) return;
       const ind = raw.match(/^ */)[0].length;
       let s = raw.trim();
+      // curly quotes count as straight ones, except in CSS copied exactly
+      if (!/^(?:css|raw|note|comment)\s*:/i.test(s)) { const st = straightQuotes(s); if (st !== s) { s = st; note(inf, CURLY_NOTE); } }
       const lead = s.match(FILLER);
       const named = s.match(/^([\w\s-]+?)\s+(?:belongs to|is in|joins)\s+group\s/i);   // "next card belongs to group …": "next" is part of the name
       if (lead && lead[0].length < s.length && !(named && shared.ids[toId(named[1])])) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
@@ -1096,7 +1293,7 @@
       let m;
       if ((m = s.match(/^(?:note|comment)\s*:\s*(.*)$/i))) { rules.push({ comment: m[1], src: i, media }); return; }
       if ((m = s.match(/^(?:css|raw)\s*:\s?(.*)$/i))) { rules.push({ raw: m[1], src: i, media }); return; }
-      if ((m = s.match(/^on (?:screens|phones|devices) (narrower|smaller|wider|bigger) than\s+(\S+?)\s*:?$/i))) {
+      if ((m = s.match(/^on (?:screens|phones|devices) (narrower|smaller|wider|bigger) than\s+(\S+?|-?[\d.]+\s+[a-z]+)\s*:?$/i))) {
         const w = unit(m[2], inf);
         media = /narrower|smaller/i.test(m[1]) ? `(max-width: ${w})` : `(min-width: ${w})`;
         mediaInd = ind;
@@ -1105,11 +1302,11 @@
         return;
       }
       if (/^in dark mode\s*:?$/i.test(s)) { media = '(prefers-color-scheme: dark)'; mediaInd = ind; inf.media = true; note(inf, 'Styles indented under this apply when the device is set to dark mode.'); return; }
-      if ((m = s.match(/^(?:shared|main) colou?r\s+([\w-]+)\s+is\s+(.+)$/i))) {
-        vars.push([`--${toId(m[1])}`, color(m[2], inf), i]);
-        note(inf, `A shared colour (a CSS variable). Use it anywhere as "the colour ${toId(m[1])}"; change it here to change it everywhere.`);
-        return;
-      }
+      const sharedColour = (name, value) => {
+        vars.push([`--${toId(name)}`, color(value, inf), i]);
+        note(inf, `A shared colour (a CSS variable, ${code('--' + toId(name))}). Use it anywhere as "the colour ${/\s/.test(name.trim()) ? name.trim().replace(/\s+/g, ' ') : toId(name)}"; change it here to change it everywhere.`);
+      };
+      if ((m = s.match(/^(?:shared|main) colou?r\s+([\w-]+(?:\s+[\w-]+)*?)\s+is\s+(.+)$/i))) return sharedColour(m[1], m[2]);
       if ((m = s.match(/^([\w\s-]+?)\s+(?:belongs to|is in|joins)\s+group\s+(.+)$/i))) {
         const id = toId(m[1]), g = toId(m[2]);
         (shared.addGroups[id] = shared.addGroups[id] || []).push(g);
@@ -1147,17 +1344,32 @@
       }
       // "make the big heading bold", "make save navy"
       if (!/:/.test(s) && (m = s.match(MAKE_LOOK)) && !/^(?:a|an|the|new)$/i.test(m[1].trim())) {
-        const w = m[2], word = /^(?:bold|italic|underlined|hidden|centred|centered|round|uppercase|capitals)$/i.test(w);
-        if (word || /^#/.test(w) || NAMED.has(w.toLowerCase()) || /^(?:light|dark)(?:grey|gray|blue|green|red)$/i.test(w)) {
-          rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(word ? w : `text colour ${w}`, inf), media, src: i });
+        let target = m[1], w = m[2];
+        const word = /^(?:bold|italic|underlined|hidden|centred|centered|round|uppercase|capitals)$/i.test(w);
+        // a colour of several words ("make save royal blue") takes the words before it too, the most that make one
+        if (!word && !/"/.test(target)) {
+          const ws = target.trim().split(/\s+/);
+          for (let k = Math.min(3, ws.length - 1); k >= 1; k--) {
+            const said = [...ws.slice(ws.length - k), w].join(' '), scratch = { notes: [], warns: [], errs: [] };
+            if (/^[a-z]+(?:\s+[a-z]+)+$/i.test(said) && (color(said, scratch), !scratch.errs.length)) { target = ws.slice(0, ws.length - k).join(' '); w = said; break; }
+          }
+        }
+        if (word || /^#/.test(w) || /\s/.test(w) || NAMED.has(w.toLowerCase())) {
+          rules.push({ sel: selectorFor(target, shared, inf), props: cssProps(word ? w : `text colour ${w}`, inf), media, src: i });
           return;
         }
       }
-      // "add a colour called main #4f7cff": a shared colour
-      if ((m = s.match(/^add\s+(?:a\s+)?(?:shared\s+|main\s+)?colou?r\s+(?:called\s+|named\s+)?([\w-]+)\s+(?:is\s+|as\s+|=\s*|of\s+)?(.+)$/i)) && !/^group$/i.test(m[1])) {
-        vars.push([`--${toId(m[1])}`, color(m[2], inf), i]);
-        note(inf, `A shared colour (a CSS variable). Use it anywhere as "the colour ${toId(m[1])}"; change it here to change it everywhere.`);
-        return;
+      // "add a colour called main #4f7cff": a shared colour. Its name runs up to the colour: "main blue #4f7cff" is
+      // main-blue, and "accent royal blue" is accent (the longest colour wins)
+      if ((m = s.match(/^add\s+(?:a\s+)?(?:shared\s+|main\s+)?colou?r\s+(?:called\s+|named\s+)?([\w-]+(?:\s+[\w-]+)*?)\s+(?:is\s+|as\s+|=\s*|of\s+)?(\S.*)$/i)) && !/^group$/i.test(m[1])) {
+        const ws = (m[1] + ' ' + m[2]).split(/\s+/);
+        let name = m[1], value = m[2];
+        for (let k = 1; k < ws.length; k++) {
+          if (!/^[\w-]+$/.test(ws[k - 1])) break;
+          const rest = ws.slice(k).join(' ').replace(/^(?:is|as|of)\s+|^=\s*/i, ''), scratch = { notes: [], warns: [], errs: [] };
+          if (rest && (color(rest, scratch), !scratch.errs.length)) { name = ws.slice(0, k).join(' '); value = rest; break; }
+        }
+        return sharedColour(name, value);
       }
       // "add save to group primary", "add "Welcome" to group highlight": the same as "save belongs to group primary"
       if ((m = s.match(new RegExp(String.raw`^add\s+${TARGET}\s+to\s+(?:the\s+)?group\s+([\w -]+)$`, 'i')))) {
@@ -2544,7 +2756,7 @@
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|run this now|(?:constant|set) [\w$]+ (?:is|to) a tool(?!.*\sgiving back\s)|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
-    readAttr, sayAttr, elementWord,
+    readAttr, sayAttr, elementWord, addressFor: (t, kind) => address(t, kind).value,
     cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWeb = api;
