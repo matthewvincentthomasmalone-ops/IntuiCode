@@ -1596,7 +1596,8 @@ meant, the line is an error that says how to put it, instead of picking one:
 | `set a b to 1` when there's a name `a` | the name `a` then "b", or "a" as in "set a counter to 1"? | `set a_b to 1`, or a name that doesn't start with "a" |
 | `count i from n to 1` | up or down? only numbers written here say | `count down from n to 1` |
 | `length of rope`, when both `length of rope` and `rope` are names | the name, or the phrase? | rename one (`rope length`) |
-| `set budget to 1,000` | one number, or two (Python's 1 and 0)? | `1000` |
+| `create list xs with 100,200` | one number, or two items? (`set budget to 1,000` is one number: `1000`) | `100, 200`, or `100200` |
+| `set x to 1,5` | a decimal comma, or two values? | `1.5`, or `1, 5` |
 | `for each x in numbers from 1 to 2` | going through a list, or counting? | one or the other |
 
 And some that read one way only are written that way: `answer is "yes" or "y"` says the name again
