@@ -2618,6 +2618,15 @@
           "tip": ""
         },
         {
+          "topic": "Tools",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "auto name = tool(inputs);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2."
+        },
+        {
           "topic": "Classes",
           "say": "define class ‹Name›",
           "becomes": "class Name { public: … };",
@@ -2652,6 +2661,15 @@
             "program"
           ],
           "tip": "Inside a class: runs when a new object is made. Use \"set self.name to name\"."
+        },
+        {
+          "topic": "Classes",
+          "say": "define ‹area› giving back ‹a decimal›, without changing the object",
+          "becomes": "double area() const {",
+          "folders": [
+            "program"
+          ],
+          "tip": "Inside a class: a tool that reads the fields and never changes them."
         },
         {
           "topic": "Classes",
@@ -2750,6 +2768,22 @@
         {
           "say": "x limited to 0–255",
           "becomes": "std::clamp(x, 0, 255)"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "(the result of f with a) times 2",
+          "becomes": "f(a) * 2"
+        },
+        {
+          "say": "x as a decimal",
+          "becomes": "static_cast<double>(x)"
+        },
+        {
+          "say": "\"Hi \" plus name",
+          "becomes": "\"Hi \" + name"
         }
       ]
     },
@@ -3028,6 +3062,15 @@
           "tip": ""
         },
         {
+          "topic": "Tools",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "auto name = tool(inputs);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2."
+        },
+        {
           "topic": "Classes",
           "say": "define class ‹Name›",
           "becomes": "class Name { public: … };",
@@ -3062,6 +3105,15 @@
             "sketch"
           ],
           "tip": "Inside a class: runs when a new object is made. Use \"set self.name to name\"."
+        },
+        {
+          "topic": "Classes",
+          "say": "define ‹area› giving back ‹a decimal›, without changing the object",
+          "becomes": "double area() const {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Inside a class: a tool that reads the fields and never changes them."
         },
         {
           "topic": "Classes",
@@ -3245,6 +3297,33 @@
         },
         {
           "topic": "Serial",
+          "say": "show \"Temp: {‹t›}\"",
+          "becomes": "Serial.println(String(\"Temp: \") + t);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Text with a value in it. \"{t as text}\" right after the text joins as \"Temp: \" + String(t)."
+        },
+        {
+          "topic": "Serial",
+          "say": "show ‹t› with ‹2› decimal places",
+          "becomes": "Serial.println(t, 2);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "For a decimal. \"show ‹n› in hexadecimal\" (or binary) shows a whole number in another base."
+        },
+        {
+          "topic": "Serial",
+          "say": "show \"‹Ready›\" kept in flash",
+          "becomes": "Serial.println(F(\"Ready\"));",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Fixed text kept in flash memory, so it takes none of the board's small working memory."
+        },
+        {
+          "topic": "Serial",
           "say": "end the line",
           "becomes": "Serial.println();",
           "folders": [
@@ -3364,6 +3443,18 @@
         {
           "say": "\"Hi {name}\"",
           "becomes": "String(\"Hi \") + name"
+        },
+        {
+          "say": "\"Temp: {t as text}\"",
+          "becomes": "\"Temp: \" + String(t)"
+        },
+        {
+          "say": "\"Ready\" kept in flash",
+          "becomes": "F(\"Ready\")"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
         }
       ]
     }

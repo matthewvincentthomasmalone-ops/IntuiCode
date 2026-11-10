@@ -217,7 +217,8 @@ print(high_score + end)
 - `{…}` inside double-quoted text fills in a value, and what is inside the braces is itself a value
   (`"{n plus 1}"`). `{{` and `}}` are braces.
 - A fill-in becomes an f-string in Python, a template literal in JavaScript, the `text("Hi ", name)`
-  helper in C++ and `String("Hi ") + name` on Arduino.
+  helper in C++ and `String("Hi ") + name` on Arduino. On Arduino, text then `{x as text}` joins as it is:
+  `"Temp: {t as text}"` is `"Temp: " + String(t)`.
 - Single-quoted text keeps `{…}` as it is. Python text with a prefix (`f"…"`, `r"…"`, `b"…"`) is kept
   exactly. In C++, single quotes are one character (`'a'`); text in them gets a warning. JavaScript text in
   backticks is kept as it is.
@@ -800,7 +801,8 @@ access      = ( "the rest is" | "from here on" ) ( "private" | "public" ) | ( "p
 made        = "when" ( "made" | "created" | "built" ) [ ( "using" | "with" ) params ] ; (* → the constructor; every input needs a type *)
 
 (* Tools: at the left edge or in a class, placed above main *)
-define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] ;  (* → type name(params) { … }, auto when unsaid *)
+define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] [ [ "," ] "without changing the object" ] ;
+                (* → type name(params) { … }, auto when unsaid;  without changing the object (in a class) → … const { … } *)
 param       = [ type ] name ;
 type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" [ "value" ] | "character" | "nothing"
             | "list of" type | c++-type | class-name
@@ -868,7 +870,9 @@ pin         = value | "the built-in light" | "the built-in led" ;               
 show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" ] ;
                 (* "and" or "," put a space between the pieces, "followed by" none
                    → std::cout << a << " " << b << std::endl;  on the same line adds << " ", without ending the line
-                   adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said *)
+                   adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said;
+                   Arduino, after a piece: "with" number "decimal place(s)" → print(x, 2);
+                   "in" ( "hexadecimal" | "binary" | "octal" ) → print(x, HEX | BIN | OCT); also after show-on's value *)
 end-line    = "end the line" ;                                    (* → std::cout << std::endl;  Arduino: Serial.println(); *)
 printf      = "show" text "filled in with" items ;                (* → printf(text, items);  Arduino: Serial.printf *)
 ask         = "ask" [ "for" [ "a" | "an" ] ( "whole number" | "number" | "decimal" ) ] value "and store" [ "it" ] "in" name ;
@@ -1073,6 +1077,88 @@ int main() {
 }
 ```
 
+Text with values in it, text kept in flash, decimal places and a tool's result (alone, it needs no brackets;
+inside a calculation, brackets say where its inputs end):
+
+```intuicode arduino
+set t to 21.5
+set count to 0
+set status to "ok"
+define twice using whole number n giving back a whole number
+    give back n times 2
+when the board starts
+    start the serial monitor at 9600
+    show "Ready" kept in flash
+over and over
+    increase count
+    show "Count: {count}"
+    show "Temp: {t as text} C"
+    show "Status: " plus status
+    show t with 1 decimal place
+    show count in hexadecimal
+    show the result of twice with count
+    show "Twice plus one: " followed by (the result of twice with count) plus 1
+    wait 1 second
+```
+
+```cpp
+double t = 21.5;
+int count = 0;
+String status = "ok";
+int twice(int n) {
+    return n * 2;
+}
+void setup() {
+    Serial.begin(9600);
+    Serial.println(F("Ready"));
+}
+void loop() {
+    count++;
+    Serial.println(String("Count: ") + count);
+    Serial.println("Temp: " + String(t) + " C");
+    Serial.println("Status: " + status);
+    Serial.println(t, 1);
+    Serial.println(count, HEX);
+    Serial.println(twice(count));
+    Serial.print("Twice plus one: "); Serial.println(twice(count) + 1);
+    delay(1000);
+}
+```
+
+A class's tool that only looks at the object, and text joined to a number made into text:
+
+```intuicode cpp
+define class Box
+    field size: whole number = 2
+    define area giving back a whole number, without changing the object
+        give back size times size
+make a Box called b
+set n to the result of b.area
+set label to "Area: " plus n as text
+show label
+```
+
+```cpp
+#include <iostream>
+#include <string>
+
+class Box {
+public:
+    int size = 2;
+    int area() const {
+        return size * size;
+    }
+};
+
+int main() {
+    Box b;
+    auto n = b.area();
+    std::string label = "Area: " + std::to_string(n);
+    std::cout << label << std::endl;
+    return 0;
+}
+```
+
 ## How a value is read: binding and precedence
 
 A value (the part after `set … to`, `if`, `show` …) is read in fixed stages. No stage builds a syntax
@@ -1227,6 +1313,8 @@ An operand is a quoted text, a number or a name with any `.name`, `::name` or `-
 
 | # | Phrase | C++ | Arduino |
 |---|---|---|---|
+| 0 | the whole value `the result of F with A, B` (`with …` runs to the end); in a value, `(the result of F with A, B)` or `the result of F` (no inputs); `with` inside a value without the brackets is an error | `F(A, B)`, `F()` | the same |
+| 0b | `"…" kept in flash` | | `F("…")` |
 | 1 | `self.` | `this->` | `this->` |
 | 2 | `the built-in light`, `pin P is on` (`off`, `high`, `low`), `reading of pin P` (`[analog] level`; `of`, `on`), `how long pin P stays on` (`off`), `pin P`, `time since start`, `at least N milliseconds have passed since T` (`more than`, `less than`, `at most`; `not` before it tests all of it), `X scaled from A–B to C–D` | | `LED_BUILTIN`, `digitalRead(P) == HIGH`, `analogRead(P)`, `pulseIn(P, HIGH)`, `P`, `millis()`, `millis() - T >= N` (`>`, `<`, `<=`; `!(…)`), `map(X, A, B, C, D)` |
 | 2b | `X limited to A–B` | `std::clamp(X, A, B)` (and `<algorithm>`) | `constrain(X, A, B)` |
@@ -1234,7 +1322,7 @@ An operand is a quoted text, a number or a name with any `.name`, `::name` or `-
 | 4 | `item K of X` | `X[K]` | `X[K]` |
 | 5 | `length of X`, `size of X` | `X.size()` | `X.length()` for text, `(sizeof(X) / sizeof(X[0]))` for a list |
 | 6 | `random number from A to B` | `random_number(A, B)` (a helper is added) | `random(A, B + 1)` |
-| 7 | `X as number` / `X as decimal` / `X as text` | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)` | `X.toInt()` / `X.toFloat()` / `String(X)` |
+| 7 | `X as number` / `X as decimal` / `X as text` (also `as a whole number`, `as a decimal`) | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)`; a number: `static_cast<int>(X)` / `static_cast<double>(X)` | `X.toInt()` / `X.toFloat()` / `String(X)`; a number: the same casts |
 | 8 | `X squared` | `(X * X)` | `(X * X)` |
 | 9 | `[not] S is even`, `S is odd` (`is not`, `isn't`); a sum before it is checked whole | `(S) % 2 == 0`, `… != 0` | the same |
 | 10 | `is not`, `isn't`; `is at least`; `is at most`; `is greater than`; `is less than`; `is`, `equals` | `!=`, `>=`, `<=`, `>`, `<`, `==` | the same |
@@ -1415,7 +1503,8 @@ for (const item of [1, 2]) {
 | Declare or assign? | The first `set` of a name in a block declares it (`int x = 1;`); later ones assign. As in C++, a name declared inside a block is gone after it. `make a … called x` and `… and call it x` always declare (twice in one block is an error); `… and store it in x` assigns a name made before. A count that names a name made before (`count pos from 0 to 180`, `counting with pos`) counts with it. |
 | Cases | Each case of `depending on` ends with `break;` unless its last step leaves (`give back`, `skip to next`, a `return` or `break` in exact code) or it says `go on into the next case`. A case that makes a name and isn't the last goes in braces. |
 | `add V to L` | `L.push_back(V)` for a list; an error for an Arduino list (fixed size); `L += V` otherwise. |
-| Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool is an error; making an unknown class is a warning. |
+| Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool (or using `the result of` one) is an error, or a warning when the program includes a file beyond the ones the writer adds (the tool can come from it); making an unknown class is a warning. |
+| Text joined with `plus` | Quoted text becomes a `std::string` (`String` on Arduino) before `+`, and a known number goes through `std::to_string`, unless the other side is text already (a text name, or `x as text`): `"Hi " plus name` is `"Hi " + name`, `"Score: " plus n as text` is `"Score: " + std::to_string(n)`. |
 | Arduino tools | Inputs without a type are `int`; the result is `int` when the block gives something back, `void` otherwise. |
 | Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, when a sentence needs them. |
 | Arduino checks | Steps at the left edge are an error; only one `setup` and one `loop`; `show` before `start the serial monitor` is a warning. |
@@ -1425,7 +1514,7 @@ for (const item of [1, 2]) {
 | Situation | Python | JavaScript | C++ |
 |---|---|---|---|
 | A name not set anywhere, in a value | warning, with "Did you mean …?" | warning | warning |
-| `run` a tool that doesn't exist | error | nothing said | error |
+| `run` a tool that doesn't exist | error | nothing said | error (a warning when the program includes other files) |
 | `add` to a name that doesn't exist | error | `.push` | `+=` |
 | A sentence that fits no rule | error, `# ???` line | error, `// ???` line | error, `// ???` line |
 
@@ -2207,10 +2296,12 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `give back ‹value›` | `return value;` |  |
 |  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `auto name = tool(inputs);` | Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2. |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
 |  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
+|  | `define ‹area› giving back ‹a decimal›, without changing the object` | `double area() const {` | Inside a class: a tool that reads the fields and never changes them. |
 |  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 |  | `above main: ‹C++ code›` | `code (outside main)` | C++ copied exactly, outside main. |
@@ -2235,6 +2326,10 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `self.name` | `this->name` |
 | `a followed by b` | `a << b` |
 | `x limited to 0–255` | `std::clamp(x, 0, 255)` |
+| `the result of f with a, b` | `f(a, b)` |
+| `(the result of f with a) times 2` | `f(a) * 2` |
+| `x as a decimal` | `static_cast<double>(x)` |
+| `"Hi " plus name` | `"Hi " + name` |
 
 ### Arduino
 
@@ -2275,10 +2370,12 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `give back ‹value›` | `return value;` |  |
 |  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `auto name = tool(inputs);` | Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2. |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
 |  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
+|  | `define ‹area› giving back ‹a decimal›, without changing the object` | `double area() const {` | Inside a class: a tool that reads the fields and never changes them. |
 |  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
@@ -2299,6 +2396,9 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
 |  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. "show a followed by b" shows them on one line. |
 |  | `show ‹value› on the same line` | `Serial.print(value);` | What is shown next carries on the line. "end the line" ends it. |
+|  | `show "Temp: {‹t›}"` | `Serial.println(String("Temp: ") + t);` | Text with a value in it. "{t as text}" right after the text joins as "Temp: " + String(t). |
+|  | `show ‹t› with ‹2› decimal places` | `Serial.println(t, 2);` | For a decimal. "show ‹n› in hexadecimal" (or binary) shows a whole number in another base. |
+|  | `show "‹Ready›" kept in flash` | `Serial.println(F("Ready"));` | Fixed text kept in flash memory, so it takes none of the board's small working memory. |
 |  | `end the line` | `Serial.println();` |  |
 | **Screens** | `start ‹lcd› with ‹16, 2›` | `lcd.begin(16, 2);` | A library's start-up, in "when the board starts". "start pixels" if it needs nothing. |
 |  | `show ‹value› on ‹lcd›` | `lcd.print(value);` | Add ", then start a new line" to move down a line (println). |
@@ -2324,5 +2424,8 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `x as number` | `x.toInt()` |
 | `x as text` | `String(x)` |
 | `"Hi {name}"` | `String("Hi ") + name` |
+| `"Temp: {t as text}"` | `"Temp: " + String(t)` |
+| `"Ready" kept in flash` | `F("Ready")` |
+| `the result of f with a, b` | `f(a, b)` |
 
 <!-- index:end -->
