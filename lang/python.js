@@ -625,7 +625,7 @@
     for (const m of q.matchAll(/(?<![\w.])([A-Za-z_]\w*|[)\]]) ?%/g)) {
       if (VALUE_NEXT.test(q.slice(m.index + m[0].length))) continue;
       const what = /^\w/.test(m[1]) ? m[1] : 'that';
-      x.err(`Python reads % as the remainder after dividing (7 % 2 is 1), so "${m[0].replace(/[)\]]/, '…)')}" needs a value after it. For ${what} as a percentage, write ${what} divided by 100.`);
+      x.err(`Python reads % as the remainder after dividing (7 % 2 is 1), so "${what === 'that' ? '…' : ''}${m[0]}" needs a value after it. For ${what} as a percentage, write ${what} divided by 100.`);
       break;
     }
     return q;
@@ -2052,7 +2052,7 @@
     let res = tLine(text, x);
     if (info.errs.length && /don't recognise/.test(info.errs[0])) {
       info.errs.length = 0; info.notes.length = 0; info.warns.length = 0;
-      res = { py: tExpr(text, x), expr: true };
+      res = { py: tExpr(thousands(straightQuotes(text.trim(), x), x), x), expr: true };   // (“curly” quotes and 1,000 as in a sentence)
     }
     return { py: (res.pys || [res.py]).join('\n'), open: res.open, imports: [...env.imports], info, expr: !!res.expr };
   }

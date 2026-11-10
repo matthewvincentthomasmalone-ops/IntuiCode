@@ -131,12 +131,24 @@ test('names can have letters beyond A–Z, as in Python 3', () => {
   assert.equal(run(py('set café to 2\nincrease café by 1\nshow café times 2').code), '6');
 });
 
-test('Python code with names beyond A–Z reads as sentences and comes back exactly', () => {
-  const src = 'café = 1\nprint(café)\ncafé += 1\nprint(len(str(café)))\nπ = 3.14\nfor é in [1, 2]:\n    print(é * π)\n';
-  const [said] = toSentences([src]);
-  const r = L.compileProject({ sections: [{ id: 'main', file: 'main', text: said }] }).results.main;
-  assert.deepEqual(JSON.parse(JSON.stringify(r.info.flatMap(i => i.errs))), [], said);
-  assert.ok(compareMany([[src, r.text]])[0].same, `${said}\n---\n${r.text}`);
+test('Python near these rules reads as sentences and comes back exactly', () => {
+  const SRC = [
+    // names beyond A–Z (the reader already wrote these sentences; the writer refused them)
+    'café = 1\nprint(café)\ncafé += 1\nprint(len(str(café)))\nπ = 3.14\nnoël = 2\nfor é in [1, 2]:\n    print(é * π + noël)\n',
+    // ^ and % as Python's own, minus, slices and dictionaries
+    'a = 6\nb = 3\nx = a ^ b\nprint(a % b, "%d%%" % a)\nxs = [1, 2, 3]\nprint(xs[1:2], [-1, -2], 5 - -3, -a)\nd = {1: 20, "a": 1}\n',
+    // numbers Python reads, how {…} shows a value, text next to text, chained comparisons
+    'n = 1e3\nh = 0x1F\nm = 1_000\nj = 00\nrate = 0.5\nprint(f"{rate:.1%} {n!r:>10} {rate:$>8}")\nprint("a" "b")\nif 1 <= m <= 5:\n    print(m is not None)\n',
+    // signs, dates and quote marks inside text; a group of one; names that are parts of another name
+    'import time\ntime.sleep(5 * 60)\nprint("2024-12-25", "10:30", "$5", "50%", "1,000", "It’s", "‘a’")\nt = (5,)\nhigh_score = 0\nhigh = 1\nscore = 2\nprint(high - score)\n',
+  ];
+  const said = toSentences(SRC);
+  const made = said.map(text => L.compileProject({ sections: [{ id: 'main', file: 'main', text }] }).results.main);
+  const checks = compareMany(SRC.map((s, i) => [s, made[i].text]));
+  SRC.forEach((s, i) => {
+    assert.deepEqual(JSON.parse(JSON.stringify(made[i].info.flatMap(inf => inf.errs))), [], said[i]);
+    assert.ok(checks[i].same, `${JSON.stringify(checks[i])}\n${said[i]}\n---\n${made[i].text}`);
+  });
 });
 
 test('a name with a symbol in it says which one', () => {
