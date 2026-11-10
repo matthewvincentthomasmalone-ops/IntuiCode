@@ -765,6 +765,14 @@
     if (!site) return true;
     const main = kind === 'css' ? site.styling : site.mechanics;
     if (main && linkedFile(site.page, kind === 'css' ? 'style.css' : 'script.js') === main.toLowerCase()) return true;
+    // a bundled app's page (a Vite app's index.html, which loads /src/main.tsx as a module): its code brings in its
+    // own styles and scripts
+    const code = new Set(site.files.filter(f => /^(?:js|ts|tsx)$/.test(f.lang)).map(f => f.path.toLowerCase()));
+    const scripts = page.replace(/<!--[\s\S]*?-->/g, '').match(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || [];
+    if (scripts.some(t => {
+      const m = t.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      return /\stype\s*=\s*(?:"module"|'module'|module\b)/i.test(t) && !!m && code.has(linkedFile(site.page, m[1] ?? m[2] ?? m[3]));
+    })) return false;
     const own = new Set(site.files.filter(f => f.lang === kind).map(f => f.path.toLowerCase()));
     const tags = page.replace(/<!--[\s\S]*?-->/g, '').match(kind === 'css' ? /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi : /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || [];
     return !tags.some(t => {
@@ -781,6 +789,18 @@
     shared.elements = [];   // each element made: { tag, id, text, line }, so Styling and Mechanics can find one by its text
     const lines = sec.text.split('\n');
     const info = makeInfo(lines);
+    // A whole page in exact lines, with its own <!doctype> or <html> (a Vite app's index.html, which its dev server
+    // fills in): written as it is, with nothing added. Pages in sentences get the usual page around them.
+    const exactOf = (l) => { const m = l.replace(/\r$/, '').match(/^([ \t]*)(?:html|raw)\s*:\s?(.*)$/i); return m ? m[1] + m[2] : null; };
+    const filled = lines.filter(l => l.trim());
+    if (filled.length && filled.every(l => exactOf(l) != null) && /^\s*<(?:!doctype|html)\b/i.test(exactOf(filled[0]))) {
+      const out = lines.map((l, i) => (l.trim() ? { text: exactOf(l), src: i } : { text: '', src: -1 }));
+      while (out.length && !out[out.length - 1].text) out.pop();
+      out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
+      note(info[lines.indexOf(filled[0])], 'A whole page copied exactly (it has its own <html>), so it\'s written as it is, with nothing added.');
+      const text = out.map(o => o.text).join('\n'), tm = text.match(/<title\b[^>]*>([^<]*)<\/title>/i);
+      return { lines: out, info, text: text + '\n', title: tm ? tm[1].trim() : null };
+    }
     const rootEl = { tag: 'body', children: [], container: true };
     const stack = [{ ind: -1, el: rootEl }];
     let title = 'My page', lang = 'en', bodyAttrs = '', htmlAttrs = '', doctype = '<!DOCTYPE html>', noCharset = false, noViewport = false, pageGroups = [];

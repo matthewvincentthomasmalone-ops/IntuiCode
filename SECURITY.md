@@ -21,6 +21,10 @@ Supported: the newest release. (The public website is offline for now.)
   and arduino-cli, with your user's permissions, as a terminal would.
 - **Web pages you build** run in a sealed preview: a sandboxed frame with an origin of its own, so they can't reach
   the editor, your other projects or (in the desktop app) its commands. They talk to the editor only by messages.
+- **A Vite app (React) you run** in the desktop app runs on its own dev server (`npm run dev`, the project's own
+  packages), on 127.0.0.1 only. The Preview reaches it through a local relay that answers only requests addressed
+  to itself. The app may contact other sites, as it would in your browser: nothing is blocked, and the terminal
+  names each site it contacts.
 - **Imported code:** `.env` files (where passwords and keys usually live) are never brought into a project.
 
 ## Checking a download
