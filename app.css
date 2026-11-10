@@ -829,6 +829,7 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .plan-next .plan-check { color: var(--ink-2); }
 .plan-done { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 16px 6px; font-size: 11.5px; color: var(--ink-2); }
 .plan-done[hidden] { display: none; }
+#planWrap.plan-none .plan-path, #planWrap.plan-none .plan { display: none; }   /* no map yet: just its title and + Step */
 .plan-done b { font-weight: 600; white-space: nowrap; }
 .plan-bar { flex: 1; min-width: 24px; height: 3px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
 .plan-bar span { display: block; height: 100%; background: var(--good); }

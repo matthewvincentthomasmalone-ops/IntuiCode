@@ -136,8 +136,10 @@
 
   const PROJECT_KEY = 'intuicode.project.v1';
   const PREVIOUS_KEY = 'intuicode.previous.v1';
+  // The first time, IntuaCode opens on a small website: a page you can see, use and change.
+  const FIRST_BLUEPRINT = BP.BUILT_IN.find(t => /^title: Landing page$/m.test(t)) || BP.BUILT_IN[0];
   function loadProject() {
-    return checkedProject(store.get(PROJECT_KEY, null)) || normalized(projectFromBlueprint(BP.parse(BP.BUILT_IN[0]), {}));
+    return checkedProject(store.get(PROJECT_KEY, null)) || normalized(projectFromBlueprint(BP.parse(FIRST_BLUEPRINT), {}));
   }
   let saveTimer = null;
   function save() {
@@ -846,7 +848,19 @@
     renderGroupViews();
     $('pvList').scrollTop = 0;
   }
+  /* Interface and Mechanics are always at the top. Setup, Data and Tests show only in a project that has parts
+     of that kind (or while one is picked), so a project without tests has no Tests button. */
+  function renderGroupButtons() {
+    if (!PARTS) return;
+    const has = new Set();
+    for (const s of project.sections) for (const p of partsOf(s)) for (const t of PARTS.involves(p)) has.add(t);
+    for (const b of document.querySelectorAll('.grp-btn')) {
+      const g = b.dataset.group;
+      b.hidden = !(g === 'display' || g === 'mechanics' || g === groupFilter || has.has(g));
+    }
+  }
   function renderGroupViews() {
+    renderGroupButtons();
     applyIsolate();
     renderTree(); renderParts(); renderPartsView();
     if (mode === 'unity') renderUnity(); else { renderOverlay(); renderPython(); }
@@ -1200,6 +1214,7 @@
     const pc = $('probCount');
     pc.textContent = items.length ? String(items.length) : '';
     pc.className = 'count' + (errCount ? ' bad' : '');
+    $('probWrap').hidden = !items.length;   // the Problems list shows only when there's something in it
     $('problems').innerHTML = items.length
       ? items.slice(0, 60).map(p => `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(p.msg))}</span></button></li>`).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
@@ -1222,6 +1237,7 @@
     clearTimeout(compileTimer);
     compile();
     renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPartsView(); renderPlan(); renderProblems();
+    renderGroupButtons();
     tutorSoon();
     schedulePreview();
   }
@@ -4670,7 +4686,6 @@
   $('impLang').innerHTML = '<option value="">Auto-detect</option>' + LANGS.LANGUAGES.filter(l => l.id !== 'text').map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
   $('impFiles').accept = [...new Set(LANGS.LANGUAGES.flatMap(l => l.exts))].map(e => '.' + e).concat('.pyw', 'text/plain').join(',');
   function closeImport() { $('impModal').hidden = true; $('impCard').classList.remove('dropping'); }
-  $('btnImport').addEventListener('click', openImport);
   $('btnImport2').addEventListener('click', openImport);
   $('impClose').addEventListener('click', closeImport);
   $('impModal').addEventListener('click', (e) => { if (e.target.id === 'impModal') closeImport(); });
@@ -5292,10 +5307,12 @@
   let planToNext = true;   // the next time the map is drawn, scroll it to the first step not done (a project was opened)
   function renderPlan() {
     const plan = project.plan, steps = plan ? plan.steps : [];
+    // no map yet: only its title line, with + Step (Plan a project, in the Menu, makes a project with one)
+    $('planWrap').classList.toggle('plan-none', !steps.length);
     if (!steps.length) {
       $('planPath').textContent = '';
       $('planDone').hidden = true;
-      $('plan').innerHTML = '<li class="plan-empty">No map yet. + Step adds a step of your own; Plan builds a project with one.</li>';
+      $('plan').innerHTML = '';
       planToNext = false;
       return;
     }
@@ -5528,7 +5545,6 @@
     } catch (e) { hand.note = 'Could not write the files: ' + e; renderHand(); }
   }
   $('btnHandAI').addEventListener('click', openHand);
-  $('btnHandAI2').addEventListener('click', openHand);
   $('handClose').addEventListener('click', closeHand);
   $('handGo').addEventListener('click', handGo);
   $('handCopy').addEventListener('click', () => { const f = hand.files.find(x => x.path.endsWith('/' + hand.show)); if (f) copyText(f.content, $('handCopy'), 'Copy'); });
@@ -5847,7 +5863,6 @@
     }
   });
   $('btnAddImage').addEventListener('click', () => $('imgPick').click());
-  $('btnAddImage2').addEventListener('click', () => $('imgPick').click());
   $('imgPick').addEventListener('change', async (e) => { const files = [...e.target.files]; e.target.value = ''; await addImageFiles(files); });
 
   /* The preview can't reach files, so each picture's name in the page becomes the picture itself. */

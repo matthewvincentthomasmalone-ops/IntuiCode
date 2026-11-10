@@ -497,7 +497,7 @@ try {
 
   await check('imported code becomes the project\'s own files, the page in sentences, in Unity', async () => {
     await clearTerminal();
-    await click('btnImport');
+    await click('btnImport2');
     await click('impExample');
     await waitFor('the example project', logHas('Imported taskboard'), 180000);
     const files = await js(() => [...document.querySelectorAll('#tree .tree-item .ti-file')].map(x => x.textContent));
