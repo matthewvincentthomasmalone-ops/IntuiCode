@@ -137,9 +137,10 @@
     if (!ps) return null;
     const list = real(ps);
     if (!list.length) return { said: '', type: null };
-    if (list.length !== 1 || list[0].type !== 'required_parameter') return null;
-    const [pat, ann, more] = real(list[0]);
-    if (!pat || pat.type !== 'object_pattern' || more || (ann && ann.type !== 'type_annotation') || kids(list[0]).some(k => k.type === '=')) return null;
+    if (list.length !== 1) return null;
+    // ({ a, b }: Props) in TypeScript is a required_parameter; in JavaScript the pattern is the input itself
+    const [pat, ann, more] = list[0].type === 'object_pattern' ? [list[0]] : list[0].type === 'required_parameter' ? real(list[0]) : [];
+    if (!pat || pat.type !== 'object_pattern' || more || (ann && ann.type !== 'type_annotation') || (list[0].type === 'required_parameter' && kids(list[0]).some(k => k.type === '='))) return null;
     const names = [];
     for (const p of real(pat)) {
       if (p.type === 'shorthand_property_identifier_pattern') names.push(p.text);
@@ -202,6 +203,8 @@
 
     function one(n, depth, lvl, C) {
       const say = (t) => { C.o.say(depth, t); return true; };
+      const r = react(n, depth, lvl, C);
+      if (r !== undefined) return r;
       switch (n.type) {
         case 'lexical_declaration': {
           if (!typed) return undefined;
@@ -334,6 +337,299 @@
         C.o.say(d, `${ro ? 'read-only ' : ''}${name} is ${w}${q ? ', if any' : ''}`);
         return true;
       });
+    }
+
+    /* ---------- React: components, state, effects, references, and what they show ---------- */
+
+    function react(n, depth, lvl, C) {
+      const say = (t) => { C.o.say(depth, t); return true; };
+      switch (n.type) {
+        // define component Card using title and children from CardProps
+        case 'function_declaration': {
+          const name = F(n, 'name'), body = F(n, 'body');
+          if (!name || !capital(name.text) || !hasJsx(body) || has(n, 'async') || has(n, '*') || real(n).some(x => x.type === 'type_parameters' || x.type === 'type_annotation')) return undefined;
+          const pr = propsOf(n);
+          if (!pr || (pr.type && !typed)) return undefined;
+          say(`define component ${name.text}${pr.said ? ' using ' + pr.said : ''}${pr.type ? ' from ' + pr.type : ''}`);
+          C.inside(null, () => C.block(real(body), depth + 1, n.startIndex));
+          return true;
+        }
+        case 'lexical_declaration': {
+          const d = real(n).filter(x => x.type === 'variable_declarator');
+          if (d.length !== 1 || kids(n)[0].type !== 'const' || real(d[0]).some(x => x.type === 'type_annotation')) return undefined;
+          const pat = F(d[0], 'name'), v = F(d[0], 'value');
+          if (!pat || !v) return undefined;
+          // constant Index is a component (its steps under it), or ", showing:" with what it shows under it
+          if (pat.type === 'identifier' && capital(pat.text) && v.type === 'arrow_function' && !has(v, 'async') && hasJsx(F(v, 'body')) && !real(v).some(x => x.type === 'type_annotation' || x.type === 'type_parameters')) {
+            const pr = propsOf(v), body = F(v, 'body');
+            if (!pr || (pr.type && !typed) || lvl) return undefined;
+            const head = `constant ${pat.text} is a component${pr.said ? ' using ' + pr.said : ''}${pr.type ? ' from ' + pr.type : ''}`;
+            if (body.type === 'statement_block') { say(head); C.inside(null, () => C.block(real(body), depth + 1, n.startIndex)); return true; }
+            if (!isJsx(body)) return undefined;
+            say(head + ', showing:');
+            return jsxChild(unparen(body), depth + 1, n.startIndex, C);
+          }
+          const call = v.type === 'call_expression' && F(v, 'arguments') && F(v, 'arguments').type === 'arguments' && !kids(v).some(k => k.type === 'optional_chain') ? v : null;
+          const fn = call && F(call, 'function'), a = call ? C.args(call) : [];
+          const ta = call && real(call).find(x => x.type === 'type_arguments'), targs = ta ? real(ta) : [];
+          // keep count, starting at 0 (useState), its type and setter said when they are there
+          if (pat.type === 'array_pattern' && fn && fn.text === 'useState' && a.length <= 1 && targs.length <= 1) {
+            const ns = real(pat);
+            if (ns.length !== 2 || ns.some(x => x.type !== 'identifier') || kids(pat).filter(k => k.type === ',').length !== 1) return false;
+            const [s, set] = ns.map(x => x.text);
+            const tw = targs.length ? sayType(targs[0], 'arg') : null;
+            if (targs.length && (tw == null || !typed)) return false;
+            const start = a.length ? C.val(a[0]) : null;
+            if (a.length && (start == null || /,\s+changed with\s/.test(start))) return false;
+            setters.set(set, s);
+            return say(`keep ${s}${tw ? ` (${tw})` : ''}, ${a.length ? `starting at ${start}` : 'with no starting value'}${set === usualSetter(s) ? '' : `, changed with ${set}`}`);
+          }
+          // keep a reference inputRef (to an HTMLInputElement), starting at nothing (useRef)
+          if (pat.type === 'identifier' && fn && fn.text === 'useRef' && a.length <= 1 && targs.length <= 1) {
+            const tw = targs.length ? sayType(targs[0], 'arg') : null;
+            if (targs.length && (tw == null || !typed)) return false;
+            const start = a.length ? C.val(a[0]) : null;
+            if (a.length && start == null) return false;
+            return say(`keep a reference ${pat.text}${tw ? ` (to ${tw})` : ''}${a.length ? `, starting at ${start}` : ''}`);
+          }
+          // constant visible is …, worked out again whenever notes or filter changes (useMemo)
+          if (pat.type === 'identifier' && fn && fn.text === 'useMemo' && a.length === 2 && !targs.length && a[0].type === 'arrow_function' && !arrowParams(a[0]).length && !has(a[0], 'async') && a[1].type === 'array' && F(a[0], 'body').type !== 'statement_block') {
+            const e = C.val(F(a[0], 'body')), deps = real(a[1]).map(x => C.ex(x));
+            if (e == null || deps.some(x => x == null || / or /.test(x)) || /, worked out /.test(e)) return false;
+            return say(`constant ${pat.text} is ${e}, worked out ${deps.length ? `again whenever ${deps.join(' or ')} changes` : 'once'}`);
+          }
+          // take toast from the result of useToast (const { toast } = …)
+          if (pat.type === 'object_pattern') {
+            const ns = real(pat);
+            if (!ns.length || ns.some(x => x.type !== 'shorthand_property_identifier_pattern')) return false;
+            const e = C.val(v);
+            if (e == null) return false;
+            return say(`take ${andList(ns.map(x => x.text))} from ${e}`);
+          }
+          return undefined;
+        }
+        case 'expression_statement': {
+          const e = real(n)[0];
+          if (!e || e.type !== 'call_expression') return undefined;
+          const fn = F(e, 'function'), a = C.args(e);
+          // when Card first appears / whenever query changes (useEffect), its steps under it
+          if (fn.text === 'useEffect') {
+            const f = a[0];
+            if (a.length !== 2 || !f || f.type !== 'arrow_function' || has(f, 'async') || arrowParams(f).length || F(f, 'body').type !== 'statement_block' || a[1].type !== 'array') return false;
+            const deps = real(a[1]).map(x => C.ex(x));
+            if (deps.some(x => x == null || / or /.test(x))) return false;
+            say(deps.length ? `whenever ${deps.join(' or ')} changes` : `when ${whoOf(n)} first appears`);
+            C.inside(null, () => C.block(real(F(f, 'body')), depth + 1, n.startIndex));
+            return true;
+          }
+          // change count to count plus 1 (a state's setter)
+          if (fn.type === 'identifier' && setters.has(fn.text)) { const w = inlineWords(e, C); return w ? say(w) : false; }
+          return undefined;
+        }
+        case 'return_statement': {
+          const v = real(n)[0];
+          if (!v) return undefined;
+          // show: what a component shows, under it
+          if (isJsx(v)) { say('show:'); return jsxChild(unparen(v), depth + 1, n.startIndex, C); }
+          // when Card goes away (an effect's clean-up)
+          if (v.type === 'arrow_function' && inEffect(n) && !arrowParams(v).length && !has(v, 'async')) {
+            const body = F(v, 'body');
+            if (body.type === 'statement_block') { say(`when ${whoOf(n)} goes away`); C.inside(null, () => C.block(real(body), depth + 1, n.startIndex)); return true; }
+            const w = inlineWords(body, C);
+            return !!w && say(`when ${whoOf(n)} goes away, ${w}`);
+          }
+          return undefined;
+        }
+        default: return undefined;
+      }
+    }
+
+    /* One step as words, for a handler written in place (onClick={() => …}) or a clean-up: change a state, show,
+       or run a tool. null when it isn't one of these. */
+    function inlineWords(e, C) {
+      if (!e || e.type !== 'call_expression' || !F(e, 'arguments') || F(e, 'arguments').type !== 'arguments' || kids(e).some(k => k.type === 'optional_chain') || real(e).some(x => x.type === 'type_arguments')) return null;
+      const fn = F(e, 'function'), a = C.args(e);
+      const state = fn.type === 'identifier' ? setters.get(fn.text) : null;
+      if (state && a.length === 1) {
+        const arg = a[0];
+        if (arg.type === 'arrow_function' && !has(arg, 'async')) {
+          const ps = arrowParams(arg), p = ps.length === 1 ? plainName(ps[0]) : null, body = F(arg, 'body');
+          if (!p || body.type === 'statement_block') return null;
+          const v = C.val(body);
+          return v == null ? null : `change ${state} from ${p} to ${v}`;
+        }
+        const v = C.val(arg);
+        return v == null ? null : `change ${state} to ${v}`;
+      }
+      if (fn.text === 'console.log' && a.length) { const v = C.rest(a); return v.some(x => x == null) ? null : `show ${v.join(', ')}`; }
+      if (!C.isChain(fn)) return null;
+      const v = C.rest(a);
+      return v.some(x => x == null) ? null : `run ${fn.text}${v.length ? ' with ' + v.join(', ') : ''}`;
+    }
+
+    /* A prop as a setting after a comma: styled "p-4", keyed by note.id, running save when clicked, when clicked:
+       run save, with variant "ghost", with checked {note.done}, with everything in props. null: it stays code. */
+    function propWords(a, C) {
+      if (a.type === 'jsx_expression') {
+        const sp = real(a)[0];
+        if (real(a).length !== 1 || !sp || sp.type !== 'spread_element') return null;
+        const v = C.ex(real(sp)[0]);
+        return v == null || /[,\n]/.test(v) ? null : `with everything in ${v}`;
+      }
+      if (a.type !== 'jsx_attribute') return null;
+      const [nameN, val, more] = real(a);
+      if (!nameN || nameN.type !== 'property_identifier' || more) return null;
+      const name = nameN.text;
+      if (!val) return `with ${name}`;
+      if (val.type === 'string') {
+        if (/\n/.test(val.text)) return null;
+        return name === 'className' ? `styled ${val.text}` : `with ${name} ${val.text}`;
+      }
+      if (val.type !== 'jsx_expression' || real(val).length !== 1) return null;
+      const e = real(val)[0];
+      if (isComment(e)) return null;
+      const ev = eventWords(name);
+      if (ev) {
+        if (C.isChain(e)) return `running ${e.text} when ${ev}`;
+        if (e.type === 'arrow_function' && !has(e, 'async')) {
+          const ps = arrowParams(e), p = ps.length === 1 ? plainName(ps[0]) : null, body = F(e, 'body');
+          if (ps.length > 1 || (ps.length && !p) || body.type === 'statement_block') return null;
+          const w = inlineWords(body, C);
+          if (w) return `when ${ev}${p ? ' with ' + p : ''}: ${w}`;
+        }
+      }
+      const v = C.ex(e);
+      if (v == null || /\n/.test(v)) return null;
+      if (name === 'key') return `keyed by ${v}`;
+      return name === 'className' ? `styled {${v}}` : `with ${name} {${v}}`;
+    }
+
+    /* Children of an element: runs of text and values as one quoted line ("Hi {name}"), a value on its own as {x},
+       and each element, "only if", "if … otherwise", "for each" and note on lines of their own. */
+    function piecesOf(el, C) {
+      const ch = C.jsxChildren(el);
+      if (!ch) return null;
+      const items = [];
+      for (const c of ch) {
+        const fill = c.node && c.node.type === 'jsx_expression' ? fillOf(c.node, C) : null;
+        const piece = c.text != null ? { text: c.text, k: c.k, end: c.end } : fill != null ? { fill, k: c.node.startIndex, end: c.node.endIndex } : null;
+        if (piece) {
+          const last = items[items.length - 1];
+          if (last && last.run) last.run.push(piece); else items.push({ run: [piece] });
+        } else items.push({ node: c.node });
+      }
+      return items;
+    }
+    /* A JSX value child ({title}, {count plus 1}) in words, or null for one that is said on its own line. */
+    function fillOf(x, C) {
+      const inner = real(x);
+      if (inner.length !== 1 || isComment(inner[0])) return null;
+      const e = inner[0];
+      if (e.type === 'string' && e.text.slice(1, -1) === ' ') return null;   // (a space)
+      if (hasJsx(e)) return null;
+      const v = C.ex(e);
+      return v == null || /\n/.test(v) ? null : v;
+    }
+    /* A run as one line: {x} for a value on its own, "text {x} text" otherwise (null when a value has quotes in it). */
+    function runLine(run) {
+      if (run.length === 1 && run[0].fill != null) return `{${run[0].fill}}`;
+      if (run.some(p => p.fill != null && /["'`]/.test(p.fill))) return null;
+      const texts = run.filter(p => p.text != null).map(p => p.text).join('');
+      const q = !texts.includes('"') ? '"' : !texts.includes("'") ? "'" : '"';
+      const body = run.map(p => (p.fill != null ? `{${p.fill}}` : p.text.replace(/\\/g, '\\\\').replace(/[{}]/g, '$&$&').split(q).join('\\' + q))).join('');
+      return q + body + q;
+    }
+
+    /* A JSX element (or a child) said at depth, under key; kept as exact code when it can't be said, or the
+       check found it differs. */
+    function jsxChild(node, depth, parent, C) {
+      const key = node.startIndex;
+      C.o.parents.set(key, parent);
+      const m = C.o.mark();
+      C.o.keyStack.push(key);
+      let ok = false;
+      if (!(C.force.get(key) >= 2)) { try { ok = node.type === 'jsx_expression' ? exprChild(node, depth, key, C) : elementSaid(node, depth, key, C); } catch (e) { ok = false; } }
+      C.o.keyStack.pop();
+      if (!ok) { C.o.undo(m); C.o.rawLines(depth, C.prefix, C.src, node); }
+      return true;
+    }
+    function elementSaid(node, depth, key, C) {
+      if (!JSX_TYPES.includes(node.type)) return false;
+      const open = node.type === 'jsx_self_closing_element' ? node : real(node).find(x => x.type === 'jsx_opening_element');
+      if (!open) return false;
+      const props = real(open).filter(x => x.type === 'jsx_attribute' || x.type === 'jsx_expression');
+      const nameN = real(open).find(x => x.type !== 'jsx_attribute' && x.type !== 'jsx_expression' && !isComment(x));
+      if (real(open).some(isComment)) return false;
+      const tag = nameN ? nameN.text : null;
+      if (tag != null && !/^[A-Za-z_$][\w$]*(?:[.-][\w$]+)*$/.test(tag)) return false;
+      if (tag == null && props.length) return false;
+      let word = tag == null ? 'together' : capital(tag) || tag.includes('.') ? art(tag) : C.WEB.elementWord(tag);
+      if (!word) return false;
+      // a link's address and a picture's file in its words: a link to "/", a picture of "logo.png", a Link to "/about"
+      let first = 0;
+      const p0 = props[0], p0n = p0 && p0.type === 'jsx_attribute' ? real(p0)[0] : null, p0v = p0 && p0.type === 'jsx_attribute' ? real(p0)[1] : null;
+      if (p0n && p0v && p0v.type === 'string' && !/\n/.test(p0v.text) && ((tag === 'a' && p0n.text === 'href') || (tag === 'img' && p0n.text === 'src') || (p0n.text === 'to' && capital(tag)))) { word += `${tag === 'img' ? ' of ' : ' to '}${p0v.text}`; first = 1; }
+      const settings = props.slice(first).map(a => propWords(a, C));
+      if (settings.some(s => s == null)) return false;
+      const items = node.type === 'jsx_element' ? piecesOf(node, C) : [];
+      if (!items) return false;
+      // one run inside: "saying …" on the same line
+      const one = items.length === 1 && items[0].run ? runLine(items[0].run) : null;
+      if (one && items[0].run.some(p => C.force.get(p.k) >= 2)) return false;
+      C.o.say(depth, word + (one ? ' saying ' + one : '') + settings.map(s => ', ' + s).join(''));
+      if (one || !items.length) return true;
+      for (const it of items) {
+        if (it.node) { jsxChild(it.node, depth + 1, key, C); continue; }
+        const k = it.run[0].k;
+        C.o.parents.set(k, key);
+        const line = runLine(it.run);
+        if (line != null && !it.run.some(p => C.force.get(p.k) >= 2)) { C.o.keyStack.push(k); C.o.say(depth + 1, line); C.o.keyStack.pop(); continue; }
+        // (as written: the run's own source lines)
+        const start = it.run[0].k, end = it.run[it.run.length - 1].end;
+        C.o.rawLines(depth + 1, C.prefix, C.src, { startIndex: start, endIndex: Math.max(end, start), nextSibling: null, descendantsOfType: () => [] });
+      }
+      return true;
+    }
+    function exprChild(node, depth, key, C) {
+      const inner = real(node), all = named(node);
+      // {/* a note */}: a note
+      if (!inner.length && all.length && all.every(isComment)) { for (const c of all) C.o.notes(depth, c); return true; }
+      if (inner.length !== 1) return false;
+      const e = inner[0];
+      const say = (d, t) => { C.o.say(d, t); return true; };
+      if (e.type === 'string' && e.text.slice(1, -1) === ' ') return say(depth, 'a space');
+      // only if loading: {loading && <Spinner />}
+      if (e.type === 'binary_expression' && F(e, 'operator').type === '&&' && isJsx(F(e, 'right'))) {
+        const c = C.ex(F(e, 'left'));
+        if (c == null) return false;
+        say(depth, `only if ${c}`);
+        return jsxChild(unparen(F(e, 'right')), depth + 1, key, C);
+      }
+      // if … otherwise …: {done ? <A /> : <B />}, either side nothing (null)
+      if (e.type === 'ternary_expression') {
+        const cons = F(e, 'consequence'), alt = F(e, 'alternative');
+        const side = (x) => isJsx(x) || isNull(x);
+        if (!side(cons) || !side(alt) || (!isJsx(cons) && !isJsx(alt))) return false;
+        const c = C.ex(F(e, 'condition'));
+        if (c == null) return false;
+        say(depth, `if ${c}`);
+        if (isNull(cons)) say(depth + 1, 'nothing'); else jsxChild(unparen(cons), depth + 1, key, C);
+        say(depth, 'otherwise');
+        if (isNull(alt)) say(depth + 1, 'nothing'); else jsxChild(unparen(alt), depth + 1, key, C);
+        return true;
+      }
+      // for each note in notes: {notes.map((note) => <li key={note.id}>…</li>)}
+      if (e.type === 'call_expression' && F(e, 'function').type === 'member_expression' && F(F(e, 'function'), 'property').text === 'map' && !kids(F(e, 'function')).some(k => k.type === 'optional_chain')) {
+        const a = C.args(e), f = a[0];
+        if (a.length !== 1 || f.type !== 'arrow_function' || has(f, 'async') || !isJsx(F(f, 'body'))) return false;
+        const ps = arrowParams(f).map(plainName);
+        if (!ps.length || ps.length > 2 || ps.some(p => !p)) return false;
+        const list = C.ex(F(F(e, 'function'), 'object'));
+        if (list == null || /,\s+counting with\s/.test(list)) return false;
+        say(depth, `for each ${ps[0]} in ${list}${ps[1] ? ', counting with ' + ps[1] : ''}`);
+        return jsxChild(unparen(F(f, 'body')), depth + 1, key, C);
+      }
+      return false;
     }
 
     return { ex, one };

@@ -899,14 +899,14 @@
     const open = named(el).find(c => c.type === 'jsx_opening_element'), close = named(el).find(c => c.type === 'jsx_closing_element');
     if (!open || !close) return null;
     const out = [];
-    let at = open.endIndex, textStart = null;
+    let at = open.endIndex, textStart = null, textEnd = null;
     const flush = (end) => {
       const t = jsxText(el.text.slice(at - el.startIndex, end - el.startIndex));
-      if (t) out.push({ text: decode(t, true), k: textStart != null ? textStart : at });
-      textStart = null;
+      if (t) out.push({ text: decode(t, true), k: textStart != null ? textStart : at, end: textEnd != null ? textEnd : end });
+      textStart = null; textEnd = null;
     };
     for (const c of kidsOf) {
-      if (c.type === 'jsx_text' || c.type === 'html_character_reference') { if (textStart == null) textStart = c.startIndex; continue; }
+      if (c.type === 'jsx_text' || c.type === 'html_character_reference') { if (textStart == null) textStart = c.startIndex; textEnd = c.endIndex; continue; }
       flush(c.startIndex);
       out.push({ node: c });
       at = c.endIndex;
@@ -2492,7 +2492,7 @@
       const text = conv.lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '') + '\n';
       gen = compileBack(kind, text, env);
       last = check(kind, src, gen.text, env);
-      if (env.debug) env.debug({ round, text, generated: gen.text, check: last, errors: gen.info.flatMap((inf, i) => inf.errs.map(e => `${i + 1}: ${e}`)) });
+      if (env.debug) env.debug({ round, text, generated: gen.text, check: last, errors: gen.info.flatMap((inf, i) => inf.errs.map(e => `${i + 1}: ${e}`)), force: [...force], keys: conv.keys });
       // sentences the translator complains about are kept as code too
       const bad = new Set();
       gen.info.forEach((inf, i) => { if (inf.errs.length && conv.keys[i] != null) bad.add(conv.keys[i]); });
@@ -2505,7 +2505,8 @@
         force.set(key, conv.careful.has(key) && !force.has(key) ? 1 : 2);
         added++;
       };
-      let keys = [...bad, ...(!last.same && last.culprits ? last.culprits : [])];
+      // (each once: a line the translator complains about and the check finds different is one place, not its block)
+      let keys = [...new Set([...bad, ...(!last.same && last.culprits ? last.culprits : [])])];
       // C++: a name said with its type spelled out can put right the lines that use it ("length of input" needs
       // input to be text), so those go first and the rest are checked again
       if (kind === 'cpp' || kind === 'arduino') {

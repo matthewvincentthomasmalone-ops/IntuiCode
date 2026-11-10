@@ -195,7 +195,17 @@
 
     // (shapes, type names and "share …" make no name a sentence uses as a value)
     const OWN = /^(?:define (?:shared )?(?:shape|type) |bring in the types? |share )/i;
-    const plain = (s) => { const t = String(s).replace(/[.:]$/, ''); if (OWN.test(t)) return ''; const p = plainOf(t, typed, []); return p ? p.s : null; };
+    // React's sentences make no names these sentences learn their own way (see names)
+    // (not JavaScript's "keep track of the keys" or "take x out of group y")
+    const REACT_OWN = /^(?:define (?:shared |main )?component |(?:shared )?constant \S+ is a component\b|keep (?!track of )|show$|when \S+ (?:first appears|goes away)|whenever |change \S+ (?:to|from) |take (?!.+ out of group ))/i;
+    const plain = (s) => {
+      const t = String(s).replace(/[.:]$/, '');
+      if (OWN.test(t) || REACT_OWN.test(t)) return '';
+      const memo = t.match(/^(.+?), worked out (?:again whenever .+ changes|once)$/i);
+      if (memo) return memo[1];
+      const p = plainOf(t, typed, []);
+      return p ? p.s : null;
+    };
 
     /* The parts of a shape: "id is text", "read-only created is a Date", "email is text, if any". */
     function shapeBody(c, from, to) {
@@ -219,7 +229,378 @@
       }
     }
 
+    /* ---------- React ---------- */
+
+    const states = new Map();   // count -> setCount, from the "keep" sentences (pass 1)
+    const WEB = () => root.IntuiWeb;
+    const PROPS_HELP = 'Name the props after "using", like: define component Card using title and children (and "from CardProps" for their shape).';
+
+    /* "title, saving = false and children" -> { names, code: '{ title, saving = false, children }' } */
+    function propsCode(list, inf) {
+      const items = topSplit(list, /,\s*|\s+and\s+/g).filter(Boolean);
+      const names = [], code = [];
+      for (const it of items) {
+        const m = it.match(new RegExp(`^(${NAME})(?:\\s*=\\s*(.+))?$`));
+        if (!m) { err(inf, `"${it}" isn't a prop's name. ${PROPS_HELP}`); continue; }
+        names.push(m[1]); code.push(m[2] != null ? `${m[1]} = ${m[2].trim()}` : m[1]);
+      }
+      return { names, code: `{ ${code.join(', ')} }` };
+    }
+    /* A component's head: "define [shared |main ]component Card [using … ][from Props]", or the arrow kind,
+       "[shared ]constant Card is a component [using …][ from Props][, showing]". */
+    function componentHead(s) {
+      let m = s.match(new RegExp(`^define (?:(shared|main) )?component (${NAME})(.*)$`, 'i')), arrow = false;
+      if (!m) { m = s.match(new RegExp(`^(?:(shared) )?constant (${NAME}) is a component(.*)$`, 'i')); arrow = true; }
+      if (!m) return null;
+      let rest = m[3], showing = false, type = null, list = null;
+      if (arrow && /,\s*showing$/i.test(rest)) { showing = true; rest = rest.replace(/,\s*showing$/i, ''); }
+      const from = topIndex(rest, /\s+from\s+(?=\S+$)/);
+      if (from) { type = rest.slice(from.end).trim(); rest = rest.slice(0, from.at); }
+      const u = rest.match(/^\s+using\s+(.+)$/i);
+      if (u) list = u[1]; else if (rest.trim()) return { bad: `I don't understand "${rest.trim()}" here. ${PROPS_HELP}` };
+      return { exp: m[1] ? m[1].toLowerCase() : null, name: m[2], arrow, showing, type, list };
+    }
+
+    /* The words for an event -> the prop's name: clicked -> onClick, "checked changes" -> onCheckedChange. */
+    const EVENT_PROP = { clicked: 'onClick', 'double-clicked': 'onDoubleClick', changed: 'onChange', 'typed in': 'onInput', sent: 'onSubmit', focused: 'onFocus', unfocused: 'onBlur', hovered: 'onMouseEnter', 'a key is pressed': 'onKeyDown', 'a key is released': 'onKeyUp', scrolled: 'onScroll' };
+    const eventProp = (w) => { const t = w.trim().toLowerCase(); if (EVENT_PROP[t]) return EVENT_PROP[t]; const m = t.match(/^([a-z]+(?: [a-z]+)*) changes$/); return m ? 'on' + m[1].split(' ').map(x => x[0].toUpperCase() + x.slice(1)).join('') + 'Change' : null; };
+
+    /* One step written in place (a handler, a clean-up): change a state, show, run a tool -> its code, or null. */
+    function stepCode(t, c, inf, given) {
+      const E = (v) => c.E(v);
+      const withName = (n, fn) => { const had = c.x.vars.has(n); c.x.vars.add(n); try { return fn(); } finally { if (!had) c.x.vars.delete(n); } };
+      const run = () => {
+        let m;
+        if ((m = t.match(new RegExp(`^change (${NAME}) from (${NAME}) to (.+)$`, 'i')))) {
+          const set = states.get(m[1]);
+          if (!set) { err(inf, `${code(m[1])} isn't a state kept here ("keep ${m[1]}, starting at …"), so it can't be changed this way.`); return null; }
+          note(inf, `${code(set)} with a little tool: React gives it the current ${m[1]} (here ${code(m[2])}), and keeps what it gives back.`);
+          return withName(m[2], () => `${set}((${m[2]}) => ${E(m[3])})`);
+        }
+        if ((m = t.match(new RegExp(`^change (${NAME}) to (.+)$`, 'i')))) {
+          const set = states.get(m[1]);
+          if (!set) { err(inf, `${code(m[1])} isn't a state kept here ("keep ${m[1]}, starting at …"), so it can't be changed this way.`); return null; }
+          note(inf, `${code(set)} changes ${code(m[1])}: React then shows the component again with the new value.`);
+          return `${set}(${E(m[2])})`;
+        }
+        if ((m = t.match(/^show\s+(.+)$/i))) return `console.log(${WEB().splitAnd(m[1]).map(E).join(', ')})`;
+        if ((m = t.match(new RegExp(`^run (${NAME}(?:\\.${NAME})*)(?:\\s+with\\s+(.+))?$`, 'i')))) return `${m[1]}(${m[2] ? WEB().splitAnd(m[2]).map(E).join(', ') : ''})`;
+        err(inf, 'A step written here is one of: change ‹state› to …, run ‹tool› with …, show ….');
+        return null;
+      };
+      return given ? withName(given, run) : run();
+    }
+
+    /* The lines under a line (from..to) as a tree, by indentation. */
+    function treeOf(c, from, to) {
+      const root = { kids: [], ind: -1 }, st = [root];
+      for (let k = from; k <= to; k++) {
+        const raw = c.lines[k];
+        if (!raw.trim()) continue;
+        const ind = raw.match(/^ */)[0].length;
+        while (st.length > 1 && ind <= st[st.length - 1].ind) st.pop();
+        const n = { k, ind, raw, t: raw.trim(), kids: [] };
+        st[st.length - 1].kids.push(n);
+        st.push(n);
+      }
+      return root.kids;
+    }
+
+    /* A quoted run, "Hi {name}!" -> [{ text } | { fill }]. */
+    function runPieces(q) {
+      const d = q[0], body = q.slice(1, -1), out = [];
+      let text = '';
+      for (let k = 0; k < body.length; k++) {
+        const ch = body[k];
+        if (ch === '\\' && k + 1 < body.length) { text += body[++k]; continue; }
+        if ((ch === '{' || ch === '}') && body[k + 1] === ch) { text += ch; k++; continue; }
+        if (ch === '{') {
+          let depth = 0, end = -1, qq = null;
+          for (let j = k; j < body.length; j++) {
+            const cj = body[j];
+            if (qq) { if (cj === '\\') j++; else if (cj === qq) qq = null; continue; }
+            if (cj === '"' || cj === "'") qq = cj;
+            else if (cj === '{') depth++;
+            else if (cj === '}' && --depth === 0) { end = j; break; }
+          }
+          if (end < 0) return null;
+          if (text) out.push({ text }); text = '';
+          out.push({ fill: body.slice(k + 1, end) });
+          k = end; continue;
+        }
+        text += ch;
+      }
+      if (text) out.push({ text });
+      return d === '"' || d === "'" ? out : null;
+    }
+    const QUOTED = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/;
+    // text as JSX writes it: the characters JSX would read as something else written as character references
+    const jsxTextOf = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;');
+    // a value in braces at the start of s: "{a, b} rest" -> { inner: 'a, b', rest: ' rest' }
+    function braced(s) {
+      if (s[0] !== '{') return null;
+      let depth = 0, q = null;
+      for (let j = 0; j < s.length; j++) {
+        const cj = s[j];
+        if (q) { if (cj === '\\') j++; else if (cj === q) q = null; continue; }
+        if (cj === '"' || cj === "'" || cj === '`') q = cj;
+        else if (cj === '{') depth++;
+        else if (cj === '}' && --depth === 0) return { inner: s.slice(1, j), rest: s.slice(j + 1) };
+      }
+      return null;
+    }
+
+    /* JSX from the sentences under "show:": [{ text, src }] at level 0, with c.E for values in context. */
+    function jsx(c, nodes) {
+      const out = [];
+      // (a line inside a template literal, `…` over several lines, is its text: it keeps its own spaces, keep: true)
+      let ticks = 0;
+      const ind = (o) => (o.keep ? o : { ...o, d: (o.d || 0) + 1 });   // (one step further in: d, the depth, is turned into spaces at the end)
+      // one node as lines, or as one line (inline) when it can be
+      const render = (n, level) => {
+        const inf = c.info[n.k], t = n.t.replace(/[.]$/, '');
+        let m;
+        const E = (v) => c.E(v);
+        const block = (code, extra) => [{ text: code, src: n.k, ...extra }];
+        if ((m = n.raw.match(/^\s*(?:js|javascript|raw)\s*:\s?(.*)$/i))) {
+          note(inf, 'Raw TSX: copied exactly as written.');
+          const keep = ticks % 2 === 1;
+          ticks += (m[1].replace(/\\./g, '').match(/`/g) || []).length;
+          return [{ text: m[1], src: n.k, raw: true, keep }, ...n.kids.flatMap(k => render(k, level))];
+        }
+        if ((m = t.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return block(`{/* ${m[1]} */}`);
+        if (/^a space$/i.test(t)) { note(inf, '`{" "}` is a space JSX keeps (a space at the end of a line in JSX is left out).'); return block('{" "}'); }
+        if (QUOTED.test(t)) {
+          const ps = runPieces(t);
+          if (!ps) { err(inf, 'A { in this text isn\'t closed. A brace itself is written twice: {{ or }}.'); return block(''); }
+          return [{ text: ps.map(p => (p.fill != null ? `{${E(p.fill)}}` : jsxTextOf(p.text))).join(''), src: n.k, run: ps }];
+        }
+        const b = braced(t);
+        if (b && !b.rest.trim()) return block(`{${E(b.inner)}}`);
+        const one = (kids, what) => {
+          if (kids.length !== 1) { err(inf, `Put one thing under "${what}": several things go in "together".`); }
+          return kids.length ? render(kids[0], level + 1) : [{ text: 'null', src: n.k }];
+        };
+        const wrap = (head, inner, tail) => (inner.length === 1 && !inner[0].raw ? [{ text: head + inner[0].text + tail, src: n.k }] : [{ text: head + '(', src: n.k }, ...inner.map(ind), { text: ')' + tail, src: n.k }]);
+        if ((m = t.match(/^only if\s+(.+)$/i))) {
+          note(inf, '`a && b` shows b only while a is true (and nothing otherwise).');
+          return wrap(`{${E(m[1])} && `, one(n.kids, 'only if'), '}');
+        }
+        if ((m = t.match(new RegExp(`^for each (${NAME}) in (.+?)(?:,\\s*counting with (${NAME}))?$`, 'i')))) {
+          note(inf, '`.map` shows one of these for each item in the list. Each needs its own key ("keyed by …"), so React can tell them apart.');
+          const add = [m[1], m[3]].filter(Boolean).filter(v => !c.x.vars.has(v));
+          add.forEach(v => c.x.vars.add(v));
+          try { return wrap(`{${E(m[2])}.map((${m[1]}${m[3] ? ', ' + m[3] : ''}) => `, one(n.kids, 'for each'), ')}'); } finally { add.forEach(v => c.x.vars.delete(v)); }
+        }
+        if (/^nothing$/i.test(t)) return block('null');
+        return element(n, level, inf);
+      };
+      // "if …" / "otherwise" pairs among siblings
+      const list = (nodes, level) => {
+        const lines = [];
+        for (let k = 0; k < nodes.length; k++) {
+          const n = nodes[k], inf = c.info[n.k];
+          const m = n.t.match(/^if\s+(.+)$/i);
+          if (m) {
+            const nx = nodes[k + 1], other = nx && /^otherwise$/i.test(nx.t) ? nx : null;
+            if (!other) err(inf, 'In what a component shows, "if …" needs an "otherwise" after it (with "nothing" under it, if it shows nothing).');
+            note(inf, '`c ? a : b` shows a while c is true, b otherwise.');
+            const side = (x) => (x && x.kids.length === 1 ? render(x.kids[0], level + 1) : (x && x.kids.length > 1 && err(c.info[x.k], 'Put one thing under it: several things go in "together".'), [{ text: 'null', src: (x || n).k }]));
+            const a = side(n), b2 = side(other);
+            if (a.length === 1 && b2.length === 1 && !a[0].raw && !b2[0].raw) lines.push({ text: `{${c.E(m[1])} ? ${a[0].text} : ${b2[0].text}}`, src: n.k });
+            else lines.push({ text: `{${c.E(m[1])} ? (`, src: n.k }, ...a.map(ind), { text: ') : (', src: other ? other.k : n.k }, ...b2.map(ind), { text: ')}', src: n.k });
+            if (other) k++;
+            continue;
+          }
+          if (/^otherwise$/i.test(n.t)) { err(inf, '"otherwise" goes right after an "if …" at the same indent.'); continue; }
+          lines.push(...render(n, level));
+        }
+        return lines;
+      };
+      /* An element line: "a button saying "Save", styled "px-4", running save when clicked", its children under it. */
+      function element(n, level, inf) {
+        // the settings after commas (a part that isn't a setting belongs to the one before it: "run f with a, b")
+        const parts = topSplit(n.t, /,\s+/g);
+        const SET = /^(?:styled\s|keyed by\s|running\s|when\s|with\s)/i;
+        const settings = [];
+        let head = parts[0];
+        for (let k = 1; k < parts.length; k++) {
+          if (SET.test(parts[k])) settings.push(parts[k]);
+          else if (settings.length) settings[settings.length - 1] += ', ' + parts[k];
+          else head += ', ' + parts[k];
+        }
+        const hm = head.match(/^(?:(?:a|an)\s+)?(.+?)(?:\s+(to|of)\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'))?(?:\s+saying\s+(.+))?$/i);
+        if (!hm) { err(inf, 'I don\'t recognise this. What a component shows is one thing per line: an element ("a button saying "Save""), text in quotes, {a value}, "only if …", "if …", "for each …".'); return [{ text: `{/* ??? ${n.t} */}`, src: n.k }]; }
+        let word = hm[1], tag = null;
+        let comp = word.match(new RegExp(`^(${NAME}(?:\\.${NAME})*)$`));
+        if (/^together$/i.test(word)) tag = '';
+        else if (comp && /^[A-Z]/.test(word) && /^an?\s/i.test(head)) tag = word;
+        else if ((tag = WEB().wordTag(word))) { /* an HTML element */ }
+        else if ((comp = word.match(/^([a-z][\w-]*) element$/i))) tag = comp[1];
+        else { err(inf, `I don't know "${word}" as something to show. Use an element's words (a block, a heading, a button…), or a component's name with a or an before it ("a Button").`); return [{ text: `{/* ??? ${n.t} */}`, src: n.k }]; }
+        const attrs = [];
+        if (hm[2]) {
+          const nm = tag === 'img' && /^of$/i.test(hm[2]) ? 'src' : tag === 'a' && /^to$/i.test(hm[2]) ? 'href' : /^[A-Z]/.test(tag) && /^to$/i.test(hm[2]) ? 'to' : null;
+          if (!nm) err(inf, `"${hm[2]} …" goes with a link ("a link to "/about""), a picture ("a picture of "logo.png"") or a component's address ("a Link to "/about"").`);
+          else attrs.push(`${nm}=${hm[3]}`);
+        }
+        for (const st of settings) {
+          let m;
+          if ((m = st.match(/^styled\s+(.+)$/i))) { const v = m[1].trim(), b = braced(v); attrs.push(QUOTED.test(v) ? `className=${v}` : b && !b.rest.trim() ? `className={${c.E(b.inner)}}` : (err(inf, 'Its style is text in quotes (styled "p-4 rounded"), or a value in braces (styled {…}).'), 'className=""')); continue; }
+          if ((m = st.match(/^keyed by\s+(.+)$/i))) { attrs.push(`key={${c.E(m[1])}}`); continue; }
+          if ((m = st.match(/^running\s+(.+?)\s+when\s+(.+)$/i))) { const ev = eventProp(m[2]); if (!ev) err(inf, `I don't know the event "${m[2]}".`); attrs.push(`${ev || 'onClick'}={${c.E(m[1])}}`); continue; }
+          if ((m = st.match(new RegExp(`^when\\s+(.+?)(?:\\s+with\\s+(${NAME}))?:\\s*(.+)$`, 'i')))) {
+            const ev = eventProp(m[1]);
+            if (!ev) err(inf, `I don't know the event "${m[1]}".`);
+            const step = stepCode(m[3].trim(), c, inf, m[2]);
+            note(inf, `\`${ev || 'on…'}={(${m[2] || ''}) => …}\`: a little tool React runs ${ev ? 'each time it is ' + m[1].trim() : 'then'}.`);
+            attrs.push(`${ev || 'onClick'}={(${m[2] || ''}) => ${step == null ? 'undefined' : step}}`);
+            continue;
+          }
+          if ((m = st.match(/^with everything in\s+(.+)$/i))) { attrs.push(`{...${c.E(m[1])}}`); continue; }
+          if ((m = st.match(/^with\s+([A-Za-z_$][\w$-]*)(?:\s+(.+))?$/i))) {
+            const v = m[2] != null ? m[2].trim() : null, b = v != null ? braced(v) : null;
+            if (v == null) attrs.push(m[1]);
+            else if (QUOTED.test(v)) attrs.push(`${m[1]}=${v}`);
+            else if (b && !b.rest.trim()) attrs.push(`${m[1]}={${c.E(b.inner)}}`);
+            else { err(inf, `The value of ${code(m[1])} is text in quotes, or a value in braces: with ${m[1]} {…}.`); attrs.push(m[1]); }
+            continue;
+          }
+        }
+        if (tag === '' && attrs.length) err(inf, '"together" (a fragment) takes no settings.');
+        const open = tag === '' ? '<>' : `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`, close = tag === '' ? '</>' : `</${tag}>`;
+        // what's inside: "saying …" on the line, or the lines under it
+        let kids = [];
+        if (hm[4] != null) {
+          const v = hm[4].trim(), b = braced(v);
+          if (QUOTED.test(v)) { const ps = runPieces(v); if (!ps) err(inf, 'A { in this text isn\'t closed.'); kids = [{ text: (ps || []).map(p => (p.fill != null ? `{${c.E(p.fill)}}` : jsxTextOf(p.text))).join(''), src: n.k, run: ps || [] }]; }
+          else if (b && !b.rest.trim()) kids = [{ text: `{${c.E(b.inner)}}`, src: n.k }];
+          else err(inf, 'What it says is text in quotes ("Save") or a value in braces ({title}).');
+          if (n.kids.length) err(inf, 'It says something already ("saying …"), so put what goes inside it on the lines under it instead.');
+          return [{ text: open + kids.map(k => k.text).join('') + close, src: n.k }];
+        }
+        const inner = list(n.kids, level + 1);
+        if (!inner.length) return [{ text: tag === '' ? '<></>' : `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''} />`, src: n.k }];
+        // spaces at the edge of a text keep everything on one line (JSX drops them at a line's ends)
+        const edge = inner.some(o => o.run && o.run.length && ((o.run[0].text != null && /^\s/.test(o.run[0].text)) || (o.run[o.run.length - 1].text != null && /\s$/.test(o.run[o.run.length - 1].text))));
+        if (edge) {
+          let one = open;
+          for (const o of inner) one += o.raw ? '\n' + o.text : o.text;
+          return (one + close).split('\n').map((l, i) => ({ text: l, src: n.k }));
+        }
+        return [{ text: open, src: n.k }, ...inner.map(ind), { text: close, src: n.k }];
+      }
+      for (const o of list(nodes, 0)) out.push(o);
+      return out;
+    }
+
+    /* The JSX under line i (to j) written as lines, pushed at the right indent. */
+    function pushJsx(c, from, to, lead, tail) {
+      const tree = treeOf(c, from, to);
+      if (tree.filter(n => !/^(?:note|comment)\s*:/i.test(n.t)).length > 1) err(c.inf, 'A component shows one thing: put several under "together", or in a block.');
+      const lines = jsx(c, tree);
+      c.push(c.pad + lead, c.i);
+      for (const o of lines) c.push(o.keep ? o.text : c.pad + '  ' + '  '.repeat(o.d || 0) + o.text, o.src);
+      c.push(c.pad + tail, c.i);
+    }
+
+    function reactLine(s, c) {
+      const inf = c.inf;
+      let m;
+      const h = componentHead(s);
+      if (h) {
+        if (h.bad) { err(inf, h.bad); return false; }
+        if (h.exp === 'main' && h.arrow) err(inf, 'A component made with constant can\'t be the main part where it is made: add "share Card as the main part" after it.');
+        if (c.stack.length) err(inf, 'A component is defined at the left edge, not inside a block.');
+        if (h.type && !typed) err(inf, 'Types are TypeScript: a JavaScript file has none. Leave out "from …".');
+        const pr = h.list ? propsCode(h.list, inf) : null;
+        const params = pr ? pr.code + (h.type ? ': ' + h.type : '') : '';
+        const exp = h.exp ? EXPORT_WORD[h.exp] : '';
+        note(inf, `A component is a tool that gives back what to show (JSX). React runs it again whenever its props or its state change.${pr ? ` Its props come in as one object, taken apart here: ${code(pr.code)}.` : ''}`);
+        if (h.showing) {
+          const j = blockEnd(c.lines, c.i);
+          pushJsx(c, c.i + 1, j, `${exp}const ${h.name} = (${params}) => (`, ');');
+          c.skip(j);
+          return true;
+        }
+        c.open(h.arrow ? `${exp}const ${h.name} = (${params}) => {` : `${exp}function ${h.name}(${params}) {`, h.arrow ? '};' : '}', 'fn', { def: true });
+        if (pr) pr.names.forEach(n => c.declare(n, 'const'));
+        return true;
+      }
+      if (/^show$/i.test(s) && /:\s*$/.test(c.raw)) {
+        if (!c.insideFn()) err(inf, '"show:" goes inside a component: what it shows.');
+        note(inf, '`return ( … )` gives back what the component shows, written in JSX: elements like HTML, with {values} in them.');
+        const j = blockEnd(c.lines, c.i);
+        if (j === c.i) err(inf, 'Put what it shows on the lines under "show:", one step further in.');
+        pushJsx(c, c.i + 1, j, 'return (', ');');
+        c.skip(j);
+        return true;
+      }
+      // keep count, starting at 0 (and its type, and a setter with another name)
+      if ((m = s.match(new RegExp(`^keep (${NAME})(?:\\s+\\((.+)\\))?,\\s+(?:starting at\\s+(.+?)|with no starting value)(?:,\\s+changed with\\s+(${NAME}))?$`, 'i'))) && !/^a$/i.test(m[1])) {
+        const errs = [], t = m[2] != null ? typeTs(m[2], 'arg', errs) : null;
+        errs.forEach(e => err(inf, e));
+        if (m[2] != null && !typed) err(inf, 'Types are TypeScript: a JavaScript file has none.');
+        const set = m[4] || states.get(m[1]) || 'set' + m[1][0].toUpperCase() + m[1].slice(1);
+        note(inf, `\`useState\` keeps ${code(m[1])} between showings of the component${m[3] != null ? ', starting at the value given' : ''}. ${code(set)} changes it, and React shows the component again.`);
+        c.declare(m[1], 'const'); c.declare(set, 'const');
+        c.say(`const [${m[1]}, ${set}] = useState${t != null ? `<${t}>` : ''}(${m[3] != null ? c.E(m[3]) : ''});`);
+        return true;
+      }
+      if ((m = s.match(new RegExp(`^keep a reference (${NAME})(?:\\s+\\(to\\s+(.+)\\))?(?:,\\s+starting at\\s+(.+))?$`, 'i')))) {
+        const errs = [], t = m[2] != null ? typeTs(m[2], 'arg', errs) : null;
+        errs.forEach(e => err(inf, e));
+        note(inf, `\`useRef\` keeps ${code(m[1])} (its \`.current\`) between showings without showing the component again: often an element on the page (with ref {${m[1]}}).`);
+        c.declare(m[1], 'const');
+        c.say(`const ${m[1]} = useRef${t != null ? `<${t}>` : ''}(${m[3] != null ? c.E(m[3]) : ''});`);
+        return true;
+      }
+      // effects: when Card first appears, whenever query or page changes; when Card goes away (its clean-up)
+      if ((m = s.match(new RegExp(`^when (?:${NAME}|this|it) first appears$`, 'i'))) || (m = s.match(/^whenever (.+) changes$/i))) {
+        const deps = m[1] && !/^when /i.test(m[0]) ? topSplit(m[1], /\s+or\s+|,\s*/g).map(d => c.E(d)) : [];
+        if (!c.insideFn()) err(inf, 'An effect goes inside a component.');
+        note(inf, deps.length ? `\`useEffect\` runs these steps after the component is first shown, and again whenever ${deps.map(code).join(' or ')} change${deps.length > 1 ? '' : 's'}.` : '`useEffect` with `[]` runs these steps once, after the component is first shown.');
+        c.open('useEffect(() => {', `}, [${deps.join(', ')}]);`, 'fn');
+        return true;
+      }
+      if ((m = s.match(new RegExp(`^when (?:${NAME}|this|it) goes away(?:,\\s+(.+))?$`, 'i')))) {
+        const top = c.stack[c.stack.length - 1];
+        if (!top || !/^useEffect\(/.test(top.head ? top.head.text.trim() : '')) err(inf, '"when … goes away" goes right inside an effect ("when … first appears", "whenever … changes").');
+        note(inf, 'The function an effect gives back is its clean-up: React runs it when the component goes away (and before the effect runs again).');
+        if (m[1]) { const step = stepCode(m[1].trim(), c, inf); c.say(`return () => ${step == null ? 'undefined' : step};`); return true; }
+        c.open('return () => {', '};', 'fn');
+        return true;
+      }
+      if ((m = s.match(new RegExp(`^change (${NAME}) (?:from ${NAME} )?to (.+)$`, 'i')))) {
+        const step = stepCode(s, c, inf);
+        c.say(`${step == null ? '' : step};`);
+        return true;
+      }
+      // constant visible is …, worked out again whenever notes or filter changes (useMemo)
+      if ((m = s.match(new RegExp(`^constant (${NAME}) is (.+?), worked out (?:again whenever (.+) changes|once)$`, 'i')))) {
+        const deps = m[3] ? topSplit(m[3], /\s+or\s+|,\s*/g).map(d => c.E(d)) : [];
+        note(inf, `\`useMemo\` keeps the value and works it out again only when ${deps.length ? deps.map(code).join(' or ') + ' change' : 'the component first appears'}, not every time the component is shown.`);
+        if (c.known(m[1])) err(inf, `${code(m[1])} already exists here, so it can't be made again.`);
+        c.declare(m[1], 'const');
+        const v = c.E(m[2]);
+        c.say(`const ${m[1]} = useMemo(() => ${/^\{/.test(v) ? `(${v})` : v}, [${deps.join(', ')}]);`);
+        return true;
+      }
+      // take toast from the result of useToast: const { toast } = useToast();
+      if ((m = s.match(/^take\s+(.+?)\s+from\s+(.+)$/i)) && !/\bout of group\b/i.test(s)) {
+        const ns = topSplit(m[1], /,\s*|\s+and\s+/g);
+        if (ns.some(n => !new RegExp(`^${NAME}$`).test(n))) { err(inf, 'Name each part to take, like: take data and error from …'); return true; }
+        note(inf, `\`const { ${ns.join(', ')} } = …\` takes those parts out of the object, each as a name of its own.`);
+        ns.forEach(n => c.declare(n, 'const'));
+        c.say(`const { ${ns.join(', ')} } = ${c.E(m[2])};`);
+        return true;
+      }
+      return undefined;
+    }
+
     function line(s, c) {
+      const r = reactLine(s, c);
+      if (r !== undefined) return r;
       const errs = [];
       let m;
       // shapes: "define shape Note", "define shared shape Note based on Base", parts indented under it
@@ -378,6 +759,15 @@
           if (q) x.vars.add(q[1] || q[3] || q[2]);
         }
       }
+      // React: a component's props, a state and its setter, a reference, the parts taken from an object
+      const h = componentHead(t);
+      if (h && !h.bad) { x.fns.add(h.name); if (h.list) propsCode(h.list, null).names.forEach(n => x.vars.add(n)); }
+      if ((m = t.match(new RegExp(`^keep (${NAME})(?:\\s+\\(.+\\))?,\\s+(?:starting at\\s+.+?|with no starting value)(?:,\\s+changed with\\s+(${NAME}))?$`, 'i'))) && !/^a$/i.test(m[1])) {
+        const set = m[2] || 'set' + m[1][0].toUpperCase() + m[1].slice(1);
+        states.set(m[1], set); x.vars.add(m[1]); x.fns.add(set);
+      }
+      if ((m = t.match(new RegExp(`^keep a reference (${NAME})\\b`, 'i')))) x.vars.add(m[1]);
+      if ((m = t.match(/^take\s+(.+?)\s+from\s+/i)) && !/\bout of group\b/i.test(t)) topSplit(m[1], /,\s*|\s+and\s+/g).forEach(n => x.vars.add(n));
     }
 
     return { plain, names, line, expr };

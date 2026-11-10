@@ -122,6 +122,27 @@
     return out;
   }
 
+  /* The line where the ( or [ that line `at` is inside opened, when the innermost bracket open there is one of
+     those (a value, not a block of statements { … }); -1 otherwise. Text in quotes and comments don't count. */
+  function openedAt(lang, lines, at) {
+    const st = [];
+    let inBlock = false;
+    for (let i = 0; i < at; i++) {
+      const s = String(lines[i]);
+      for (let k = 0; k < s.length; k++) {
+        const c = s[k], two = s.slice(k, k + 2);
+        if (inBlock) { if (two === '*/') { inBlock = false; k++; } continue; }
+        if (two === '/*') { inBlock = true; k++; continue; }
+        if (two === '//') break;
+        if (c === '"' || c === "'" || c === '`') { let j = k + 1; while (j < s.length && s[j] !== c) j += s[j] === '\\' ? 2 : 1; k = j; continue; }
+        if ('([{'.includes(c)) st.push({ c, line: i });
+        else if (')]}'.includes(c)) st.pop();
+      }
+    }
+    const top = st[st.length - 1];
+    return top && top.c !== '{' ? top.line : -1;
+  }
+
   /* ---------- Growing a selection to whole statements ---------- */
 
   const PY_MORE = /^(?:elif\b|else\s*:|except\b|finally\s*:)/;
@@ -173,6 +194,9 @@
         // } else { … }, } catch …: the rest of the statement
         const n = nextSolid(to);
         if (lang !== 'css' && lang !== 'html' && n >= 0 && BRACE_MORE.test(lines[n].trim()) && ds[to].d <= 0) to = n;
+        // inside ( … ) or [ … ] opened on a line before it (a value over several lines: what a component shows,
+        // return ( <div> … ), or a call's inputs): the statement that holds it
+        if (/^(?:js|ts|tsx)$/.test(lang)) { const at = openedAt(lang, lines, from); if (at >= 0) from = at; }
       }
       if (lang === 'python') {
         // brackets carried over to the next lines
