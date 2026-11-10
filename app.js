@@ -6159,6 +6159,40 @@
     if (here) autosave();   // written to the folder, as any change is
     backups.due = false;   // it's a backup already
   }
+  /* About and licence: the version, the licence in plain words, and the full texts that ship with the app. */
+  const aboutTexts = {};
+  async function aboutText(file) {
+    if (aboutTexts[file] == null) {
+      try { const r = await fetch(file, { cache: 'no-store' }); aboutTexts[file] = r.ok ? await r.text() : null; } catch (_) { aboutTexts[file] = null; }
+    }
+    return aboutTexts[file];
+  }
+  async function showAboutTab(which) {
+    $('aboutTabLicence').setAttribute('aria-selected', String(which === 'licence'));
+    $('aboutTabNotices').setAttribute('aria-selected', String(which === 'notices'));
+    const file = which === 'licence' ? 'LICENSE' : 'THIRD-PARTY-NOTICES.md';
+    const t = await aboutText(file);
+    $('aboutText').textContent = t || `${file} isn't in this copy of IntuaCode. It's in the project's repository.`;
+    $('aboutText').scrollTop = 0;
+  }
+  async function openAbout() {
+    $('aboutModal').hidden = false;
+    $('aboutClose').focus();
+    let version = null;
+    for (const f of ['about.json', 'package.json']) {   // the built app has about.json; the repository, package.json
+      try { const r = await fetch(f, { cache: 'no-store' }); if (r.ok) { version = (await r.json()).version; break; } } catch (_) { /* not there */ }
+    }
+    $('aboutVersion').textContent = `IntuaCode${version ? ' ' + version : ''}${desk.on ? ', desktop app' : ''}. Code you can read is code you control.`;
+    showAboutTab('licence');
+  }
+  const closeAbout = () => { $('aboutModal').hidden = true; };
+  $('btnAbout').addEventListener('click', openAbout);
+  $('aboutClose').addEventListener('click', closeAbout);
+  $('aboutModal').addEventListener('click', (e) => { if (e.target.id === 'aboutModal') closeAbout(); });
+  $('aboutModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeAbout(); } });
+  $('aboutTabLicence').addEventListener('click', () => showAboutTab('licence'));
+  $('aboutTabNotices').addEventListener('click', () => showAboutTab('notices'));
+
   $('btnBackups').addEventListener('click', openBackups);
   $('bkClose').addEventListener('click', closeBackups);
   $('bkModal').addEventListener('click', (e) => {

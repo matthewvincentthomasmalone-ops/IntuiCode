@@ -2,8 +2,9 @@ name: Desktop app
 
 # Builds IntuaCode installers for Windows, macOS and Linux, from the version in src-tauri/tauri.conf.json.
 # Run it from the Actions tab ("Run workflow") on main, or push a tag like v0.4.0.
-# The installers are attached to a GitHub Release (pre-release) for that version, with SHA256SUMS.txt and
-# a provenance attestation each. (The public website is offline for now, so it isn't rebuilt: see pages.yml.)
+# The installers are attached to a draft GitHub Release for that version, with SHA256SUMS.txt and a
+# provenance attestation each. A draft is private (only the repository's owner sees it) until it's published
+# by hand. Each installer carries LICENSE (Business Source License 1.1) and THIRD-PARTY-NOTICES.md. (The public website is offline for now, so it isn't rebuilt: see pages.yml.)
 
 on:
   workflow_dispatch:
@@ -122,7 +123,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: "IntuaCode v__VERSION__"
           releaseBody: ${{ env.RELEASE_BODY }}
-          releaseDraft: false
+          releaseDraft: true   # private until published by hand on GitHub (Releases → Edit → Publish)
           prerelease: true
           args: ${{ matrix.args }} ${{ env.SIGN_ARGS }}
 
@@ -144,7 +145,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: "IntuaCode v__VERSION__"
           releaseBody: ${{ env.RELEASE_BODY }}
-          releaseDraft: false
+          releaseDraft: true   # private until published by hand on GitHub (Releases → Edit → Publish)
           prerelease: true
           args: ${{ matrix.args }} ${{ env.SIGN_ARGS }}
 
