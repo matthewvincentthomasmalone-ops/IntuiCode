@@ -3193,7 +3193,6 @@
       site.reload = false;
       site.mode = 'site';
       site.page = page;
-      site.missing = new Set();
       setFrame('site');
       $('preview').src = siteUrl(page);
       showAddress();
