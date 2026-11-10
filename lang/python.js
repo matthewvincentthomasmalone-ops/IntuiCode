@@ -368,6 +368,7 @@
       x.warn(`"${t}" starts like the phrase "${t.match(PHRASE_LEAD)[0].trim()}", so wherever it's used it could be read either way. A name like "${t.replace(PHRASE_LEAD, '')} ${t.match(PHRASE_LEAD)[0].trim().split(' ')[0]}" avoids that.`);
     }
     if (/\s/.test(t)) x.note(`Python names can't contain spaces, so "${t.toLowerCase()}" is written ${code(py)}.`);
+    else if (/-/.test(t)) x.note(`Python names can't contain -, so "${t}" is written ${code(py)}.`);
     return py;
   }
 
@@ -389,7 +390,7 @@
     if (!s) {
       s = { py, display: display.toLowerCase(), kind: kind || 'value', file: x.file, line: x.info.line, scope: where.startsWith('fn:') ? 'local' : 'module', kinds: {}, ...extra };
       env.syms.set(py, s);
-      if (/\s/.test(s.display)) env.multiDirty = true;
+      if (multiWord(s.display)) env.multiDirty = true;
     } else if ((s.kind === 'value' || s.kind === 'unknown') && kind && kind !== 'value') {
       s.kind = kind;
     }
@@ -418,12 +419,15 @@
   /* Set somewhere at the top of a file (not only inside tools)? */
   const atTop = (s, file) => !!s && !!s.kinds && Object.keys(s.kinds).some(w => w.startsWith('mod:') && (!file || w === `mod:${file}`));
 
+  /* A name of several words: "high score", or "high-score" (words joined by hyphens). Either is found when
+     it's said with spaces, _ or - between its words, but not " - " (that's taking away). */
+  const multiWord = (d) => /\s/.test(d) || /^[\p{XID_Start}_]\p{XID_Continue}*(?:-[\p{XID_Start}_]\p{XID_Continue}*)+$/u.test(d);
   function multiNames(env) {
     if (env.multiDirty || !env.multi) {
       env.multi = [...env.syms.values()]
-        .filter(s => /\s/.test(s.display))
+        .filter(s => multiWord(s.display))
         .sort((a, b) => b.display.length - a.display.length)
-        .map(s => ({ py: s.py, display: s.display, re: new RegExp('\\b' + s.display.split(/\s+/).map(esc).join('[\\s_-]+') + '\\b', 'gi') }));
+        .map(s => ({ py: s.py, display: s.display, re: new RegExp('(?<![\\p{L}\\p{N}_])' + s.display.split(/[\s-]+/).map(esc).join('(?:\\s+|[_-])') + '(?![\\p{L}\\p{N}_])', 'giu') }));
       env.multiDirty = false;
     }
     return env.multi;
@@ -535,6 +539,15 @@
     if (/["]/.test(q)) { x.err('A piece of text is missing its closing quote mark (").'); q = q.replace(/"/g, ''); }
     if (/(^|\s)'|'(\s|$)/.test(q)) { x.err("A piece of text is missing its closing quote mark (')."); }
 
+    // 1b. "high-score" is the name high_score when that's been set (Python would read it as high minus score).
+    //     When high and score are both names too, it could be either, so that's asked.
+    q = q.replace(/(?<![\p{XID_Continue}.⟦-])[\p{XID_Start}_]\p{XID_Continue}*(?:-[\p{XID_Start}_]\p{XID_Continue}*)+(?![\p{XID_Continue}-])/gu, (w, off, all) => {
+      const parts = w.split('-'), s = x.syms.get(parts.join('_'));
+      if (!s || s.kind === 'module') return w;
+      if (parts.every(p => x.syms.has(p))) x.err(`"${w}" could be the name ${code(s.py)} or ${parts.map(code).join(' minus ')}. Write ${s.py} for the name, or "${parts.join(' minus ')}" to take away.`);
+      else x.note(`Python names can't contain -, so "${w}" is written ${code(s.py)}.`);
+      return ' ' + s.py + (/^(?:[([]|\.[A-Za-z_])/.test(all.slice(off + w.length)) ? '' : ' ');
+    });
     // 2. Multi-word names -> snake_case names. Brackets or a .name right after one stay attached: all_notes().
     for (const m of multiNames(x.env)) q = q.replace(m.re, (w, off, all) => {
       // "length of rope" is a name, but also "length of" + rope when rope is a name too: two readings
