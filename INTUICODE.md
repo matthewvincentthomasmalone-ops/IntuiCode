@@ -1324,7 +1324,7 @@ An operand is a quoted text, a number or a name with any `.name`, `::name` or `-
 | 4 | `item K of X` | `X[K]` | `X[K]` |
 | 5 | `length of X`, `size of X` | `X.size()` | `X.length()` for text, `(sizeof(X) / sizeof(X[0]))` for a list |
 | 6 | `random number from A to B` | `random_number(A, B)` (a helper is added) | `random(A, B + 1)` |
-| 7 | `X as number` / `X as decimal` / `X as text` (also `as a whole number`, `as a decimal`) | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)`; a number: `static_cast<int>(X)` / `static_cast<double>(X)` | `X.toInt()` / `X.toFloat()` / `String(X)`; a number: the same casts |
+| 7 | `X as number` / `X as decimal` / `X as text` (also `as a whole number`, `as a decimal`) | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)`; a number: `static_cast<int>(X)` / `static_cast<double>(X)` | `X.toInt()` / `X.toFloat()` / `String(X)`; a number: `(int)X` / `(double)X` |
 | 8 | `X squared` | `(X * X)` | `(X * X)` |
 | 9 | `[not] S is even`, `S is odd` (`is not`, `isn't`); a sum before it is checked whole | `(S) % 2 == 0`, `… != 0` | the same |
 | 10 | `is not`, `isn't`; `is at least`; `is at most`; `is greater than`; `is less than`; `is`, `equals` | `!=`, `>=`, `<=`, `>`, `<`, `==` | the same |

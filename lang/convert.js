@@ -1276,7 +1276,7 @@
           if (/^random number from /.test(l) && L.type === 'call_expression') l = `(${l})`;
           if (/^random number from /.test(r) && R.type === 'call_expression') r = `(${r})`;
           // "a plus b as text" could be (a plus b) as text: brackets round the value it goes with
-          if (/^[-+*/%]$/.test(op) && / as (?:text|a decimal|a whole number)$/.test(r) && R.type === 'call_expression' && !(op === '+' && / as text$/.test(r) && plainLit(L))) r = `(${r})`;
+          if (/^[-+*/%]$/.test(op) && / as (?:text|a decimal|a whole number)$/.test(r) && (R.type === 'call_expression' || R.type === 'cast_expression') && !(op === '+' && / as text$/.test(r) && plainLit(L))) r = `(${r})`;
           return `${l} ${CPP_OPS[op] || op} ${r}`;
         }
         case 'unary_expression': { const op = F(n, 'operator').type, a = ex(F(n, 'argument')); return a == null ? null : op === '!' ? `not ${a}` : `${op}${a}`; }
@@ -1314,7 +1314,7 @@
           // a value as another kind: "t as text", "reading as a decimal" (String(t), std::to_string, static_cast, toInt…)
           if (args.length === 1 && opd(args[0]) && args[0] !== 'the built-in light') {
             if (arduino ? f === 'String' : f === 'std::to_string' || (usingStd && f === 'to_string')) return `${args[0]} as text`;
-            const cast = fn.type === 'template_function' && collapse(fn.text).match(/^static_cast\s*<\s*(int|double)\s*>$/);
+            const cast = !arduino && fn.type === 'template_function' && collapse(fn.text).match(/^static_cast\s*<\s*(int|double)\s*>$/);
             if (cast) return `${args[0]} as ${cast[1] === 'int' ? 'a whole number' : 'a decimal'}`;
             if (!arduino && (/^std::sto[id]$/.test(f) || (usingStd && /^sto[id]$/.test(f)))) return `${args[0]} as ${/i$/.test(f) ? 'a whole number' : 'a decimal'}`;
           }
@@ -1332,6 +1332,12 @@
             if (!args.some(x => /\b(?:and|with)\b|,/.test(outside(x)))) return `(the result of ${name} with ${args.join(', ')})`;
           }
           return `${f}(${args.join(', ')})`;
+        }
+        // Arduino's (int)t: "t as a whole number" ((double)t: "as a decimal")
+        case 'cast_expression': {
+          const t = collapse(F(n, 'type') ? F(n, 'type').text : ''), v = ex(F(n, 'value'));
+          if (arduino && /^(?:int|double)$/.test(t) && opd(v) && v !== 'the built-in light') return `${v} as ${t === 'int' ? 'a whole number' : 'a decimal'}`;
+          return n.text.includes('\n') ? null : n.text;
         }
         case 'subscript_expression': {
           // history[i]: "item i of history"

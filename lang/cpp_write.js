@@ -150,6 +150,10 @@
     if (x.arduino && /^(?:map|constrain)\([^()]*(?:\([^()]*\)[^()]*)*\)$/.test(t)) return 'int';
     if (x.arduino && /^(?:LED_BUILTIN|A\d+|HIGH|LOW)$/.test(t)) return 'int';
     if (/^std::stod\(|\.toFloat\(\)$/.test(t)) return 'double';
+    // a cast is the type it casts to: (int)t, static_cast<double>(n)
+    const sc = t.match(/^static_cast<\s*(int|long|double|float)\s*>/);
+    if (sc && wholeCall(t, sc[0])) return sc[1];
+    if ((m => m && m[1])(t.match(/^\((int|long|double|float)\)\s*[A-Za-z_\d][\w.]*$/))) return t.match(/^\((\w+)\)/)[1];
     if (/^[A-Za-z_]\w*$/.test(t) && x.types[t]) return x.types[t];
     const ids = t.match(/[A-Za-z_]\w*/g) || [];
     if (ids.length && /[-+*/%]/.test(t) && ids.every(i => x.types[i] === 'int' || x.types[i] === 'double')) return ids.some(i => x.types[i] === 'double') || /\d\.\d/.test(t) ? 'double' : 'int';
@@ -369,12 +373,13 @@
     });
     // "as a whole number": text is read as one (stoi); a number is cut to its whole part (a cast)
     const numeric = (a) => /^-?\d+(?:\.\d+)?$/.test(a) || /^(?:(?:unsigned|signed|long|short|const)\s+)*(?:int|long|short|double|float|size_t|unsigned|byte|u?int\d+_t)$/.test((x.types[a] || '').trim());
+    // (a number on a board is cast the way sketches usually write it: (int)t)
     swap(String.raw`(OPD) as (?:a )?(?:whole )?number\b`, (m, a) => {
-      if (numeric(a)) { note(inf, `\`static_cast<int>\` keeps the whole part of ${code(a)} (2.7 becomes 2).`); return `static_cast<int>(${a})`; }
+      if (numeric(a)) { note(inf, `\`${x.arduino ? '(int)' : 'static_cast<int>'}\` keeps the whole part of ${code(a)} (2.7 becomes 2).`); return x.arduino ? `(int)${a}` : `static_cast<int>(${a})`; }
       if (x.arduino) return `${a}.toInt()`;
       note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`;
     });
-    swap(String.raw`(OPD) as (?:a )?decimal\b`, (m, a) => (numeric(a) ? `static_cast<double>(${a})` : x.arduino ? `${a}.toFloat()` : `std::stod(${a})`));
+    swap(String.raw`(OPD) as (?:a )?decimal\b`, (m, a) => (numeric(a) ? (x.arduino ? `(double)${a}` : `static_cast<double>(${a})`) : x.arduino ? `${a}.toFloat()` : `std::stod(${a})`));
     swap(String.raw`(OPD) as text\b`, x.arduino ? 'String($1)' : 'std::to_string($1)');
     swap(String.raw`(OPD) squared\b`, '($1 * $1)');
     // "is even" / "is odd": the remainder after dividing by 2. A sum before it is checked as a whole: "n plus 1 is even" is (n + 1) % 2 == 0.
