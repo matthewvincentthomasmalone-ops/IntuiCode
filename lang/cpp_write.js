@@ -321,7 +321,7 @@
     if (/^millis\(\)$|^pulseIn\(/.test(t)) return 'unsigned long';
     if (x.arduino && /^(?:map|constrain)\([^()]*(?:\([^()]*\)[^()]*)*\)$/.test(t)) return 'int';
     if (x.arduino && /^(?:LED_BUILTIN|A\d+|HIGH|LOW)$/.test(t)) return 'int';
-    if (/^std::stod\(|\.toFloat\(\)$/.test(t) || (/^(?:std::)?sqrt\(/.test(t) && wholeCall(t, t.match(/^(?:std::)?sqrt/)[0]))) return 'double';
+    if (/^std::stod\(|\.toFloat\(\)$/.test(t) || (/^(?:std::)?(?:sqrt|pow)\(/.test(t) && wholeCall(t, t.match(/^(?:std::)?(?:sqrt|pow)/)[0]))) return 'double';
     // a cast is the type it casts to: (int)t, static_cast<double>(n)
     const sc = t.match(/^static_cast<\s*(int|long|double|float)\s*>/);
     if (sc && wholeCall(t, sc[0])) return sc[1];

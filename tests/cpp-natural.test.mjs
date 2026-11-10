@@ -100,7 +100,7 @@ const CASES = [
   ['a ; at the end, and set … =', 'cpp', 'set x = 5;\nshow x;', [/int x = 5;\n/, /std::cout << x << std::endl;/], [], 'A sentence needs no ; at the end: the C++ line gets its own.'],
   ['a list in square brackets', 'cpp', 'set nums to [1, 2, 3]', [], ['A list in [square brackets] isn\'t a C++ value. Make it with: make a list called nums with 1, 2, 3.']],
   ['a currency sign after the number', 'cpp', 'set price to 5.99$\nset fee to 2€', [/double price = 5\.99;/, /int fee = 2;/]],
-  ['a power', 'cpp', 'set x to 3\nset a to x to the power of 2\nset b to (x plus 1) to the power of 3\nset c to 2 times x to the power of 2', [/#include <cmath>/, /double a = std::pow\(x, 2\);|auto a = std::pow\(x, 2\);/, /std::pow\(x \+ 1, 3\)/, /2 \* std::pow\(x, 2\)/]],
+  ['a power', 'cpp', 'set x to 3\nset a to x to the power of 2\nset b to (x plus 1) to the power of 3\nset c to 2 times x to the power of 2', [/#include <cmath>/, /double a = std::pow\(x, 2\);/, /std::pow\(x \+ 1, 3\)/, /2 \* std::pow\(x, 2\)/]],
   ['… ^ and ** aren\'t one', 'cpp', 'set x to 3\nset y to x^2\nset z to 2 ** 3', [],
     ['In C++, ^ is exclusive-or on bits (2 ^ 3 is 1), not a power. For a power, say "x to the power of 2".', 'C++ has no ** for a power. Say "2 to the power of 3".']],
   ['… n ^ 3 with spaces is exclusive-or, with a note', 'cpp', 'set n to 6\nshow n ^ 3', [/std::cout << \(n \^ 3\) << std::endl;/], [], 'In C++, ^ is exclusive-or on bits (2 ^ 3 is 1), not a power. For a power, say "n to the power of 3".'],
