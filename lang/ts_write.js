@@ -201,7 +201,7 @@
     const OWN = /^(?:define (?:shared )?(?:shape|type) |bring in the types? |share )/i;
     // React's sentences make no names these sentences learn their own way (see names)
     // (not JavaScript's "keep track of the keys" or "take x out of group y")
-    const REACT_OWN = /^(?:define (?:shared |main )?component |(?:shared )?constant \S+ is a component\b|keep (?!track of )|show$|when \S+ (?:first appears|goes away)|whenever |change \S+ (?:to|from) |take (?!.+ out of group ))/i;
+    const REACT_OWN = /^(?:define (?:shared |main )?component |(?:shared )?constant \S+ is a component\b|keep (?!track of )|show(?:$|:\s)|when \S+ (?:first appears|goes away)|whenever |change \S+ (?:to|from) |take (?!.+ out of group ))/i;
     const plain = (s) => {
       const t = String(s).replace(/[.:]$/, '');
       if (OWN.test(t) || REACT_OWN.test(t)) return '';
@@ -219,7 +219,7 @@
         const pad = c.pad + '  ';
         let m;
         if ((m = raw.match(/^\s*(?:js|javascript|raw)\s*:\s?(.*)$/i))) { note(inf, 'Raw TypeScript: copied exactly as written.'); c.push(pad + m[1], k); continue; }
-        if ((m = t.match(/^(?:note|comment)\s*:\s*(.*)$/i))) { c.push(pad + '// ' + m[1], k); continue; }
+        if ((m = raw.trim().match(/^(?:note|comment)\s*:\s*(.*)$/i))) { c.push(pad + '// ' + m[1], k); continue; }
         if ((m = t.match(new RegExp(`^(read-only\\s+)?(${NAME})\\s+is\\s+(.+?)(,\\s*if any)?$`, 'i')))) {
           const errs = [];
           const ts = typeTs(m[3], 'arg', errs);
@@ -236,7 +236,8 @@
     /* ---------- Phrase packs as values: Supabase queries, TanStack Query ---------- */
 
     const Q = String.raw`(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`;
-    const SUPA = new RegExp(String.raw`^(every row of|the (${Q}) of every row of|adding (.+?) to|changing (.+?) in|adding or replacing (.+?) in|deleting from) the (${Q}) table in (${NAME})((?: .*)?)$`, 'i');
+    let linedInf = null;   // the info of the line whose query goes on over the line under it (see queryOnLines)
+    const SUPA =new RegExp(String.raw`^(every row of|the (${Q}) of every row of|adding (.+?) to|changing (.+?) in|adding or replacing (.+?) in|deleting from) the (${Q}) table in (${NAME})((?: .*)?)$`, 'i');
     const SUPA_NEXT = / (?:where|sorted by|at most)\s| (?:giving back the result|as a single row|as one row or none)(?=$| )/i;
     function packValue(s, inf, E) {
       let m;
@@ -268,7 +269,9 @@
       const lb = topIndex(s, / loaded by /);
       if ((m = s.match(/^the query (.+) loaded by (.+)$/i)) && lb) {
         note(inf, '`useQuery` loads data and keeps it: the query key names it (so it is loaded once and shared), the function loads it.');
-        return `useQuery({ queryKey: ${E(s.slice('the query '.length, lb.at))}, queryFn: ${E(s.slice(lb.end))} })`;
+        const key = E(s.slice('the query '.length, lb.at)), fn = E(s.slice(lb.end));
+        // "loaded by …" on the line under it: one part per line, as the sentences have it
+        return inf && inf === linedInf ? `useQuery({\n  queryKey: ${key},\n  queryFn: ${fn},\n})` : `useQuery({ queryKey: ${key}, queryFn: ${fn} })`;
       }
       if ((m = s.match(/^a change made by (.+)$/i))) {
         note(inf, '`useMutation` makes a change (saving, deleting…) the page can run with `.mutate(…)`.');
@@ -300,13 +303,15 @@
       let m = s.match(new RegExp(`^define (?:(shared|main) )?component (${NAME})(.*)$`, 'i')), arrow = false;
       if (!m) { m = s.match(new RegExp(`^(?:(shared) )?constant (${NAME}) is a component(.*)$`, 'i')); arrow = true; }
       if (!m) return null;
-      let rest = m[3], showing = false, type = null, list = null;
-      if (arrow && /,\s*showing$/i.test(rest)) { showing = true; rest = rest.replace(/,\s*showing$/i, ''); }
+      let rest = m[3], showing = false, type = null, list = null, one = null;
+      // ", showing:" with what it shows under it, or after it on the same line (", showing: a paragraph saying "Hi"")
+      const sh = arrow ? topIndex(rest, /,\s*showing(?::\s*|$)/i) : null;
+      if (sh) { showing = true; one = rest.slice(sh.end).trim() || null; rest = rest.slice(0, sh.at); }
       const from = topIndex(rest, /\s+from\s+(?=\S+$)/);
       if (from) { type = rest.slice(from.end).trim(); rest = rest.slice(0, from.at); }
       const u = rest.match(/^\s+using\s+(.+)$/i);
       if (u) list = u[1]; else if (rest.trim()) return { bad: `I don't understand "${rest.trim()}" here. ${PROPS_HELP}` };
-      return { exp: m[1] ? m[1].toLowerCase() : null, name: m[2], arrow, showing, type, list };
+      return { exp: m[1] ? m[1].toLowerCase() : null, name: m[2], arrow, showing, one, type, list };
     }
 
     /* The words for an event -> the prop's name: clicked -> onClick, "checked changes" -> onCheckedChange. */
@@ -420,7 +425,7 @@
           ticks += (m[1].replace(/\\./g, '').match(/`/g) || []).length;
           return [{ text: m[1], src: n.k, raw: true, keep }, ...n.kids.flatMap(k => render(k, level))];
         }
-        if ((m = t.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return block(`{/* ${m[1]} */}`);
+        if ((m = n.t.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return block(`{/* ${m[1]} */}`);
         if (/^a space$/i.test(t)) { note(inf, '`{" "}` is a space JSX keeps (a space at the end of a line in JSX is left out).'); return block('{" "}'); }
         if (QUOTED.test(t)) {
           const ps = runPieces(t);
@@ -477,10 +482,17 @@
         const settings = [];
         let head = parts[0];
         for (let k = 1; k < parts.length; k++) {
-          if (SET.test(parts[k])) settings.push(parts[k]);
-          else if (settings.length) settings[settings.length - 1] += ', ' + parts[k];
+          if (SET.test(parts[k])) settings.push({ t: parts[k], inf, k: n.k });
+          else if (settings.length) settings[settings.length - 1].t += ', ' + parts[k];
           else head += ', ' + parts[k];
         }
+        // settings on lines of their own, first under it: the tag is written with one setting per line too
+        let ownLines = 0;
+        while (ownLines < n.kids.length && SET.test(n.kids[ownLines].t) && !n.kids[ownLines].kids.length) {
+          const kn = n.kids[ownLines++];
+          settings.push({ t: kn.t, inf: c.info[kn.k], k: kn.k, line: true });
+        }
+        const kidsOf = n.kids.slice(ownLines);
         const hm = head.match(/^(?:(?:a|an)\s+)?(.+?)(?:\s+(to|of)\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'))?(?:\s+saying\s+(.+))?$/i);
         if (!hm) { err(inf, 'I don\'t recognise this. What a component shows is one thing per line: an element ("a button saying "Save""), text in quotes, {a value}, "only if …", "if …", "for each …".'); return [{ text: `{/* ??? ${n.t} */}`, src: n.k }]; }
         let word = hm[1], tag = null;
@@ -502,39 +514,47 @@
           if (!nm) err(inf, `"${hm[2]} …" goes with a link ("a link to "/about""), a picture ("a picture of "logo.png"") or a component's address ("a Link to "/about"").`);
           else attrs.push(`${nm}=${hm[3]}`);
         }
-        for (const st of settings) {
+        const srcs = attrs.map(() => n.k);   // the sentence line each setting is said on
+        const setting = (st) => {
+          const inf = st.inf, t = st.t;
           let m;
           // Tailwind classes in words: styled as flexible layout, items centred, gap 2, "hover:bg-accent"
-          if ((m = st.match(/^styled as\s+(.+)$/i))) {
+          if ((m = t.match(/^styled as\s+(.+)$/i))) {
             const errs = [], cls = tailwindClasses(m[1], errs);
             errs.forEach(e => err(inf, e));
             note(inf, `Tailwind classes, one for each style said: \`className="${cls || '…'}"\`. Tailwind turns each class into a CSS rule.`);
             attrs.push(`className="${cls || ''}"`);
-            continue;
+            return;
           }
-          if ((m = st.match(/^styled\s+(.+)$/i))) { const v = m[1].trim(), b = braced(v); attrs.push(QUOTED.test(v) ? `className=${v}` : b && !b.rest.trim() ? `className={${c.E(b.inner)}}` : (err(inf, 'Its style is text in quotes (styled "p-4 rounded"), or a value in braces (styled {…}).'), 'className=""')); continue; }
-          if ((m = st.match(/^keyed by\s+(.+)$/i))) { attrs.push(`key={${c.E(m[1])}}`); continue; }
-          if ((m = st.match(/^running\s+(.+?)\s+when\s+(.+)$/i))) { const ev = eventProp(m[2]); if (!ev) err(inf, `I don't know the event "${m[2]}".`); attrs.push(`${ev || 'onClick'}={${c.E(m[1])}}`); continue; }
-          if ((m = st.match(new RegExp(`^when\\s+(.+?)(?:\\s+with\\s+(${NAME}))?:\\s*(.+)$`, 'i')))) {
+          if ((m = t.match(/^styled\s+(.+)$/i))) { const v = m[1].trim(), b = braced(v); attrs.push(QUOTED.test(v) ? `className=${v}` : b && !b.rest.trim() ? `className={${c.E(b.inner)}}` : (err(inf, 'Its style is text in quotes (styled "p-4 rounded"), or a value in braces (styled {…}).'), 'className=""')); return; }
+          if ((m = t.match(/^keyed by\s+(.+)$/i))) { attrs.push(`key={${c.E(m[1])}}`); return; }
+          if ((m = t.match(/^running\s+(.+?)\s+when\s+(.+)$/i))) { const ev = eventProp(m[2]); if (!ev) err(inf, `I don't know the event "${m[2]}".`); attrs.push(`${ev || 'onClick'}={${c.E(m[1])}}`); return; }
+          if ((m = t.match(new RegExp(`^when\\s+(.+?)(?:\\s+with\\s+(${NAME}))?:\\s*(.+)$`, 'i')))) {
             const ev = eventProp(m[1]);
             if (!ev) err(inf, `I don't know the event "${m[1]}".`);
             const step = stepCode(m[3].trim(), c, inf, m[2]);
             note(inf, `\`${ev || 'on…'}={(${m[2] || ''}) => …}\`: a little tool React runs ${ev ? 'each time it is ' + m[1].trim() : 'then'}.`);
             attrs.push(`${ev || 'onClick'}={(${m[2] || ''}) => ${step == null ? 'undefined' : step}}`);
-            continue;
+            return;
           }
-          if ((m = st.match(/^with everything in\s+(.+)$/i))) { attrs.push(`{...${c.E(m[1])}}`); continue; }
-          if ((m = st.match(/^with\s+([A-Za-z_$][\w$-]*)(?:\s+(.+))?$/i))) {
+          if ((m = t.match(/^with everything in\s+(.+)$/i))) { attrs.push(`{...${c.E(m[1])}}`); return; }
+          if ((m = t.match(/^with\s+([A-Za-z_$][\w$-]*)(?:\s+(.+))?$/i))) {
             const v = m[2] != null ? m[2].trim() : null, b = v != null ? braced(v) : null;
             if (v == null) attrs.push(m[1]);
             else if (QUOTED.test(v)) attrs.push(`${m[1]}=${v}`);
             else if (b && !b.rest.trim()) attrs.push(`${m[1]}={${c.E(b.inner)}}`);
             else { err(inf, `The value of ${code(m[1])} is text in quotes, or a value in braces: with ${m[1]} {…}.`); attrs.push(m[1]); }
-            continue;
           }
-        }
+        };
+        for (const st of settings) { setting(st); while (srcs.length < attrs.length) srcs.push(st.k); }
+        if (ownLines) note(inf, 'Its settings are on lines of their own, under it: the tag has one setting per line too.');
         if (tag === '' && attrs.length) err(inf, '"together" (a fragment) takes no settings.');
+        // the tag's opening: on one line, or (settings on lines of their own) "<Tag", a setting per line, then > or />
+        const lined = ownLines > 0 && tag !== '';
+        const opening = (end) => (lined ? [{ text: `<${tag}`, src: n.k }, ...attrs.map((a, k) => ({ text: a, src: srcs[k], d: 1 })), { text: end, src: n.k }] : [{ text: `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}${end === '/>' ? ' />' : '>'}`, src: n.k }]);
         const open = tag === '' ? '<>' : `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`, close = tag === '' ? '</>' : `</${tag}>`;
+        // (a tag on several lines with the rest after its >: the last line of the opening gets it)
+        const ending = (rest) => { const o = opening('>'); o[o.length - 1] = { ...o[o.length - 1], text: o[o.length - 1].text + rest }; return o; };
         // what's inside: "saying …" on the line, or the lines under it
         let kids = [];
         if (hm[4] != null) {
@@ -542,19 +562,20 @@
           if (QUOTED.test(v)) { const ps = runPieces(v); if (!ps) err(inf, 'A { in this text isn\'t closed.'); kids = [{ text: (ps || []).map(p => (p.fill != null ? `{${c.E(p.fill)}}` : jsxTextOf(p.text))).join(''), src: n.k, run: ps || [] }]; }
           else if (b && !b.rest.trim()) kids = [{ text: `{${c.E(b.inner)}}`, src: n.k }];
           else err(inf, 'What it says is text in quotes ("Save") or a value in braces ({title}).');
-          if (n.kids.length) err(inf, 'It says something already ("saying …"), so put what goes inside it on the lines under it instead.');
-          return [{ text: open + kids.map(k => k.text).join('') + close, src: n.k }];
+          if (kidsOf.length) err(inf, 'It says something already ("saying …"), so put what goes inside it on the lines under it instead.');
+          return lined ? ending(kids.map(k => k.text).join('') + close) : [{ text: open + kids.map(k => k.text).join('') + close, src: n.k }];
         }
-        const inner = list(n.kids, level + 1);
-        if (!inner.length) return [{ text: tag === '' ? '<></>' : `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''} />`, src: n.k }];
+        const inner = list(kidsOf, level + 1);
+        if (!inner.length) return tag === '' ? [{ text: '<></>', src: n.k }] : opening('/>');
         // spaces at the edge of a text keep everything on one line (JSX drops them at a line's ends)
         const edge = inner.some(o => o.run && o.run.length && ((o.run[0].text != null && /^\s/.test(o.run[0].text)) || (o.run[o.run.length - 1].text != null && /\s$/.test(o.run[o.run.length - 1].text))));
         if (edge) {
-          let one = open;
+          let one = '';
           for (const o of inner) one += o.raw ? '\n' + o.text : o.text;
-          return (one + close).split('\n').map((l, i) => ({ text: l, src: n.k }));
+          if (lined) { const ls = (one + close).split('\n'); return [...ending(ls[0]), ...ls.slice(1).map(l => ({ text: l, src: n.k }))]; }
+          return (open + one + close).split('\n').map((l, i) => ({ text: l, src: n.k }));
         }
-        return [{ text: open, src: n.k }, ...inner.map(ind), { text: close, src: n.k }];
+        return [...opening('>'), ...inner.map(ind), { text: close, src: n.k }];
       }
       for (const o of list(nodes, 0)) out.push(o);
       return out;
@@ -570,6 +591,17 @@
       c.push(c.pad + tail, c.i);
     }
 
+    /* An element said after "show:" (or ", showing:") on its line: on one line of code when it fits on one, in
+       brackets over several otherwise. */
+    function oneJsx(c, words, lead, tail) {
+      if (blockEnd(c.lines, c.i) > c.i) err(c.inf, 'What it shows goes after "show:" or on the lines under it, not both.');
+      const lines = jsx(c, [{ k: c.i, ind: 0, raw: words, t: words, kids: [] }]);
+      if (lines.length === 1 && !lines[0].raw) { c.say(lead + lines[0].text + tail); return; }
+      c.push(c.pad + lead + '(', c.i);
+      for (const o of lines) c.push(o.keep ? o.text : c.pad + '  ' + '  '.repeat(o.d || 0) + o.text, o.src);
+      c.push(c.pad + ')' + tail, c.i);
+    }
+
     function reactLine(s, c) {
       const inf = c.inf;
       let m;
@@ -583,6 +615,7 @@
         const params = pr ? pr.code + (h.type ? ': ' + h.type : '') : '';
         const exp = h.exp ? EXPORT_WORD[h.exp] : '';
         note(inf, `A component is a tool that gives back what to show (JSX). React runs it again whenever its props or its state change.${pr ? ` Its props come in as one object, taken apart here: ${code(pr.code)}.` : ''}`);
+        if (h.showing && h.one) { oneJsx(c, h.one, `${exp}const ${h.name} = (${params}) => `, ';'); return true; }
         if (h.showing) {
           const j = blockEnd(c.lines, c.i);
           pushJsx(c, c.i + 1, j, `${exp}const ${h.name} = (${params}) => (`, ');');
@@ -591,6 +624,13 @@
         }
         c.open(h.arrow ? `${exp}const ${h.name} = (${params}) => {` : `${exp}function ${h.name}(${params}) {`, h.arrow ? '};' : '}', 'fn', { def: true });
         if (pr) pr.names.forEach(n => c.declare(n, 'const'));
+        return true;
+      }
+      // show: an element said on the same line, given back on one line: return <p>Loading…</p>;
+      if ((m = s.match(/^show:\s+(\S.*)$/i))) {
+        if (!c.insideFn()) err(inf, '"show:" goes inside a component: what it shows.');
+        note(inf, '`return <…>;` gives back what the component shows, written in JSX, on one line as the sentence is.');
+        oneJsx(c, m[1], 'return ', ';');
         return true;
       }
       if (/^show$/i.test(s) && /:\s*$/.test(c.raw)) {
@@ -703,7 +743,36 @@
       return undefined;
     }
 
-    function line(s, c) {
+    /* A sentence whose last value is a TanStack query, with what loads it on the line under it:
+         take data and isLoading from the query ["notes"]
+             loaded by fetchNotes
+       is that sentence with "loaded by fetchNotes" at its end, and its code is one part per line. -> the sentence
+       joined up, or null. */
+    function queryOnLines(s, c) {
+      const j = blockEnd(c.lines, c.i);
+      if (j === c.i || !/\bthe query\b/i.test(s)) return null;
+      const under = [];
+      for (let k = c.i + 1; k <= j; k++) if (c.lines[k].trim()) under.push(k);
+      const m = under.length === 1 ? c.lines[under[0]].trim().replace(/[.]$/, '').match(/^loaded by\s+(.+)$/i) : null;
+      if (!m) return null;
+      const mk = mask(s);
+      let at = -1;
+      for (const x of mk.matchAll(/(?:^| )the query (?=\S)/gi)) at = x.index;
+      if (at < 0 || / loaded by /i.test(mk.slice(at))) return null;
+      note(c.info[under[0]], 'What loads the query, on a line of its own: the code has each part of the query on a line of its own too.');
+      c.skip(j);
+      linedInf = c.inf;
+      return `${s} loaded by ${m[1]}`;
+    }
+
+    function line(s0, c) {
+      const joined = queryOnLines(s0, c), s = joined || s0;
+      const r = lineOf(s, c);
+      // (a sentence these sentences write: the joined one)
+      return joined && r === false ? { s } : r;
+    }
+
+    function lineOf(s, c) {
       const r = reactLine(s, c);
       if (r !== undefined) return r;
       const errs = [];
@@ -879,7 +948,8 @@
       }
     }
 
-    return { plain, names, line, expr };
+    // parens: a little function's one input in brackets, (n) => …, as Prettier writes TypeScript
+    return { plain, names, line, expr, parens: typed };
   }
 
   /* ---------- Phrase pack: Tailwind classes in words ---------- */
@@ -968,12 +1038,81 @@
   const EXTS = {};
   const extFor = (lang) => (EXTS[lang] = EXTS[lang] || ext(lang));
 
+  /* An if with its one step on its own line, as the code has it: "if error, fail with error as it is" is
+     if (error) throw error;. The step is a sentence that can't be part of a value, so the comma before it can't be
+     part of the test ("if the result of f with a, b, give back c" tests f(a, b)). */
+  const IF_STEP = /^(?:give back(?:\s|$)|fail with\s|stop the loop$|skip to next$|run\s|show:\s|change\s\S+\s(?:from\s\S+\s)?to\s)/i;
+  /* -> { test, step } for "if test, step" on one line, or null. */
+  function oneLineIf(t) {
+    const m = t.match(/^if\s+(.+)$/i);
+    if (!m) return null;
+    const mk = mask(m[1]);
+    for (const x of mk.matchAll(/,\s+/g)) {
+      const step = m[1].slice(x.index + x[0].length).replace(/[.]$/, ''), test = m[1].slice(0, x.index).trim();
+      if (test && IF_STEP.test(step) && !oneLineIf(step)) return { test, step };
+    }
+    return null;
+  }
+  /* The sentences with each one-line if as the if and its step under it (what compileJs writes), and where each
+     came from: back[n] is the line of the text for line n; joins: the if lines whose code goes back on one line. */
+  function splitIfs(lines) {
+    const out = [], back = [], joins = [];
+    lines.forEach((l, i) => {
+      const t = l.trim(), pad = l.match(/^\s*/)[0];
+      let nx = i + 1;
+      while (nx < lines.length && !lines[nx].trim()) nx++;
+      const under = nx < lines.length && lines[nx].match(/^\s*/)[0].length > pad.length;
+      const p = !/^(?:js|ts|tsx|javascript|raw|note|comment)\s*:/i.test(t) && !under ? oneLineIf(t) : null;
+      if (!p) { out.push(l); back.push(i); return; }
+      joins.push(out.length);
+      out.push(`${pad}if ${p.test}`, `${pad}    ${p.step}`);
+      back.push(i, i);
+    });
+    return { lines: out, back, joins };
+  }
+  /* The code for each one-line if put back on one line (if (c) step;), and the result's lines and info for the
+     text as it was. */
+  function joinIfs(r, n, back, joins) {
+    const out = [];
+    for (let k = 0; k < r.lines.length; k++) {
+      const o = r.lines[k];
+      if (joins.includes(o.src) && /\{$/.test(o.text)) {
+        const step = r.lines[k + 1], end = r.lines[k + 2];
+        if (step && end && step.src === o.src + 1 && end.src === o.src && (!r.lines[k + 3] || r.lines[k + 3].src !== o.src + 1) && /^\s*\}$/.test(end.text) && /^\s*if \(.*\) \{$/.test(o.text)) {
+          out.push({ ...o, text: `${o.text.slice(0, -2)} ${step.text.trim()}` });
+          k += 2;
+          continue;
+        }
+      }
+      out.push(o);
+    }
+    const info = Array.from({ length: n }, (_, i) => ({ line: i, py: [], notes: [], warns: [], errs: [] }));
+    r.info.forEach((inf, e) => {
+      const to = info[back[e]];
+      for (const key of ['notes', 'warns', 'errs']) for (const s of inf[key] || []) if (!to[key].includes(s)) to[key].push(s);
+      for (const key of Object.keys(inf)) if (!(key in to)) to[key] = inf[key];
+    });
+    const lines = out.map(o => ({ ...o, src: o.src >= 0 ? back[o.src] : o.src }));
+    lines.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
+    // the text, as compileJs makes it (blank lines that are exact code's own kept as they are)
+    const runs = [];
+    for (const o of lines) {
+      if (o.kept) runs.push('');
+      else if (Array.isArray(runs[runs.length - 1])) runs[runs.length - 1].push(o.text);
+      else runs.push([o.text]);
+    }
+    return { ...r, lines, info, text: runs.map(x => (Array.isArray(x) ? x.join('\n').replace(/\n{3,}/g, '\n\n') : x)).join('\n') + '\n' };
+  }
+
   function compileTs(sec, shared, opts = {}) {
     const lang = opts.lang || 'ts';
     // exact lines (ts: / tsx:) are given to the JavaScript writer as its own exact lines, which it copies as written
     const RAW = lang === 'tsx' ? /^(\s*)(?:tsx|ts)\s*:/i : lang === 'ts' ? /^(\s*)ts\s*:/i : null;
-    const text = RAW ? String(sec.text).split('\n').map(l => l.replace(RAW, '$1js:')).join('\n') : String(sec.text);
-    const r = root.IntuiWeb.compileJs({ ...sec, text }, shared || freshShared(), extFor(lang));
+    const given = RAW ? String(sec.text).split('\n').map(l => l.replace(RAW, '$1js:')) : String(sec.text).split('\n');
+    // (TypeScript: an if with its step on its line is written as the if with the step under it, then put back on one line)
+    const sp = lang !== 'js' ? splitIfs(given) : null;
+    let r = root.IntuiWeb.compileJs({ ...sec, text: (sp ? sp.lines : given).join('\n') }, shared || freshShared(), extFor(lang));
+    if (sp && sp.joins.length) r = joinIfs(r, given.length, sp.back, sp.joins);
     if (lang !== 'js') for (const inf of r.info) inf.notes = inf.notes.map(n => (n === 'Raw JavaScript: copied exactly as written.' ? 'Raw TypeScript: copied exactly as written.' : n));
     return r;
   }

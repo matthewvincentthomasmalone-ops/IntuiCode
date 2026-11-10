@@ -1589,6 +1589,61 @@
   const nest = (o, c) => { let s = `[^${o}${c}]*`; for (let i = 0; i < 3; i++) s = `(?:[^${o}${c}]|${o}${s}${c})*`; return o + s + c; };
   const PAREN = nest('\\(', '\\)'), SQUARE = nest('\\[', '\\]');
 
+  /* Where the bracket (or quote) at code[at] ends: the index just after it, or -1. Quotes and template literals
+     inside count as text. */
+  function skipOver(code, at) {
+    const open = code[at];
+    if (open === '"' || open === "'" || open === '`') {
+      for (let k = at + 1; k < code.length; k++) { if (code[k] === '\\') k++; else if (code[k] === open) return k + 1; }
+      return -1;
+    }
+    const close = { '(': ')', '[': ']', '{': '}' }[open];
+    for (let k = at + 1; k < code.length; k++) {
+      const c = code[k];
+      if (c === close) return k + 1;
+      if ('"\'`([{'.includes(c)) { const e = skipOver(code, k); if (e < 0) return -1; k = e - 1; }
+      else if (')]}'.includes(c)) return -1;
+    }
+    return -1;
+  }
+  /* Is this code one name (or text in quotes) with only .names, calls, indexes and TypeScript's ! after it, like
+     notes.filter(n => n.done) or document.getElementById("root")!? Nothing around such a value binds tighter, so it
+     never needs brackets of its own: (notes.filter(…)).length is notes.filter(…).length. */
+  function chainCode(code) {
+    const s = String(code).trim();
+    let k;
+    const id = s.match(/^[A-Za-z_$][\w$]*/);
+    if (id) { if (/^(?:new|await|typeof|void|delete|function|async|class|yield|in|of|instanceof)$/.test(id[0])) return false; k = id[0].length; }
+    else if (/^["'`]/.test(s)) { k = skipOver(s, 0); if (k < 0) return false; }
+    else return false;
+    while (k < s.length) {
+      const c = s[k];
+      if (c === '.' && /^[A-Za-z_$]/.test(s[k + 1] || '')) { k += 1 + s.slice(k + 1).match(/^[\w$]*/)[0].length; continue; }
+      if (c === '(' || c === '[') { const e = skipOver(s, k); if (e < 0) return false; k = e; continue; }
+      if (c === '!' && s[k + 1] !== '=') { k++; continue; }
+      return false;
+    }
+    return true;
+  }
+  /* Brackets the sentence needed but the code doesn't (as Prettier writes it): !(a.b()) is !a.b(), and (a.b()).c is
+     a.b().c, when what's inside is a chain (see chainCode). */
+  function dropBrackets(code) {
+    let out = '';
+    for (let k = 0; k < code.length; k++) {
+      const c = code[k];
+      if (c === '"' || c === "'" || c === '`') { const e = skipOver(code, k); if (e < 0) return out + code.slice(k); out += code.slice(k, e); k = e - 1; continue; }
+      if (c === '(') {
+        const e = skipOver(code, k), before = out.slice(-1), inner = e > 0 ? code.slice(k + 1, e - 1) : '';
+        // (a ! right after a name or a bracket is TypeScript's, and the bracket after it a call: x!(…))
+        const not = before === '!' && !/[\w$)\]]/.test(out.slice(-2, -1));
+        const grouping = !before || /[\s(,[{?:=&|]/.test(before) || not;
+        if (e > 0 && grouping && chainCode(inner) && (not || /^[.[]/.test(code.slice(e)))) { out += dropBrackets(inner); k = e - 1; continue; }
+      }
+      out += c;
+    }
+    return out;
+  }
+
   /* After the words have become JavaScript: shapes that would mean something other than the sentence.
      - "not x is y" became !x === y (not applies to x alone in JavaScript): it's !(x === y).
      - "1 is less than x is less than 10" became 1 < x < 10, which is always true: it's 1 < x && x < 10.
@@ -1685,6 +1740,8 @@
     };
     const body = (t, p) => { const v = sub(t, [p]); return /^\{/.test(v) ? `(${v})` : v; };   // (a record given back needs brackets)
     const args = (t) => (t ? splitAnd(t).map(a => jsExpr(a, x, inf)).join(', ') : '');
+    // a little function's input: (n) => … in TypeScript, as Prettier writes it; n => … in JavaScript
+    const arg = (p) => (x.ext && x.ext.parens ? `(${p})` : p);
     if ((m = s.match(/^wait for\s+(.+)$/i))) { const w = jsWhole(m[1], x, inf); return w == null ? null : `await ${w}`; }
     // "x, or y if that is nothing": x, unless it is null or undefined (??)
     const tm = topMask(s), nothingAt = tm.search(/\s+if (?:that|it) is nothing$/i);
@@ -1701,19 +1758,19 @@
       if (!pm || !e.trim()) return null;
       const p = pm[1], tail = rest.slice(pm[0].length), c = topFind(tail, /\s+if\s+/i);
       const list = jsExpr(c ? tail.slice(0, c.at) : tail, x, inf), cond = c ? body(tail.slice(c.end), p) : null;
-      const kept = cond ? `${list}.filter(${p} => ${cond})` : list;
+      const kept = cond ? `${list}.filter(${arg(p)} => ${cond})` : list;
       note(inf, cond ? '`.filter` keeps the items the test is true for' + (e.trim() === p ? '.' : '; `.map` then makes a new list from each of them.') : '`.map` makes a new list, one value for each item.');
-      return e.trim() === p && cond ? kept : `${kept}.map(${p} => ${body(e, p)})`;
+      return e.trim() === p && cond ? kept : `${kept}.map(${arg(p)} => ${body(e, p)})`;
     }
     // a test of every item, or any item
     if ((f = topFind(s, new RegExp(`\\s+for (every|any)\\s+(${JS_NAME})\\s+in\\s+`, 'i')))) {
       const [, which, p] = s.slice(f.at, f.end).trim().match(new RegExp(`^for (every|any)\\s+(${JS_NAME})`, 'i'));
       note(inf, /^every$/i.test(which) ? '`.every` is true when the test is true for every item.' : '`.some` is true when the test is true for at least one item.');
-      return `${jsExpr(s.slice(f.end), x, inf)}.${/^every$/i.test(which) ? 'every' : 'some'}(${p} => ${body(s.slice(0, f.at), p)})`;
+      return `${jsExpr(s.slice(f.end), x, inf)}.${/^every$/i.test(which) ? 'every' : 'some'}(${arg(p)} => ${body(s.slice(0, f.at), p)})`;
     }
     if ((m = s.match(new RegExp(`^the first (${JS_NAME}) (?:in|of)\\s+`, 'i'))) && (f = topFind(s, /\s+where\s+/i, m[0].length))) {
       note(inf, '`.find` gives back the first item the test is true for (`undefined` if there is none).');
-      return `${jsExpr(s.slice(m[0].length, f.at), x, inf)}.find(${m[1]} => ${body(s.slice(f.end), m[1])})`;
+      return `${jsExpr(s.slice(m[0].length, f.at), x, inf)}.find(${arg(m[1])} => ${body(s.slice(f.end), m[1])})`;
     }
     // "a if c otherwise b"
     if ((f = topFind(s, /\s+if\s+/i))) {
@@ -1743,8 +1800,8 @@
         if (end > 0) {
           const inner = q.slice(i + 1, end).replace(/⟦(\d+)⟧/g, (mm, n) => strs[+n]);
           const js = /\s/.test(inner.trim()) ? jsWhole(inner, x, inf) : null;
-          // (a call needs no brackets of its own: f(x) + 1, new Date().getTime())
-          if (js != null) { strs.push(/^(?:the\s+)?(?:result|answer) of\s|^an? new\s/i.test(inner.trim()) ? js : `(${js})`); out += ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(q.slice(end + 1)) ? '' : ' '); i = end; continue; }
+          // (a call needs no brackets of its own: f(x) + 1, new Date().getTime(); nor does a chain, notes.filter(…).length)
+          if (js != null) { strs.push(/^(?:the\s+)?(?:result|answer) of\s|^an? new\s/i.test(inner.trim()) || chainCode(js) ? js : `(${js})`); out += ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(q.slice(end + 1)) ? '' : ' '); i = end; continue; }
         }
       }
       out += q[i];
@@ -1934,7 +1991,7 @@
       }
       return '`' + body + '`';
     });
-    return q;
+    return dropBrackets(q);
   }
 
   /* "left", "space", "a" -> the key names the browser uses ("ArrowLeft", " ", "a"). */
@@ -2107,7 +2164,8 @@
     const spaced = spacedNames(ext && ext.plain ? lines.map(plainLine) : lines, shared);
     lines = lines.map((l, i) => (RAW_JS.test(l) ? l : useSpaced(l, spaced, info[i])));
     const out = [];
-    const push = (text, src) => out.push({ text, src });
+    // (code of several lines, from a dialect's value written one part per line: each line indented like the first)
+    const push = (text, src) => { const ls = String(text).split('\n'), pad = ls[0].match(/^ */)[0]; out.push({ text: ls[0], src }); for (const l of ls.slice(1)) out.push({ text: pad + l, src }); };
     const x = { shared, vars: new Set(), fns: new Set(), pass2: false, cond: false, made: new Map(), timers: new Map(), plain: new Set(), mixed: new Set(), kinds: new Map(), gone: new Set(), spaced, ext: ext || null };
     // what a name holds, from the values it's set to: number, text, list, record, yes/no, or mixed (different ones)
     const kindOfValue = (v) => (/^[$€£¥]?-?\d/.test(v) ? 'number' : /^["'`]|^empty text\b/i.test(v) ? 'text' : /^\[|^(?:an )?empty list\b/i.test(v) ? 'list' : /^\{/.test(v) ? 'record' : /^(?:yes|no|true|false)\b/i.test(v) ? 'yesno' : null);
@@ -2257,6 +2315,8 @@
       sayer = /^\s*(?:js|javascript|raw)\s*:/i.test(raw) ? null : inf;
       if (!raw.trim()) { if (i !== endNewline) out.push({ text: '', src: i, kept: exactBlank.has(i) }); return; }
       const ind = raw.match(/^ */)[0].length;
+      // blank lines just before a block ends go after its closing brace, where the code has them (} then a blank line)
+      const after = [];
       while (stack.length && ind <= stack[stack.length - 1].ind) {
         const b = stack.pop();
         const t = raw.trim();
@@ -2264,9 +2324,10 @@
         // names made inside a block are gone once it ends (JavaScript's let): remember them, to say so if used after
         if (nextIsElse) { stack.push(b); for (const n of scopes[scopes.length - 1].keys()) x.gone.add(n); scopes[scopes.length - 1] = new Map(); break; }
         for (const n of scopes.pop().keys()) x.gone.add(n);
-        while (out.length && out[out.length - 1].text === '') out.pop();
+        while (out.length && out[out.length - 1].text === '') after.unshift(out.pop());
         for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src);
       }
+      for (const o of after) out.push(o);
       const pad = '  '.repeat(stack.length);
       const open = (head, close, kind, extra = {}) => { push(pad + head, i); stack.push({ ind, close, kind, src: i, head: out[out.length - 1], ...extra }); scopes.push(new Map()); };
       const say = (t) => push(pad + t, i);
@@ -2300,7 +2361,8 @@
       let s = raw.trim().replace(/[.:]$/, '');
       const lead = s.match(FILLER);
       if (lead && lead[0].length < s.length) { note(inf, `Left out filler: "${lead[0].trim()}".`); s = s.slice(lead[0].length); }
-      if ((m = s.match(/^(?:note|comment)\s*:\s*(.*)$/i))) return say('// ' + m[1]);
+      // (a note keeps its own full stop or colon: it is the comment as written)
+      if ((m = raw.trim().match(/^(?:note|comment)\s*:\s*(.*)$/i))) return say('// ' + m[1]);
       const M = (re) => qmatch(s, re);   // like s.match, but sentence words inside quotes never count
       // an address in quotes, as a link takes it: "google.com" is "https://google.com" (see address)
       const addressed = (t) => { const q = strOf(t); if (q == null) return E(t, inf); const a = address(q, 'href'); if (!a.note) return E(t, inf); note(inf, a.note); return JSON.stringify(a.value); };
@@ -2825,6 +2887,8 @@
     });
     patched();
     while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src); }
+    // blank lines at the very end are the file's last newline, not lines of code (exact code's own stay)
+    while (out.length && out[out.length - 1].text === '' && !out[out.length - 1].kept) out.pop();
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
     // at most one blank line in a row, except between exact lines: those are the code's own (in a template literal
     // they're part of its text)

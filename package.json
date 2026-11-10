@@ -1,7 +1,7 @@
 {
   "name": "intuicode",
   "private": true,
-  "version": "0.6.2",
+  "version": "0.7.0",
   "license": "BUSL-1.1",
   "type": "module",
   "scripts": {

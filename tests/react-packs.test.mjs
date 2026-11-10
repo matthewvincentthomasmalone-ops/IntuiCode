@@ -46,7 +46,7 @@ test('shadcn/ui and react-router: a ghost Button, a Route for "/" showing an Ind
   assert.match(r.text, /<Button variant="ghost" size="sm">Close<\/Button>/);
   assert.match(r.text, /<Route path="\/" element=\{<Index \/>\} \/>/);
   assert.match(r.text, /<Link to="\/about">About<\/Link>/);
-  exact('tsx', 'const A = () => <Badge variant="outline">New</Badge>;\n', /^    an outline Badge saying "New"$/m);
+  exact('tsx', 'const A = () => <Badge variant="outline">New</Badge>;\n', /^constant A is a component, showing: an outline Badge saying "New"$/m);
 });
 
 test('Supabase: queries said as what they ask the database', () => {
@@ -75,7 +75,7 @@ test('Supabase: queries said as what they ask the database', () => {
     '',
   ].join('\n'));
   exact('ts', 'async function f() {\n  const { data, error } = await supabase\n    .from("notes")\n    .select("*")\n    .order("created_at", { ascending: false });\n  if (error) throw error;\n  return data;\n}\n',
-    /^    wait for every row of the "notes" table in supabase sorted by "created_at" from the end, and take data and error from it\n    if error\n        fail with error as it is$/m);
+    /^    wait for every row of the "notes" table in supabase sorted by "created_at" from the end, and take data and error from it\n    if error, fail with error as it is$/m);
 });
 
 test('TanStack Query: the query, a change, and what to do when it works', () => {
@@ -107,6 +107,118 @@ test('TanStack Query: the query, a change, and what to do when it works', () => 
     '',
   ].join('\n'));
   assert.match(errs(write('define f\n    give back a change made by g\n        show 1')).join(), /go "when it works" and "when it fails"/);
+});
+
+/* ---- layout: written back from its sentences, a file is the same file (git shows no change) ---- */
+const back = (kind, src) => { const r = exact(kind, src); return { r, code: write(r.text, kind).text }; };
+
+test('Layout: a Lovable-style file comes back byte for byte from its sentences', () => {
+  const src = [
+    'import { useState } from "react";',
+    'import { useQuery } from "@tanstack/react-query";',
+    'import { Button } from "@/components/ui/button";',
+    'import { Input } from "@/components/ui/input";',
+    'import { fetchNotes } from "@/lib/notes";',
+    '',
+    '// The notes page: a search box and the notes it finds.',
+    'const Notes = () => {',
+    '  const [query, setQuery] = useState("");',
+    '  const { data: notes = [], isLoading } = useQuery({',
+    '    queryKey: ["notes"],',
+    '    queryFn: fetchNotes,',
+    '  });',
+    '  const shown = notes.filter((n) => n.title.includes(query));',
+    '',
+    '  if (isLoading) return <p className="p-6 text-muted-foreground">Loading…</p>;',
+    '',
+    '  return (',
+    '    <div className="space-y-4 p-6">',
+    '      <h1 className="text-2xl font-bold">',
+    '        Notes',
+    '      </h1>',
+    '      <Input',
+    '        placeholder="Search notes"',
+    '        value={query}',
+    '        onChange={(e) => setQuery(e.target.value)}',
+    '      />',
+    '      <ul>',
+    '        {shown.map((note) => (',
+    '          <li key={note.id}>',
+    '            {note.title}',
+    '          </li>',
+    '        ))}',
+    '      </ul>',
+    '      <Button onClick={() => setQuery("")}>Clear</Button>',
+    '    </div>',
+    '  );',
+    '};',
+    '',
+    'function Empty() {',
+    '  return <p>Nothing here yet.</p>;',
+    '}',
+    '',
+    'export default Notes;',
+    '',
+  ].join('\n');
+  const { r, code } = back('tsx', src);
+  assert.equal(code, src, r.text);
+  assert.deepEqual(plain(r.layout), [], 'nothing to say about its layout');
+  // how the sentences carry it: one line of sentences, one line of code
+  for (const said of [
+    /^    take data as notes \(or an empty list\) and isLoading from the query \["notes"\]\n        loaded by fetchNotes$/m,
+    /^    if isLoading, show: a paragraph saying "Loading…", styled as space inside 6, text colour muted-foreground$/m,
+    /^            a big heading, styled as text size 2xl, bold\n                "Notes"$/m,
+    /^            an Input\n                with placeholder "Search notes"\n                with value \{query\}\n                when changed with e: change query to e\.target\.value$/m,
+    /\n\ndefine component Empty\n    show: a paragraph saying "Nothing here yet\."$/m,
+    /^note: The notes page: a search box and the notes it finds\.$/m,
+  ]) assert.match(r.text, said);
+  // the corpora: every file comes back as it was, or says where not (and the program is the same either way)
+  const tsFiles = (dir) => readdirSync(dir).flatMap(n => { const f = path.join(dir, n); return statSync(f).isDirectory() ? tsFiles(f) : /\.tsx?$/.test(n) ? [f] : []; });
+  let same = 0, all = 0;
+  for (const dir of ['tests/corpus_react', 'tests/heldout_react']) {
+    for (const f of tsFiles(path.join(ROOT, dir))) {
+      const kind = f.endsWith('.tsx') ? 'tsx' : 'ts', text = readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+      const got = back(kind, text);
+      all++;
+      if (!got.r.layout.length) { assert.equal(got.code, text, `${f}\n${got.r.text}`); same++; }
+      else assert.notEqual(got.code, text, `${f}: says its layout differs, and it does`);
+    }
+  }
+  assert.ok(same >= 15, `only ${same} of ${all} files come back byte for byte`);
+});
+
+test('Layout: what sentences can\'t say about the layout is said, with the lines and why', () => {
+  const src = [
+    'import {',
+    '  Card,',
+    '  CardContent,',
+    '} from "@/components/ui/card";',
+    'import { supabase } from "@/integrations/supabase/client";',
+    '',
+    'export async function load() {',
+    '  const { data, error } = await supabase',
+    '    .from("notes")',
+    '    .select("*");',
+    '  if (error) throw error;',
+    '  return data;',
+    '}',
+    '',
+  ].join('\n');
+  const { r, code } = back('ts', src);
+  assert.notEqual(code, src);
+  // the code's lines (from, to), and the sentence lines that say them (said)
+  assert.deepEqual(plain(r.layout), [
+    { from: 1, to: 4, why: 'names brought in one per line', said: { from: 1, to: 1 } },
+    { from: 8, to: 10, why: 'a value written over several lines', said: { from: 5, to: 5 } },
+  ]);
+  assert.match(r.text.split('\n')[4], /^    wait for every row of the "notes" table in supabase, and take data and error from it$/);
+  // the rest is as it was: the blank line, the one-line if
+  assert.match(code, /client";\n\nexport async function load\(\) \{$/m);
+  assert.match(code, /^  if \(error\) throw error;$/m);
+  // a one-line if: its step is the part after the comma that is a step, so a test can have commas of its own
+  const w = write('define f using a, b\n    if the result of g with a, b, give back 1\n    give back 2', 'ts');
+  assert.deepEqual(errs(w), []);
+  assert.match(w.text, /^  if \(g\(a, b\)\) return 1;\n  return 2;$/m);
 });
 
 test('The app\'s start, a file for what it does, and the parts it takes', () => {
@@ -170,4 +282,41 @@ test('A Lovable-style project: imported, translated in Unity, left alone, edited
   const out = PRJ.compileAll({ sections: [sec], start: 'a' }, W);
   assert.deepEqual(plain(out.results.a.info.flatMap(i => i.errs)), []);
   assert.equal(C.check('tsx', readFileSync(path.join(dir, 'src/pages/NotFound.tsx'), 'utf8'), out.results.a.text, env()).same, true);
+});
+
+test('A Lovable-style project in Unity: a file translated whole, then written from its sentences, is the same file', async () => {
+  const dir = path.join(ROOT, 'tests/corpus_react');
+  let same = 0;
+  for (const f of filesIn(dir)) {
+    const lang = ctx.IntuiLanguages.fromPath(f);
+    if (lang !== 'ts' && lang !== 'tsx') continue;
+    const code = readFileSync(f, 'utf8').replace(/\r\n/g, '\n').replace(/\n+$/, '');
+    const shown = U.fromFile(lang, U.toFile(lang, code.split('\n'), []) + '\n');
+    const d = await U.deRegex(lang, shown.lines, shown.regions, 0, shown.lines.length - 1, (k, s) => convert(k, s));
+    // the project's file is now sentences (and exact lines): its code, as the project writes it (and a save writes it)
+    const sec = { id: 'a', path: path.relative(dir, f).replace(/\\/g, '/'), lang, text: U.toFile(lang, d.lines, d.regions) };
+    const out = PRJ.compileAll({ sections: [sec], start: 'a' }, W).results.a;
+    assert.deepEqual(plain(out.info.flatMap(i => i.errs)), [], f);
+    const laid = d.done.flatMap(p => plain(p.layout));
+    // (where: lines of the translated text, the sentences that say that code)
+    for (const x of laid) assert.ok(d.lines.slice(x.from, x.to + 1).every(l => l.trim()), `${f}: ${JSON.stringify(x)}`);
+    if (/[\\/]lib[\\/]notes\.ts$/.test(f)) assert.match(d.lines[laid[0].from], /^    wait for every row of the "notes" table/);
+    if (laid.length) assert.notEqual(out.text, code + '\n', `${f}: says its layout differs, and it does`);
+    else { assert.equal(out.text, code + '\n', `${sec.path}: the same file`); same++; }
+  }
+  assert.ok(same >= 9, `only ${same} files the same`);
+
+  // translated whole and one sentence changed: Original Code writes the file from its sentences, and only that line
+  // of code changes (the diff a commit would show)
+  const f = path.join(dir, 'src/hooks/use-notes.ts');
+  const code = readFileSync(f, 'utf8').replace(/\r\n/g, '\n').replace(/\n+$/, '') + '\n';
+  const shown = U.fromFile('ts', U.toFile('ts', code.split('\n'), []));
+  const d = await U.deRegex('ts', shown.lines, shown.regions, 0, shown.lines.length - 1, (k, s) => convert(k, s));
+  assert.deepEqual(plain(d.done.flatMap(p => p.layout)), []);
+  const at = d.lines.findIndex(l => /^    give back the query \["notes"\]$/.test(l));
+  assert.ok(at > 0, d.lines.join('\n'));
+  const edited = d.lines.map((l, n) => (n === at ? l.replace('["notes"]', '["all-notes"]') : l));
+  const out = U.reRegex('ts', edited, d.regions, 0, W);
+  assert.ok(out.ok, JSON.stringify(out.problems));
+  assert.equal(out.lines.join('\n'), code.replace('queryKey: ["notes"],\n    queryFn: fetchNotes', 'queryKey: ["all-notes"],\n    queryFn: fetchNotes'));
 });
