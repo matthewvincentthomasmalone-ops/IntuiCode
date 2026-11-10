@@ -2487,6 +2487,15 @@
         },
         {
           "topic": "Show & ask",
+          "say": "show ‹value›, then start a new line",
+          "becomes": "std::cout << value << \"\\n\";",
+          "folders": [
+            "program"
+          ],
+          "tip": "A new-line character ends the line, where plain \"show\" uses std::endl."
+        },
+        {
+          "topic": "Show & ask",
           "say": "show \"‹%d tries›\" filled in with ‹tries›",
           "becomes": "printf(\"%d tries\", tries);",
           "folders": [
@@ -2667,6 +2676,15 @@
         },
         {
           "topic": "Lists",
+          "say": "sort ‹list›",
+          "becomes": "std::sort(list.begin(), list.end());",
+          "folders": [
+            "program"
+          ],
+          "tip": "Smallest first. Add \"biggest first\" to turn it round."
+        },
+        {
+          "topic": "Lists",
           "say": "set item ‹0› of ‹list› to ‹value›",
           "becomes": "list[0] = value;",
           "folders": [
@@ -2720,6 +2738,15 @@
           "tip": "Leaves a tool that gives nothing back."
         },
         {
+          "topic": "Errors",
+          "say": "fail with ‹std::invalid_argument›: ‹message›",
+          "becomes": "throw std::invalid_argument(message);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Stops with an error that the caller can catch. Not on Arduino."
+        },
+        {
           "topic": "Tools",
           "say": "run ‹tool› with ‹inputs› and store in ‹name›",
           "becomes": "auto name = tool(inputs);",
@@ -2727,6 +2754,15 @@
             "program"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Tools",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "auto name = tool(inputs);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2."
         },
         {
           "topic": "Classes",
@@ -2763,6 +2799,15 @@
             "program"
           ],
           "tip": "Inside a class: runs when a new object is made. Use \"set self.name to name\"."
+        },
+        {
+          "topic": "Classes",
+          "say": "define ‹area› giving back ‹a decimal›, without changing the object",
+          "becomes": "double area() const {",
+          "folders": [
+            "program"
+          ],
+          "tip": "Inside a class: a tool that reads the fields and never changes them."
         },
         {
           "topic": "Classes",
@@ -2861,6 +2906,30 @@
         {
           "say": "x limited to 0–255",
           "becomes": "std::clamp(x, 0, 255)"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "(the result of f with a) times 2",
+          "becomes": "f(a) * 2"
+        },
+        {
+          "say": "x as a decimal",
+          "becomes": "static_cast<double>(x)"
+        },
+        {
+          "say": "\"Hi \" plus name",
+          "becomes": "\"Hi \" + name"
+        },
+        {
+          "say": "square root of x",
+          "becomes": "std::sqrt(x)"
+        },
+        {
+          "say": "absolute value of x",
+          "becomes": "std::abs(x)"
         }
       ]
     },
@@ -3086,6 +3155,15 @@
         },
         {
           "topic": "Lists",
+          "say": "make a constant list of ‹whole numbers› called ‹PINS› with ‹2, 3, 4›",
+          "becomes": "const int PINS[] = {2, 3, 4};",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Items that never change, such as the pins the lights are on."
+        },
+        {
+          "topic": "Lists",
           "say": "set item ‹0› of ‹list› to ‹value›",
           "becomes": "list[0] = value;",
           "folders": [
@@ -3139,6 +3217,15 @@
           "tip": ""
         },
         {
+          "topic": "Tools",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "auto name = tool(inputs);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2."
+        },
+        {
           "topic": "Classes",
           "say": "define class ‹Name›",
           "becomes": "class Name { public: … };",
@@ -3173,6 +3260,15 @@
             "sketch"
           ],
           "tip": "Inside a class: runs when a new object is made. Use \"set self.name to name\"."
+        },
+        {
+          "topic": "Classes",
+          "say": "define ‹area› giving back ‹a decimal›, without changing the object",
+          "becomes": "double area() const {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Inside a class: a tool that reads the fields and never changes them."
         },
         {
           "topic": "Classes",
@@ -3356,6 +3452,33 @@
         },
         {
           "topic": "Serial",
+          "say": "show \"Temp: {‹t›}\"",
+          "becomes": "Serial.println(String(\"Temp: \") + t);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Text with a value in it. \"{t as text}\" right after the text joins as \"Temp: \" + String(t)."
+        },
+        {
+          "topic": "Serial",
+          "say": "show ‹t› with ‹2› decimal places",
+          "becomes": "Serial.println(t, 2);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "For a decimal. \"show ‹n› in hexadecimal\" (or binary) shows a whole number in another base."
+        },
+        {
+          "topic": "Serial",
+          "say": "show \"‹Ready›\" kept in flash",
+          "becomes": "Serial.println(F(\"Ready\"));",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Fixed text kept in flash memory, so it takes none of the board's small working memory."
+        },
+        {
+          "topic": "Serial",
           "say": "end the line",
           "becomes": "Serial.println();",
           "folders": [
@@ -3475,6 +3598,26 @@
         {
           "say": "\"Hi {name}\"",
           "becomes": "String(\"Hi \") + name"
+        },
+        {
+          "say": "\"Temp: {t as text}\"",
+          "becomes": "\"Temp: \" + String(t)"
+        },
+        {
+          "say": "\"Ready\" kept in flash",
+          "becomes": "F(\"Ready\")"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "t as a whole number",
+          "becomes": "(int)t"
+        },
+        {
+          "say": "square root of x",
+          "becomes": "sqrt(x)"
         }
       ]
     }

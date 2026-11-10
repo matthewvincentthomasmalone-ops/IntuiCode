@@ -1222,6 +1222,26 @@
       if (n.type === 'declaration' && F(n, 'type')) for (const d of named(n)) { const id = d.type === 'identifier' ? d : d.type === 'init_declarator' && F(d, 'declarator').type === 'identifier' ? F(d, 'declarator') : null; if (id) objType.set(id.text, collapse(F(n, 'type').text)); }
       for (const c of named(n)) scan(c);
     })(tree);
+    // every class and structure the file defines, said or kept as code (the writer learns them from c++: lines too)
+    (function scan(n) {
+      if ((n.type === 'class_specifier' || n.type === 'struct_specifier') && F(n, 'name') && F(n, 'body')) classes.add(F(n, 'name').text);
+      for (const c of named(n)) scan(c);
+    })(tree);
+    const usingStd = named(tree).some(x => x.type === 'using_declaration' && collapse(x.text) === 'using namespace std;');
+    /* The writer's own helpers (random_number, text), exactly as it writes them and where it puts them (first, after
+       the includes): left out, since the sentences that need them ("random number from 1 to 6", "Hi {name}") bring
+       them back. One that is kept as code turns those sentences off, so it isn't made twice. */
+    const helpers = {};
+    if (!arduino && CPP.HELPERS) {
+      let order = ['random', 'text'];
+      for (const n of named(tree)) {
+        if (isComment(n) || n.type === 'preproc_include' || n.type === 'using_declaration') continue;
+        const k = order.find(h => collapse(n.text) === collapse(CPP.HELPERS[h].join('\n')));
+        if (!k || force.has(n.startIndex) || force.has('ALL')) break;
+        helpers[k] = n.startIndex;
+        order = order.slice(order.indexOf(k) + 1);
+      }
+    }
     let curFn = null;   // the function being said ("loop" for "over and over")
     /* A value that the writer reads as one operand (a name, a number, a call, a text…), so a phrase can be built round it */
     const OPD_RE = /^(?:-?\d+(?:\.\d+)?|'(?:[^'\\]|\\.)'|"(?:[^"\\]|\\.)*"|[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*|\((?:[^()"]|"(?:[^"\\]|\\.)*"|\((?:[^()"]|"(?:[^"\\]|\\.)*")*\))*\)|\[[^[\]]*\])*)$/;
@@ -1248,11 +1268,15 @@
             const since = ex(F(LL, 'right')), ms = ex(R);
             if (opd(since) && opd(ms) && since !== 'the built-in light') return `${PASSED[op]} ${ms} ${ms === '1' ? 'millisecond has' : 'milliseconds have'} passed since ${since}`;
           }
+          // text joined with +: "Blinks: {blinks}" (Arduino's String("Blinks: ") + blinks)
+          if (arduino && op === '+') { const t = textJoin(n); if (t != null) return t; }
           let l = ex(L), r = ex(R);
           if (l == null || r == null) return null;
           // "random number from 1 to 6 plus 1" could mean two things: brackets say which
           if (/^random number from /.test(l) && L.type === 'call_expression') l = `(${l})`;
           if (/^random number from /.test(r) && R.type === 'call_expression') r = `(${r})`;
+          // "a plus b as text" could be (a plus b) as text: brackets round the value it goes with
+          if (/^[-+*/%]$/.test(op) && / as (?:text|a decimal|a whole number)$/.test(r) && (R.type === 'call_expression' || R.type === 'cast_expression') && !(op === '+' && / as text$/.test(r) && plainLit(L))) r = `(${r})`;
           return `${l} ${CPP_OPS[op] || op} ${r}`;
         }
         case 'unary_expression': { const op = F(n, 'operator').type, a = ex(F(n, 'argument')); return a == null ? null : op === '!' ? `not ${a}` : `${op}${a}`; }
@@ -1282,13 +1306,97 @@
           if (arduino && f === 'map' && args.length === 5 && args.every(opd)) return `${args[0]} scaled from ${args[1]}–${args[2]} to ${args[3]}–${args[4]}`;
           if (((arduino && f === 'constrain') || (!arduino && f === 'std::clamp')) && args.length === 3 && args.every(opd)) return `${args[0]} limited to ${args[1]}–${args[2]}`;
           if (arduino && f === 'random' && args.length === 2 && /^\d+$/.test(args[1]) && +args[1] > 0 && opd(args[0])) return `random number from ${args[0]} to ${+args[1] - 1}`;
+          if (helpers.random && f === 'random_number' && args.length === 2 && args.every(opd)) return `random number from ${args[0]} to ${args[1]}`;
+          // F("Ready"): text the board keeps in flash memory, so it takes none of the small working memory
+          if (arduino && f === 'F' && a.length === 1 && plainLit(a[0])) return `${a[0].text} kept in flash`;
+          // the writer's text helper: text("Hi ", name) is "Hi {name}"
+          if (helpers.text && f === 'text' && a.length) { const t = fillText(a.map(textPiece)); if (t != null) return t; }
+          // a value as another kind: "t as text", "reading as a decimal" (String(t), std::to_string, static_cast, toInt…)
+          if (args.length === 1 && opd(args[0]) && args[0] !== 'the built-in light') {
+            if (arduino ? f === 'String' : f === 'std::to_string' || (usingStd && f === 'to_string')) return `${args[0]} as text`;
+            const cast = !arduino && fn.type === 'template_function' && collapse(fn.text).match(/^static_cast\s*<\s*(int|double)\s*>$/);
+            if (cast) return `${args[0]} as ${cast[1] === 'int' ? 'a whole number' : 'a decimal'}`;
+            if (!arduino && (/^std::sto[id]$/.test(f) || (usingStd && /^sto[id]$/.test(f)))) return `${args[0]} as ${/i$/.test(f) ? 'a whole number' : 'a decimal'}`;
+          }
+          // std::sqrt(x), std::abs(x) (sqrt, abs on a board): "square root of x", "absolute value of (a minus b)"
+          const mf = arduino ? f : /^std::/.test(f) ? f.slice(5) : usingStd ? f : null, maths = args.length === 1 && mf && mf.match(/^(sqrt|abs)$/);
+          if (maths && args[0] !== 'the built-in light') return `${maths[1] === 'sqrt' ? 'square root' : 'absolute value'} of ${opd(args[0]) ? args[0] : `(${args[0]})`}`;
+          if (arduino && fn.type === 'field_expression' && !a.length && cchain(F(fn, 'argument')) && F(fn, 'argument').type !== 'this' && !fn.text.includes('->')) {
+            const on = F(fn, 'argument').text, m = F(fn, 'field').text;
+            if (m === 'toInt' || m === 'toFloat') return `${on} as ${m === 'toInt' ? 'a whole number' : 'a decimal'}`;
+            if (m === 'length') return `length of ${on}`;
+          }
           if (!cchain(fn)) return null;
+          // a tool's result: "if not the result of bob.passed"; with inputs, in brackets that say where they end:
+          // "(the result of a.at with i, k) times 2" (a whole value goes without them: see whole)
+          const name = fn.type === 'field_expression' && F(fn, 'argument').type === 'this' ? (fn.text.includes('->') ? 'self.' + F(fn, 'field').text : null) : f;
+          if (name && !classes.has(f) && /^(?:self\.)?[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*$/.test(name)) {
+            if (!a.length) return `the result of ${name}`;
+            if (!args.some(x => /\b(?:and|with)\b|,/.test(outside(x)))) return `(the result of ${name} with ${args.join(', ')})`;
+          }
           return `${f}(${args.join(', ')})`;
         }
-        case 'subscript_expression': return n.text.includes('\n') ? null : n.text;
+        // Arduino's (int)t: "t as a whole number" ((double)t: "as a decimal")
+        case 'cast_expression': {
+          const t = collapse(F(n, 'type') ? F(n, 'type').text : ''), v = ex(F(n, 'value'));
+          if (arduino && /^(?:int|double)$/.test(t) && opd(v) && v !== 'the built-in light') return `${v} as ${t === 'int' ? 'a whole number' : 'a decimal'}`;
+          return n.text.includes('\n') ? null : n.text;
+        }
+        case 'subscript_expression': {
+          // history[i]: "item i of history"
+          const list = F(n, 'argument'), idx = named(n).filter(x => x.type === 'subscript_argument_list').flatMap(named).filter(x => !isComment(x));
+          if (idx.length === 1 && list && (list.type === 'identifier' || (list.type === 'field_expression' && cchain(list) && !list.text.includes('->')))) {
+            const k = ex(idx[0]);
+            if (k != null && opd(k) && k !== 'the built-in light') return `item ${k} of ${list.text}`;
+          }
+          return n.text.includes('\n') ? null : n.text;
+        }
         default: return n.text.includes('\n') ? null : n.text;
       }
     }
+    /* Text with values in it, as the writer reads "Hi {name}!": pieces of text ({ lit: '"Hi "' }) and values
+       ({ v: 'name' }). Null if it can't be said that way: no value, two pieces of text in a row (they would be
+       one), or a value with quotes or braces in it. Braces in the text are written twice. */
+    function fillText(parts) {
+      if (!parts.some(p => p.lit == null)) return null;
+      let s = '';
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (p.lit != null) { if (i && parts[i - 1].lit != null) return null; s += p.lit.slice(1, -1).replace(/[{}]/g, c => c + c); }
+        else { if (p.v == null || /["{}\n]/.test(p.v)) return null; s += `{${p.v}}`; }
+      }
+      return `"${s}"`;
+    }
+    const plainLit = (e) => e && e.type === 'string_literal' && /^"/.test(e.text) && !e.text.includes('\n');
+    const textPiece = (e) => (plainLit(e) ? { lit: e.text } : { v: ex(e) });
+    /* Arduino text joined with +, as the writer makes "…{x}…": String(first) + the rest ("{t} C" is String(t) + " C"),
+       or text, then a String(…) already ("Temp: {t as text}" is "Temp: " + String(t)). */
+    function textJoin(n) {
+      const flat = [];
+      const walk = (e) => { if (e.type === 'binary_expression' && F(e, 'operator').type === '+') { walk(F(e, 'left')); flat.push(F(e, 'right')); } else flat.push(e); };
+      walk(n);
+      const strCall = (e) => e && e.type === 'call_expression' && F(e, 'function').text === 'String' && argsOf(e).length === 1;
+      if (strCall(flat[0])) {
+        const first = argsOf(flat[0])[0];
+        if (plainLit(first) && strCall(flat[1])) return null;   // the writer leaves String( ) off this text: another sentence
+        return fillText([first, ...flat.slice(1)].map(textPiece));
+      }
+      if (plainLit(flat[0]) && strCall(flat[1])) {
+        const v = ex(argsOf(flat[1])[0]);
+        if (!opd(v) || v === 'the built-in light') return null;
+        return fillText([{ lit: flat[0].text }, { v: `${v} as text` }, ...flat.slice(2).map(textPiece)]);
+      }
+      return null;
+    }
+    /* A whole value (what "set … to", "give back", "show" and "increase … by" are given): a tool's result needs no
+       brackets there, "the result of average with scores", as the writer reads "with …" to the end of the value.
+       In a list of values (list), the brackets keep each result's inputs together. */
+    function whole(n, list) {
+      const e = ex(n);
+      return e != null && !list && n.type === 'call_expression' && /^\(the result of .+\)$/.test(e) ? e.slice(1, -1) : e;
+    }
+    // the text outside quotes and brackets (where a comma or "and" would split a list)
+    const outside = (s) => { let t = bare(s); for (let u; (u = t.replace(/\([^()]*\)/g, '')) !== t;) t = u; return t; };
     const bodyOf = (n) => (n.type === 'compound_statement' ? named(n) : [n]);
     const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, 'c++:', src, stmt);
     const params = (fnDecl) => {
@@ -1322,13 +1430,14 @@
       let items = flat.slice(1), end = 'none';
       if (items.length && /^(std::)?endl$/.test(items[items.length - 1].text)) { end = 'endl'; items = items.slice(0, -1); }
       else if (items.length > 1 && items[items.length - 1].text === '" "') { end = 'space'; items = items.slice(0, -1); }
+      else if (items.length > 1 && items[items.length - 1].text === '"\\n"') { end = 'nl'; items = items.slice(0, -1); }
       if (!items.length) return end === 'endl' ? 'end the line' : null;
       if (items.some(x => /^(std::)?endl$/.test(x.text))) return null;
       const spaced = items.length >= 3 && items.length % 2 === 1 && items.every((x, i) => (i % 2 === 1 ? x.text === '" "' : x.text !== '" "'));
-      const pieces = (spaced ? items.filter((x, i) => i % 2 === 0) : items).map(ex);
+      const pieces = (spaced ? items.filter((x, i) => i % 2 === 0) : items).map(x => (spaced ? ex(x) : whole(x)));
       if (pieces.some(x => x == null)) return null;
       if (!spaced && pieces.length > 1 && pieces.some(p => / followed by /.test(bare(p)))) return null;
-      return `show ${spaced || pieces.length === 1 ? pieces.join(' and ') : pieces.join(' followed by ')}${end === 'space' ? ' on the same line' : end === 'none' ? ' without ending the line' : ''}`;
+      return `show ${spaced || pieces.length === 1 ? pieces.join(' and ') : pieces.join(' followed by ')}${end === 'space' ? ' on the same line' : end === 'none' ? ' without ending the line' : end === 'nl' ? ', then start a new line' : ''}`;
     }
     /* std::cin >> a >> b  ->  "read a and b from the keyboard" */
     function cinParts(e) {
@@ -1347,8 +1456,16 @@
       const e = named(n)[0];
       if (!e || e.type !== 'call_expression' || !/^Serial\.print(?:ln)?$/.test(F(e, 'function').text)) return null;
       const a = argsOf(e);
-      return a.length === 1 ? { ln: F(e, 'function').text === 'Serial.println', v: ex(a[0]) } : null;
+      return a.length === 1 ? { ln: F(e, 'function').text === 'Serial.println', v: whole(a[0]) } : a.length === 2 ? { ln: F(e, 'function').text === 'Serial.println', v: printAs(a[0], a[1]) } : null;
     };
+    /* print(t, 2) on Arduino: a decimal with 2 decimal places; print(n, HEX): a whole number in hexadecimal */
+    function printAs(v, how) {
+      const e = ex(v), BASE = { HEX: 'hexadecimal', BIN: 'binary', OCT: 'octal' };
+      if (e == null || / with \d+ decimal places?$| in (?:hexadecimal|binary|octal)$/.test(e)) return null;
+      if (BASE[how.text]) return `${e} in ${BASE[how.text]}`;
+      const t = v.type === 'identifier' ? objType.get(v.text) : v.type === 'number_literal' && /\./.test(v.text) ? 'double' : null;
+      return /^\d+$/.test(how.text) && /^(?:float|double)$/.test(t || '') ? `${e} with ${how.text} decimal place${how.text === '1' ? '' : 's'}` : null;
+    }
     function serialRun(n) {
       const first = serialPrint(n);
       if (!first || first.ln || first.v == null) return null;
@@ -1380,7 +1497,7 @@
         // one item of a list: "set item i of readings to t"
         if (op === '=' && L.type === 'subscript_expression' && F(L, 'argument').type === 'identifier') {
           const idx = named(L).filter(x => x.type === 'subscript_argument_list').flatMap(named).filter(x => !isComment(x));
-          const k = idx.length === 1 ? ex(idx[0]) : null, val = ex(R);
+          const k = idx.length === 1 ? ex(idx[0]) : null, val = whole(R);
           if (k != null && val != null && !/\b(?:of|in)\b/.test(bare(k))) return say(`set item ${k} of ${F(L, 'argument').text} to ${val}`);
         }
         const target = L.type === 'field_expression' && F(L, 'argument').type === 'this' && L.text.includes('->') ? `self.${F(L, 'field').text}` : L.type === 'identifier' || cchain(L) || L.type === 'subscript_expression' ? L.text : null;
@@ -1402,7 +1519,7 @@
             if (!a.some(x => x == null || /\band\b/.test(bare(x)))) return say(`keep ${target} between ${a[1]} and ${a[2]}`);
           }
         }
-        const v = ex(R);
+        const v = whole(R);
         if (v == null) return false;
         if (op === '=') return say(`set ${target} to ${v}`);
         if (op === '+=') return say(`increase ${target} by ${v}`);
@@ -1421,8 +1538,9 @@
           const rest = a.slice(1).map(ex);
           if (!rest.some(x => x == null)) return say(`show ${a[0].text} filled in with ${rest.join(', ')}`);
         }
-        const v = a.map(ex);
+        const v = a.map(x => whole(x, true));
         if (v.some(x => x == null)) return false;
+        const one = a.length === 1 ? whole(a[0]) : null;   // the only value: a tool's result can have its inputs
         if (!arduino && /^(?:std::)?getline$/.test(f) && v.length === 2 && /^(std::)?cin$/.test(a[0].text) && cchain(a[1])) return say(`read a line from the keyboard into ${v[1]}`);
         if (arduino) {
           const pin = (x) => (x === 'the built-in light' ? x : `pin ${x}`);
@@ -1439,15 +1557,17 @@
           if (f === 'delayMicroseconds' && v.length === 1) return say(`wait ${v[0]} microseconds`);
           if (f === 'Serial.begin' && v.length === 1 && /^\d+$/.test(v[0])) return say(`start the serial monitor at ${v[0]}`);
           if (f === 'Serial.println' && !v.length) return say('end the line');
-          if (f === 'Serial.print' && v.length === 1) { const run = serialRun(node); if (run) return say(run); }
-          if ((f === 'Serial.println' || f === 'Serial.print') && v.length === 1) return say(`show ${v[0]}${f === 'Serial.print' ? ' on the same line' : ''}`);
+          const shown = v.length === 1 ? one : v.length === 2 ? printAs(a[0], a[1]) : null;
+          if (f === 'Serial.print' && shown != null) { const run = serialRun(node); if (run) return say(run); }
+          if ((f === 'Serial.println' || f === 'Serial.print') && shown != null) return say(`show ${shown}${f === 'Serial.print' ? ' on the same line' : ''}`);
           if (f === 'tone' && (v.length === 2 || v.length === 3)) return say(`play a tone of ${v[1]} on ${pin(v[0])}${v[2] ? ` for ${v[2]} milliseconds` : ''}`);
           if (f === 'noTone' && v.length === 1) return say(`stop the tone on ${pin(v[0])}`);
         }
         // an object's own steps, said for what they do: lcd.print(x), lcd.setCursor(0, 1), servo.write(90)…
         if (fn.type === 'field_expression' && F(fn, 'argument').type === 'identifier' && !fn.text.includes('->')) {
           const obj = F(fn, 'argument').text, meth = F(fn, 'field').text;
-          if (obj !== 'Serial' && (meth === 'print' || meth === 'println') && v.length === 1 && !/\band\b|,/.test(bare(v[0]))) return say(`show ${v[0]} on ${obj}${meth === 'println' ? ', then start a new line' : ''}`);
+          const shown = v.length === 1 ? one : arduino && v.length === 2 ? printAs(a[0], a[1]) : null;
+          if (obj !== 'Serial' && (meth === 'print' || meth === 'println') && shown != null && (/^the result of /.test(shown) || !/\band\b|,/.test(bare(shown)))) return say(`show ${shown} on ${obj}${meth === 'println' ? ', then start a new line' : ''}`);
           if (meth === 'setCursor' && v.length === 2 && !v.some(x => /,/.test(bare(x)))) return say(`move ${obj}'s cursor to ${v[0]}, ${v[1]}`);
           if (meth === 'clear' && !v.length) return say(`clear ${obj}`);
           if (meth === 'begin' && obj !== 'Serial' && !/^(?:the|talking)$/.test(obj)) return say(`start ${obj}${v.length ? ' with ' + v.join(', ') : ''}`);
@@ -1455,6 +1575,13 @@
           if (arduino && meth === 'write' && v.length === 1 && objType.get(obj) === 'Servo') return say(`turn servo ${obj} to ${v[0]} degrees`);
         }
         if (fn.type === 'field_expression' && F(fn, 'field').text === 'push_back' && v.length === 1 && F(fn, 'argument').type === 'identifier' && !arduino) return say(`add ${v[0]} to ${F(fn, 'argument').text}`);
+        // std::sort(xs.begin(), xs.end()): "sort xs"; with std::greater<>() as well, "sort xs biggest first"
+        if (!arduino && (f === 'std::sort' || (usingStd && f === 'sort')) && (a.length === 2 || a.length === 3)) {
+          const end = (c, which) => c.type === 'call_expression' && !argsOf(c).length && F(c, 'function').type === 'field_expression' && F(F(c, 'function'), 'field').text === which ? F(F(c, 'function'), 'argument') : null;
+          const b = end(a[0], 'begin'), e2 = end(a[1], 'end');
+          const down = a.length === 3 && collapse(a[2].text).replace(/\s+/g, '') === (usingStd && !/^std::/.test(a[2].text) ? 'greater<>()' : 'std::greater<>()');
+          if (b && e2 && b.text === e2.text && cchain(b) && b.type !== 'this' && !b.text.includes('->') && (a.length === 2 || down)) return say(`sort ${b.text}${down ? ' biggest first' : ''}`);
+        }
         if (cchain(fn) && fn.type !== 'qualified_identifier') return say(`run ${fn.type === 'field_expression' && F(fn, 'argument').type === 'this' ? 'self.' + F(fn, 'field').text : f}${v.length ? ' with ' + v.join(', ') : ''}`);
         return false;
       }
@@ -1475,9 +1602,12 @@
           if (ds.length !== 1 || quals.some(q => q !== 'const') || quals.length > 1) return false;
           const d = ds[0];
           const type = collapse(F(n, 'type').text);
-          if (quals.length || lvl) {   // constant, or with its type spelled out
+          // const int PINS[] = {2, 3}: "make a constant list of whole numbers called PINS with 2, 3" (said below)
+          const fixedList = quals.length === 1 && !lvl && d.type === 'init_declarator' && F(d, 'value') && F(d, 'value').type === 'initializer_list';
+          const list = fixedList ? 'constant list' : 'list';
+          if ((quals.length || lvl) && !fixedList) {   // constant, or with its type spelled out
             if (d.type !== 'init_declarator' || F(d, 'declarator').type !== 'identifier' || !F(d, 'value') || F(d, 'value').type === 'initializer_list' || F(d, 'value').type === 'argument_list') return false;
-            const w = typeWord(type), v = ex(F(d, 'value'));
+            const w = typeWord(type), v = whole(F(d, 'value'));
             if (!w || w === 'nothing' || v == null) return false;
             o.careful.add(n.startIndex);
             if (quals.length) return say(lvl ? `constant ${w} ${F(d, 'declarator').text} is ${v}` : `constant ${F(d, 'declarator').text} is ${v}`);
@@ -1505,15 +1635,16 @@
             const nm = F(dd, 'declarator'), size = sized(dd), w = listOf(type);
             const items = named(val).filter(x => !isComment(x)).map(ex);
             // without a size, only Arduino makes a plain array ("make a list of …" is a std::vector in C++)
-            return nm.type === 'identifier' && size != null && (size || arduino) && !!w && items.length > 0 && !items.some(x => x == null) && say(`make a list of ${size ? size + ' ' : ''}${w} called ${nm.text} with ${items.join(', ')}`);
+            return nm.type === 'identifier' && size != null && (size || arduino) && !!w && items.length > 0 && !items.some(x => x == null) && say(`make a ${list} of ${size ? size + ' ' : ''}${w} called ${nm.text} with ${items.join(', ')}`);
           }
           if (dd.type !== 'identifier') return false;
           if (vm && val.type === 'initializer_list') {
             const items = named(val).filter(x => !isComment(x)).map(ex), w = !arduino && listOf(vm[1]);
-            return !!w && items.length > 0 && !items.some(x => x == null) && say(`make a list of ${w} called ${dd.text} with ${items.join(', ')}`);
+            return !!w && items.length > 0 && !items.some(x => x == null) && say(`make a ${list} of ${w} called ${dd.text} with ${items.join(', ')}`);
           }
+          if (fixedList) return false;
           if (val.type === 'argument_list') {
-            const items = named(val).filter(x => !isComment(x)).map(ex);
+            const items = named(val).filter(x => !isComment(x)).map(x => whole(x, true));
             return /^[A-Z][\w]*$|::/.test(type) && items.length > 0 && !items.some(x => x == null) && say(`make ${art(type)} called ${dd.text} with ${items.join(', ')}`);
           }
           // int level = analogRead(A0): "read pin A0 and call it level (a whole number)"
@@ -1526,7 +1657,7 @@
             const a = argsOf(val).map(ex);
             if (!a.some(x => x == null || splits(x))) return say(`scale ${a[0]} from ${a[1]}–${a[2]} to ${a[3]}–${a[4]} and call it ${dd.text} (${art(tw)})`);
           }
-          const v = ex(val);
+          const v = whole(val);
           return v != null && say(`set ${dd.text} to ${v}`);
         }
         case 'if_statement': {
@@ -1611,7 +1742,7 @@
           else if (upd.type === 'update_expression' && (u === v + '--' || (made && u === '--' + v))) dir = -1;
           else if (upd.type === 'assignment_expression' && F(upd, 'left').text === v && /^[+-]=$/.test(F(upd, 'operator').type)) { dir = F(upd, 'operator').type === '+=' ? 1 : -1; step = ex(F(upd, 'right')); if (step == null) return false; }
           else return false;
-          const a = ex(A), b = ex(F(cond, 'right'));
+          const a = whole(A, true), b = whole(F(cond, 'right'), true);
           if (a == null || b == null) return false;
           const uses = new RegExp(`\\b${v}\\b`).test(body.text);
           const num = (t) => /^-?\d+$/.test(t);
@@ -1674,26 +1805,38 @@
         case 'return_statement': {
           const v = named(n).filter(x => !isComment(x))[0];
           if (!v) return say(arduino && curFn === 'loop' ? 'skip the rest of this round' : curFn && curFn !== 'setup' ? 'leave the tool now' : 'give back');
-          const e = ex(v);
+          const e = whole(v);
           return e != null && say(`give back ${e}`);
         }
         case 'break_statement': return say('stop the loop');
         case 'continue_statement': return say('skip to next');
+        // throw std::invalid_argument("…"): "fail with std::invalid_argument: "…"" (as in Python and JavaScript)
+        case 'throw_statement': {
+          const v = named(n).filter(x => !isComment(x))[0];
+          if (arduino || !v || v.type !== 'call_expression' || !/^[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*$/.test(F(v, 'function').text)) return false;
+          const a = argsOf(v);
+          if (a.length > 1) return false;
+          const msg = a.length ? whole(a[0]) : '';
+          return msg != null && say(`fail with ${F(v, 'function').text}${a.length ? ': ' + msg : ''}`);
+        }
         default: return false;
       }
     }
 
-    function funcSentence(fn) {
+    /* A tool's first line. In a class, int rows() const (it can't change the object) is "…, without changing the object". */
+    function funcSentence(fn, inClass) {
       const d = F(fn, 'declarator');
-      if (!d || d.type !== 'function_declarator' || kids(d).some(x => x.type === 'type_qualifier')) return null;
+      if (!d || d.type !== 'function_declarator') return null;
       const nameNode = F(d, 'declarator');
       if (!nameNode || !/^(identifier|field_identifier)$/.test(nameNode.type)) return null;
+      const extra = named(d).filter(x => !isComment(x) && x.startIndex !== nameNode.startIndex && x.type !== 'parameter_list');
+      if (extra.some(x => !(inClass && x.type === 'type_qualifier' && x.text === 'const')) || extra.length > 1) return null;
       const type = F(fn, 'type');
       if (!type || kids(fn).some(x => /storage_class_specifier|virtual|type_qualifier|attribute/.test(x.type))) return null;
       const ret = typeWord(type.text);
       const ps = params(d);
       if (!ret || !ps) return null;
-      return `define ${nameNode.text}${ps.length ? ' using ' + ps.join(', ') : ''} giving back ${art(ret)}`;
+      return `define ${nameNode.text}${ps.length ? ' using ' + ps.join(', ') : ''} giving back ${art(ret)}${extra.length ? ', without changing the object' : ''}`;
     }
     const fnName = (n) => { const d = F(n, 'declarator'); return d && F(d, 'declarator') ? F(d, 'declarator').text : ''; };
     const fnBody = (n, depth, key) => { const was = curFn; curFn = fnName(n); try { block(named(F(n, 'body')), depth, key); } finally { curFn = was; } };
@@ -1701,6 +1844,7 @@
     function top(n, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
       if (lvl && n.type !== 'declaration') return false;
+      if (Object.values(helpers).includes(n.startIndex)) return true;   // the sentences that use it make it again
       if (n.type === 'preproc_include') { const p = F(n, 'path'); return !!p && say(`include ${p.text}`); }
       if (n.type === 'using_declaration' && collapse(n.text) === 'using namespace std;') return say('use namespace std');
       // #define LED 13: "let LED stand for 13"
@@ -1737,14 +1881,12 @@
         classes.add(name.text);
         say(struct ? `define structure ${name.text}` : `define class ${name.text}${baseName ? ' based on ' + baseName : ''}`);
         let seenFirst = struct, prevEnd = null;
-        for (const it of items) {
-          if (prevEnd != null && it.startPosition.row > prevEnd + 1) o.blank();
-          prevEnd = it.endPosition.row;
-          if (isComment(it)) { o.notes(depth + 1, it); continue; }
+        /* One member as a sentence (false: it can't be said, so it stays exact code inside the class) */
+        const member = (it) => {
           if (it.type === 'access_specifier') {
             if (!/^(public|private)$/.test(it.text)) return false;
-            if (!seenFirst) { seenFirst = true; if (it.text === 'public') continue; }
-            o.say(depth + 1, `the rest is ${it.text}`); continue;
+            if (!seenFirst) { seenFirst = true; if (it.text === 'public') return true; }
+            o.say(depth + 1, `the rest is ${it.text}`); return true;
           }
           if (it.type === 'field_declaration') {
             const ds = named(it).filter(x => x.type === 'field_identifier');
@@ -1754,7 +1896,7 @@
             const v = dv ? ex(dv) : '';
             if (!w || v == null || (dv && kids(it).some(x => x.type === 'initializer_list'))) return false;
             o.say(depth + 1, `field ${ds[0].text}: ${w}${dv ? ' = ' + v : ''}`);
-            continue;
+            return true;
           }
           if (it.type === 'function_definition') {
             const d = F(it, 'declarator');
@@ -1763,16 +1905,32 @@
               const ps = params(d);
               if (!ps) return false;
               o.say(depth + 1, `when made${ps.length ? ' using ' + ps.join(', ') : ''}`);
-              fnBody(it, depth + 2, n.startIndex);
-              continue;
+              fnBody(it, depth + 2, it.startIndex);
+              return true;
             }
-            const s = funcSentence(it);
+            const s = funcSentence(it, true);
             if (!s) return false;
             o.say(depth + 1, s);
-            fnBody(it, depth + 2, n.startIndex);
-            continue;
+            fnBody(it, depth + 2, it.startIndex);
+            return true;
           }
           return false;
+        };
+        for (const it of items) {
+          if (prevEnd != null && it.startPosition.row > prevEnd + 1) o.blank();
+          prevEnd = it.endPosition.row;
+          if (isComment(it)) { o.notes(depth + 1, it); continue; }
+          o.parents.set(it.startIndex, n.startIndex);
+          o.keyStack.push(it.startIndex);
+          const m = o.mark();
+          let done = false;
+          if ((force.get(it.startIndex) || 0) < 2) { try { done = member(it); } catch (e) { done = false; } }
+          o.keyStack.pop();
+          if (!done) {
+            o.undo(m);
+            if (it.type === 'access_specifier') { if (!seenFirst) return false; o.rawLines(depth + 1, 'c++:', src, it, `${it.text}:`); }
+            else o.rawLines(depth + 1, 'c++:', src, it);
+          }
         }
         return true;
       }
@@ -1807,7 +1965,8 @@
      uses the value. A `break;` at the very end of a switch's last case does nothing, so it counts the same as none. */
   function cppRules(usingStd) {
     const R = {
-      skip: (c) => c.type === ';' || c.type === '{' || c.type === '}' || (/^(preproc_include|using_declaration)$/.test(c.type) && c.parent && c.parent.type === 'translation_unit'),   // compared on their own
+      skip: (c) => c.type === ';' || c.type === '{' || c.type === '}' || (/^(preproc_include|using_declaration)$/.test(c.type) && c.parent && c.parent.type === 'translation_unit')   // compared on their own
+        || (c.type === ':' && c.parent && c.parent.type === 'field_declaration_list'),   // (the colon of public:, which is compared)
       rewrite: (n) => {
         if (usingStd && (n.type === 'qualified_identifier' || n.type === 'qualified_type_identifier') && F(n, 'scope') && F(n, 'scope').text === 'std' && F(n, 'name')) return { node: F(n, 'name') };
         if (n.type === 'parenthesized_expression' && n.namedChildCount === 1 && n.parent && !/if_statement|while_statement|condition_clause|decltype/.test(n.parent.type)) return { node: n.namedChild(0) };
@@ -1819,8 +1978,8 @@
         return null;
       },
       leaf: (n) => (usingStd && (n.type === 'type_identifier' || n.type === 'primitive_type') ? n.text.replace(/^std::/, '') : n.text),
-      // a case's steps are compared one by one, so one that differs is kept as code on its own
-      block: (n) => n.type === 'translation_unit' || n.type === 'compound_statement' || n.type === 'case_statement',
+      // a case's steps and a class's members are compared one by one, so one that differs is kept as code on its own
+      block: (n) => n.type === 'translation_unit' || n.type === 'compound_statement' || n.type === 'case_statement' || n.type === 'field_declaration_list',
       after: (o, n) => {
         if (n.type === 'switch_statement') {
           const body = o.c.find(x => x.t === 'compound_statement'), last = body && body.c[body.c.length - 1];
@@ -1911,8 +2070,15 @@
         force.set(key, conv.careful.has(key) && !force.has(key) ? 1 : 2);
         added++;
       };
-      for (const k of bad) blame(k);
-      if (!last.same && last.culprits) for (const k of last.culprits) blame(k);
+      let keys = [...bad, ...(!last.same && last.culprits ? last.culprits : [])];
+      // C++: a name said with its type spelled out can put right the lines that use it ("length of input" needs
+      // input to be text), so those go first and the rest are checked again
+      if (kind === 'cpp' || kind === 'arduino') {
+        const up = (k) => { let key = k; while (key != null && force.get(key) >= 2 && conv.parents.has(key)) key = conv.parents.get(key); return key; };
+        const first = keys.filter(k => { const key = up(k); return key != null && !force.has(key) && conv.careful.has(key); });
+        if (first.length) keys = first;
+      }
+      for (const k of keys) blame(k);
       if (!added) {
         if (force.has('ALL') || last.why) break;
         force.set('ALL', 2);
