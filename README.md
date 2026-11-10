@@ -587,4 +587,14 @@ every sentence pattern) is described in [INTUICODE.md](INTUICODE.md). Its exampl
 
 ## License
 
-IntuaCode is licensed under the [Apache License 2.0](LICENSE).
+IntuaCode is source-available under the [Business Source License 1.1](LICENSE):
+
+- **Free** for individuals using it for their own personal, non-commercial purposes: learning, hobby projects, and
+  reading, checking and changing code they own.
+- **A commercial licence** is needed for everything else: use by or for a company, school or other organisation,
+  paid work, building or running a product or business, and offering IntuaCode (or something made from it) to
+  others as a service or bundle. Organisations may evaluate it free for 60 days.
+- **Each version becomes Apache 2.0** four years after it's published. Versions 0.6.0 and earlier were published
+  under Apache 2.0 and stay that way.
+
+Bundled third-party parts (Pyodide, tree-sitter and its grammars, the fonts) keep their own licences.

@@ -2,7 +2,7 @@
   "name": "intuicode",
   "private": true,
   "version": "0.6.1",
-  "license": "Apache-2.0",
+  "license": "BUSL-1.1",
   "type": "module",
   "scripts": {
     "test": "node tools/test.mjs",

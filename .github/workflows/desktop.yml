@@ -110,7 +110,7 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
 
-  # Windows code signing through SignPath Foundation (free for open source; see SECURITY.md). Off until the
+  # Windows code signing through a SignPath.io plan (see SECURITY.md). Off until the
   # project is set up there: repository variable SIGNPATH_ORGANIZATION_ID and secret SIGNPATH_API_TOKEN
   # (SIGNPATH_PROJECT_SLUG and SIGNPATH_POLICY_SLUG if they aren't intuacode and release-signing). Each request
   # waits for an approver to approve it in SignPath, then the signed installers replace the unsigned ones.

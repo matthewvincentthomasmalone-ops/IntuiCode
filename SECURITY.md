@@ -38,18 +38,15 @@ SmartScreen and macOS Gatekeeper warn the first time they're opened: check the c
 
 ## Code signing later (for the maintainer)
 
-Windows code signing through [SignPath Foundation](https://signpath.org) (free for open source) is planned once the
-project is established: SignPath asks for evidence that a project is used and trusted, and for the maintainer's own
-name and email. The release workflow already has the signing step (`sign-windows` in
-`.github/workflows/desktop.yml`); it stays off until SignPath is set up:
+IntuaCode is no longer open source (it's under the Business Source License 1.1 from the version after 0.6.0), so
+SignPath Foundation's free signing for open-source projects doesn't apply. Windows code signing needs a paid
+certificate instead: a commercial [SignPath.io](https://about.signpath.io) plan (the release workflow's
+`sign-windows` step in `.github/workflows/desktop.yml` already uses it), or Microsoft's Trusted Signing, which
+would need its own workflow step. The step stays off until one is set up. With SignPath:
 
-1. Turn on multi-factor authentication for GitHub (and, later, SignPath): SignPath Foundation requires it.
-2. Apply at <https://signpath.org> for free open-source signing, with the repository
-   (`matthewvincentthomasmalone-ops/IntuiCode`), the licence (Apache-2.0), the home page (https://intuacode.com) and
-   the code signing policy page (https://intuacode.com/code-signing.html), which then needs SignPath's credit lines
-   ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") and its team roles (authors,
-   reviewers, approvers). Maintainer type: individual; build system: GitHub Actions.
-3. Once accepted, in SignPath: a project with the slug `intuacode` linked to this GitHub repository, a signing
+1. Turn on multi-factor authentication for GitHub and SignPath.
+2. Take a SignPath.io plan that issues or hosts a code signing certificate for an individual or business publisher.
+3. In SignPath: a project with the slug `intuacode` linked to this GitHub repository, a signing
    policy `release-signing` (manual approval, the approver from the policy page), and an artifact configuration
    from `.signpath/artifact-configuration.xml`. Create a CI user and an API token for it.
 4. In this repository's settings (Secrets and variables → Actions): the variable `SIGNPATH_ORGANIZATION_ID` and the
