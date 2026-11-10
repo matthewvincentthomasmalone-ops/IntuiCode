@@ -397,6 +397,20 @@ parts in the side. A bar over the preview says what's in use and where its code 
 it. Pointing never scrolls; a click brings the code into view. Predictive Mode and Project Link take turns:
 turning one on turns the other off, so clicking around a running page never brings up predictions.
 
+Project Link works on pages IntuaCode serves in the Preview, not on a site running on its own domain: IntuaCode
+marks each element of its pages with its sentence line, and a live site has none of those marks (and the browser
+keeps other sites' pages apart).
+
+**The Preview's address**
+
+In the desktop app the Preview serves every file of the project at a local address, shown over the page
+(`http://127.0.0.1:…`, only this computer can open it), as any web server would: a page loads its other scripts
+and modules, JSON, pictures and sounds by path, and a file that isn't in the project gets "404 Not Found" (the
+terminal says which). That address is a secure context, so Web MIDI and Web Serial work where the window has
+them (Windows); **Open in your browser** opens the same page in your own browser. The browser version shows one
+page, with its style sheets and main script inlined; a page that loads other files (a module, say) needs the
+desktop app, and the Preview says what didn't load.
+
 ## Desktop app
 
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
@@ -436,8 +450,8 @@ The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can'
   run sudo in your own terminal.
 
 The window only works in folders you pick with its own Open/Save dialogs (or drop on it), and code you open is
-never run in it: the website preview is sandboxed. See "nothing untrusted runs in the desktop
-window" in [ARCHITECTURE.md](ARCHITECTURE.md).
+never run in it: the website preview runs at its own local address, apart from the editor, and can't use the
+app's commands. See "nothing untrusted runs in the desktop window" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### Getting the installer
 

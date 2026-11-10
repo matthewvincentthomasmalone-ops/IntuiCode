@@ -169,15 +169,17 @@
             <button type="button" role="tab" id="tabPreview" class="term-tab" aria-selected="false" hidden>Preview</button>
           </div>
           <span class="py-status" id="pyStatus">Python not loaded</span>
-          <button type="button" class="btn small term-btn link-btn" id="btnLink" aria-pressed="true" hidden title="Project Link: as you use the page here, the code behind what you're pointing at, clicking or typing in lights up pink: in the editor, in Project and in Parts."><span class="link-dot" aria-hidden="true"></span>Project Link</button>
+          <button type="button" class="btn small term-btn link-btn" id="btnLink" aria-pressed="true" hidden title="Project Link: as you use the page here, the code behind what you're pointing at, clicking or typing in lights up pink: in the editor, in Project and in Parts. It works on pages IntuaCode serves in the Preview, not on a site on its own domain."><span class="link-dot" aria-hidden="true"></span>Project Link</button>
           <button type="button" class="btn small term-btn" id="btnPick" aria-pressed="false" hidden title="Click an element in the page to use its name. Hold Alt to pick a position.">Pick from the page</button>
           <button type="button" class="btn small term-btn" id="btnStop" hidden>Stop</button>
           <button type="button" class="btn small term-btn" id="btnClear">Clear</button><button type="button" class="btn small term-btn dock-term" id="btnTermDock" aria-expanded="true" aria-controls="termBody previewWrap" title="Hide the terminal, for more room" aria-label="Hide the terminal"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="btn small term-btn max-btn" data-max="term" aria-pressed="false" title="Full screen: the terminal (Esc to come back)" aria-label="Full screen: the terminal"><svg viewBox="0 0 16 16" aria-hidden="true" class="max-in"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg viewBox="0 0 16 16" aria-hidden="true" class="max-out"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
         <div class="preview-wrap" id="previewWrap" hidden>
+          <div class="pv-addr" id="pvAddr" hidden></div>
           <div class="link-bar" id="linkBar" hidden aria-live="polite"></div>
-          <!-- no allow-same-origin: the page runs in an origin of its own, so it can't reach the editor
-               (or, in the desktop app, its commands). It talks to the editor only with postMessage. -->
+          <!-- the page runs in an origin of its own, so it can't reach the editor (or, in the desktop app, its
+               commands): the desktop app's local address (http://127.0.0.1:…), or here a sandbox without
+               allow-same-origin (app.js sets which). It talks to the editor only with postMessage. -->
           <iframe id="preview" title="Live preview of the page" sandbox="allow-scripts allow-forms allow-modals"></iframe>
         </div>
         <div class="term-body" id="termBody">

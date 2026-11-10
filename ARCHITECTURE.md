@@ -32,7 +32,7 @@ the desktop app.
 
 Engine files must not touch the page (no `document`, no DOM). The shell (`app.js`,
 `app.css`, `index.html`, `runner.js`) calls them. The desktop layer (`src-tauri/src/lib.rs`)
-adds folders, programs and compilers.
+adds folders, programs and compilers, and serves the website preview's files at a local address.
 
 ## Decision: code is the source of truth
 
@@ -64,8 +64,9 @@ Pictures live in the project's `images/` folder and are named in sentences by th
 project lists them (name, size and a SHA-256 of the content); the browser keeps the pictures
 themselves in IndexedDB by that hash, so projects in `localStorage` stay small and the project
 kept for "restore" shares them. Saving writes them into `images/` (the desktop's `write_bytes`);
-opening a folder reads them back from there, so the files win, as the code does. The preview
-can't reach files, so each `images/…` name in the page becomes the picture's data.
+opening a folder reads them back from there, so the files win, as the code does. The desktop app's
+preview serves them at their paths; the browser's one-page preview can't reach files, so there each
+`images/…` name in the page becomes the picture's data.
 
 ## Decision: a project is a tree of files, each in its own language
 
@@ -109,14 +110,20 @@ The desktop window can run shell commands and write files, so code people open (
 from someone else, code an AI wrote) must never run in it, and a slip in the page's HTML
 must not turn into a command:
 
-- **The preview is sandboxed** without `allow-same-origin`: the page runs in an origin of its
-  own and talks to the editor only with `postMessage` (console lines, errors, Pick, and its
-  `localStorage`, which the editor keeps for it). In the desktop app it is served from
-  `preview://`, so it isn't covered by the editor's Content-Security-Policy. On Windows,
-  WebView2 runs Tauri's scripts in every frame (wry ignores "main frame only" there), so the
-  page does see Tauri's `invoke`; commands from it are still refused, because a sandboxed
-  frame's requests carry origin `null` and messages only reach the app from the window itself.
-  The desktop tests try both routes from inside the preview.
+- **The preview runs in an origin of its own** and talks to the editor only with `postMessage`
+  (console lines, errors, Pick, Project Link, and its `localStorage`, which the editor keeps for
+  it, per project). In the desktop app it is served from a local address, `http://127.0.0.1:<port>`
+  (see "the preview serves the project's files"), and keeps that origin (`allow-same-origin`): it
+  isn't the editor's, so the page can't reach the editor, and Tauri treats it as a remote site.
+  On Windows, WebView2 runs Tauri's scripts in every frame (wry ignores "main frame only" there),
+  so the page does see Tauri's `invoke`; commands from it are refused, because a remote origin
+  has no permissions (none are granted to remote URLs), and messages only reach the app from the
+  window itself. The desktop tests try both routes from inside the preview.
+  Tauri treats its own schemes as the app (`is_local_url`), so a page must never get a real
+  origin there: `preview://` (the one-page fallback) sandboxes its page with a
+  `Content-Security-Policy: sandbox` header, whatever frame it's loaded in, and the editor does
+  nothing when it finds itself in a frame (a page could load `http://tauri.localhost/` in one).
+  In a browser the page goes in `srcdoc`, sandboxed without `allow-same-origin`.
 - **The editor's Content-Security-Policy** (`src-tauri/tauri.conf.json`) allows scripts only
   from the app itself: no inline scripts, nothing from the internet. Python and the parsers
   are built into the app (`tools/build_desktop.mjs` refuses a release build without them).
@@ -198,6 +205,44 @@ selector, in the compiled CSS), the script lines that name the element, and the 
 in the compiled script). Pointing never scrolls; a click or a handler brings the code into view. Predictive Mode
 and Project Link take turns (turning one on turns the other off), so a running page can be clicked through without
 predictions popping up.
+
+*Added 2026-11-10:* on the desktop's local address every HTML page is served marked, so the helper also says which
+page it's on (its path). Style rules are traced to their sheet by its address (an inlined sheet in the browser's
+one page carries `data-ic-file`), and scripts are the page's `<script src>` files and what they import (read from
+their code: `import … from`, `export … from`, `import()`), so an element is linked through a page's modules. An
+error names its file and line, which map back to the sentence. Project Link only works on pages IntuaCode serves:
+a site on its own domain has no marks, and the browser keeps other sites' pages apart from the editor.
+
+## Decision: the preview serves the project's files (desktop)
+
+*Decided 2026-11-10.*
+
+The preview used to be one document (its HTML with the CSS and main script inlined), so a site of several files
+didn't run: ES modules, a fetched JSON file, pictures and sounds by path. The desktop app now serves every file of
+the project, from memory, at `http://127.0.0.1:<port>/` (a port the system picks, opened the first time), as any
+static web server would:
+
+- The page sends the files with `preview_site`, only those that changed (pictures as base64). Sentence files are
+  served as the code they make; HTML pages marked, with IntuaCode's helper as their first script
+  (`/.intuicode/preview.js`, a path no project file can have). The links to `style.css` and `script.js` that the
+  web writer adds are left out of a page when the project has no such file.
+- Paths: a query (`app.js?v=2`) isn't part of the path, `/` and `folder/` are `index.html`, a file not in the
+  project is a plain `404 Not Found` (the editor says which, once per project, by folder). GET and HEAD only.
+- The server notes what the page asked for since it last loaded, so an edit reloads the page only when it changed
+  a file the page used (or one it asked for and didn't find). The helper's own file never calls for a reload.
+- Only this computer can reach it (127.0.0.1). The Host must be the address itself (another site can't borrow it
+  by DNS rebinding), and every answer has `Cross-Origin-Resource-Policy: same-origin`, so other sites in a browser
+  can't load the files. Service workers aren't served (one would stay and answer for the next project).
+- 127.0.0.1 is a secure context and the frame keeps that origin, with `allow="midi; serial; …"`, so Web MIDI and
+  Web Serial are there when the window has them (WebView2 on Windows has both; WebKit on macOS and Linux has
+  neither). **Open in your browser** opens the same address in the computer's own browser.
+- If the address can't be opened, the preview falls back to the one page at `preview://`.
+
+The browser version keeps the one page: every style sheet the page links that's the project's is inlined, and a
+main script that's a module isn't run (its imports can't load); the preview says what didn't load. A service worker
+could serve the files, but not to a sandboxed page: Chromium doesn't let one answer an opaque-origin document's
+requests (tried 2026-11-10), and without the sandbox the page would share the editor's origin, its storage and
+projects.
 
 ## Decision: the AI stays outside; the map is handed over as OpenSpec files
 

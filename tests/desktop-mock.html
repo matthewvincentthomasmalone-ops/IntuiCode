@@ -59,6 +59,8 @@
           case 'write_stdin': emit('proc-output', { id: args.id, stream: 'stdout', text: `got: ${args.text}` }); emit('proc-exit', { id: args.id, code: 0 }); return null;
           case 'stop_program': emit('proc-exit', { id: args.id, code: null }); return null;
           // closing the window: mock.closeWindow() is the window's close button
+          // the preview's local address can't be pretended here: the page falls back to one page (srcdoc)
+          case 'preview_site': throw new Error('this test page has no local address');
           case 'guard_close': m.guard = args.on; return null;
           case 'close_window': m.closed = true; return null;
           default: throw new Error('unknown command ' + cmd);

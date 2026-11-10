@@ -148,6 +148,8 @@ Tick each one. If something is off, note what you did and what the terminal said
       the tree, and its part in Parts. The bar over the preview says what's pointed at and where its code is.
 - [ ] Click **Add task**: the submit handler's lines in `static/app.js` are named in the bar; click it there to open them in pink.
 - [ ] Turn on **Predictive Mode**: Project Link turns off (the terminal says so). Turn Project Link on: Predictive Mode turns off.
+- [ ] Browser version: import a site whose page loads a module (`<script type="module">`): the Preview shows **One page**
+      and says the module isn't loaded here, and that the desktop app serves every file.
 
 **Predictive Mode**
 - [ ] With **Predictive Mode** off (its dot hollow), type `set` on a new line: nothing pops up.
@@ -195,6 +197,12 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Website**
 - [ ] Project Templates → **To-do list page** → Build. The preview shows the page; add a task.
 - [ ] **Pick from the page**, then click the page's button: its name goes into your sentence.
+- [ ] Over the page the Preview shows **Local** and its address, `http://127.0.0.1:…/index.html`.
+- [ ] Import a folder with a site of several files (ES modules, a fetched `.json`), e.g. Rubychord-98-Web: the page runs,
+      its modules and JSON load, and the terminal names the files it asked for that aren't in the project (404).
+      Point at and click things: Project Link names the page, its style sheet and the module whose lines name them.
+- [ ] Edit a Markdown file in that project: the page doesn't reload. Edit its style sheet: it does, with the change.
+- [ ] **Open in your browser**: the same page opens in your own browser, at the same address.
 
 **C++ (needs a compiler)**
 - [ ] Project Templates → **C++ bank account (a class)** → Build → Run. On Windows the terminal says

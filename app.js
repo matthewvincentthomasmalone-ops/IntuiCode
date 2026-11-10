@@ -7,6 +7,11 @@
 (function () {
   'use strict';
 
+  // IntuaCode never runs inside another page. A page in the preview could load the editor in a frame of its own
+  // (in the desktop app it would have the app's commands there), or this file as one of its own scripts (in a
+  // browser, the one-page preview's relative addresses are the editor's): either way it does nothing.
+  if (window.top !== window.self) return;
+
   const LANG = window.IntuiLang.python;
   const WEB = window.IntuiWeb;
   const CPP = window.IntuiCpp;
@@ -2755,13 +2760,15 @@
 
   /* ---------- Website preview ---------- */
 
-  // Runs inside the preview: forwards console messages and errors, handles Pick, and stands in for
-  // the browser's storage. The preview is sandboxed into an origin of its own, where localStorage
-  // isn't available, so the page's saved values are kept by the editor (per project) and handed back
-  // each time the preview is rebuilt.
+  // Runs inside the preview: forwards console messages and errors, handles Pick and Project Link, and
+  // stands in for the browser's storage. The preview runs in an origin of its own (the desktop app's local
+  // address, or a sandbox in a browser), shared by every project, so the page's saved values are kept by
+  // the editor (per project) and handed back each time the preview is rebuilt. A page opened in a browser
+  // of its own (no editor around it) is left alone.
   const PAGE_STORE_KEY = 'intuicode.pagestorage.v1';
   const previewHelper = () => `(() => {
-    const send = (m) => parent.postMessage(Object.assign({ intuicode: true }, m), '*');
+    if (window.parent === window) return;
+    const send = (m) => parent.postMessage(Object.assign({ intuicode: true, page: location.pathname }, m), '*');
     const saved = ${JSON.stringify(store.get(PAGE_STORE_KEY, {})[project.name] || {}).replace(/</g, '\\u003c')};
     const storage = (data, changed) => {
       const has = (k) => Object.prototype.hasOwnProperty.call(data, k);
@@ -2774,15 +2781,13 @@
         get length() { return Object.keys(data).length; },
       };
     };
-    let usable = true;
-    try { window.localStorage.getItem('x'); } catch (e) { usable = false; }
-    if (!usable) {
+    try {
       Object.defineProperty(window, 'localStorage', { value: storage(saved, () => send({ type: 'storage', data: saved })), configurable: true });
       Object.defineProperty(window, 'sessionStorage', { value: storage({}, () => {}), configurable: true });
-    }
+    } catch (e) {}
     const text = (a) => a.map(x => { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (e) { return String(x); } }).join(' ');
     for (const level of ['log', 'info', 'warn', 'error']) { const orig = console[level]; console[level] = (...a) => { send({ type: 'log', level, text: text(a) }); orig.apply(console, a); }; }
-    window.addEventListener('error', (e) => send({ type: 'error', text: e.message, line: e.lineno }));
+    window.addEventListener('error', (e) => send({ type: 'error', text: e.message, line: e.lineno, file: e.filename || '' }));
     window.addEventListener('unhandledrejection', (e) => send({ type: 'error', text: String(e.reason && e.reason.message || e.reason) }));
     let picking = false, hover = null;
     const box = document.createElement('div');
@@ -2805,11 +2810,16 @@
     // Project Link: what's being pointed at, focused, clicked or typed in, and which of the page's own
     // handlers answered, so the editor can light up the code behind it
     let linkOn = ${layout.link ? 'true' : 'false'}, lastLink = '';
+    // the style rules an element matches, and the style sheet each is in (its address, or the file an inlined one was)
     const rulesFor = (el) => {
-      const out = [];
-      const walk = (rules) => { for (const r of rules) { try { if (r.selectorText && el.matches(r.selectorText)) out.push(r.selectorText); else if (r.cssRules && r.cssRules.length) walk(r.cssRules); } catch (e) {} } };
-      try { for (const sh of document.styleSheets) walk(sh.cssRules || []); } catch (e) {}
-      return out.slice(0, 40);
+      const sels = [], hrefs = [];
+      const walk = (rules, at, depth) => { for (const r of rules) { try {
+        if (r.selectorText && el.matches(r.selectorText)) { sels.push(r.selectorText); hrefs.push(at); }
+        else if (r.styleSheet && depth < 4) walk(r.styleSheet.cssRules || [], r.styleSheet.href || at, depth + 1);
+        else if (r.cssRules && r.cssRules.length) walk(r.cssRules, at, depth);
+      } catch (e) {} } };
+      for (const sh of Array.from(document.styleSheets)) { try { walk(sh.cssRules || [], sh.href || (sh.ownerNode && sh.ownerNode.getAttribute && sh.ownerNode.getAttribute('data-ic-file')) || '', 0); } catch (e) {} }
+      return { sels: sels.slice(0, 40), hrefs: hrefs.slice(0, 40) };
     };
     const report = (target, ev) => {
       if (!linkOn || picking) return;
@@ -2818,7 +2828,8 @@
       if (ev === 'hover' && key === lastLink) return;
       lastLink = key;
       if (!el) { send({ type: 'link', none: true }); return; }
-      send({ type: 'link', ev: ev, line: +el.dataset.icLine, tag: el.tagName.toLowerCase(), id: el.id || '', classes: Array.from(el.classList), sels: rulesFor(el) });
+      const r = rulesFor(el);
+      send({ type: 'link', ev: ev, line: +el.dataset.icLine, tag: el.tagName.toLowerCase(), id: el.id || '', classes: Array.from(el.classList), sels: r.sels, hrefs: r.hrefs });
     };
     document.addEventListener('mouseover', (e) => report(e.target, 'hover'), true);
     document.addEventListener('focusin', (e) => report(e.target, 'focus'), true);
@@ -2849,7 +2860,7 @@
      and the handler that ran. Those lines turn pink in the editor; their files, folders and parts in the side. */
   const NO_LINES = new Set();
   let link = { lines: new Map(), el: null, run: null };   // lines: sec.id -> Set of lines
-  let previewCode = null;   // the page's script as one text, to find the handler that answered
+  let previewCode = new Map();   // sec.id -> its script as one text, to find the handler that answered
   const linkedLines = (id) => link.lines.get(id) || NO_LINES;
   const escRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -2911,18 +2922,90 @@
   function jsLinesRan(sec, src) {
     const r = sec && secResult(sec.id), out = new Set();
     if (!r || !src) return out;
-    if (!previewCode || previewCode.id !== sec.id || previewCode.r !== r) previewCode = { id: sec.id, r, text: r.lines.map(o => o.text).join('\n') };
-    const at = previewCode.text.indexOf(src.slice(0, 200));
+    let code = previewCode.get(sec.id);
+    if (!code || code.r !== r) previewCode.set(sec.id, code = { r, text: r.lines.map(o => o.text).join('\n') });
+    const at = code.text.indexOf(src.slice(0, 200));
     if (at < 0) return out;
-    const first = previewCode.text.slice(0, at).split('\n').length - 1, count = src.split('\n').length;
+    const first = code.text.slice(0, at).split('\n').length - 1, count = src.split('\n').length;
     for (let i = first; i < first + count && i < r.lines.length; i++) if (r.lines[i].src >= 0) out.add(r.lines[i].src);
     return out;
   }
+  /* The files behind the page in the preview. Served from the local address, a page is any of the project's
+     HTML files (the helper says which: its address's path); its style sheets are found by their addresses, and
+     its scripts by its <script src> and their imports. As one page (a browser), it's the page the preview made. */
+  const served = () => site.mode === 'site';
+  function pageAt(pathname) {
+    const pg = previewInfo && previewInfo.page;
+    if (!served() || typeof pathname !== 'string') return pg && pg.html;
+    let p = '';
+    try { p = decodeURIComponent(pathname).replace(/^\/+/, ''); } catch (_) { return pg && pg.html; }
+    if (!p || p.endsWith('/')) p += 'index.html';
+    return project.sections.find(s => s.file === 'structure' && fileName(s) === p) || null;
+  }
+  /* A file the page names (a script's src, an import, a style sheet's address), as a project path, or null. */
+  function refPath(from, ref) {
+    if (typeof ref !== 'string' || !ref) return null;
+    let p = ref;
+    if (/^[a-z][\w+.-]*:/i.test(ref)) {   // an address: the preview's own only
+      let u;
+      try { u = new URL(ref); } catch (_) { return null; }
+      if (!served() || u.origin !== `http://127.0.0.1:${site.port}`) return null;
+      p = u.pathname;
+    } else if (!/^(?:\.{1,2}\/|\/)/.test(ref) && /^[@\w-]+(?:\/|$)/.test(ref) && !/\.\w+$/.test(ref.split(/[?#]/)[0])) return null;   // a package name (import "lodash")
+    p = p.split(/[?#]/)[0];
+    try { p = decodeURIComponent(p); } catch (_) { return null; }
+    const parts = p.startsWith('/') ? [] : from.split('/').slice(0, -1);
+    for (const seg of p.split('/')) {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
+    }
+    return parts.join('/') || null;
+  }
+  const secAt = (path, test) => path && project.sections.find(s => fileName(s) === path && (!test || test(s)));
+  /* Line n of a file's code (as served), as its place in the writer's lines: the code has a run of empty lines
+     as one (the writers' text does that), so the two count differently after one. -1 past the end. */
+  function codeLineAt(r, n) {
+    let line = 0, empty = 0;
+    for (let i = 0; i < r.lines.length; i++) {
+      empty = r.lines[i].text === '' ? empty + 1 : 0;
+      if (empty > 1) continue;
+      if (line === n) return i;
+      line++;
+    }
+    return -1;
+  }
+  const IMPORTS = /\bimport\s*(?:[\w$*{}\s,]+?\s*from\s*)?["']([^"'\n]+)["']|\bexport\s*[\w$*{}\s,]+?\s*from\s*["']([^"'\n]+)["']|\bimport\s*\(\s*["']([^"'\n]+)["']\s*\)/g;
+  function pageScripts(html) {
+    const pg = previewInfo && previewInfo.page;
+    if (!served()) return pg && pg.mechanics ? [pg.mechanics] : [];
+    if (!html) return [];
+    const out = [], seen = new Set(), isJs = (s) => s.lang === 'js';
+    const visit = (from, ref) => {
+      const s = secAt(refPath(from, ref), isJs);
+      if (!s || seen.has(s.id)) return;
+      seen.add(s.id);
+      out.push(s);
+      for (const m of codeOf(s).matchAll(IMPORTS)) visit(fileName(s), m[1] || m[2] || m[3]);
+    };
+    for (const m of ((secResult(html.id) || {}).text || '').matchAll(/<script\b[^>]*?\ssrc\s*=\s*["']?([^"'\s>]+)/gi)) visit(fileName(html), m[1]);
+    return out;
+  }
+  /* The style rules an element matches, by the style sheet they're in: [[CSS file, selectors]]. */
+  function sheetsFor(el, html) {
+    const pg = previewInfo && previewInfo.page, by = new Map();
+    (el.sels || []).forEach((sel, i) => {
+      const at = (el.hrefs || [])[i] || '';
+      const sec = at ? secAt(/:\/\//.test(at) ? refPath(fileName(html || pg.html || { path: '' }), at) : at) : (!served() && pg.styling);
+      if (!sec) return;
+      if (!by.has(sec)) by.set(sec, []);
+      by.get(sec).push(sel);
+    });
+    return [...by];
+  }
   function onLink(d) {
     if (!layout.link || !previewInfo) return;
-    const pg = previewInfo.page;
     if (d.type === 'link') {
-      if (d.none || !link.el || link.el.line !== d.line) link.run = null;   // another element: the last handler's done
+      if (d.none || !link.el || link.el.line !== d.line || link.el.page !== d.page) link.run = null;   // another element: the last handler's done
       link.el = d.none ? null : d;
     } else link.run = d;
     const lines = new Map();
@@ -2932,11 +3015,11 @@
       for (const n of set) cur.add(n);
       lines.set(sec.id, cur);
     };
-    const el = link.el;
-    if (el && pg.html) add(pg.html, blockFrom(textOf(pg.html), el.line));
-    if (el) add(pg.styling, cssLinesFor(pg.styling, el.sels || []));
-    if (el && !link.run) add(pg.mechanics, jsLinesNaming(pg.mechanics, el));
-    if (link.run) add(pg.mechanics, jsLinesRan(pg.mechanics, link.run.src));
+    const el = link.el, html = pageAt((el || link.run || d).page), scripts = pageScripts(html);
+    if (el && html) add(html, blockFrom(textOf(html), el.line));
+    if (el) for (const [sec, sels] of sheetsFor(el, html)) add(sec, cssLinesFor(sec, sels));
+    if (el && !link.run) for (const s of scripts) add(s, jsLinesNaming(s, el));
+    if (link.run) for (const s of scripts) add(s, jsLinesRan(s, link.run.src));
     link.lines = lines;
     showLink(d.type === 'link-run' || (d.ev && d.ev !== 'hover'));
   }
@@ -3004,10 +3087,17 @@
   function runWebsite(announce) {
     if (!compiled) compile();
     const pg = previewPage(), res = (s) => (s ? secResult(s.id) : null);
-    previewInfo = WEB.previewDocument({ results: { structure: res(pg.html), styling: res(pg.styling), mechanics: res(pg.mechanics) } }, previewHelper());
+    // one page: every style sheet it links is inlined; its main script too, unless that's a module (its imports
+    // can't load in one page, so it isn't run there)
+    const styles = {};
+    for (const s of project.sections) if (s.file === 'styling') styles[fileName(s)] = codeOf(s);
+    const isModule = pg.mechanics && /^\s*(?:import\s*(?:[\w$*{]|["'])|export\s)/m.test(codeOf(pg.mechanics));
+    previewInfo = WEB.previewDocument({ results: { structure: res(pg.html), styling: res(pg.styling), mechanics: isModule ? null : res(pg.mechanics) } }, previewHelper(),
+      { page: pg.html ? fileName(pg.html) : 'index.html', styles, styling: pg.styling ? fileName(pg.styling) : '' });
     previewInfo.page = pg;
-    previewCode = null;
-    showPreviewPage(withImages(previewInfo.html), announce);
+    previewCode = new Map();
+    if (desk.on && site.mode !== 'one') showSite(pg, announce);
+    else showPreviewPage(withImages(previewInfo.html), announce);
     setPicking(false);
     if (announce) {
       showBottom('preview');
@@ -3015,9 +3105,158 @@
       tLine(`▶ Preview updated.${errs ? ` ${errs} sentence${errs > 1 ? 's have' : ' has'} a problem, so parts may be missing.` : ''}`, 't-sys');
     }
   }
-  /* In the desktop app the page is served from its own address (preview://), because the editor's
-   * Content-Security-Policy forbids inline scripts and a srcdoc page would inherit it. In a browser
-   * it goes in srcdoc. Either way the sandbox keeps it in an origin of its own. */
+
+  /* ---------- The preview's two ways of showing a page ----------
+   * Desktop app: every file of the project at a local address, http://127.0.0.1:<port>/, served by the desktop
+   *   layer from what's sent here (only files that changed), so a page loads its modules, JSON, pictures and
+   *   sounds as from any web server. The frame keeps that address's origin (allow-same-origin): it's not the
+   *   editor's, so the page can't reach the editor, and Tauri refuses commands from it; and a real origin can
+   *   use Web MIDI and Web Serial where the window has them. HTML pages are served marked (each element has
+   *   its sentence line, for Project Link and Pick), with IntuaCode's helper as their first script.
+   * Browser: one page, its style sheets and main script inlined, in srcdoc, sandboxed into an origin of its
+   *   own. A page in a browser tab can't be given files of its own without sharing the editor's origin (a
+   *   service worker doesn't serve a sandboxed page's requests), so modules and fetched files don't load.
+   *   The desktop app's fallback, when the local address can't be opened, is the same page at preview://. */
+  const site = { mode: null, port: null, sent: new Map(), chain: Promise.resolve(), page: '', reload: false, missing: new Set(), told: new Set(), project: null, timer: null };
+  const SITE_TYPES = { html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', cjs: 'text/javascript', jsx: 'text/javascript', json: 'application/json', map: 'application/json', webmanifest: 'application/manifest+json', md: 'text/markdown', markdown: 'text/markdown', csv: 'text/csv', xml: 'application/xml', svg: 'image/svg+xml', txt: 'text/plain' };
+  const HELPER_PATH = '.intuicode/preview.js';   // (.intuicode/ is IntuaCode's own: no project file can be there)
+  /* An HTML page with IntuaCode's helper as its first script (straight after <head>). */
+  function withHelper(html) {
+    const tag = `<script src="/${HELPER_PATH}"></script>`;
+    const at = html.match(/<head\b[^>]*>/i) || html.match(/<html\b[^>]*>/i) || html.match(/<!doctype[^>]*>/i);
+    return at ? html.slice(0, at.index + at[0].length) + '\n' + tag + html.slice(at.index + at[0].length) : tag + '\n' + html;
+  }
+  /* Every file the page can ask for: { path, type, text | data, v } (v: what it holds, to see a change). */
+  /* A page IntuaCode wrote, marked, without the links to style.css and script.js the writer adds for Styling and
+     Mechanics when the project has no such file (a page imported with styles.css, say): they'd only be 404s. */
+  function servedPage(s) {
+    const r = secResult(s.id);
+    let html = r ? r.previewText || r.text : '';
+    if (!secAt(refPath(fileName(s), 'style.css'))) html = html.replace(/^[ \t]*<link rel="stylesheet" href="style\.css">[ \t]*\n/m, '');
+    if (!secAt(refPath(fileName(s), 'script.js'))) html = html.replace(/^[ \t]*<script src="script\.js"><\/script>[ \t]*\n/m, '');
+    return withHelper(html);
+  }
+  function siteFiles() {
+    const out = [{ path: HELPER_PATH, type: 'text/javascript; charset=utf-8', text: previewHelper() }];
+    for (const s of project.sections) {
+      const path = fileName(s), ext = ((path.match(/\.([^./]+)$/) || [])[1] || '').toLowerCase();
+      const text = s.file === 'structure' ? servedPage(s) : /^html?$/.test(ext) ? withHelper(codeOf(s)) : codeOf(s);
+      out.push({ path, type: (SITE_TYPES[ext] || 'text/plain') + '; charset=utf-8', text });
+    }
+    for (const im of images()) {
+      const url = imageUrls.get(im.key);
+      if (url) out.push({ path: 'images/' + im.name, type: im.type, data: url.slice(url.indexOf(',') + 1), v: 'picture ' + im.key });
+    }
+    for (const f of out) if (f.v === undefined) f.v = f.text;
+    return out;
+  }
+  const sitePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+  const siteUrl = (p) => `http://127.0.0.1:${site.port}/${sitePath(p)}`;
+  /* The frame, for a page at the local address (site) or one page (one). Takes effect when it next loads. */
+  function setFrame(kind) {
+    const frame = $('preview');
+    if (kind === 'site') {
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-same-origin');
+      frame.setAttribute('allow', 'autoplay; midi; serial; usb; hid; gamepad; fullscreen; clipboard-write');
+      frame.removeAttribute('srcdoc');
+    } else {
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
+      frame.removeAttribute('allow');
+    }
+  }
+  function showSite(pg, reload) {
+    const files = siteFiles(), page = pg.html ? fileName(pg.html) : (files.find(f => /\.html?$/i.test(f.path)) || { path: 'index.html' }).path;
+    if (site.project !== project) { site.project = project; site.told = new Set(); }
+    const seq = ++previewSeq;
+    site.reload = site.reload || !!reload;
+    site.chain = site.chain.then(async () => {
+      const put = [], keep = [];
+      for (const f of files) {
+        if (site.sent.get(f.path) === f.v) keep.push(f.path);
+        else put.push({ path: f.path, kind: f.type, text: f.data ? null : f.text, data: f.data || null });
+      }
+      let st;
+      try { st = await invoke('preview_site', { put, keep }); }
+      catch (e) {
+        site.sent = new Map();
+        if (site.mode === 'one') return;
+        site.mode = 'one';
+        tLine(`The preview couldn't open its local address (${e}), so it shows one page, with its style sheet and script inlined: other files (modules, JSON, sounds) don't load.`, 't-err');
+        previewShown = null;
+        showPreviewPage(withImages(previewInfo.html), true);
+        return;
+      }
+      site.sent = new Map(files.map(f => [f.path, f.v]));
+      site.port = st.port;
+      site.reload = site.reload || st.reload || site.page !== page || site.mode !== 'site';
+      if (seq !== previewSeq || !site.reload) return;   // (a newer one is on its way, or nothing the page uses changed)
+      site.reload = false;
+      site.mode = 'site';
+      site.page = page;
+      setFrame('site');
+      $('preview').src = siteUrl(page);
+      showAddress();
+    });
+  }
+  /* Files the page asked for that aren't in the project: they get 404 Not Found, as from any web server. Said once
+     per project, a moment after they're asked for (a page with sounds asks for many at once). */
+  function noteMissing(path) {
+    if (typeof path !== 'string' || site.told.has(path) || site.told.size > 2000) return;
+    site.told.add(path);
+    site.missing.add(path);
+    clearTimeout(site.timer);
+    site.timer = setTimeout(() => {
+      const list = [...site.missing];
+      site.missing = new Set();
+      if (!list.length) return;
+      // by folder: a folder with many (a page's sounds) is one entry, and many folders are their parent's
+      let dirs = new Map();
+      const put = (m, d, ps) => m.set(d, (m.get(d) || []).concat(ps));
+      for (const p of list) put(dirs, p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '', [p]);
+      while (dirs.size > 4) {
+        const depth = Math.max(...[...dirs.keys()].map(d => d.split('/').length));
+        if (depth < 3) break;
+        const next = new Map();
+        for (const [d, ps] of dirs) put(next, d.split('/').length === depth ? d.split('/').slice(0, -2).join('/') + '/' : d, ps);
+        dirs = next;
+      }
+      const parts = [...dirs].flatMap(([d, ps]) => (d && ps.length > 3 ? [`${ps.length} files in ${d}`] : ps));
+      const shown = parts.slice(0, 4).join(', ') + (parts.length > 4 ? ` and ${parts.length - 4} more` : '');
+      tLine(`Not in the project, so not found (404): ${shown}. The page gets what any web server gives for a file that isn't there.`, 't-sys');
+    }, 700);
+  }
+  /* What the preview is: its address (desktop), or one page and what it can't load (browser). */
+  function showAddress() {
+    const bar = $('pvAddr');
+    if (served()) {
+      const url = siteUrl(site.page);
+      bar.innerHTML = `<span class="pv-tag">Local</span><code class="pv-url">${escHtml(url)}</code><span class="pv-note">only this computer can open it</span>`
+        + `<button type="button" class="linklike pv-open" id="pvOpen" title="The same page in your own browser (without Project Link)">Open in your browser</button>`;
+      bar.title = 'IntuaCode serves the project\'s files at this address while it\'s open. Project Link works on pages IntuaCode serves, because it marks each element with its sentence line. A site on its own domain has none of those marks, and the browser keeps other sites\' pages apart, so it can\'t be linked.';
+      bar.hidden = false;
+      return;
+    }
+    const misses = oneMisses();
+    bar.hidden = !misses.length;
+    if (!misses.length) return;
+    bar.innerHTML = `<span class="pv-tag">One page</span><span class="pv-note">Not loaded here: ${misses.map(m => `<code>${escHtml(m)}</code>`).join(', ')}. ${desk.on ? 'The local address couldn\'t be opened.' : 'The browser preview runs one page, with its style sheets and main script inlined. The desktop app serves every file of the project at a local address.'}</span>`;
+    bar.title = '';
+  }
+  /* In one page: the page's scripts that aren't inlined (modules, others) and the files they import. */
+  function oneMisses() {
+    const html = previewInfo && previewInfo.page && previewInfo.page.html;
+    const code = html ? (secResult(html.id) || {}).text || '' : '';
+    const main = previewInfo.page.mechanics && fileName(previewInfo.page.mechanics), out = [];
+    for (const m of code.matchAll(/<script\b([^>]*?)\ssrc\s*=\s*["']?([^"'\s>]+)[^>]*>/gi)) {
+      const path = refPath(fileName(html), m[2]);
+      if (!path || path === 'script.js' && !secAt(path)) continue;
+      if (/\btype\s*=\s*["']?module/i.test(m[0])) out.push(path + ' (a module)');
+      else if (path !== main && path !== 'script.js') out.push(path);
+    }
+    return [...new Set(out)].slice(0, 4);
+  }
+  /* One page: in the desktop app's fallback it's served from preview:// (the editor's Content-Security-Policy
+   * forbids inline scripts, and a srcdoc page would inherit it); in a browser it goes in srcdoc. */
   let previewSeq = 0, previewShown = null;
   async function showPreviewPage(html, reload) {
     // the same page again isn't reloaded (typing that doesn't change it, or a rebuild right after
@@ -3025,6 +3264,8 @@
     if (html === previewShown && !reload) return;
     previewShown = html;
     const frame = $('preview'), seq = ++previewSeq;
+    setFrame('one');
+    showAddress();
     if (desk.on && TAURI.core.convertFileSrc) {
       try {
         await invoke('set_preview', { html });
@@ -3034,6 +3275,11 @@
     }
     if (seq === previewSeq) frame.srcdoc = html;
   }
+  $('pvAddr').addEventListener('click', async (e) => {
+    if (!e.target.closest('#pvOpen')) return;
+    try { await invoke('open_preview', { path: site.page }); tLine(`Opened ${siteUrl(site.page)} in your browser. Project Link and Pick work here, in the Preview.`, 't-sys'); }
+    catch (err) { tLine('Your browser could not be opened: ' + err, 't-err'); }
+  });
   /* The live preview follows the sentences, but not a line still being typed that doesn't work yet
    * (half a condition, a ‹blank› not filled in): it waits until the line works, or the cursor leaves it. */
   function schedulePreview() {
@@ -3070,12 +3316,21 @@
     if (d.type === 'link' || d.type === 'link-run') { onLink(d); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
-      let where = '';
-      const mech = previewInfo && previewInfo.page.mechanics;
-      const js = mech && secResult(mech.id);
-      if (d.line && previewInfo && js) {
-        const o = js.lines[d.line - previewInfo.jsLine];
-        if (o && o.src >= 0) where = o.src;
+      let where = '', mech = previewInfo && previewInfo.page.mechanics, at = '';
+      if (served()) {
+        // the file it's in, by its address (the page itself, for a script in the page), and its line there
+        const path = d.file ? refPath('', d.file) : null, sec = secAt(path);
+        mech = sec && sec.lang === 'js' ? sec : null;
+        const js = mech && secResult(mech.id), i = js && d.line ? codeLineAt(js, d.line - 1) : -1;
+        if (i >= 0 && js.lines[i].src >= 0) where = js.lines[i].src;
+        else if (sec && !isSentences(sec) && d.line) { mech = sec; where = d.line - 1; }   // code kept as written: its own lines
+        if (path && d.line) at = ` (${path}, line ${d.line})`;
+      } else {
+        const js = mech && secResult(mech.id);
+        if (d.line && previewInfo && js) {
+          const o = js.lines[d.line - previewInfo.jsLine];
+          if (o && o.src >= 0) where = o.src;
+        }
       }
       // an unfilled ‹blank› runs as _ : say that, not "_ is not defined"
       if (/\b_ is not defined/.test(d.text) && mech && /‹[^›]*›/.test(where !== '' ? mech.text.split('\n')[where] || '' : mech.text)) {
@@ -3083,15 +3338,15 @@
         if (where !== '') pointAt(mech.id, where, 'The page stops here until this ‹blank› is filled in.');
         return;
       }
-      tLine(`✕ The page hit an error: ${d.text}`, 't-err');
+      tLine(`✕ The page hit an error: ${d.text}${at}`, 't-err');
       if (where !== '' && mech) pointAt(mech.id, where, `The page hit an error: ${d.text}`);
     } else if (d.type === 'pick') {
       setPicking(false);
-      const sec = activeSec();
+      const sec = activeSec(), page = pageAt(d.page);
       if (d.alt) { insertText(`${d.x}, ${d.y}`); tLine(`Picked the position ${d.x}, ${d.y}. (Exact positions can break on other screen sizes; "in a row" or a grid adapt better.)`, 't-sys'); return; }
       if (d.id && sec.file !== 'structure') { insertText(d.id); tLine(`Picked ${d.id}.`, 't-sys'); return; }
-      if (d.line != null && previewInfo && previewInfo.page.html) {
-        openSection(previewInfo.page.html.id, d.line);
+      if (d.line != null && previewInfo && page) {
+        openSection(page.id, d.line);
         tLine(d.id ? `Picked ${d.id}: here is where it is added.` : `Picked a <${d.tag}> with no name. To style it or use it in Mechanics, give it one: add "called …" to this sentence.`, 't-sys');
       }
     }
@@ -6271,6 +6526,7 @@
     await TAURI.event.listen('tauri://drag-enter', () => { if (!$('impModal').hidden) $('impCard').classList.add('dropping'); });
     await TAURI.event.listen('tauri://drag-leave', () => $('impCard').classList.remove('dropping'));
     await TAURI.event.listen('tauri://drag-drop', (e) => openDropped((e.payload && e.payload.paths) || []));
+    await TAURI.event.listen('preview-missing', (e) => noteMissing(e.payload));
     await TAURI.event.listen('proc-output', (e) => {
       const d = e.payload;
       if (!desk.proc || d.id !== desk.proc.id) return;
