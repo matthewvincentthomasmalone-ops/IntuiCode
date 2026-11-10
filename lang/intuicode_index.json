@@ -2376,6 +2376,15 @@
         },
         {
           "topic": "Show & ask",
+          "say": "show ‹value›, then start a new line",
+          "becomes": "std::cout << value << \"\\n\";",
+          "folders": [
+            "program"
+          ],
+          "tip": "A new-line character ends the line, where plain \"show\" uses std::endl."
+        },
+        {
+          "topic": "Show & ask",
           "say": "show \"‹%d tries›\" filled in with ‹tries›",
           "becomes": "printf(\"%d tries\", tries);",
           "folders": [
@@ -2553,6 +2562,15 @@
             "program"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Lists",
+          "say": "sort ‹list›",
+          "becomes": "std::sort(list.begin(), list.end());",
+          "folders": [
+            "program"
+          ],
+          "tip": "Smallest first. Add \"biggest first\" to turn it round."
         },
         {
           "topic": "Lists",
@@ -2793,6 +2811,14 @@
         {
           "say": "\"Hi \" plus name",
           "becomes": "\"Hi \" + name"
+        },
+        {
+          "say": "square root of x",
+          "becomes": "std::sqrt(x)"
+        },
+        {
+          "say": "absolute value of x",
+          "becomes": "std::abs(x)"
         }
       ]
     },
@@ -3473,6 +3499,14 @@
         {
           "say": "the result of f with a, b",
           "becomes": "f(a, b)"
+        },
+        {
+          "say": "t as a whole number",
+          "becomes": "(int)t"
+        },
+        {
+          "say": "square root of x",
+          "becomes": "sqrt(x)"
         }
       ]
     }

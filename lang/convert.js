@@ -1318,6 +1318,9 @@
             if (cast) return `${args[0]} as ${cast[1] === 'int' ? 'a whole number' : 'a decimal'}`;
             if (!arduino && (/^std::sto[id]$/.test(f) || (usingStd && /^sto[id]$/.test(f)))) return `${args[0]} as ${/i$/.test(f) ? 'a whole number' : 'a decimal'}`;
           }
+          // std::sqrt(x), std::abs(x) (sqrt, abs on a board): "square root of x", "absolute value of (a minus b)"
+          const mf = arduino ? f : /^std::/.test(f) ? f.slice(5) : usingStd ? f : null, maths = args.length === 1 && mf && mf.match(/^(sqrt|abs)$/);
+          if (maths && args[0] !== 'the built-in light') return `${maths[1] === 'sqrt' ? 'square root' : 'absolute value'} of ${opd(args[0]) ? args[0] : `(${args[0]})`}`;
           if (arduino && fn.type === 'field_expression' && !a.length && cchain(F(fn, 'argument')) && F(fn, 'argument').type !== 'this' && !fn.text.includes('->')) {
             const on = F(fn, 'argument').text, m = F(fn, 'field').text;
             if (m === 'toInt' || m === 'toFloat') return `${on} as ${m === 'toInt' ? 'a whole number' : 'a decimal'}`;
@@ -1427,13 +1430,14 @@
       let items = flat.slice(1), end = 'none';
       if (items.length && /^(std::)?endl$/.test(items[items.length - 1].text)) { end = 'endl'; items = items.slice(0, -1); }
       else if (items.length > 1 && items[items.length - 1].text === '" "') { end = 'space'; items = items.slice(0, -1); }
+      else if (items.length > 1 && items[items.length - 1].text === '"\\n"') { end = 'nl'; items = items.slice(0, -1); }
       if (!items.length) return end === 'endl' ? 'end the line' : null;
       if (items.some(x => /^(std::)?endl$/.test(x.text))) return null;
       const spaced = items.length >= 3 && items.length % 2 === 1 && items.every((x, i) => (i % 2 === 1 ? x.text === '" "' : x.text !== '" "'));
       const pieces = (spaced ? items.filter((x, i) => i % 2 === 0) : items).map(x => (spaced ? ex(x) : whole(x)));
       if (pieces.some(x => x == null)) return null;
       if (!spaced && pieces.length > 1 && pieces.some(p => / followed by /.test(bare(p)))) return null;
-      return `show ${spaced || pieces.length === 1 ? pieces.join(' and ') : pieces.join(' followed by ')}${end === 'space' ? ' on the same line' : end === 'none' ? ' without ending the line' : ''}`;
+      return `show ${spaced || pieces.length === 1 ? pieces.join(' and ') : pieces.join(' followed by ')}${end === 'space' ? ' on the same line' : end === 'none' ? ' without ending the line' : end === 'nl' ? ', then start a new line' : ''}`;
     }
     /* std::cin >> a >> b  ->  "read a and b from the keyboard" */
     function cinParts(e) {
@@ -1571,6 +1575,13 @@
           if (arduino && meth === 'write' && v.length === 1 && objType.get(obj) === 'Servo') return say(`turn servo ${obj} to ${v[0]} degrees`);
         }
         if (fn.type === 'field_expression' && F(fn, 'field').text === 'push_back' && v.length === 1 && F(fn, 'argument').type === 'identifier' && !arduino) return say(`add ${v[0]} to ${F(fn, 'argument').text}`);
+        // std::sort(xs.begin(), xs.end()): "sort xs"; with std::greater<>() as well, "sort xs biggest first"
+        if (!arduino && (f === 'std::sort' || (usingStd && f === 'sort')) && (a.length === 2 || a.length === 3)) {
+          const end = (c, which) => c.type === 'call_expression' && !argsOf(c).length && F(c, 'function').type === 'field_expression' && F(F(c, 'function'), 'field').text === which ? F(F(c, 'function'), 'argument') : null;
+          const b = end(a[0], 'begin'), e2 = end(a[1], 'end');
+          const down = a.length === 3 && collapse(a[2].text).replace(/\s+/g, '') === (usingStd && !/^std::/.test(a[2].text) ? 'greater<>()' : 'std::greater<>()');
+          if (b && e2 && b.text === e2.text && cchain(b) && b.type !== 'this' && !b.text.includes('->') && (a.length === 2 || down)) return say(`sort ${b.text}${down ? ' biggest first' : ''}`);
+        }
         if (cchain(fn) && fn.type !== 'qualified_identifier') return say(`run ${fn.type === 'field_expression' && F(fn, 'argument').type === 'this' ? 'self.' + F(fn, 'field').text : f}${v.length ? ' with ' + v.join(', ') : ''}`);
         return false;
       }

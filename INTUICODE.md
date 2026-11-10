@@ -868,7 +868,8 @@ stop-tone   = "stop the" ( "tone" | "note" | "sound" ) "on" [ "pin" ] pin ;     
 pin         = value | "the built-in light" | "the built-in led" ;                   (* → LED_BUILTIN *)
 
 (* Showing and asking *)
-show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" ] ;
+show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" | [ "," ] "then start a new line" ] ;
+                (* then start a new line → … << "\n";  on Arduino it is the same as plain show *)
                 (* "and" or "," put a space between the pieces, "followed by" none
                    → std::cout << a << " " << b << std::endl;  on the same line adds << " ", without ending the line
                    adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said;
@@ -898,6 +899,7 @@ make-called = ( "make" | "create" ) [ "a" | "an" | "some" ] [ "empty" ] [ "new" 
                 (* → type name;  Class name(items);  "empty" only for text;  a Class is one defined here, or starts with a capital *)
 keep        = "keep" path "between" value "and" value ;           (* → path = std::clamp(path, a, b);  Arduino: constrain *)
 add         = "add" value "to" name ;                    (* → push_back for a list, an error for an Arduino list, += otherwise *)
+sort        = "sort" path [ "biggest first" ] ;          (* → std::sort(path.begin(), path.end()[, std::greater<>()]);  an error on Arduino *)
 increase    = ( "increase" | "decrease" ) target [ "by" value ] ;                   (* → +=, -=, ++, -- *)
 new-object  = "make" [ "a" ] "new" Class [ "with" items ] "and store" [ "it" ] "in" name ; (* → Class name(items); *)
 run         = "run" path [ "with" items ] [ "and store" [ "it" | "the result" ] "in" name ] ; (* → [auto name =] path(items); *)
@@ -1323,6 +1325,7 @@ An operand is a quoted text, a number or a name with any `.name`, `::name` or `-
 | 3 | `first item of X` / `last item of X` | `X.front()` / `X.back()` | `X[0]` / `X[(sizeof(X) / sizeof(X[0])) - 1]` |
 | 4 | `item K of X` | `X[K]` | `X[K]` |
 | 5 | `length of X`, `size of X` | `X.size()` | `X.length()` for text, `(sizeof(X) / sizeof(X[0]))` for a list |
+| 5b | `square root of X`, `absolute value of X` (X an operand, or a sum in brackets) | `std::sqrt(X)`, `std::abs(X)` (and `<cmath>`) | `sqrt(X)`, `abs(X)` |
 | 6 | `random number from A to B` | `random_number(A, B)` (a helper is added) | `random(A, B + 1)` |
 | 7 | `X as number` / `X as decimal` / `X as text` (also `as a whole number`, `as a decimal`) | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)`; a number: `static_cast<int>(X)` / `static_cast<double>(X)` | `X.toInt()` / `X.toFloat()` / `String(X)`; a number: `(int)X` / `(double)X` |
 | 8 | `X squared` | `(X * X)` | `(X * X)` |
@@ -2271,6 +2274,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | **Show & ask** | `show ‹value›` | `std::cout << value << std::endl;` | Join several things with "and" (a space between) or "followed by" (no space). |
 |  | `show ‹value› without ending the line` | `std::cout << value;` | What is shown next carries on the same line. "end the line" ends it. |
 |  | `end the line` | `std::cout << std::endl;` |  |
+|  | `show ‹value›, then start a new line` | `std::cout << value << "\n";` | A new-line character ends the line, where plain "show" uses std::endl. |
 |  | `show "‹%d tries›" filled in with ‹tries›` | `printf("%d tries", tries);` | The % codes are filled in, in order: %d a whole number, %f a decimal, %s text. |
 |  | `ask for a number "‹question›" and store in ‹name›` | `std::cin >> name;` | Or "ask … and store in …" for text. |
 |  | `read ‹age› from the keyboard` | `std::cin >> age;` | What the person types, up to a space. "read a line from the keyboard into ‹name›" reads a whole line. |
@@ -2291,6 +2295,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". Leave off "with …" for an empty list. |
 |  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
 |  | `add ‹value› to ‹list›` | `list.push_back(value);` |  |
+|  | `sort ‹list›` | `std::sort(list.begin(), list.end());` | Smallest first. Add "biggest first" to turn it round. |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
@@ -2333,6 +2338,8 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `(the result of f with a) times 2` | `f(a) * 2` |
 | `x as a decimal` | `static_cast<double>(x)` |
 | `"Hi " plus name` | `"Hi " + name` |
+| `square root of x` | `std::sqrt(x)` |
+| `absolute value of x` | `std::abs(x)` |
 
 ### Arduino
 
@@ -2431,5 +2438,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `"Temp: {t as text}"` | `"Temp: " + String(t)` |
 | `"Ready" kept in flash` | `F("Ready")` |
 | `the result of f with a, b` | `f(a, b)` |
+| `t as a whole number` | `(int)t` |
+| `square root of x` | `sqrt(x)` |
 
 <!-- index:end -->
