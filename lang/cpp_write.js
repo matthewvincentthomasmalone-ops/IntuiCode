@@ -153,7 +153,8 @@
     // a cast is the type it casts to: (int)t, static_cast<double>(n)
     const sc = t.match(/^static_cast<\s*(int|long|double|float)\s*>/);
     if (sc && wholeCall(t, sc[0])) return sc[1];
-    if ((m => m && m[1])(t.match(/^\((int|long|double|float)\)\s*[A-Za-z_\d][\w.]*$/))) return t.match(/^\((\w+)\)/)[1];
+    const cc = t.match(/^\((int|long|double|float)\)\s*[A-Za-z_\d][\w.]*$/);
+    if (cc) return cc[1];
     if (/^[A-Za-z_]\w*$/.test(t) && x.types[t]) return x.types[t];
     const ids = t.match(/[A-Za-z_]\w*/g) || [];
     if (ids.length && /[-+*/%]/.test(t) && ids.every(i => x.types[i] === 'int' || x.types[i] === 'double')) return ids.some(i => x.types[i] === 'double') || /\d\.\d/.test(t) ? 'double' : 'int';
