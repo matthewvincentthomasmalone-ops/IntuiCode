@@ -217,6 +217,7 @@
     try { compiled = compileAll(project); }
     catch (e) { console.error(e); return; }
     checkDrift();
+    try { webStubs(); } catch (e) { console.error(e); }
   }
 
   /* ---------- Never silently change code ----------
@@ -231,6 +232,17 @@
     return sec.text.split('\n').map(l => { const t = l.trim(), n = (seen.get(t) || 0) + 1; seen.set(t, n); return t + '\u0001' + n; });
   }
   const lineCode = (r, i) => (r.info[i] ? r.info[i].py.map(k => r.lines[k].text.trim()).filter(Boolean).join('\n') : '');
+  /* A Structure line's code without what Styling and Mechanics add to it on purpose: a name for something they
+     point at by its text, a group they put it in. Those aren't changes to warn about. */
+  function sansAdded(code) {
+    const web = compiled && compiled.web;
+    if (!web) return code;
+    let c = code;
+    for (const id of Object.values(web.addIds || {})) c = c.split(` id="${id}"`).join('');
+    const groups = new Set(Object.values(web.addGroups || {}).flat());
+    if (groups.size) c = c.replace(/ class="([^"]*)"/g, (m, v) => { const left = v.split(' ').filter(g => !groups.has(g)); return left.length ? ` class="${left.join(' ')}"` : ''; });
+    return c;
+  }
   function checkDrift() {
     for (const s of project.sections) {
       const r = compiled.results[s.id];
@@ -242,7 +254,7 @@
         const now = lineCode(r, i);
         if (!base.has(key)) { base.set(key, now); return; }
         const was = base.get(key);
-        if (was === now || (s.id === project.active && i === typingLine)) return;
+        if (was === now || sansAdded(was) === sansAdded(now) || (s.id === project.active && i === typingLine)) return;
         r.info[i].drift = { key, was, now };
         r.info[i].warns.push(`Its code changed after an edit elsewhere${lastEdit ? ` (${lastEdit.title}, line ${lastEdit.line + 1})` : ''}, though this line didn't: it was \`${was.replace(/\n/g, ' ⏎ ') || '(nothing)'}\`. Check it still does what you mean, then keep the new code (in the help below), or change the line.`);
       });
@@ -1213,6 +1225,96 @@
     }
     return libSentenceCache.get(lang);
   }
+
+  /* Sentences made from the page itself, for Predictive Mode in a website's files: Styling offers what
+     Structure has (by name, by its text, its groups), Mechanics what can be clicked, typed in or changed,
+     and Structure what Styling and Mechanics point at that it doesn't have yet. */
+  function webSuggestions(sec) {
+    const web = compiled && compiled.web;
+    if (!web || !sec || !['structure', 'styling', 'mechanics'].includes(sec.file)) return [];
+    const out = [], say = (id) => (/^[a-z][\w-]*$/i.test(id) ? id : `"${id}"`);
+    const els = (web.elements || []).filter(e => e.id || (e.text && e.text.length <= 40 && !/["\n‹]/.test(e.text)));
+    if (sec.file === 'styling') {
+      for (const e of els) {
+        const who = e.id ? say(e.id) : `"${e.text}"`;
+        out.push(`set ${who} colour to ‹colour›`, `set ${who} background to ‹colour›`, `give ${who} a border`, `style ${who}: ‹styles›`);
+      }
+      for (const g of Object.keys({ ...web.groups, ...web.cssGroups })) out.push(`style group ${g}: ‹styles›`);
+    } else if (sec.file === 'mechanics') {
+      for (const e of els.filter(x => x.id)) {
+        const n = say(e.id);
+        if (e.tag === 'button') out.push(`when ${n} is clicked`);
+        if (e.tag === 'form') out.push(`when ${n} is sent`);
+        if (/^(?:input|textarea|select)$/.test(e.tag)) out.push(`when ${n} is changed`, `get the text of ${n} and store in ‹value›`);
+        else out.push(`set the text of ${n} to ‹value›`);
+        out.push(`hide ${n}`);
+      }
+    } else {
+      for (const [id, from] of Object.entries(web.wanted || {})) out.push(from === 'click' ? `add a button called ${say(id)} saying "‹text›"` : `add a box called ${say(id)}`);
+    }
+    return out;
+  }
+  /* The page's own sentences that carry on what's typed, best first. */
+  const webMatches = (sec, typed, n) => {
+    const low = typed.trim().toLowerCase();
+    return low.length < 2 ? [] : webSuggestions(sec).filter(s => s.toLowerCase().startsWith(low) && s.toLowerCase() !== low).slice(0, n);
+  };
+
+  /* A new named part in Structure gets a place in Styling ("style next:") and, when it does something, in
+     Mechanics ("when next is clicked"), ready to fill in: once its line is finished. A place still empty goes
+     again if the part is renamed or removed. Works while Structure is the open file. */
+  let stubKey = null, stubSeen = new Set();
+  const stubMade = new Map();   // name -> [[file, lines]] added, as they were added
+  function webStubs() {
+    const web = compiled && compiled.web, page = compiled && compiled.page;
+    if (!web || !page || !page.structure || !page.styling) return;
+    const ids = (web.elements || []).filter(e => e.id);
+    if (stubKey !== page.structure.id) { stubKey = page.structure.id; stubSeen = new Set(ids.map(e => e.id)); stubMade.clear(); return; }   // what's there already isn't new
+    if (activeSec().id !== page.structure.id) return;
+    const info = (compiled.results[page.structure.id] || {}).info || [];
+    const u = $('uTa');
+    const typing = mode === 'unity' ? (document.activeElement === u ? u.value.slice(0, u.selectionStart).split('\n').length - 1 : -1) : typingLine;
+    const auto = new Set(Object.values(web.addIds || {}));
+    const edits = {}, textOf = (f) => (edits[f] ?? page[f].text);
+    const add = (t, block) => { const s = t.replace(/\s+$/, ''); return (s ? s + '\n\n' : '') + block.join('\n') + '\n'; };
+    const cut = (t, block) => {
+      const ls = t.split('\n');
+      for (let k = 0; k + block.length <= ls.length; k++) {
+        if (!block.every((b, j) => ls[k + j].trimEnd() === b)) continue;
+        const from = k > 0 && !ls[k - 1].trim() ? k - 1 : k;
+        return ls.slice(0, from).concat(ls.slice(k + block.length)).join('\n');
+      }
+      return null;
+    };
+    const now = new Set(ids.map(e => e.id)), gone = [], added = [];
+    for (const [id, made] of stubMade) {
+      if (now.has(id)) continue;
+      for (const [f, block] of made) { const t = page[f] && cut(textOf(f), block); if (t != null) edits[f] = t; }
+      stubMade.delete(id); stubSeen.delete(id); gone.push(id);
+    }
+    for (const e of ids) {
+      if (stubSeen.has(e.id) || e.line === typing || auto.has(e.id) || (info[e.line] && info[e.line].errs.length)) continue;
+      stubSeen.add(e.id);
+      const n = /^[a-z][\w-]*$/i.test(e.id) ? e.id : `"${e.id}"`;
+      const esc = e.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const said = (t) => new RegExp(`(^|[^\\w-])${esc}([^\\w-]|$)`, 'im').test(t);
+      const made = [];
+      if (!said(textOf('styling'))) { const b = [`style ${n}:`]; edits.styling = add(textOf('styling'), b); made.push(['styling', b]); }
+      const what = e.tag === 'button' ? 'clicked' : e.tag === 'form' ? 'sent' : null;
+      if (what && page.mechanics && !said(textOf('mechanics'))) {
+        const b = [`when ${n} is ${what}`, `    note: what happens when ${n} is ${what}`];
+        edits.mechanics = add(textOf('mechanics'), b); made.push(['mechanics', b]);
+      }
+      if (made.length) { stubMade.set(e.id, made); added.push([n, made.map(([f]) => f)]); }
+    }
+    const changed = Object.keys(edits).filter(f => page[f] && edits[f] !== page[f].text);
+    if (!changed.length) return;
+    for (const f of changed) page[f].text = edits[f];
+    if (added.length) tLine(`Added a place for ${added.map(([n]) => n).join(', ')} in ${[...new Set(added.flatMap(([, fs]) => fs))].map(f => ({ styling: 'Styling', mechanics: 'Mechanics' }[f])).join(' and ')}, ready to fill in.`, 't-sys');
+    else if (gone.length) tLine(`Took out the empty place${gone.length === 1 ? '' : 's'} for ${gone.join(', ')} (no longer in Structure).`, 't-sys');
+    save(); autosave(); scheduleCompile();
+  }
+
   /* A line entered with Enter is remembered (whether Predictive Mode is on or not), as a terminal keeps its history. */
   function rememberLine(text) {
     if (!PRED || !isSentences(activeSec())) return;
@@ -1324,6 +1426,10 @@
 
     if (!/‹/.test(b.text)) {
       items = PRED.history(typed, predictLines(), 3).map(s => ({ kind: 'history', label: s, py: '', tag: 'written before', ...whole }));
+      // the page's own parts: Styling offers what Structure has, Mechanics what can be clicked, and so on
+      for (const s of webMatches(activeSec(), typed, 4)) {
+        if (!items.some(it => it.label.toLowerCase() === s.toLowerCase())) items.push({ kind: /‹/.test(s) ? 'template' : 'history', label: s, py: '', tag: 'on this page', ...whole });
+      }
       const pk = packFor(activeSec()), have = new Set(items.map(it => it.label.toLowerCase()));
       items = items.concat(pk.templates.filter(t => (!pk.webOnly || pk.filter(t)) && !have.has(t.pattern.toLowerCase()) && (() => {
         const lead = t.pattern.split('‹')[0].toLowerCase();
@@ -3829,7 +3935,7 @@
       s.text.split('\n').forEach((l, i) => { if (s.id !== sec.id || i !== li) lines.push(l); });
     }
     lines.push(...librarySentences(sec.lang));
-    const h = PRED.history(typed, lines, 1)[0];
+    const h = PRED.history(typed, lines, 1)[0] || webMatches(sec, typed, 1)[0];
     if (h) return h;
     const low = typed.toLowerCase(), t = packFor(sec).templates.find(x => x.pattern.toLowerCase().startsWith(low) && x.pattern.toLowerCase() !== low);
     if (t) return t.pattern;

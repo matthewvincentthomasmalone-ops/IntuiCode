@@ -1554,12 +1554,66 @@
       "sentences": [
         {
           "topic": "Styles",
+          "say": "set ‹name› colour to ‹colour›",
+          "becomes": "#name { color: … }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Also background, border, text size, width, rounded corners, shadow. The thing can be a name, the text it shows in quotes (\"Welcome\"), or a kind: the big heading, every button."
+        },
+        {
+          "topic": "Styles",
+          "say": "give ‹name› a ‹red› border",
+          "becomes": "#name { border: 1px solid red }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Also \"give … rounded corners\", \"give … a shadow\"."
+        },
+        {
+          "topic": "Styles",
+          "say": "make ‹name› ‹bold›",
+          "becomes": "#name { font-weight: bold }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Or a colour: \"make save navy\". Also italic, underlined, hidden, centred."
+        },
+        {
+          "topic": "Styles",
           "say": "style ‹name›: background ‹colour›, text colour ‹colour›",
           "becomes": "#name { background: …; color: … }",
           "folders": [
             "styling"
           ],
           "tip": "Separate styles with commas."
+        },
+        {
+          "topic": "Styles",
+          "say": "add group ‹name›: ‹styles›",
+          "becomes": ".name { … }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "The same as \"create group\". A group is a CSS class: put things in it with \"add ‹thing› to group ‹name›\"."
+        },
+        {
+          "topic": "Styles",
+          "say": "add ‹name› to group ‹group›",
+          "becomes": "class=\"group\" in the HTML",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Puts an element from Structure in a group. It can be its name or its text in quotes."
+        },
+        {
+          "topic": "Styles",
+          "say": "add a colour called ‹main› ‹#4f7cff›",
+          "becomes": ":root { --main: … }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "A shared colour. Use it as \"the colour main\"."
         },
         {
           "topic": "Styles",
@@ -1736,6 +1790,54 @@
         {
           "say": "big headings",
           "becomes": "h1"
+        },
+        {
+          "say": "big heading",
+          "becomes": "h1"
+        },
+        {
+          "say": "small headings",
+          "becomes": "h3"
+        },
+        {
+          "say": "small heading",
+          "becomes": "h3"
+        },
+        {
+          "say": "image",
+          "becomes": "img"
+        },
+        {
+          "say": "text box",
+          "becomes": "input, textarea"
+        },
+        {
+          "say": "list",
+          "becomes": "ul, ol"
+        },
+        {
+          "say": "list item",
+          "becomes": "li"
+        },
+        {
+          "say": "blocks",
+          "becomes": "div"
+        },
+        {
+          "say": "block",
+          "becomes": "div"
+        },
+        {
+          "say": "boxes",
+          "becomes": "div"
+        },
+        {
+          "say": "drop-downs",
+          "becomes": "select"
+        },
+        {
+          "say": "drop-down",
+          "becomes": "select"
         },
         {
           "say": "links",

@@ -2024,7 +2024,13 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Styles** | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
+| **Styles** | `set ‹name› colour to ‹colour›` | `#name { color: … }` | Also background, border, text size, width, rounded corners, shadow. The thing can be a name, the text it shows in quotes ("Welcome"), or a kind: the big heading, every button. |
+|  | `give ‹name› a ‹red› border` | `#name { border: 1px solid red }` | Also "give … rounded corners", "give … a shadow". |
+|  | `make ‹name› ‹bold›` | `#name { font-weight: bold }` | Or a colour: "make save navy". Also italic, underlined, hidden, centred. |
+|  | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
+|  | `add group ‹name›: ‹styles›` | `.name { … }` | The same as "create group". A group is a CSS class: put things in it with "add ‹thing› to group ‹name›". |
+|  | `add ‹name› to group ‹group›` | `class="group" in the HTML` | Puts an element from Structure in a group. It can be its name or its text in quotes. |
+|  | `add a colour called ‹main› ‹#4f7cff›` | `:root { --main: … }` | A shared colour. Use it as "the colour main". |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
 |  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
 |  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
@@ -2068,6 +2074,18 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `headings` | `h1, h2, h3` |
 | `heading` | `h1, h2, h3` |
 | `big headings` | `h1` |
+| `big heading` | `h1` |
+| `small headings` | `h3` |
+| `small heading` | `h3` |
+| `image` | `img` |
+| `text box` | `input, textarea` |
+| `list` | `ul, ol` |
+| `list item` | `li` |
+| `blocks` | `div` |
+| `block` | `div` |
+| `boxes` | `div` |
+| `drop-downs` | `select` |
+| `drop-down` | `select` |
 | `links` | `a` |
 | `link` | `a` |
 | `paragraphs` | `p` |

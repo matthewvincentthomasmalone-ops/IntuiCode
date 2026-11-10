@@ -172,7 +172,9 @@
   /* Names in sentences: a plain name (called save) is made into an id the way "called" always has; a name
      in quotes (called "helpToggle") is kept exactly. Several are joined with "and". */
   const NAME_TOKEN = `"(?:[^"\\\\]|\\\\.)*"|[\\w-]+`;
-  const nameOf = (t) => { const q = strOf(t); return q != null ? q : toId(t); };
+  // (a name in quotes is kept exactly, "helpToggle", unless it has spaces, which a name in the page can't:
+  // called "main description" is main-description, as called main description is)
+  const nameOf = (t) => { const q = strOf(t); return q != null ? (/\s/.test(q.trim()) ? toId(q) : q) : toId(t); };
   const namesOf = (t) => { const parts = outsideQuotes(t, (s) => s.replace(/\s+and\s+/gi, '\u0002')).split('\u0002').map(s => s.trim()); return parts.every(p => new RegExp(`^(?:${NAME_TOKEN})$`).test(p)) ? parts.map(nameOf).join(' ') : null; };
   /* A value in a phrase: text in quotes, or one word or number as it is (#873044, .4, userSpaceOnUse). */
   const valueOf = (t) => { t = String(t).trim(); const q = strOf(t); return q != null ? q : /^[^\s"',]+$/.test(t) ? t : null; };
@@ -596,7 +598,7 @@
       }
       // a name given after a comma ("with id …") is a name too
       if (el.id) inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
-      if (el.id && /\s/.test(el.id)) inf.warns.push(`A name can't have spaces in the page, so ${code(el.id)} won't work. Leave out the quotes (called ${el.id.trim().split(/\s+/).slice(0, 2).join(' ')}) and it becomes ${code(toId(el.id))}.`);
+      if (el.id && /\s/.test(el.id)) inf.warns.push(`An id with a space isn't valid in a page (links to it break). Write "called ${el.id.trim().split(/\s+/).slice(0, 2).join(' ')}" instead: it becomes ${code(toId(el.id))}.`);
       if (el.tag && !VOID_TAGS.has(el.tag) && !/^(?:textarea|select)$/.test(el.tag) && !el.container && !el.children) el.container = true;   // anything can hold other things
     }
     if (glued) el.glued = true;
@@ -626,6 +628,7 @@
   const CHARSET_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\scharset\s*=/i, VIEWPORT_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\sname\s*=\s*["']?viewport["'\s>]/i;
 
   function compileHtml(sec, shared) {
+    shared.elements = [];   // each element made: { tag, id, text, line }, so Styling and Mechanics can find one by its text
     const lines = sec.text.split('\n');
     const info = makeInfo(lines);
     const rootEl = { tag: 'body', children: [], container: true };
@@ -685,6 +688,13 @@
       if (el.title != null) { title = el.title; inf.target = 'title'; return; }
       if (el.lang) { lang = el.lang; at.html = at.html ?? i; return; }
       el.src = i;
+      // a name Styling or Mechanics gave it, by its text ("style "Welcome": …")
+      if (!el.id && el.tag && shared.addIds && shared.addIds[i]) {
+        el.id = shared.addIds[i];
+        inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
+        note(inf, `Styling or Mechanics uses this by its text, so it's named ${code(el.id)} in the page.`);
+      }
+      if (el.tag && shared.elements) shared.elements.push({ tag: el.tag, id: el.id || null, text: el.text ?? null, line: i });
       for (const named of [el, ...(el.children || [])].filter(e => e.id)) {   // a checkbox's name is on the box inside its label
         if (shared.ids[named.id] && shared.ids[named.id].line !== i) inf.errs.push(`Another element is already called ${code(named.id)} (line ${shared.ids[named.id].line + 1}). Names must be unique on a page.`);
         else shared.ids[named.id] = { tag: named.tag, type: (named.attrs || {}).type || null, line: i };
@@ -783,7 +793,7 @@
   /* ================================================================== */
 
   const NAMED = new Set(['black', 'white', 'red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'grey', 'gray', 'brown', 'navy', 'teal', 'transparent', 'gold', 'silver', 'crimson', 'coral', 'salmon', 'tomato', 'turquoise', 'violet', 'indigo', 'lime', 'olive', 'maroon', 'beige', 'ivory', 'lavender', 'tan', 'khaki', 'aqua', 'cyan', 'magenta', 'lightgrey', 'darkgrey', 'whitesmoke', 'skyblue', 'hotpink']);
-  const TAG_WORDS = { buttons: 'button', button: 'button', headings: 'h1, h2, h3', heading: 'h1, h2, h3', 'big headings': 'h1', links: 'a', link: 'a', paragraphs: 'p', paragraph: 'p', pictures: 'img', images: 'img', 'text boxes': 'input, textarea', inputs: 'input', lists: 'ul, ol', 'list items': 'li', sections: 'section', 'the page': 'body', page: 'body', everything: '*', header: 'header', footer: 'footer', 'navigation bar': 'nav', forms: 'form', labels: 'label' };
+  const TAG_WORDS = { buttons: 'button', button: 'button', headings: 'h1, h2, h3', heading: 'h1, h2, h3', 'big headings': 'h1', 'big heading': 'h1', 'small headings': 'h3', 'small heading': 'h3', image: 'img', 'text box': 'input, textarea', list: 'ul, ol', 'list item': 'li', blocks: 'div', block: 'div', boxes: 'div', 'drop-downs': 'select', 'drop-down': 'select', links: 'a', link: 'a', paragraphs: 'p', paragraph: 'p', pictures: 'img', images: 'img', 'text boxes': 'input, textarea', inputs: 'input', lists: 'ul, ol', 'list items': 'li', sections: 'section', 'the page': 'body', page: 'body', everything: '*', header: 'header', footer: 'footer', 'navigation bar': 'nav', forms: 'form', labels: 'label' };
   const CSS_MORE = 'accent-color align-content all animation-delay animation-direction animation-duration animation-fill-mode animation-iteration-count animation-name animation-timing-function appearance backface-visibility background-attachment background-blend-mode background-clip background-origin background-repeat block-size border-bottom-color border-bottom-left-radius border-bottom-right-radius border-bottom-style border-bottom-width border-collapse border-image border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-spacing border-style border-top-color border-top-left-radius border-top-right-radius border-top-style border-top-width border-width caption-side caret-color clear clip-path color-scheme column-count column-gap columns content counter-increment counter-reset direction empty-cells fill flex-basis flex-flow flex-grow flex-shrink float font-feature-settings font-variant font-variant-numeric grid grid-area grid-auto-columns grid-auto-flow grid-auto-rows grid-column grid-column-end grid-column-start grid-gap grid-row grid-row-end grid-row-start grid-template grid-template-areas hyphens image-rendering inline-size inset isolation justify-items justify-self list-style-image list-style-position list-style-type margin-block margin-inline mask max-block-size max-inline-size min-block-size min-inline-size mix-blend-mode object-position order outline-color outline-offset outline-style outline-width overflow-wrap overflow-x overflow-y overscroll-behavior padding-block padding-inline perspective place-content place-items place-self pointer-events quotes resize rotate row-gap scale scroll-behavior scroll-margin scroll-padding scroll-snap-align scroll-snap-type scrollbar-color scrollbar-width stroke stroke-width tab-size table-layout text-align-last text-decoration-color text-decoration-line text-decoration-style text-decoration-thickness text-indent text-overflow text-rendering text-shadow text-underline-offset touch-action transform-origin transition-delay transition-duration transition-property transition-timing-function translate user-select vertical-align will-change word-break word-spacing word-wrap writing-mode'.split(' ');
   const HTML_TAGS = new Set('a abbr address article aside audio b blockquote body button canvas caption code dd details dialog div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html i iframe img input kbd label legend li main mark menu nav ol optgroup option output p picture pre progress q s section select small span strong sub summary sup svg table tbody td textarea tfoot th thead time tr u ul video'.split(' '));
   const CSS_PROPS = new Set([...CSS_MORE, 'align-items', 'align-self', 'animation', 'aspect-ratio', 'background', 'background-color', 'background-image', 'background-position', 'background-size', 'border', 'border-bottom', 'border-color', 'border-left', 'border-radius', 'border-right', 'border-top', 'bottom', 'box-shadow', 'box-sizing', 'color', 'cursor', 'display', 'flex', 'flex-direction', 'flex-wrap', 'font', 'font-family', 'font-size', 'font-style', 'font-weight', 'gap', 'grid-template-columns', 'grid-template-rows', 'height', 'justify-content', 'left', 'letter-spacing', 'line-height', 'list-style', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'max-height', 'max-width', 'min-height', 'min-width', 'object-fit', 'opacity', 'outline', 'overflow', 'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'position', 'right', 'text-align', 'text-decoration', 'text-transform', 'top', 'transform', 'transition', 'visibility', 'white-space', 'width', 'z-index', 'filter', 'backdrop-filter']);
@@ -953,8 +963,59 @@
     return out;
   }
 
+  /* An element by the text it shows: "The Quote Is Sinking", or the big heading "The Quote Is Sinking". One
+     with no name is given one in the page (from its text), so Styling and Mechanics can point at it.
+     -> its names; [] if nothing in Structure shows that text; null if this isn't text in quotes. */
+  function idsByText(name, shared) {
+    const m = String(name).trim().match(/^(?:(?:the|every|all(?:\s+the)?)\s+)?([a-z][a-z -]*?)?\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i);
+    if (!m || !shared.elements) return null;
+    const text = strOf(m[2]), kind = m[1] ? m[1].trim().toLowerCase() : '';
+    const tags = kind ? (TAG_WORDS[kind] || TAG_WORDS[kind + 's'] || '').split(/\s*,\s*/).filter(Boolean) : null;
+    if (kind && !tags.length) return null;
+    const same = (s) => String(s).trim().replace(/\s+/g, ' ').toLowerCase();
+    const found = shared.elements.filter(e => e.text != null && same(e.text) === same(text) && (!tags || tags.includes(e.tag)));
+    if (!found.length) { const id = findId(shared, text); return id ? [id] : []; }   // a name in quotes: "main description", "Quote"
+    shared.addIds = shared.addIds || {};
+    return found.map(e => {
+      if (e.id) return e.id;
+      let id = shared.addIds[e.line];
+      if (!id) {
+        const base = toId(text) || e.tag;
+        id = base;
+        for (let k = 2; shared.ids[id] || Object.values(shared.addIds).includes(id); k++) id = `${base}-${k}`;
+        shared.addIds[e.line] = id;
+      }
+      shared.ids[id] = shared.ids[id] || { tag: e.tag, type: null, line: e.line };
+      return id;
+    });
+  }
+  /* The name in Structure meant by how it's written here: exactly, as a name (main description is
+     main-description), or the same letters in other capitals (quote is "Quote"). null if there's none. */
+  function findId(shared, raw) {
+    const q = strOf(raw), s = q != null ? q : String(raw).trim();
+    if (shared.ids[s]) return s;
+    const id = toId(s);
+    if (id && shared.ids[id]) return id;
+    const low = s.toLowerCase();
+    return Object.keys(shared.ids).find(k => k.toLowerCase() === low || (id && toId(k) === id)) || null;
+  }
+  // a name as a CSS selector: #name, or [id="…"] for one a # can't take (a space in it)
+  const idSel = (id) => (/^-?[A-Za-z_][\w-]*$/.test(id) ? '#' + id : `[id="${String(id).replace(/["\\]/g, '\\$&')}"]`);
+
   function selectorFor(name, shared, inf) {
     let n = name.trim(), m;
+    const said = idsByText(n, shared);
+    if (said) {
+      const text = strOf(n.match(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/)[1]);
+      if (!said.length) {
+        inf.warns.push(`Nothing in Structure says ${code(text)}. Write its text exactly as it is there, or use its name.`);
+        return idSel(toId(text));
+      }
+      const auto = said.filter(id => Object.values(shared.addIds || {}).includes(id));
+      if (auto.length) note(inf, `Styles what says ${code(text)}: it has no name, so IntuaCode names it ${code(auto[0])} in the page. If its text changes, change it here too, or give it a name in Structure.`);
+      else if (said[0] !== text) note(inf, `${code(text)} is ${code(said[0])}, so this styles ${code(idSel(said[0]))}.`);
+      return said.map(idSel).join(', ');
+    }
     // "toast.shown" or "toast:hover": a name from Structure with a group or state on it, not a <toast> tag
     if ((m = n.match(/^([a-z][\w-]*)([.:][\w\s.:()-]*)$/i)) && !HTML_TAGS.has(m[1].toLowerCase())) {
       if (shared.ids[toId(m[1])]) { note(inf, `${code(m[1])} is the element called ${m[1]}, so this is ${code('#' + toId(m[1]) + m[2])}.`); return '#' + toId(m[1]) + m[2]; }
@@ -964,19 +1025,46 @@
     if (/^[.#:*\[]|[>~+\[]/.test(n) || /^[a-z]+[.#:]/.test(n)) { note(inf, `${code(n)} is a CSS selector written directly.`); return n; }
     if ((m = n.match(/^group\s+(.+)$/i))) return '.' + toId(m[1]);
     if ((m = n.match(/^(?:the element|element)\s+(.+)$/i))) return '#' + toId(m[1]);
-    const every = !!(m = n.match(/^every\s+(.+)$/i));
+    const every = !!(m = n.match(/^(?:every|all(?:\s+the)?)\s+(.+)$/i));
     if (every) n = m[1];
+    if ((m = n.match(/^the\s+(.+)$/i)) && !TAG_WORDS[n.toLowerCase()]) n = m[1];   // "the big heading" is the big heading
     const low = n.toLowerCase();
-    const id = toId(n);
+    const id = toId(n), known = findId(shared, n);
     // an element you named (Structure's "called header") is the one meant, as in Mechanics; "every header" is the tag
-    if (!every && shared.ids[id] && (TAG_WORDS[low] || HTML_TAGS.has(low))) { note(inf, `Structure has an element called ${code(id)}, so this styles that one (\`#${id}\`). To style every ${code(TAG_WORDS[low] || low)} element, write "style every ${n}".`); return '#' + id; }
+    if (!every && known && (TAG_WORDS[low] || HTML_TAGS.has(low))) { note(inf, `Structure has an element called ${code(known)}, so this styles that one (\`${idSel(known)}\`). To style every ${code(TAG_WORDS[low] || low)} element, write "style every ${n}".`); return idSel(known); }
     if (TAG_WORDS[low]) return TAG_WORDS[low];
-    if (shared.ids[id]) return '#' + id;
+    if (known) return idSel(known);
     if (shared.groups[id] || shared.cssGroups[id]) return '.' + id;
     if (HTML_TAGS.has(low)) return low;
     if (/^[a-z0-9]+(?:\s*,\s*[a-z0-9]+)+$/.test(low) && low.split(/\s*,\s*/).every(t => HTML_TAGS.has(t))) return low.split(/\s*,\s*/).join(', ');
     inf.warns.push(`Nothing on the page is called ${code(id)} yet. Add it in Structure, or write "group ${n}" to style a group.`);
+    if (shared.wanted && id) shared.wanted[id] = shared.wanted[id] || 'styling';   // Structure's Predictive Mode offers to add it
     return '#' + id;
+  }
+
+  /* Styling said the everyday way: "set "Welcome" colour to navy", "set the border of save to 2 dashed red",
+     "make the big heading bold", "give save a red border". The thing styled can be a name, a group, a kind of
+     element (the big heading, every button) or the text it shows, in quotes. */
+  const TARGET = String.raw`((?:(?:the|every|all)\s+)?(?:[a-z][\w -]*?\s*)?"(?:[^"\\]|\\.)*"|[^"]+?)`;
+  const STYLE_PROP = String.raw`text colou?r|background colou?r|colou?r|background|border|outline|(?:text |font )?size|font|(?:text |font )?weight|width|height|padding|space inside|margin|space around|rounded corners|corners|corner radius|shadow|line height|letter spacing|gap|opacity|transparency|(?:text )?alignment`;
+  const SET_PROP_OF = new RegExp(String.raw`^(?:set|change|make)\s+(?:the\s+)?(${STYLE_PROP})\s+of\s+${TARGET}\s+(?:to|as)\s+(.+)$`, 'i');
+  const SET_PROP = new RegExp(String.raw`^(?:set|change)\s+${TARGET}(?:'s)?\s+(${STYLE_PROP})\s+(?:to|as)\s+(.+)$`, 'i');
+  const GIVE = new RegExp(String.raw`^give\s+${TARGET}\s+(?:(?:a|an|some)\s+(.+)|(rounded corners(?:\s+\S+)?|shadow))$`, 'i');
+  const MAKE_LOOK = new RegExp(String.raw`^make\s+${TARGET}\s+(bold|italic|underlined|hidden|centred|centered|round|uppercase|capitals|#\S*|[a-z]+)$`, 'i');
+  /* "colour" and the value set to it, as the words cssProps knows: text colour navy, rounded corners 8 … */
+  function propPhrase(prop, value) {
+    const p = prop.toLowerCase().replace(/colour/g, 'color').replace(/\s+/g, ' '), v = value.trim();
+    if (/^(?:text )?color$/.test(p)) return `text colour ${v}`;
+    if (/^background/.test(p)) return `background ${v}`;
+    if (/size$/.test(p)) return `text size ${v}`;
+    if (/weight$/.test(p)) return `text weight ${v}`;
+    if (p === 'padding' || p === 'space inside') return `space inside ${v}`;
+    if (p === 'margin' || p === 'space around') return `space around ${v}`;
+    if (/corner/.test(p)) return `rounded corners ${v}`;
+    if (/alignment$/.test(p)) return `text aligned ${v}`;
+    if (p === 'transparency') return `${/%$/.test(v) ? v : v + '%'} see-through`;
+    if (p === 'opacity') { const pc = v.match(/^(\d+(?:\.\d+)?)%$/); return `opacity: ${pc ? +(pc[1] / 100).toFixed(2) : v}`; }
+    return `${p} ${v}`;   // border, outline, font, width, height, shadow, line height, letter spacing, gap
   }
 
   /* "h1, h2, h3" + ":hover" -> "h1:hover, h2:hover, h3:hover": each selector in a list gets it. */
@@ -991,7 +1079,7 @@
     const vars = [];
     let media = null, mediaInd = -1;
     // first pass: groups defined here
-    for (const raw of lines) { const g = raw.trim().match(/^(?:create|make) (?:a )?group\s+(.+?)\s*:/i); if (g) shared.cssGroups[toId(g[1])] = true; }
+    for (const raw of lines) { const g = raw.trim().match(/^(?:create|make|add) (?:a )?(?:new )?(?:colou?r |style )?group\s+(?:called\s+|named\s+)?(.+?)\s*(?::|$)/i); if (g) shared.cssGroups[toId(g[1])] = true; }
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) return;
@@ -1027,10 +1115,11 @@
         inf.crossFile = 'structure';
         return;
       }
-      if ((m = s.match(/^(?:create|make)\s+(?:a\s+)?group\s+(.+?)\s*:\s*(.+)$/i))) {
+      if ((m = s.match(/^(?:create|make|add)\s+(?:a\s+)?(?:new\s+)?(?:colou?r\s+|style\s+)?group\s+(?:called\s+|named\s+)?(.+?)\s*(?::\s*(.*))?$/i))) {
         const sel = '.' + toId(m[1]);
         note(inf, `A group is a CSS class: ${code(sel)}. Put things in it with "${toId(m[1])} belongs to group …" or "in group …" in Structure.`);
-        rules.push({ sel, props: cssProps(m[2], inf), media, src: i });
+        if (!(m[2] || '').trim()) note(inf, 'Nothing in it yet: add styles after a colon, like "add group card: rounded corners, shadow".');
+        rules.push({ sel, props: (m[2] || '').trim() ? cssProps(m[2], inf) : [], media, src: i });
         return;
       }
       if ((m = s.match(/^when\s+(.+?)\s+is\s+(hovered|pointed at|clicked|focused with the keyboard|focused|selected|disabled|visited|empty)\s*:\s*(.+)$/i)) ||
@@ -1039,6 +1128,44 @@
         rules.push({ sel: withPseudo(selectorFor(m[1], shared, inf), pseudo), props: cssProps(m[3], inf), media, src: i });
         note(inf, `${code(pseudo)} applies these styles only ${m[2].toLowerCase() === 'hovered' || m[2].toLowerCase() === 'pointed at' ? 'while the mouse is over it' : m[2].toLowerCase() === 'has focus inside' ? 'while something inside it is focused' : 'while it is ' + m[2].toLowerCase()}.`);
         return;
+      }
+      // "set "Welcome" colour to navy", "set the border of save to 2 dashed red"
+      if ((m = s.match(SET_PROP_OF)) || (m = s.match(SET_PROP))) {
+        const [prop, target, value] = SET_PROP_OF.test(s) ? [m[1], m[2], m[3]] : [m[2], m[1], m[3]];
+        rules.push({ sel: selectorFor(target, shared, inf), props: cssProps(propPhrase(prop, value), inf), media, src: i });
+        return;
+      }
+      // "give save a red border", "give the big heading rounded corners"
+      if (!/:/.test(s) && (m = s.match(GIVE))) {
+        const phrase = (m[2] || m[3]).replace(/^(.+?)\s+(border|outline|shadow)$/i, '$2 $1').replace(/^(soft|big|strong)\s+shadow\s*$/i, '$1 shadow');
+        rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(phrase, inf), media, src: i });
+        return;
+      }
+      // "make the big heading bold", "make save navy"
+      if (!/:/.test(s) && (m = s.match(MAKE_LOOK)) && !/^(?:a|an|the|new)$/i.test(m[1].trim())) {
+        const w = m[2], word = /^(?:bold|italic|underlined|hidden|centred|centered|round|uppercase|capitals)$/i.test(w);
+        if (word || /^#/.test(w) || NAMED.has(w.toLowerCase()) || /^(?:light|dark)(?:grey|gray|blue|green|red)$/i.test(w)) {
+          rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(word ? w : `text colour ${w}`, inf), media, src: i });
+          return;
+        }
+      }
+      // "add a colour called main #4f7cff": a shared colour
+      if ((m = s.match(/^add\s+(?:a\s+)?(?:shared\s+|main\s+)?colou?r\s+(?:called\s+|named\s+)?([\w-]+)\s+(?:is\s+|as\s+|=\s*|of\s+)?(.+)$/i)) && !/^group$/i.test(m[1])) {
+        vars.push([`--${toId(m[1])}`, color(m[2], inf), i]);
+        note(inf, `A shared colour (a CSS variable). Use it anywhere as "the colour ${toId(m[1])}"; change it here to change it everywhere.`);
+        return;
+      }
+      // "add save to group primary", "add "Welcome" to group highlight": the same as "save belongs to group primary"
+      if ((m = s.match(new RegExp(String.raw`^add\s+${TARGET}\s+to\s+(?:the\s+)?group\s+([\w -]+)$`, 'i')))) {
+        const ids = idsByText(m[1], shared) || (shared.ids[toId(m[1])] ? [toId(m[1])] : null);
+        if (ids && ids.length) {
+          const g = toId(m[2]);
+          for (const id of ids) (shared.addGroups[id] = shared.addGroups[id] || []).push(g);
+          shared.cssGroups[g] = true;
+          note(inf, `Adds group ${code(g)} (a class) to ${code(ids[0])} in Structure, so the group's styles apply to it.`);
+          inf.crossFile = 'structure';
+          return;
+        }
       }
       // "add a border to card", "add rounded corners to group card": the same as "style card: border"
       if ((m = s.match(/^add\s+(?:a\s+|an\s+|some\s+)?(.+?)\s+to\s+(.+?)$/i)) && !/^(?:css|raw)\s*:/i.test(s)) {
@@ -1059,7 +1186,13 @@
         rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(m[2], inf), media, src: i });
         return;
       }
-      inf.errs.push('I don\'t recognise this sentence. Styling sentences start like "style save: …", "create group card: …" or "on screens narrower than 600: …".');
+      // "style save:" with nothing after it yet: a place for its styles
+      if ((m = s.match(/^style\s+(.+?)\s*:?\s*$/i))) {
+        rules.push({ sel: selectorFor(m[1], shared, inf), props: [], media, src: i });
+        note(inf, `Nothing styled yet: add styles after the colon, like "style ${m[1]}: text colour navy".`);
+        return;
+      }
+      inf.errs.push('I don\'t recognise this sentence. Styling sentences start like "set save colour to navy", "style save: …", "give save a border", "add group card: …" or "on screens narrower than 600: …".');
     });
     if (vars.length) {
       push(':root {', vars[0][2]);
@@ -1335,8 +1468,11 @@
   function elementRef(name, x, inf) {
     const raw = String(name).trim(), id = toId(raw);
     if (x.made.has(raw)) return { js: raw, id: raw, tag: x.made.get(raw), made: true };
-    const el = x.shared.ids[id];
-    if (el) return { js: `document.getElementById("${id}")`, id, tag: el.tag };
+    // its name (in any capitals: quote is "Quote"), or the text it shows, in quotes
+    const real = x.shared.ids[id] ? id : ((idsByText(raw, x.shared) || [])[0] || findId(x.shared, raw));
+    const el = real && x.shared.ids[real];
+    if (el) return { js: `document.getElementById(${JSON.stringify(real)})`, id: real, tag: el.tag };
+    if (x.shared.wanted && id) x.shared.wanted[id] = x.shared.wanted[id] || 'mechanics';
     const v = holdsElement(raw, x);
     if (v) return { js: v[2] === raw ? raw : jsExpr(raw, x, inf), id: raw, tag: null };
     inf.errs.push(`Nothing in Structure is called ${code(id)}. Add it there first, e.g. "add a button called ${id} saying "…"", or make it in Mechanics: "make a new button saying "…" in … and store in ${/^[A-Za-z_$][\w$]*$/.test(raw) ? raw : 'b'}".`);
@@ -1886,18 +2022,19 @@
   /* ================================================================== */
 
   function compileWebsite(project) {
-    const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {} };
+    const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {}, addIds: {}, wanted: {} };
     const held = {};
     const sec = (f) => {
       if (!held[f]) { const s = project.sections.find(s => s.file === f) || { id: f, file: f, text: '' }; const h = holdBlanks(s.text); held[f] = { sec: { ...s, text: h.text }, blanks: h.blanks, strays: h.strays }; }
       return held[f].sec;
     };
-    // Structure first (names), then Styling (may add groups to Structure), then Structure again, then Mechanics
+    // Structure first (names), then Styling and Mechanics (they may add groups, or names for things they point
+    // at by their text), then Structure again with those
     compileHtml(sec('structure'), shared);
     const css = compileCss(sec('styling'), shared);
+    const js = compileJs(sec('mechanics'), shared);
     shared.ids = {};
     const html = compileHtml(sec('structure'), shared);
-    const js = compileJs(sec('mechanics'), shared);
     // the same page with each element marked with its sentence line, for the preview's Pick
     const marked = compileHtml(sec('structure'), { ...shared, ids: {}, mark: true });
     html.previewText = marked.text;
@@ -1976,7 +2113,13 @@
     T('Drawings', 'add text "‹label›" at ‹10›, ‹20›', '<text x y>', 'Text drawn in the drawing.', ['structure']),
     T('Drawings', 'add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›', '<linearGradient><stop>…', 'Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts".', ['structure']),
     T('Drawings', 'add a set of shapes, outlined in ‹navy›', '<g stroke>', 'Settings on it apply to the shapes indented under it.', ['structure']),
+    T('Styles', 'set ‹name› colour to ‹colour›', '#name { color: … }', 'Also background, border, text size, width, rounded corners, shadow. The thing can be a name, the text it shows in quotes ("Welcome"), or a kind: the big heading, every button.', ['styling']),
+    T('Styles', 'give ‹name› a ‹red› border', '#name { border: 1px solid red }', 'Also "give … rounded corners", "give … a shadow".', ['styling']),
+    T('Styles', 'make ‹name› ‹bold›', '#name { font-weight: bold }', 'Or a colour: "make save navy". Also italic, underlined, hidden, centred.', ['styling']),
     T('Styles', 'style ‹name›: background ‹colour›, text colour ‹colour›', '#name { background: …; color: … }', 'Separate styles with commas.', ['styling']),
+    T('Styles', 'add group ‹name›: ‹styles›', '.name { … }', 'The same as "create group". A group is a CSS class: put things in it with "add ‹thing› to group ‹name›".', ['styling']),
+    T('Styles', 'add ‹name› to group ‹group›', 'class="group" in the HTML', 'Puts an element from Structure in a group. It can be its name or its text in quotes.', ['styling']),
+    T('Styles', 'add a colour called ‹main› ‹#4f7cff›', ':root { --main: … }', 'A shared colour. Use it as "the colour main".', ['styling']),
     T('Styles', 'create group ‹name›: rounded corners ‹8›, shadow', '.name { border-radius: 8px; box-shadow: … }', 'A group is a CSS class. Reuse it on many elements.', ['styling']),
     T('Styles', 'style ‹name›: border ‹2› ‹dashed› ‹navy›', '#name { border: 2px dashed navy }', 'The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border".', ['styling']),
     T('Styles', 'add a border to ‹name›', '#name { border: 1px solid currentColor }', 'The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …".', ['styling']),
