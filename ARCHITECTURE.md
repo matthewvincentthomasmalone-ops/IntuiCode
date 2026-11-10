@@ -306,8 +306,33 @@ is the React in `.jsx`/`.js`:
   words is said as written, in quotes.
 - **What a component shows has its own small grammar**, read as an indented tree (an element per line, its
   settings after commas in order), not by Mechanics' line rules: so its words can't collide with them.
-- **Running React** (a bundler in the page) is not part of this: the Preview shows websites. TSX would need
-  transforming before it could run there, even at the desktop's local address (PR #32).
+- **Running React** is the next decision's: the project's own dev server, not a bundler in the page.
+
+## Decision: a Vite app runs on its own dev server (desktop app)
+
+*Decided 2026-11-10.*
+
+A React app needs its TSX, Tailwind, path aliases and `.env` turned into a page, and the project's own Vite does
+exactly that. IntuaCode adds no bundler and no dependency:
+
+- **Found by its package.json** (`PRJ.devServerOf`): a `dev` script and `vite` among its packages, at the top.
+- **Run starts `npm run dev -- --host 127.0.0.1 --port P --strictPort`** in the project's folder, with its own
+  `node_modules` (a missing one says to type `$ npm install`). Stop ends it and everything it started.
+- **The Preview shows it through a relay** (`preview_relay` in `src-tauri/src/lib.rs`): a second local address
+  that forwards each request to the dev server. It answers only requests addressed to itself (its own `Host`, so
+  no other site can reach the dev server through it), puts IntuaCode's helper first in each HTML page, passes
+  WebSockets both ways (Vite's hot reload), and shows a waiting page until the dev server answers.
+- **Other sites: allowed, and listed.** Each HTML page gets a `Content-Security-Policy-Report-Only` header that
+  names only its own address. The browser blocks nothing, but reports each other site to the relay, and the
+  terminal names each one once.
+- **The folder is worked on in place.** Opening a Vite app takes every file as exact lines (the page too), and
+  only when each comes back byte for byte; otherwise the code comes in as an unsaved copy. For that, the HTML
+  writer writes a whole page given in exact lines as it is, and adds no `style.css` or `script.js` to a page whose
+  module script is one of the project's own. Saving writes only the files that changed (so Vite reloads just those,
+  and a file changed elsewhere isn't written over), each with its own line endings and ending. A file changed
+  outside comes back as its exact lines.
+- **Not here:** the browser version (it can't start programs); Project Link and Pick, which need the marked pages
+  IntuaCode writes.
 
 ## Testing
 

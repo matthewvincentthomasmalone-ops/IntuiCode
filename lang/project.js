@@ -123,6 +123,20 @@
     return { results, syms, pySyms, page, web };
   }
 
+  /* A project that runs on its own dev server: a Vite app (React, and Lovable's projects), whose package.json at the
+   * top has a "dev" script and Vite among its packages. -> { script: 'dev', tool: 'vite', path } or null. The
+   * desktop app runs that script (npm run dev) and shows it in the Preview; the project's own packages
+   * (node_modules, from npm install) build it, exactly as they do outside IntuaCode. */
+  function devServerOf(p) {
+    const pkg = p.sections.find(s => s.path === 'package.json');
+    if (!pkg) return null;
+    let j;
+    try { j = JSON.parse(pkg.text); } catch (_) { return null; }
+    if (!j || typeof j !== 'object' || !j.scripts || typeof j.scripts.dev !== 'string') return null;
+    const deps = { ...(j.dependencies || {}), ...(j.devDependencies || {}) };
+    return deps.vite ? { script: 'dev', tool: 'vite', path: pkg.path } : null;
+  }
+
   /* ---------- Notes and data, shown as what they are ---------- */
 
   const escHtml = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -193,5 +207,5 @@
   /* What a value in JSON is, in a few words. */
   const jsonKind = (v) => (Array.isArray(v) ? `a list of ${v.length}` : v === null ? 'nothing (null)' : typeof v === 'object' ? `a group of ${Object.keys(v).length}` : typeof v === 'string' ? 'text' : typeof v === 'number' ? 'a number' : 'yes/no');
 
-  root.IntuiProject = { CLASSIC_PATH, CLASSIC_LANG, ENGINE, WEB_ROLE, MAX_FILES, isSentences, writeOf, roleOf, pathProblem, normalized, checkedSections, webTriple, compileAll, mdInline, mdToHtml, csvRows, jsonKind };
+  root.IntuiProject = { CLASSIC_PATH, CLASSIC_LANG, ENGINE, WEB_ROLE, MAX_FILES, isSentences, writeOf, roleOf, pathProblem, normalized, checkedSections, webTriple, compileAll, devServerOf, mdInline, mdToHtml, csvRows, jsonKind };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1114,6 +1114,239 @@ fn open_preview(site: State<Site>, path: String) -> Result<(), String> {
 }
 
 /* ------------------------------------------------------------------ */
+/* A project's own dev server, in the preview                          */
+/* ------------------------------------------------------------------ */
+
+/// A React app (any Vite project) runs on its own dev server, `npm run dev`, which the page starts as a program on
+/// 127.0.0.1:<target>. The Preview shows it through this relay at 127.0.0.1:<port>: every page gets IntuaCode's
+/// helper script first (console lines and errors go to the terminal), and a Content-Security-Policy-Report-Only
+/// that blocks nothing: the browser reports each other site the app reaches, and the page is told (preview-host).
+/// The relay answers only for its own address (so another site can't borrow it with DNS rebinding) and only ever
+/// forwards to the dev server on this computer. Its address is a remote origin to Tauri, so no command runs from
+/// the app it shows.
+#[derive(Default)]
+struct Relay {
+    port: Mutex<Option<u16>>,
+    target: Mutex<u16>,
+    helper: Mutex<Arc<Vec<u8>>>,
+}
+
+/// A port nobody is using on this computer, for a dev server.
+#[tauri::command]
+fn free_port() -> Result<u16, String> {
+    let l = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
+    Ok(l.local_addr().map_err(|e| e.to_string())?.port())
+}
+
+/// The relay to the dev server at 127.0.0.1:<target>, and the helper script it puts in each page: its port.
+#[tauri::command]
+fn preview_relay(app: AppHandle, relay: State<Relay>, target: u16, helper: String) -> Result<u16, String> {
+    *relay.target.lock().unwrap() = target;
+    *relay.helper.lock().unwrap() = Arc::new(helper.into_bytes());
+    let mut port = relay.port.lock().unwrap();
+    if let Some(p) = *port {
+        return Ok(p);
+    }
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| format!("The preview's local address could not be opened: {e}"))?;
+    let p = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let app = app.clone();
+            std::thread::spawn(move || relay_one(&app, stream, p));
+        }
+    });
+    *port = Some(p);
+    Ok(p)
+}
+
+/// A message's head (up to the blank line) and what came after it in the same reads.
+fn read_head(stream: &mut TcpStream) -> Option<(Vec<u8>, Vec<u8>)> {
+    let mut got = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        if let Some(at) = got.windows(4).position(|w| w == b"\r\n\r\n") {
+            let rest = got.split_off(at + 4);
+            return Some((got, rest));
+        }
+        if got.len() > 64 * 1024 {
+            return None;
+        }
+        match stream.read(&mut buf) {
+            Ok(0) | Err(_) => return None,
+            Ok(n) => got.extend_from_slice(&buf[..n]),
+        }
+    }
+}
+
+/// A header's value in a message head.
+fn header_of(head: &str, name: &str) -> Option<String> {
+    head.split("\r\n").skip(1).find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_string())
+    })
+}
+
+/// The request as the dev server gets it: its own Host, one request per connection, and (for a page or a file)
+/// no compression, so a page can be read and the helper put in. A WebSocket (the dev server's updates) keeps its
+/// own headers, to be relayed both ways.
+fn relay_head(head: &str, target: u16, websocket: bool) -> String {
+    let mut lines = head.split("\r\n");
+    let mut out = format!("{}\r\n", lines.next().unwrap_or(""));
+    let drop: &[&str] = if websocket { &["host"] } else { &["host", "accept-encoding", "connection", "keep-alive", "upgrade"] };
+    for l in lines.filter(|l| !l.is_empty()) {
+        let name = l.split(':').next().unwrap_or("").trim().to_ascii_lowercase();
+        if !drop.contains(&name.as_str()) && !name.starts_with("proxy-") {
+            out.push_str(l);
+            out.push_str("\r\n");
+        }
+    }
+    out.push_str(&format!("Host: 127.0.0.1:{target}\r\n"));
+    if !websocket {
+        out.push_str("Connection: close\r\n");
+    }
+    out.push_str("\r\n");
+    out
+}
+
+/// A body sent in chunks, as one (None if it isn't well formed).
+fn dechunk(body: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    loop {
+        let line_end = at + body.get(at..)?.windows(2).position(|w| w == b"\r\n")?;
+        let size_text = std::str::from_utf8(&body[at..line_end]).ok()?;
+        let size = usize::from_str_radix(size_text.split(';').next()?.trim(), 16).ok()?;
+        at = line_end + 2;
+        if size == 0 {
+            return Some(out);
+        }
+        out.extend_from_slice(body.get(at..at + size)?);
+        at += size + 2;
+    }
+}
+
+/// The page with IntuaCode's helper script first in its head.
+fn with_helper(page: &[u8]) -> Vec<u8> {
+    const TAG: &[u8] = b"<script src=\"/.intuicode/preview.js\"></script>";
+    let low: Vec<u8> = page.iter().map(|b| b.to_ascii_lowercase()).collect();
+    // (the tag itself: <head>, not <header>)
+    let ends = |i: usize| low.get(i).is_some_and(|&b| b == b'>' || b.is_ascii_whitespace());
+    let after = |tag: &[u8]| (0..low.len().saturating_sub(tag.len())).find(|&i| low[i..].starts_with(tag) && ends(i + tag.len()))
+        .and_then(|i| low[i..].iter().position(|&b| b == b'>').map(|j| i + j + 1));
+    let at = after(b"<head").or_else(|| after(b"<html")).unwrap_or(0);
+    [&page[..at], TAG, &page[at..]].concat()
+}
+
+/// The other site a Content-Security-Policy report names (the browser's report of a request it would have stopped),
+/// as host[:port]; None for the page's own address, inline code and the like.
+fn reported_host(report: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(report).ok()?;
+    let uri = v.get("csp-report")?.get("blocked-uri")?.as_str()?;
+    let (scheme, rest) = uri.split_once("://")?;
+    if !matches!(scheme, "http" | "https" | "ws" | "wss") {
+        return None;
+    }
+    let host = rest.split(['/', '?', '#']).next()?;
+    (!host.is_empty()).then(|| host.to_string())
+}
+
+/// What the browser reports against, for each page: nothing is blocked (Report-Only), anything not from the page's
+/// own address is reported.
+const REPORT_ONLY: &str = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; report-uri /.intuicode/csp";
+
+fn relay_one(app: &AppHandle, mut client: TcpStream, port: u16) {
+    let _ = client.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+    let Some((head, rest)) = read_head(&mut client) else { return };
+    let text = String::from_utf8_lossy(&head).to_string();
+    let mut first = text.lines().next().unwrap_or("").split(' ');
+    let (method, target) = (first.next().unwrap_or("").to_string(), first.next().unwrap_or("").to_string());
+    let plain = |client: &mut TcpStream, status: &str, kind: &str, extra: &str, body: &[u8]| {
+        let _ = client.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n{extra}\r\n", body.len()).as_bytes());
+        let _ = client.write_all(body);
+    };
+    let own = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
+    if !header_of(&text, "host").is_some_and(|h| own.iter().any(|o| o.eq_ignore_ascii_case(&h))) {
+        return plain(&mut client, "403 Forbidden", "text/plain; charset=utf-8", "", b"This address is IntuaCode's preview, for pages from this address only.");
+    }
+    let relay = app.state::<Relay>();
+    let path = target.split(['?', '#']).next().unwrap_or("").to_string();
+    if path == "/.intuicode/preview.js" {
+        let helper = relay.helper.lock().unwrap().clone();
+        return plain(&mut client, "200 OK", "text/javascript; charset=utf-8", "", &helper);
+    }
+    if path == "/.intuicode/csp" {
+        let want = header_of(&text, "content-length").and_then(|n| n.parse::<usize>().ok()).unwrap_or(0).min(64 * 1024);
+        let mut body = rest;
+        let mut buf = [0u8; 4096];
+        while body.len() < want {
+            match client.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => body.extend_from_slice(&buf[..n]),
+            }
+        }
+        if let Some(host) = reported_host(&body) {
+            let _ = app.emit("preview-host", host);
+        }
+        return plain(&mut client, "204 No Content", "text/plain", "", b"");
+    }
+    let to = *relay.target.lock().unwrap();
+    let Ok(mut up) = TcpStream::connect((Ipv4Addr::LOCALHOST, to)) else {
+        // (the dev server is still starting: this page tries again in a moment)
+        return plain(&mut client, "503 Service Unavailable", "text/html; charset=utf-8", "Retry-After: 1\r\n", b"<!doctype html><meta http-equiv=\"refresh\" content=\"1\"><body style=\"font:14px sans-serif;color:#888\">The project's dev server is starting\xE2\x80\xA6</body>");
+    };
+    let websocket = header_of(&text, "upgrade").is_some_and(|u| u.eq_ignore_ascii_case("websocket"));
+    if up.write_all(relay_head(&text, to, websocket).as_bytes()).is_err() || up.write_all(&rest).is_err() {
+        return;
+    }
+    if websocket {
+        // both ways, until either side closes
+        let (Ok(mut c2), Ok(mut u2)) = (client.try_clone(), up.try_clone()) else { return };
+        let _ = client.set_read_timeout(None);
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut u2, &mut c2);
+            let _ = c2.shutdown(std::net::Shutdown::Both);
+        });
+        let _ = std::io::copy(&mut client, &mut up);
+        let _ = up.shutdown(std::net::Shutdown::Both);
+        return;
+    }
+    // the rest of the request's body, then the answer: a page gets the helper and the report-only policy, anything
+    // else goes through as it is
+    let want = header_of(&text, "content-length").and_then(|n| n.parse::<u64>().ok()).unwrap_or(0).saturating_sub(rest.len() as u64);
+    if want > 0 && std::io::copy(&mut (&mut client).take(want), &mut up).is_err() {
+        return;
+    }
+    let Some((rhead, rrest)) = read_head(&mut up) else { return };
+    let rtext = String::from_utf8_lossy(&rhead).to_string();
+    let page = header_of(&rtext, "content-type").is_some_and(|t| t.to_ascii_lowercase().starts_with("text/html"));
+    if !page || method == "HEAD" {
+        let _ = client.write_all(&rhead);
+        let _ = client.write_all(&rrest);
+        let _ = std::io::copy(&mut up, &mut client);
+        return;
+    }
+    let mut body = rrest;
+    let _ = up.read_to_end(&mut body);
+    if header_of(&rtext, "transfer-encoding").is_some_and(|t| t.to_ascii_lowercase().contains("chunked")) {
+        body = dechunk(&body).unwrap_or(body);
+    }
+    let body = with_helper(&body);
+    let mut lines = rtext.split("\r\n");
+    let mut out = format!("{}\r\n", lines.next().unwrap_or("HTTP/1.1 200 OK"));
+    for l in lines.filter(|l| !l.is_empty()) {
+        let name = l.split(':').next().unwrap_or("").trim().to_ascii_lowercase();
+        if !matches!(name.as_str(), "content-length" | "transfer-encoding" | "connection" | "content-security-policy-report-only") {
+            out.push_str(l);
+            out.push_str("\r\n");
+        }
+    }
+    out.push_str(&format!("Content-Length: {}\r\nConnection: close\r\nContent-Security-Policy-Report-Only: {REPORT_ONLY}\r\n\r\n", body.len()));
+    let _ = client.write_all(out.as_bytes());
+    let _ = client.write_all(&body);
+}
+
+/* ------------------------------------------------------------------ */
 /* Closing the window                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -1142,6 +1375,7 @@ pub fn run() {
         .manage(Access::default())
         .manage(Preview::default())
         .manage(Site::default())
+        .manage(Relay::default())
         .manage(CloseGuard::default())
         .register_uri_scheme_protocol("preview", |ctx, request| preview_page(ctx.app_handle(), request.uri().path()))
         .setup(|_app| {
@@ -1168,7 +1402,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_folder, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
-            preview_site, open_preview, run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
+            preview_site, open_preview, free_port, preview_relay, run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
             compile_cpp, find_arduino, run_capture, find_venv, guard_close, close_window
         ])
         .build(tauri::generate_context!())
@@ -1188,6 +1422,38 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_relay_asks_the_dev_server_for_one_plain_answer() {
+        let head = "GET /src/main.tsx HTTP/1.1\r\nHost: 127.0.0.1:5000\r\nAccept-Encoding: gzip, br\r\nConnection: keep-alive\r\nProxy-Authorization: x\r\nAccept: */*\r\n\r\n";
+        let out = relay_head(head, 5173, false);
+        assert!(out.starts_with("GET /src/main.tsx HTTP/1.1\r\n"));
+        assert!(out.contains("Host: 127.0.0.1:5173\r\n") && out.contains("Connection: close\r\n") && out.contains("Accept: */*\r\n"));
+        assert!(!out.contains("gzip") && !out.contains("keep-alive") && !out.contains("Proxy-") && !out.contains("5000"));
+        assert!(out.ends_with("\r\n\r\n"));
+        // a WebSocket keeps its own Connection and Upgrade headers
+        let ws = relay_head("GET /?token=1 HTTP/1.1\r\nHost: 127.0.0.1:5000\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: k\r\n\r\n", 5173, true);
+        assert!(ws.contains("Connection: Upgrade\r\n") && ws.contains("Upgrade: websocket\r\n") && ws.contains("Sec-WebSocket-Key: k\r\n") && ws.contains("Host: 127.0.0.1:5173\r\n"));
+    }
+
+    #[test]
+    fn a_page_gets_the_helper_first_and_chunks_are_joined() {
+        assert_eq!(with_helper(b"<!doctype html><html><HEAD><title>x</title>"), b"<!doctype html><html><HEAD><script src=\"/.intuicode/preview.js\"></script><title>x</title>".to_vec());
+        assert_eq!(with_helper(b"<p>no head</p>"), b"<script src=\"/.intuicode/preview.js\"></script><p>no head</p>".to_vec());
+        assert_eq!(with_helper(b"<html lang=\"en\"><header>x</header>"), b"<html lang=\"en\"><script src=\"/.intuicode/preview.js\"></script><header>x</header>".to_vec());
+        assert_eq!(with_helper(b"<head\n  data-x=\"1\"><title>"), b"<head\n  data-x=\"1\"><script src=\"/.intuicode/preview.js\"></script><title>".to_vec());
+        assert_eq!(dechunk(b"5\r\nhello\r\n6;x=1\r\n world\r\n0\r\n\r\n"), Some(b"hello world".to_vec()));
+        assert_eq!(dechunk(b"zz\r\n"), None);
+    }
+
+    #[test]
+    fn a_report_names_the_other_site() {
+        let r = br#"{"csp-report":{"document-uri":"http://127.0.0.1:5000/","blocked-uri":"https://abc.supabase.co/rest/v1/notes?select=*","violated-directive":"connect-src"}}"#;
+        assert_eq!(reported_host(r).as_deref(), Some("abc.supabase.co"));
+        assert_eq!(reported_host(br#"{"csp-report":{"blocked-uri":"wss://rt.example.com:443/socket"}}"#).as_deref(), Some("rt.example.com:443"));
+        assert_eq!(reported_host(br#"{"csp-report":{"blocked-uri":"inline"}}"#), None);
+        assert_eq!(reported_host(b"not json"), None);
+    }
 
     #[test]
     fn a_split_character_waits_for_the_rest() {
