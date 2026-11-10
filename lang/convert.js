@@ -1585,7 +1585,10 @@
           if (ds.length !== 1 || quals.some(q => q !== 'const') || quals.length > 1) return false;
           const d = ds[0];
           const type = collapse(F(n, 'type').text);
-          if (quals.length || lvl) {   // constant, or with its type spelled out
+          // const int PINS[] = {2, 3}: "make a constant list of whole numbers called PINS with 2, 3" (said below)
+          const fixedList = quals.length === 1 && !lvl && d.type === 'init_declarator' && F(d, 'value') && F(d, 'value').type === 'initializer_list';
+          const list = fixedList ? 'constant list' : 'list';
+          if ((quals.length || lvl) && !fixedList) {   // constant, or with its type spelled out
             if (d.type !== 'init_declarator' || F(d, 'declarator').type !== 'identifier' || !F(d, 'value') || F(d, 'value').type === 'initializer_list' || F(d, 'value').type === 'argument_list') return false;
             const w = typeWord(type), v = whole(F(d, 'value'));
             if (!w || w === 'nothing' || v == null) return false;
@@ -1615,13 +1618,14 @@
             const nm = F(dd, 'declarator'), size = sized(dd), w = listOf(type);
             const items = named(val).filter(x => !isComment(x)).map(ex);
             // without a size, only Arduino makes a plain array ("make a list of …" is a std::vector in C++)
-            return nm.type === 'identifier' && size != null && (size || arduino) && !!w && items.length > 0 && !items.some(x => x == null) && say(`make a list of ${size ? size + ' ' : ''}${w} called ${nm.text} with ${items.join(', ')}`);
+            return nm.type === 'identifier' && size != null && (size || arduino) && !!w && items.length > 0 && !items.some(x => x == null) && say(`make a ${list} of ${size ? size + ' ' : ''}${w} called ${nm.text} with ${items.join(', ')}`);
           }
           if (dd.type !== 'identifier') return false;
           if (vm && val.type === 'initializer_list') {
             const items = named(val).filter(x => !isComment(x)).map(ex), w = !arduino && listOf(vm[1]);
-            return !!w && items.length > 0 && !items.some(x => x == null) && say(`make a list of ${w} called ${dd.text} with ${items.join(', ')}`);
+            return !!w && items.length > 0 && !items.some(x => x == null) && say(`make a ${list} of ${w} called ${dd.text} with ${items.join(', ')}`);
           }
+          if (fixedList) return false;
           if (val.type === 'argument_list') {
             const items = named(val).filter(x => !isComment(x)).map(x => whole(x, true));
             return /^[A-Z][\w]*$|::/.test(type) && items.length > 0 && !items.some(x => x == null) && say(`make ${art(type)} called ${dd.text} with ${items.join(', ')}`);
@@ -1789,6 +1793,15 @@
         }
         case 'break_statement': return say('stop the loop');
         case 'continue_statement': return say('skip to next');
+        // throw std::invalid_argument("…"): "fail with std::invalid_argument: "…"" (as in Python and JavaScript)
+        case 'throw_statement': {
+          const v = named(n).filter(x => !isComment(x))[0];
+          if (arduino || !v || v.type !== 'call_expression' || !/^[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*$/.test(F(v, 'function').text)) return false;
+          const a = argsOf(v);
+          if (a.length > 1) return false;
+          const msg = a.length ? whole(a[0]) : '';
+          return msg != null && say(`fail with ${F(v, 'function').text}${a.length ? ': ' + msg : ''}`);
+        }
         default: return false;
       }
     }
@@ -2040,8 +2053,15 @@
         force.set(key, conv.careful.has(key) && !force.has(key) ? 1 : 2);
         added++;
       };
-      for (const k of bad) blame(k);
-      if (!last.same && last.culprits) for (const k of last.culprits) blame(k);
+      let keys = [...bad, ...(!last.same && last.culprits ? last.culprits : [])];
+      // C++: a name said with its type spelled out can put right the lines that use it ("length of input" needs
+      // input to be text), so those go first and the rest are checked again
+      if (kind === 'cpp' || kind === 'arduino') {
+        const up = (k) => { let key = k; while (key != null && force.get(key) >= 2 && conv.parents.has(key)) key = conv.parents.get(key); return key; };
+        const first = keys.filter(k => { const key = up(k); return key != null && !force.has(key) && conv.careful.has(key); });
+        if (first.length) keys = first;
+      }
+      for (const k of keys) blame(k);
       if (!added) {
         if (force.has('ALL') || last.why) break;
         force.set('ALL', 2);

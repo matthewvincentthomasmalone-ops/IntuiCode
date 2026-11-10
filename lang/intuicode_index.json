@@ -2609,6 +2609,15 @@
           "tip": "Leaves a tool that gives nothing back."
         },
         {
+          "topic": "Errors",
+          "say": "fail with ‹std::invalid_argument›: ‹message›",
+          "becomes": "throw std::invalid_argument(message);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Stops with an error that the caller can catch. Not on Arduino."
+        },
+        {
           "topic": "Tools",
           "say": "run ‹tool› with ‹inputs› and store in ‹name›",
           "becomes": "auto name = tool(inputs);",
@@ -3006,6 +3015,15 @@
             "sketch"
           ],
           "tip": "A fixed number of items. Add \"with 0, 0, 0, 0\" to give them."
+        },
+        {
+          "topic": "Lists",
+          "say": "make a constant list of ‹whole numbers› called ‹PINS› with ‹2, 3, 4›",
+          "becomes": "const int PINS[] = {2, 3, 4};",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Items that never change, such as the pins the lights are on."
         },
         {
           "topic": "Lists",

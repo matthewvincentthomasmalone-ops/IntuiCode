@@ -43,6 +43,8 @@ const CASES = [
   ['tests/corpus_web/grades.cpp', 'cpp', null, null, 0.95],
   // text built with String(…) and +, F(), decimal places, a tool's result, items of a list, Serial.available
   ['tests/corpus_web/weather.ino', 'arduino', null, null, 1],
+  // a constant list, an interrupt, a fade, typed commands (only the volatile name stays code)
+  ['tests/corpus_web/fader.ino', 'arduino', null, null, 0.95],
   ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.95],
   ['samples/taskboard/static/style.css', 'css', 'samples/taskboard/static/index.html', null, 0.8],
   ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.75],

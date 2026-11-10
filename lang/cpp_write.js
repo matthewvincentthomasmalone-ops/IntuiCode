@@ -248,7 +248,7 @@
     return false;
   }
   // tools every board or program has without being defined in the sentences
-  const BUILT_IN = /^(?:abs|min|max|sqrt|pow|sq|sin|cos|tan|floor|ceil|round|random|randomSeed|millis|micros|analogRead|digitalRead|pulseIn|map|constrain|bitRead|bitSet|bitClear|bitWrite|highByte|lowByte|printf|rand|srand)$/;
+  const BUILT_IN = /^(?:abs|min|max|sqrt|pow|sq|sin|cos|tan|floor|ceil|round|random|randomSeed|millis|micros|analogRead|digitalRead|pulseIn|map|constrain|bitRead|bitSet|bitClear|bitWrite|highByte|lowByte|printf|rand|srand|attachInterrupt|detachInterrupt|digitalPinToInterrupt|interrupts|noInterrupts|shiftIn|shiftOut|analogReference|isDigit|isAlpha|isSpace|isUpperCase|isLowerCase)$/;
   /* A tool that isn't defined here: an error, unless the program includes files (the tool can come from one). */
   function unknownTool(name, x, inf) {
     if (/[.:>]/.test(name) || x.fns.has(name) || x.known.has(name) || x.classes.has(name) || BUILT_IN.test(name)) return;
@@ -488,7 +488,7 @@
       if ((m = s.match(/^let\s+([A-Za-z_]\w*)\s+stand for\s/i))) x.known.add(m[1]);
       if (/^start (?:the serial monitor|talking to the computer)|Serial\.begin/i.test(s)) serialStarted = true;
       // a file included beyond the ones the translator adds itself: tools can come from it
-      if ((m = s.match(/^(?:(?:include|use the library)\s+|(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:\s*#\s*include\s*)(<[^>]+>|"[^"]+"|[\w./]+)/i)) && (A || !/^<?(?:iostream|string|vector|random|sstream|cstdlib|algorithm|cstdio)>?$/.test(m[1]))) x.headers = true;
+      if ((m = s.match(/^(?:(?:include|use the library)\s+|(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:\s*#\s*include\s*)(<[^>]+>|"[^"]+"|[\w./]+)/i)) && (A || !/^<?(?:iostream|string|vector|random|sstream|cstdlib|algorithm|cstdio|stdexcept)>?$/.test(m[1]))) x.headers = true;
       if ((m = s.match(/^(?:c\+\+|cpp|raw|above main|outside main|at the top)\s*:(.*)$/i))) {   // names made in raw C++
         for (const d of m[1].matchAll(/\b(?:class|struct)\s+([A-Za-z_]\w*)/g)) { x.classes.add(d[1]); x.known.add(d[1]); }
         for (const d of m[1].matchAll(/^\s*(?:(?:const|static|unsigned|constexpr|inline)\s+)*[A-Za-z_][\w:<>,]*[\s&*]+([A-Za-z_]\w*)\s*(?:=|;|\(|\[|\{)/g)) x.known.add(d[1]);
@@ -722,7 +722,7 @@
         out = topOut;
         return open('void loop()', 'fn', { loopFn: true });
       }
-      if (A && !stack.length && !/^(?:(?:set|let)\s+(?!pin\b|the (?:brightness|level|power)\b)[\w\s/:<>&*']+?\s+(?:to|be)\b|constant\s|(?:create|make)\s+(?:an?\s+)?(?:empty\s+)?list\b|make\s+(?:a\s+)?new\b|(?:create|make)\s+.+?\s+called\s+[A-Za-z_]\w*)/i.test(s)) {
+      if (A && !stack.length && !/^(?:(?:set|let)\s+(?!pin\b|the (?:brightness|level|power)\b)[\w\s/:<>&*']+?\s+(?:to|be)\b|constant\s|(?:create|make)\s+(?:an?\s+)?(?:constant\s+)?(?:empty\s+)?list\b|make\s+(?:a\s+)?new\b|(?:create|make)\s+.+?\s+called\s+[A-Za-z_]\w*)/i.test(s)) {
         inf.errs.push('In a sketch, steps go inside "when the board starts" (once) or "over and over" (forever). Only settings like "set led to 13" go at the left edge.');
         return;
       }
@@ -829,6 +829,13 @@
         return say('break;');
       }
       if (/^skip to next$/i.test(s)) return say('continue;');
+      // "fail with std::invalid_argument: "sizes do not match"": throw, which stops the program unless something catches it
+      if ((m = M(/^fail with\s+([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)(?:\s*:\s*(.+))?$/i))) {
+        if (A) { inf.errs.push('A board can\'t stop with an error (Arduino has exceptions turned off). Show a message instead, or turn a light on.'); return; }
+        if (/^std::(?:runtime_error|logic_error|invalid_argument|out_of_range|length_error|domain_error|range_error|overflow_error|underflow_error)$/.test(m[1])) x.needs.add('stdexcept');
+        note(inf, `\`throw\` stops with a ${code(m[1])} error: the program ends unless something catches it.`);
+        return say(`throw ${m[1]}(${m[2] ? E(m[2], inf) : ''});`);
+      }
       // --- Arduino: pins, time, sound, serial monitor
       if (A) {
         const pin = (p) => (/^(?:the )?built-?in (?:light|led)$/i.test(p.trim()) ? 'LED_BUILTIN' : E(p.replace(/^pin\s+/i, ''), inf));
@@ -987,8 +994,11 @@
         return say(type === 'std::string' ? `std::getline(std::cin >> std::ws, ${m[3]});` : `std::cin >> ${m[3]};`);
       }
       // "make a list of whole numbers called scores with 7, 9"; "… of 4 whole numbers …" has a fixed size (a plain array)
-      if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(empty\s+)?list(?:\s+of\s+(.+?))?\s+(?:called\s+)?([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
-        const [, empty, of, name, said] = m;
+      if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(constant\s+)?(empty\s+)?list(?:\s+of\s+(.+?))?\s+(?:called\s+)?([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
+        const [, fixed, empty, of, name, said] = m;
+        const K = fixed ? 'const ' : '';
+        if (fixed && !said) inf.errs.push('A constant list needs its items: "… with 2, 3, 4".');
+        if (fixed) note(inf, '`const`: the list\'s items can\'t be changed once it is made.');
         // "of 4 whole numbers": a size first (digits, or a CONSTANT in capitals), then what it holds
         const sized = of && of.match(/^(\d+|[A-Z_][A-Z0-9_]*)\s+(.+)$/);
         const [size, what] = sized && itemType(sized[2], x) ? [sized[1], sized[2]] : [null, of];
@@ -1003,13 +1013,13 @@
           if (size && /^\d+$/.test(size) && items.length > +size) inf.errs.push(`${items.length} items don't fit in a list of ${size}.`);
           x.types[name] = t + '[]';
           note(inf, `A list ${A ? 'on Arduino ' : 'with a size '}is a plain array: a fixed number of ${code(t)} values. It can't grow${A ? ', which saves the board\'s small memory' : ''}.` + (size && !items.length ? ' Its items are whatever was in memory (0 for a list made outside every block) until set.' : ''));
-          return say(`${t} ${name}[${size || ''}]${items.length ? ` = {${items.join(', ')}}` : ''};`);
+          return say(`${K}${t} ${name}[${size || ''}]${items.length ? ` = {${items.join(', ')}}` : ''};`);
         }
         const type = `std::vector<${t}>`;
         x.needs.add('vector');
         x.types[name] = type;
         note(inf, `A list in C++ is a \`std::vector\`, and every item has the same kind: ${code(t)}.` + (items.length ? '' : ' It starts empty.'));
-        return say(items.length ? `${type} ${name} = {${items.join(', ')}};` : `${type} ${name};`);
+        return say(items.length ? `${K}${type} ${name} = {${items.join(', ')}};` : `${type} ${name};`);
       }
       // "make a whole number called count", "make empty text called name", "make a Servo called arm", "make a LiquidCrystal called lcd with 12, 11"
       if ((m = M(/^(?:create|make)\s+(?:an?\s+|some\s+)?(empty\s+)?(?:new\s+)?(.+?)\s+called\s+([A-Za-z_]\w*)(?:\s+with\s+(.+))?$/i))) {
@@ -1118,6 +1128,7 @@
       if (x.needs.has('exit')) hdr('#include <cstdlib>', 'Lets a tool stop the whole program (std::exit).');
       if (x.needs.has('algorithm')) hdr('#include <algorithm>', 'Ready-made steps for values and lists (std::clamp).');
       if (x.needs.has('cstdio')) hdr('#include <cstdio>', 'printf: text with % codes filled in.');
+      if (x.needs.has('stdexcept')) hdr('#include <stdexcept>', 'Standard errors to stop with, like std::invalid_argument.');
     }
     const auto = new Set(all.map(o => o.text.slice(9)));
     for (const inc of includes) if (!auto.has(inc.h)) hdr(`#include ${inc.h}`, null, inc.src);
@@ -1190,6 +1201,7 @@
     T('Lists', 'make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›', 'std::vector<int> name = {1, 2, 3};', 'Also "list of text", "list of decimals". Leave off "with …" for an empty list.'),
     T('Lists', 'make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›', 'int name[] = {1, 2, 3};', 'Also "list of text", "list of decimals".', ['sketch']),
     T('Lists', 'make a list of ‹4› ‹whole numbers› called ‹readings›', 'int readings[4];', 'A fixed number of items. Add "with 0, 0, 0, 0" to give them.', ['program', 'sketch']),
+    T('Lists', 'make a constant list of ‹whole numbers› called ‹PINS› with ‹2, 3, 4›', 'const int PINS[] = {2, 3, 4};', 'Items that never change, such as the pins the lights are on.', ['sketch']),
     T('Lists', 'add ‹value› to ‹list›', 'list.push_back(value);', ''),
     T('Lists', 'set item ‹0› of ‹list› to ‹value›', 'list[0] = value;', 'Positions start at 0. Also "set the last item of ‹list› to ‹value›".', ['program', 'sketch']),
     T('Tools', 'define ‹name› using ‹inputs›', 'auto name(auto inputs) {', 'Tools go above main automatically.', ['program', 'sketch']),
@@ -1197,6 +1209,7 @@
     T('Tools', 'define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›', 'double average(const std::vector<int>& values) {', '"read-only" looks at the caller\'s value without copying it; "the caller\'s" lets the tool change it.'),
     T('Tools', 'give back ‹value›', 'return value;', '', ['program', 'sketch']),
     T('Tools', 'leave the tool now', 'return;', 'Leaves a tool that gives nothing back.', ['program', 'sketch']),
+    T('Errors', 'fail with ‹std::invalid_argument›: ‹message›', 'throw std::invalid_argument(message);', 'Stops with an error that the caller can catch. Not on Arduino.'),
     T('Tools', 'run ‹tool› with ‹inputs› and store in ‹name›', 'auto name = tool(inputs);', '', ['program', 'sketch']),
     T('Tools', 'set ‹name› to the result of ‹tool› with ‹inputs›', 'auto name = tool(inputs);', 'Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2.', ['program', 'sketch']),
     T('Classes', 'define class ‹Name›', 'class Name { public: … };', 'A blueprint for objects. Indent its fields and tools under it.', ['program', 'sketch']),

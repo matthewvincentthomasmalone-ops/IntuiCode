@@ -841,6 +841,7 @@ for-each    = "for each" [ type ] name "in" value [ "," ( "so it can be changed"
 while       = ( "while" | "as long as" ) cond ;
 do-while    = "do this" [ "," ] "then repeat" ( "while" | "as long as" ) cond ;     (* → do { … } while (cond); *)
 break       = "stop the loop" ;   continue = "skip to next" ;   (* stop the loop in a case of "depending on" is an error *)
+fail        = "fail with" Name [ ":" value ] ;          (* → throw Name(value);  std:: errors add <stdexcept>;  an error on Arduino *)
 
 (* Arduino: pins, time, sound *)
 pin-mode    = ( "make" | "set" ) [ "pin" ] pin ( "a" | "an" | "as" [ "a" | "an" ] ) ( "output" | "input" ) [ "with" [ "a" ] "pull-up" ] ;
@@ -887,7 +888,8 @@ clear       = "clear" name ;                                                  (*
 start       = "start" name [ "with" items ] ;                                 (* → name.begin(items) *)
 
 (* Values *)
-make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "empty" ] "list" [ "of" [ size ] holds ] [ "called" ] name [ "with" items ] ;
+make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "constant" ] [ "empty" ] "list" [ "of" [ size ] holds ] [ "called" ] name [ "with" items ] ;
+                (* constant → const …, and it needs its items *)
 holds       = "numbers" | "whole numbers" | "decimals" | "text" | "words" | "characters" | "yes/no values" | c++-type "values" ;
 size        = number | CONSTANT ;
                 (* → std::vector<T> name = {…}; (no items: std::vector<T> name;)  with a size → T name[size] = {…};
@@ -1506,7 +1508,7 @@ for (const item of [1, 2]) {
 | Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool (or using `the result of` one) is an error, or a warning when the program includes a file beyond the ones the writer adds (the tool can come from it); making an unknown class is a warning. |
 | Text joined with `plus` | Quoted text becomes a `std::string` (`String` on Arduino) before `+`, and a known number goes through `std::to_string`, unless the other side is text already (a text name, or `x as text`): `"Hi " plus name` is `"Hi " + name`, `"Score: " plus n as text` is `"Score: " + std::to_string(n)`. |
 | Arduino tools | Inputs without a type are `int`; the result is `int` when the block gives something back, `void` otherwise. |
-| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, when a sentence needs them. |
+| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, `<stdexcept>` for `fail with std::…`, when a sentence needs them. |
 | Arduino checks | Steps at the left edge are an error; only one `setup` and one `loop`; `show` before `start the serial monitor` is a warning. |
 
 ### Unknown names, errors and warnings
@@ -2295,7 +2297,8 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›` | `double average(const std::vector<int>& values) {` | "read-only" looks at the caller's value without copying it; "the caller's" lets the tool change it. |
 |  | `give back ‹value›` | `return value;` |  |
 |  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
-|  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
+| **Errors** | `fail with ‹std::invalid_argument›: ‹message›` | `throw std::invalid_argument(message);` | Stops with an error that the caller can catch. Not on Arduino. |
+| **Tools** | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
 |  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `auto name = tool(inputs);` | Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2. |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
 |  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
@@ -2364,6 +2367,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `do this, then repeat while ‹condition›` | `do { … } while (condition);` | The steps run once before the test. |
 | **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `int name[] = {1, 2, 3};` | Also "list of text", "list of decimals". |
 |  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
+|  | `make a constant list of ‹whole numbers› called ‹PINS› with ‹2, 3, 4›` | `const int PINS[] = {2, 3, 4};` | Items that never change, such as the pins the lights are on. |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
