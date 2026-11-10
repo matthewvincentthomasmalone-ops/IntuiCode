@@ -3,18 +3,18 @@
 ## Reporting a problem
 
 Please report security problems privately, not in a public issue: on GitHub, open the **Security** tab and choose
-**Report a vulnerability**. Say what you found, how to reproduce it, and which version (or intuacode.com) you used.
+**Report a vulnerability**. Say what you found, how to reproduce it, and which version you used.
 If that option isn't there, open an issue asking for a private way to send it, without the details.
 
 You'll get a reply as soon as possible, a fix in the next release for anything confirmed, and credit if you'd like it.
 
-Supported: the newest release, and intuacode.com.
+Supported: the newest release. (The public website is offline for now.)
 
 ## What IntuaCode does with your code
 
 - **No accounts, no tracking.** There is no sign-up, telemetry, analytics or advertising. The website and the app
   load nothing from other sites: the fonts, the Python engine (Pyodide) and the code parsers are bundled.
-- **The browser version** (intuacode.com/app/) runs entirely in your browser. Projects are kept in that browser's
+- **The browser version** (`npm run site`, served on 127.0.0.1 only) runs entirely in your browser. Projects are kept in that browser's
   storage on your computer and are never uploaded.
 - **The desktop app** reads and writes only folders you choose (and its own scratch folder); it refuses paths
   outside a project's folder. It runs your programs, and `$` commands you type, with your own Python, compilers
@@ -28,12 +28,12 @@ Supported: the newest release, and intuacode.com.
 Installers are built only by GitHub Actions (`.github/workflows/desktop.yml`) from this public source.
 Each release has:
 
-- `SHA256SUMS.txt`, the SHA-256 of every file (also shown on intuacode.com):
+- `SHA256SUMS.txt`, the SHA-256 of every file:
   `sha256sum -c SHA256SUMS.txt --ignore-missing` on Linux, `Get-FileHash <file> -Algorithm SHA256` in PowerShell;
 - a signed provenance attestation for each installer, recording the workflow run and commit that built it:
   `gh attestation verify <file> --repo matthewvincentthomasmalone-ops/IntuiCode`.
 
-The installers aren't code-signed yet ([code signing policy](https://intuacode.com/code-signing.html)), so Windows
+The installers aren't code-signed yet ([code signing policy](site/code-signing.html)), so Windows
 SmartScreen and macOS Gatekeeper warn the first time they're opened: check the checksum or the attestation first.
 Signing is set up in the release workflow and starts once the certificates are bought (below).
 
@@ -83,7 +83,7 @@ macOS opens it without warnings.
 
 ### Once both are set up
 
-Update the [code signing policy](https://intuacode.com/code-signing.html) (`site/code-signing.html`) to name the
+Update the [code signing policy](site/code-signing.html) to name the
 publisher and the certificates, and the README's "These builds aren't code-signed yet" section.
 
 ## How the project keeps itself safe

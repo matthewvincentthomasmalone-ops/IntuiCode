@@ -8,8 +8,9 @@ line of Python, every summary points at real lines, and the same input always gi
 the same result. The aim is to let intuition and plain language lead, while you stay
 directly connected to every part of the code.
 
-**Get it:** [intuacode.com](https://intuacode.com) has the downloads for Windows, Linux and macOS, each with its
-SHA-256, and a button to open the browser version (nothing to install). [SECURITY.md](SECURITY.md) says what
+**Get it:** the public website is offline while IntuaCode becomes a paid product. The installers for Windows, Linux
+and macOS are on the repository's **Releases** page, each with its SHA-256, and `npm run site` runs the website and
+the browser version on this computer only (http://127.0.0.1:8080; see "Run it"). [SECURITY.md](SECURITY.md) says what
 IntuaCode does with your code (nothing leaves your computer), how to check a download, and how to report a problem.
 
 ## Two directions
@@ -511,19 +512,25 @@ xvfb-run node tests/e2e/run.mjs
 
 ## Run it
 
-The browser version is at **https://intuacode.com/app/**, under the home page at **https://intuacode.com**.
-Every push to `main` publishes both (`.github/workflows/pages.yml`, GitHub Pages), with Python, the parsers and
-the fonts bundled: `tools/build_site.mjs` puts the home page (`site/`) at the top, the app (`dist/`) under `app/`,
-the newest release's downloads and checksums in `downloads.json`, and `.well-known/security.txt`. To try the site:
+The website (the home page, with the browser version under `/app/`) runs on this computer only, on the loopback
+address:
 
 ```
-node tools/build_desktop.mjs && node tools/build_site.mjs
-python3 -m http.server 8080 --directory _site
+npm run site
 ```
+
+Then open http://127.0.0.1:8080 (the app is at http://127.0.0.1:8080/app/). It builds the app (`dist/`) and the
+site (`_site/`): `tools/build_site.mjs` puts the home page (`site/`) at the top, the app under `app/`, the newest
+release's downloads and checksums in `downloads.json`, and `.well-known/security.txt`. `tools/serve_site.mjs`
+serves it on 127.0.0.1 only, so nothing else on the network can reach it; `node tools/serve_site.mjs 9000` serves
+an already-built `_site/` on another port.
+
+The public website (GitHub Pages, `.github/workflows/pages.yml`) is offline while IntuaCode becomes a paid product;
+that workflow only checks that the site builds. pages.yml says how to publish it again under the final domain.
 
 Installers come from `.github/workflows/desktop.yml` (Actions → Desktop app → Run workflow on `main`): Windows,
 Linux and macOS for the version in `src-tauri/tauri.conf.json`, attached to a GitHub Release with
-`SHA256SUMS.txt` and a signed provenance attestation each, after which the website is rebuilt to offer them.
+`SHA256SUMS.txt` and a signed provenance attestation each.
 
 To run it on your own computer:
 

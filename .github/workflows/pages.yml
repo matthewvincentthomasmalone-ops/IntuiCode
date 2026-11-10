@@ -1,7 +1,10 @@
 name: Website
 
-# Publishes intuacode.com to GitHub Pages on every push to main, and after each desktop release
-# (the Desktop app workflow starts it, so the home page's download buttons point at the new installers).
+# The public website is offline while IntuaCode becomes a paid product (since 2026-11-10): GitHub Pages is
+# turned off, and this workflow only builds the site (pull requests, and Run workflow) to check it still builds.
+# To run it locally: npm run site (http://127.0.0.1:8080). To publish it again under the product's final domain:
+# Settings -> Pages -> Source: GitHub Actions, set the custom domain, then Actions -> Website -> Run workflow
+# with "publish" ticked.
 #   /      the home page (site/)
 #   /app/  the browser version: the same dist/ folder the desktop app ships (tools/build_desktop.mjs),
 #          with Python (pyodide/), the code-reading parsers (vendor/) and the fonts bundled, so nothing
@@ -11,10 +14,13 @@ name: Website
 # when a workflow publishes the site). Pull requests build the site but don't publish it.
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to GitHub Pages (turn Pages on first)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,7 +65,7 @@ jobs:
           include-hidden-files: true   # .well-known/security.txt
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
     needs: build
     runs-on: ubuntu-latest
     permissions:

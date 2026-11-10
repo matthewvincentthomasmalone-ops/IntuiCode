@@ -8,6 +8,7 @@
     "test": "node tools/test.mjs",
     "coverage": "node tools/coverage.mjs samples tests/corpus && node tools/coverage.mjs tests/heldout",
     "vendor": "node tools/vendor.mjs",
+    "site": "node tools/build_desktop.mjs && node tools/build_site.mjs && node tools/serve_site.mjs",
     "tauri": "tauri",
     "desktop:prepare": "node tools/build_desktop.mjs",
     "desktop:dev": "tauri dev",

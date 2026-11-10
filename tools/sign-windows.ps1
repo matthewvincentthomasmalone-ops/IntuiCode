@@ -32,7 +32,7 @@ $jsignArgs = @(
   '--keypass', $env:ESIGNER_TOTP_SECRET,
   '--alg', 'SHA-256',
   '--tsaurl', 'http://ts.ssl.com', '--tsmode', 'RFC3161', '--tsretries', '3', '--tsretrywait', '10',
-  '--name', 'IntuaCode', '--url', 'https://intuacode.com'
+  '--name', 'IntuaCode', '--url', 'https://github.com/matthewvincentthomasmalone-ops/IntuiCode'
 )
 if ($env:ESIGNER_ENDPOINT) { $jsignArgs += @('--keystore', $env:ESIGNER_ENDPOINT) }
 
