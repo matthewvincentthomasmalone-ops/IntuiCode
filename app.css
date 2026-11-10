@@ -154,6 +154,18 @@ code { font-family: var(--f-py); font-size: .92em; }
 }
 .new-kind b { font-size: 14px; }
 .new-kind span { font-size: 12.5px; color: var(--ink-3); }
+/* The opening screen: the two ways in */
+.welcome-card { width: min(640px, 100%); padding: 28px 28px 22px; }
+.welcome-card h2 { margin: 0 0 8px; font-size: 24px; line-height: 1.25; }
+.welcome-card > p { margin: 0 0 18px; color: var(--ink-2); font-size: 14.5px; line-height: 1.5; }
+.welcome-ways { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.welcome-way { display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: pointer; padding: 16px 16px 14px; border: 1px solid var(--rule); border-radius: 10px; background: var(--panel-2); color: var(--ink); font: inherit; }
+.welcome-way b { font-size: 17px; }
+.welcome-way span { font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.welcome-way.primary { border-color: var(--seafoam); box-shadow: inset 0 0 0 1px var(--seafoam); }
+.welcome-way:hover, .welcome-way:focus-visible { border-color: var(--accent); outline: none; }
+.welcome-card .welcome-alt { margin: 0; font-size: 13px; color: var(--ink-3); }
+@media (max-width: 560px) { .welcome-ways { grid-template-columns: 1fr; } }
 /* the other ways to start, above the empty kinds: a template, or a plan */
 .new-ways { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .new-way { display: flex; flex-direction: column; gap: 3px; text-align: left; cursor: pointer; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel-2); color: var(--ink); font: inherit; }
