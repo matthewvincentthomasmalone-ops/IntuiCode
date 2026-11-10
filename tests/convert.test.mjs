@@ -102,7 +102,8 @@ test('code -> sentences: the sentences read naturally', () => {
 test('code -> sentences: anything that can\'t be said stays exact code', () => {
   const r = convert('js', 'class A { #x = 1; get x() { return this.#x; } }\nconst a = new A();\nlabel: for (;;) { break label; }\n');
   assert.equal(r.exact, true);
-  assert.match(r.text, /^js: class A/m);
+  // (a class is said part by part: the parts sentences have no words for stay code inside it)
+  assert.match(r.text, /^define class A\n    js: #x = 1;\n    js: get x\(\) \{ return this\.#x; \}\nconstant a is a new A\njs: label: for/m);
   const c = convert('cpp', 'template <typename T> T twice(T v) { return v * 2; }\nint main() {\n  int n = twice(4);\n  std::cout << n << std::endl;\n  return 0;\n}\n');
   assert.equal(c.exact, true, c.reason);
   assert.match(c.text, /^above main: template <typename T>/m);
@@ -188,7 +189,7 @@ test('code -> sentences: exact where the checker used to look away', () => {
   // a reply that changes later is kept with let; x++ and x += 1 say different things
   let r = exact('js', 'let data = await (await fetch("/api")).json();\ndata = data.items;\n', null, /^fetch from "\/api" and store in data\nset data to data\.items$/m);
   assert.equal(r.kept, 0, r.text);
-  exact('js', 'let data = await (await fetch("/api")).json();\nconsole.log(data);\n', null, /^set data to await \(await fetch\("\/api"\)\)\.json\(\)$/m);
+  exact('js', 'let data = await (await fetch("/api")).json();\nconsole.log(data);\n', null, /^set data to the JSON read from \(the reply from "\/api"\)$/m);
   r = exact('js', 'let n = 0;\nn++;\nn += 1;\n', null, /^increase n\nincrease n by 1$/m);
   assert.equal(r.kept, 0, r.text);
   exact('js', 'function f(a) {\n  a = a + 1;\n  return a;\n}\nfor (let x of [1, 2]) {\n  x = x * 2;\n}\n', null, /^    set a to a plus 1$/m);

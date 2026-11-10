@@ -213,7 +213,7 @@ test('mechanics: listeners on names that hold elements, the event by its own nam
   const both = (said, code) => { const w = js(said); assert.deepEqual(w.errs, [], said); assert.equal(w.text, code); reads('js', code, said, page); };
   both('when region is changed, with the event as e\n    show e.target.value',
     'document.getElementById("region").addEventListener("change", (e) => {\n  console.log(e.target.value);\n});\n');
-  both('define load\n    wait for fetch("/api/items")\ndefine pick using id\n    run load without waiting\nconstant list is the element matching "#tasks ul"\nwhen list is clicked\n    run pick with 1\n    put list in group busy',
+  both('define load\n    wait for the reply from "/api/items"\ndefine pick using id\n    run load without waiting\nconstant list is the element matching "#tasks ul"\nwhen list is clicked\n    run pick with 1\n    put list in group busy',
     'async function load() {\n  await fetch("/api/items");\n}\nfunction pick(id) {\n  load();\n}\nconst list = document.querySelector("#tasks ul");\nlist.addEventListener("click", () => {\n  pick(1);\n  list.classList.add("busy");\n});\n');
   // a listener written as one expression reads as one with a block: nothing reads what it gives back
   const r = reads('js', 'const b = document.querySelector(".go");\nb.addEventListener("click", () => alert("hi"));\n', 'constant b is the element matching ".go"\nwhen b is clicked\n    show a message "hi"', page);
