@@ -1655,6 +1655,8 @@
      wholeGroups). Gives back the JavaScript, or null when s isn't one. */
   function jsWhole(s, x, inf) {
     s = String(s).trim();
+    // a dialect's own phrases first (TypeScript's, React's: see lang/ts_write.js), with this writer for the rest
+    if (x.ext && x.ext.expr) { const own = x.ext.expr(s, x, inf, (t) => jsExpr(t, x, inf)); if (own != null) return own; }
     let m, f;
     const sub = (t, names = []) => {   // a part, with the little function's input as a name inside it
       const added = names.filter(n => !x.vars.has(n));
@@ -2055,7 +2057,17 @@
     return out;
   }
 
-  function compileJs(sec, shared) {
+  /* ext (optional): a dialect built on these sentences (TypeScript, React: lang/ts_write.js).
+       ext.plain(s)            the sentence as these sentences say it (its types left out), for learning names; '' for
+                               one of its own that makes no name these sentences know; or null (it's one of these)
+       ext.names(s, x)         pass 1: the names a line of its own makes
+       ext.line(s, ctx)        pass 2: write a line of its own (true), leave it to these sentences (false), or say it
+                               as one of these ({ s }) and then change the code it made ({ s, patch(out, at) }: the
+                               lines from out[at] on are this line's)
+       ext.expr(s, x, inf, E)  a value of its own (its JavaScript), or null */
+  function compileJs(sec, shared, ext) {
+    // (JavaScript's own dialect when none is given: React's sentences for JSX, and shared parts; see lang/ts_write.js)
+    if (ext === undefined) ext = root.IntuiTs ? root.IntuiTs.ext('js') : null;
     // (a tab at the start of a line counts as 4 spaces, as in the other writers; exact lines keep their own)
     const given = sec.text.split('\n');
     let lines = given.map(l => l.replace(/^[ \t]+/, (w) => w.replace(/\t/g, '    ')));
@@ -2070,17 +2082,19 @@
     // sentences as people type them (not exact code, or notes): curly quotes, "1,000", names of several words
     const RAW_JS = /^\s*(?:js|javascript|raw|note|comment|description)\s*:/i;
     lines = lines.map((l, i) => { if (RAW_JS.test(l)) return l; const st = straightQuotes(l, true); if (st !== l) note(info[i], CURLY_NOTE); return digitGroups(st, info[i]); });
-    const spaced = spacedNames(lines, shared);
+    // (a dialect's lines are read as the sentences they stand for: "define shared add" makes the name add, not sharedAdd)
+    const plainLine = (l) => { const p = ext && ext.plain ? ext.plain(l.trim()) : null; return p == null ? l : l.match(/^\s*/)[0] + p; };
+    const spaced = spacedNames(ext && ext.plain ? lines.map(plainLine) : lines, shared);
     lines = lines.map((l, i) => (RAW_JS.test(l) ? l : useSpaced(l, spaced, info[i])));
     const out = [];
     const push = (text, src) => out.push({ text, src });
-    const x = { shared, vars: new Set(), fns: new Set(), pass2: false, cond: false, made: new Map(), timers: new Map(), plain: new Set(), mixed: new Set(), kinds: new Map(), gone: new Set(), spaced };
+    const x = { shared, vars: new Set(), fns: new Set(), pass2: false, cond: false, made: new Map(), timers: new Map(), plain: new Set(), mixed: new Set(), kinds: new Map(), gone: new Set(), spaced, ext: ext || null };
     // what a name holds, from the values it's set to: number, text, list, record, yes/no, or mixed (different ones)
     const kindOfValue = (v) => (/^[$€£¥]?-?\d/.test(v) ? 'number' : /^["'`]|^empty text\b/i.test(v) ? 'text' : /^\[|^(?:an )?empty list\b/i.test(v) ? 'list' : /^\{/.test(v) ? 'record' : /^(?:yes|no|true|false)\b/i.test(v) ? 'yesno' : null);
     const setKind = (n, k) => { if (!k) return; const had = x.kinds.get(n); x.kinds.set(n, !had || had === k ? k : 'mixed'); };
     // pass 1: names
     for (const raw of lines) {
-      const s = raw.trim();
+      const s = plainLine(raw).trim();
       let m;
       if ((m = s.match(/^(?:set|let|make)\s+(?:the\s+)?([A-Za-z_$][\w$]*)\s+(?:to|be)\s+(.*)$/i)) || (m = s.match(/^constant\s+(?:the\s+)?([A-Za-z_$][\w$]*)\s+(?:is|=)\s+(.*)$/i))) {
         x.vars.add(m[1]);
@@ -2117,6 +2131,7 @@
         for (const d of m[1].matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
         for (const d of m[1].matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g)) x.vars.add(d[1]);
       }
+      if (ext && ext.names) ext.names(raw.trim(), x);
     }
     x.pass2 = true;
     const scopes = [new Map()];   // name -> 'let' | 'const', one map per block, like JavaScript
@@ -2206,7 +2221,11 @@
     const caseEnd = (b) => () => { const last = out[out.length - 1]; return b.fall || (last !== b.head && /^\s*(?:return\b|break;|continue;|throw\b)/.test(last.text)) ? [] : ['  break;']; };
     let inTemplate = null;   // (exact code: a template literal that carries on to the next line, see templateOpenAfter)
     const FAILS = /^(?:if|when) (?:it|that|this|anything|something) fails\b/i, FINALLY = /^(?:finally|in any case|either way|whatever happens)[.:]?$/i;
+    let skipTo = -1, patch = null;   // (lines a dialect's line took in with it, and its change to the code made: see ext.line)
+    const patched = () => { if (patch) { const p = patch; patch = null; p.fn(out, p.at); } };
     lines.forEach((raw, i) => {
+      patched();
+      if (i <= skipTo) return;
       const inf = info[i];
       sayer = /^\s*(?:js|javascript|raw)\s*:/i.test(raw) ? null : inf;
       if (!raw.trim()) { if (i !== endNewline) out.push({ text: '', src: i, kept: exactBlank.has(i) }); return; }
@@ -2259,6 +2278,15 @@
       // an address in quotes, as a link takes it: "google.com" is "https://google.com" (see address)
       const addressed = (t) => { const q = strOf(t); if (q == null) return E(t, inf); const a = address(q, 'href'); if (!a.note) return E(t, inf); note(inf, a.note); return JSON.stringify(a.value); };
       const handler = (target, ev, args = '(event)') => `${target}.addEventListener("${ev}", ${needsAsync(i) ? 'async ' : ''}${args} => {`;
+      // a dialect's own sentences (TypeScript's types, React's components): it writes the line, or leaves it to these
+      if (ext && ext.line) {
+        const own = ext.line(s, {
+          i, raw, ind, inf, pad, lines, info, x, stack, out, E: (t, cond, several) => E(t, inf, cond, several), M, say, push, open, declare, keyword, known, isConst,
+          needsAsync: () => needsAsync(i), changedLater: (n, body) => changedLater(i, n, body), insideFn, skip: (j) => { skipTo = Math.max(skipTo, j); },
+        });
+        if (own === true) return;
+        if (own && typeof own.s === 'string') { s = own.s; if (own.patch) patch = { at: out.length, fn: own.patch }; }
+      }
       // --- events
       if ((m = M(/^when\s+(?:the\s+)?page (?:has )?(?:loaded|opens|starts)$/i))) {
         note(inf, 'Runs the indented lines once the page has finished loading.');
@@ -2768,6 +2796,7 @@
       inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
       say('// ??? ' + s);
     });
+    patched();
     while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src); }
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
     // at most one blank line in a row, except between exact lines: those are the code's own (in a template literal
@@ -3038,7 +3067,8 @@
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|run this now|(?:constant|set) [\w$]+ (?:is|to) a tool(?!.*\sgiving back\s)|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
-    readAttr, sayAttr, elementWord, addressFor: (t, kind) => address(t, kind).value,
+    readAttr, sayAttr, elementWord, wordTag: (w, svg) => (svg ? SVG_WORD_TAG : HTML_WORD_TAG).get(String(w).toLowerCase()) || null, splitAnd, splitItems, strOf, quoteText,
+    addressFor: (t, kind) => address(t, kind).value,
     cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiWeb = api;

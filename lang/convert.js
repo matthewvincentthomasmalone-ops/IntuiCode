@@ -79,7 +79,7 @@
     o.rawLines = (depth, prefix, src, node, text) => {
       const html = prefix === 'html:' || prefix === 'head:';
       // (JavaScript: the lines inside a template literal are its text, so they are kept as they are)
-      const keep = html ? keepRanges(node) : prefix === 'js:' ? node.descendantsOfType('template_string').filter(t => t.startPosition.row !== t.endPosition.row).map(t => [t.startIndex, t.endIndex]) : [];
+      const keep = html ? keepRanges(node) : /^(?:js|ts|tsx):$/.test(prefix) ? node.descendantsOfType('template_string').filter(t => t.startPosition.row !== t.endPosition.row).map(t => [t.startIndex, t.endIndex]) : [];
       const { lines } = text != null ? { lines: text.trim().split('\n').map(l => l.trim()) } : srcLines(src, node, keep);
       for (const l of lines) { o.lines.push(IND.repeat(depth) + (l ? `${prefix} ${l}` : prefix)); o.keys.push(node.startIndex); o.raw++; }
     };
@@ -204,8 +204,15 @@
   const MADE_WORD = { li: 'list item', div: 'block', p: 'paragraph', span: 'text', a: 'link', img: 'picture', button: 'button', h1: 'big heading', h2: 'heading', h3: 'small heading', section: 'section', ul: 'list', ol: 'numbered list', label: 'label', option: 'option', tr: 'row', td: 'cell', canvas: 'drawing area' };
   const isChain = (n) => n && (n.type === 'identifier' || n.type === 'this' || (n.type === 'member_expression' && F(n, 'property').type === 'property_identifier' && isChain(F(n, 'object'))));
 
-  function jsConvert(src, env, force) {
-    const tree = env.parse('js', src);
+  /* A function's input as a plain name: x, or (in TypeScript) x with no type, default or ? of its own. */
+  const plainParam = (p) => (p && p.type === 'identifier' ? p : p && p.type === 'required_parameter' && p.namedChildCount === 1 && p.namedChild(0).type === 'identifier' ? p.namedChild(0) : null);
+
+  /* dialect (optional): { kind: the grammar ('js', 'ts', 'tsx'), prefix: the exact-code prefix ('js:', 'ts:', 'tsx:'),
+     ext: the dialect's own sentences (lang/ts_convert.js), asked first for each value (ext.ex) and statement
+     (ext.one); undefined from them means "say it the JavaScript way" }. */
+  function jsConvert(src, env, force, dialect) {
+    const D = dialect || { kind: 'js', prefix: 'js:', ext: null };
+    const tree = env.parse(D.kind, src);
     const o = Out();
     const ids = env.ids || {};
     const fileFns = new Set(tree.descendantsOfType('function_declaration').map(f => (F(f, 'name') || {}).text).filter(Boolean));   // this file's own tools
@@ -256,7 +263,7 @@
     const little = (fnNode) => {
       if (!fnNode || fnNode.type !== 'arrow_function' || kids(fnNode).some(k => k.type === 'async')) return null;
       const ps = F(fnNode, 'parameters'), p1 = F(fnNode, 'parameter');
-      const p = p1 && p1.type === 'identifier' ? p1 : ps && named(ps).length === 1 && named(ps)[0].type === 'identifier' ? named(ps)[0] : null;
+      const p = p1 && p1.type === 'identifier' ? p1 : ps && named(ps).length === 1 ? plainParam(named(ps)[0]) : null;
       const body = F(fnNode, 'body');
       if (!p || !body || body.type === 'statement_block') return null;
       return { p: p.text, body };
@@ -267,6 +274,7 @@
     const val = (n) => (n && n.type === 'array' && !named(n).length ? 'an empty list' : ex(n));   // a whole value: [] in words
     function ex(n) {
       if (!n) return null;
+      if (D.ext && D.ext.ex) { const own = D.ext.ex(n, C); if (own !== undefined) return own; }
       switch (n.type) {
         case 'identifier': case 'number': case 'true': case 'false': case 'undefined': case 'this': return n.text;
         case 'null': return 'nothing';
@@ -415,15 +423,15 @@
     }
     const args = (call) => named(F(call, 'arguments')).filter(x => !isComment(x));
     const bodyOf = (n) => (n.type === 'statement_block' ? named(n) : [n]);
-    const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, 'js:', src, one);
+    const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, D.prefix, src, one);
     let breakIn = null;   // what a break here ends: 'loop' or 'case' (of "depending on")
     const inside = (kind, fn) => { const was = breakIn; breakIn = kind; try { fn(); } finally { breakIn = was; } };
     const JUMP = /^(?:return_statement|break_statement|continue_statement|throw_statement)$/;
     // a tool's inputs: names, or a name with the value it has when it's left out (quantity = 1), as the writer copies them
     const paramList = (fn) => {
       const ps = named(F(fn, 'parameters')).filter(x => !isComment(x));
-      const ok = (p) => p.type === 'identifier' || (p.type === 'assignment_pattern' && F(p, 'left').type === 'identifier' && !/\n/.test(F(p, 'right').text));
-      return ps.every(ok) ? ps.map(p => (p.type === 'identifier' ? p.text : `${F(p, 'left').text} = ${F(p, 'right').text}`)) : null;
+      const ok = (p) => plainParam(p) || (p.type === 'assignment_pattern' && F(p, 'left').type === 'identifier' && !/\n/.test(F(p, 'right').text));
+      return ps.every(ok) ? ps.map(p => (plainParam(p) ? plainParam(p).text : `${F(p, 'left').text} = ${F(p, 'right').text}`)) : null;
     };
 
     /* () => { … }, (event) => { … }, or one expression, () => f(x), which counts as { f(x); } where nothing reads
@@ -432,10 +440,10 @@
       if (!fnNode || fnNode.type !== 'arrow_function') return null;
       const params = F(fnNode, 'parameters') || F(fnNode, 'parameter');
       const p = params ? (params.type === 'identifier' ? [params] : named(params)) : [];
-      if (p.length > most || (p.length && (!allowEvent || p.some(q => q.type !== 'identifier')))) return null;
+      if (p.length > most || (p.length && (!allowEvent || p.some(q => !plainParam(q))))) return null;
       const body = F(fnNode, 'body');
       if (!body) return null;
-      const name = p.length ? p[0].text : null;
+      const name = p.length ? plainParam(p[0]).text : null;
       if (body.type === 'statement_block') return { body: named(body), usesEvent: p.length === 1, name };
       if (body.type === 'update_expression' || /^(?:object|sequence_expression|parenthesized_expression)$/.test(body.type)) return null;
       const stmt = { type: 'expression_statement', startIndex: body.startIndex, endIndex: body.endIndex, startPosition: body.startPosition, endPosition: body.endPosition,
@@ -538,9 +546,9 @@
           if (prop === 'reverse' && !a.length) { const l = ex(obj); return l != null && say(`reverse ${l}`); }
           // .forEach(x => { … }): "do this for each x in xs", a little tool run for each item
           if (prop === 'forEach' && a.length === 1 && a[0].type === 'arrow_function') {
-            const ps = F(a[0], 'parameters') ? named(F(a[0], 'parameters')) : [F(a[0], 'parameter')];
+            const ps = (F(a[0], 'parameters') ? named(F(a[0], 'parameters')) : [F(a[0], 'parameter')]).map(plainParam);
             const l = ex(obj), h = handler(a[0], true, 2);
-            if (l == null || !h || !ps.length || ps.length > 2 || ps.some(p => !p || p.type !== 'identifier') || /\scounting with\s/.test(l)) return false;
+            if (l == null || !h || !ps.length || ps.length > 2 || ps.some(p => !p) || /\scounting with\s/.test(l)) return false;
             say(`do this for each ${ps[0].text} in ${l}${ps[1] ? ', counting with ' + ps[1].text : ''}`);
             inside(null, () => block(h.body, depth + 1, e.startIndex));
             return true;
@@ -600,6 +608,7 @@
 
     function one(n, depth, lvl = 0) {
       const say = (t) => { o.say(depth, t); return true; };
+      if (D.ext && D.ext.one) { const own = D.ext.one(n, depth, lvl, C); if (own !== undefined) return own; }
       if (lvl && n.type !== 'lexical_declaration' && n.type !== 'expression_statement') return false;
       switch (n.type) {
         case 'expression_statement': {
@@ -736,7 +745,7 @@
           const base = heritage ? named(heritage)[0] : null;
           if (!name || (heritage && (named(heritage).length !== 1 || !isChain(base)))) return false;
           say(`define class ${name.text}${base ? ' based on ' + base.text : ''}`);
-          walkBlock(o, named(F(n, 'body')), depth + 1, n.startIndex, force, 'js:', src, (mem, d, lv) => {
+          walkBlock(o, named(F(n, 'body')), depth + 1, n.startIndex, force, D.prefix, src, (mem, d, lv) => {
             if (lv || mem.type !== 'method_definition' || kids(mem).some(k => /^(?:static|get|set|\*)$/.test(k.type)) || F(mem, 'name').type !== 'property_identifier') return false;
             const ps = paramList(mem);
             if (ps == null) return false;
@@ -802,7 +811,11 @@
         default: return false;
       }
     }
-    walkBlock(o, named(tree), 0, null, force, 'js:', src, one);
+    // what a dialect's sentences (D.ext) can use: the output, these values and statements, and the helpers
+    const C = { o, src, force, prefix: D.prefix, kind: D.kind, ids, fileFns, asyncFns, ex, val, one, exprStmt, block, inside, args, bodyOf, paramList, handler, little,
+      W, P, whole, phrase, topOf, simple, grouped, tight, opx, opd, item, inList, rest, long, isChain, plainString, holder,
+      breakIn: () => breakIn, walk: (nodes, depth, key, sayOne) => walkBlock(o, nodes, depth, key, force, D.prefix, src, sayOne) };
+    walkBlock(o, named(tree), 0, null, force, D.prefix, src, one);
     return o;
   }
 
