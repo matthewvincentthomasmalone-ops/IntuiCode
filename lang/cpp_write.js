@@ -161,11 +161,15 @@
         keep(single(line.slice(k + 1, end))); k = end; continue;
       }
       if (c === '“' || c === '”' || c === '„') {
-        let end = closeAt(k + 1, j => /[“”„]/.test(line[j]));
+        // it ends at the ” that matches it (“It’s “here””: quotes inside), else at the next curly mark (“Hello“)
+        let depth = 0;
+        let end = closeAt(k + 1, j => (/[“„]/.test(line[j]) ? (depth++, false) : line[j] === '”' && depth-- === 0));
+        if (end < 0) end = closeAt(k + 1, j => /[“”„]/.test(line[j]));
         const mixed = end < 0;   // “Hello" (a curly mark, then a straight one)
         if (mixed) end = closeAt(k + 1, j => line[j] === '"');
         if (end < 0) { add(errs, 'This text has no closing quote mark (”).'); keep(line.slice(k)); plain = ''; break; }
         let body = line.slice(k + 1, end);
+        // (curly marks inside are part of the text, and C++ text can hold them; a straight one would end it)
         if (!mixed && /(?<!\\)"/.test(body)) { body = body.replace(/(?<!\\)"/g, '\\"'); add(notes, INNER_NOTE); }
         add(notes, CURLY_NOTE);
         keep('"' + body + '"'); k = end; continue;

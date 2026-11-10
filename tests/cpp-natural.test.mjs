@@ -58,6 +58,7 @@ const CASES = [
   ['curly quotes are quotes', 'cpp', 'show “Hello there”', [/std::cout << "Hello there" << std::endl;/], [], 'Curly quote marks (“ ” ‘ ’) are written as straight ones (" \') in C++.'],
   ['… an apostrophe in a word stays, and so does anything in straight quotes', 'cpp', 'show “It’s here”\nshow "It’s “here”"', [/std::cout << "It’s here" << std::endl;/, /std::cout << "It’s “here”" << std::endl;/]],
   ['… an apostrophe in a sentence word works', 'cpp', 'set n to 3\nif n isn’t 4\n    show n', [/if \(n != 4\) \{/]],
+  ['… and so are curly quotes inside them', 'cpp', 'show “It’s “here””\nshow “a” and “b”', [/std::cout << "It’s “here”" << std::endl;/, /std::cout << "a" << " " << "b" << std::endl;/]],
   ['… a straight quote inside curly quotes is part of the text', 'cpp', 'show “He said "hi" to me”', [/std::cout << "He said \\"hi\\" to me" << std::endl;/], [], 'A " inside text is written \\" in C++, so the text doesn\'t end there.'],
   ['… single curly quotes: one character, or text', 'cpp', 'show ‘a’\nshow ‘Hello there’', [/std::cout << 'a' << std::endl;/, /std::cout << "Hello there" << std::endl;/]],
   ['text in single quotes is text', 'cpp', 'show \'Hello\'\nshow \'{x}\'\nset c to \'b\'', [/std::cout << "Hello" << std::endl;/, /std::cout << "\{x\}" << std::endl;/, /char c = 'b';/], [], 'C++ text goes in double quotes (single quotes hold one character), so \'Hello\' is written "Hello".'],

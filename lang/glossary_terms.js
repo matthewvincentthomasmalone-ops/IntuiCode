@@ -170,6 +170,8 @@
       { t: 'random_number()', m: ['random_number'], k: 'function', s: 'A helper IntuaCode writes above main for "random number from … to …": a whole number between low and high, both included.', eg: 'int secret = random_number(1, 50);', see: ['<random>', 'static'] },
       { t: '_', k: 'concept', s: 'In code IntuaCode writes, `_` stands for a ‹blank› not filled in yet. The compiler stops there until it is.', eg: 'if (buttonState == _) {', see: ['=', ';'] },
       { t: '<cmath>', m: ['cmath', 'sqrt', 'pow'], k: 'module', s: 'Standard maths functions: `std::sqrt(x)`, `std::pow(x, y)`, `std::sin`, `std::cos`. They work in decimals and give back double.', eg: 'double side = std::sqrt(area);', see: ['#include', 'double'] },
+      { t: 'std::this_thread::sleep_for', m: ['std::this_thread::sleep_for', 'sleep_for', 'this_thread', 'thread'], k: 'function', s: 'Pauses the program for a length of time, from `<thread>`. The length comes from std::chrono: `std::chrono::milliseconds(500)` is half a second.', eg: 'std::this_thread::sleep_for(std::chrono::milliseconds(500));', see: ['std::chrono', '#include'] },
+      { t: 'std::chrono', m: ['std::chrono', 'chrono', 'std::chrono::milliseconds', 'std::chrono::seconds', 'std::chrono::duration', 'milliseconds', 'duration'], k: 'module', s: 'Lengths of time with their units, from `<chrono>`: `std::chrono::milliseconds(500)`, `std::chrono::seconds(2)`. `std::chrono::duration<double>(1.5)` is 1.5 seconds, for a decimal.', eg: 'std::chrono::milliseconds(250)', see: ['std::this_thread::sleep_for'] },
 
       // types and declarations
       { t: 'int', k: 'type', s: 'A whole number, usually 32 bits (about ±2.1 billion; only 16 bits on an Arduino Uno). Dividing two ints drops the fraction: `7 / 2` is 3.', eg: 'int guesses = 0;', see: ['double', 'long', 'unsigned', 'auto'] },
@@ -629,6 +631,7 @@
       { t: 'include', k: 'sentence word', s: 'Brings in a library of ready-made code (#include), such as cmath for maths.', eg: 'include cmath', see: ['above main', 'raw line'], packs: ['cpp', 'arduino'] },
       { t: 'above main', k: 'sentence word', s: 'C++ written directly and placed above main, beside the tools and classes, rather than inside it.', eg: 'above main: int twice(int n) { return n * 2; }', see: ['include', 'raw line'], packs: ['cpp'] },
       { t: 'unsigned long', k: 'sentence word', s: 'A whole number that is never negative, big enough for about 49 days of milliseconds: the kind to keep times in on a board.', eg: 'set unsigned long lastBlink to 0', see: ['time since start', 'whole number'], packs: ['arduino', 'cpp'] },
+      { t: 'wait', k: 'sentence word', s: 'Pauses for a length of time: "wait 500 milliseconds", "wait 500ms", "wait 2 seconds", "wait half a second". On a board it is delay, which stops everything else meanwhile; in a C++ program, std::this_thread::sleep_for.', eg: 'wait 500 milliseconds', see: ['time since start', 'unsigned long'], packs: ['cpp', 'arduino'] },
 
       // Arduino
       { t: 'board', k: 'board word', s: 'The Arduino itself: a small computer that runs one sketch from the moment it has power.', eg: 'when the board starts', see: ['sketch', 'when the board starts', 'pin'], packs: ['arduino'] },
