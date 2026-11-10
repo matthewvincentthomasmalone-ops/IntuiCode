@@ -567,7 +567,9 @@
             return v != null && say(`set the ${{ textContent: 'text', value: 'value', innerHTML: 'HTML', className: 'groups' }[prop]} of ${h} to ${v}`);
           }
           if (prop === 'hidden' && /^(true|false)$/.test(right.text) && holder(F(left, 'object'))) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${holder(F(left, 'object'))}`);
-          if (left.text === 'window.location.href') { const v = ex(right); return v != null && say(`go to ${v}`); }
+          // (an address "go to" would change, like "google.com", is said as it is: set window.location.href to …)
+          const lit = right.type === 'string' && /^(["'])([^"'\\]*)\1$/.exec(right.text);
+          if (left.text === 'window.location.href' && !(lit && env.WEB.addressFor(lit[2], 'href') !== lit[2])) { const v = ex(right); return v != null && say(`go to ${v}`); }
           if (isChain(left) && !id) { const v = val(right); return v != null && say(`set ${left.text} to ${v}`); }
           // a value inside one item: "set done of item index of todos to …" (todos[index].done)
           if (obj.type === 'subscript_expression' && F(left, 'property').type === 'property_identifier' && !kids(left).some(k => k.type === 'optional_chain')) {

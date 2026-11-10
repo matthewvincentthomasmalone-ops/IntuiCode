@@ -235,3 +235,139 @@ test('curly quotes count as straight ones, in Styling', () => {
   assert.equal(css('style “Save”: bold', { save: 'button' }).text, '#save {\n  font-weight: bold;\n}\n');
   assert.equal(css('css: .x::before { content: “a” }').text, '.x::before { content: “a” }\n', 'CSS copied exactly stays exact');
 });
+
+/* ------------------------------------------------------------------ */
+/* Mechanics                                                           */
+/* ------------------------------------------------------------------ */
+
+test('mechanics: JavaScript\'s own words, and words sentences read as values, can\'t be names', () => {
+  for (const [said, word] of [['set class to 3', 'class'], ['set new to 3', 'new'], ['constant delete is 3', 'delete'], ['create a list called function', 'function'], ['ask "Name?" and store in default', 'default'],
+    ['for each this in [1]\n    show 1', 'this'], ['repeat 3 times counting with new\n    show 1', 'new'], ['define return using x\n    give back x', 'return'], ['define f using class\n    give back 1', 'class'], ['set undefined to 1', 'undefined']]) {
+    assert.ok(js(said).errs.includes(`"${word}" is one of JavaScript's own words, so it can't be a name. Try something like "my ${word}" or "${word} value".`), said);
+  }
+  assert.deepEqual(js('set yes to 3').errs, ['"yes" is a word sentences read as `true`, so as a name it would be read that way instead. Try something like "my yes" or "yes count".']);
+  // the page's own names (window.top, document…) can't be made again at the top of a script, but can inside a block
+  assert.deepEqual(js('set top to 0').errs, ['`top` is already a name in every web page, so a script can\'t make it again. Try something like "my top" or "top value".']);
+  assert.deepEqual(js('when save is clicked\n    set top to 0', { save: 'button' }).errs, []);
+  // the suggestions work
+  assert.deepEqual(js('set my class to 3\nset top value to 1'), { text: 'let myClass = 3;\nlet topValue = 1;\n', errs: [], warns: [], notes: js('set my class to 3\nset top value to 1').notes });
+  // a class's own tools (methods) can have these names, as JavaScript allows
+  assert.deepEqual(js('define class Store\n    define delete using key\n        give back key').errs, []);
+  // code that makes one is kept as code when it is read
+  const r = convert('js', 'const top = 1;\nconsole.log(top);\n');
+  assert.equal(r.exact, true, r.reason);
+  assert.match(r.text, /^js: const top = 1;$/m);
+});
+
+test('mechanics: "1,000" is the number 1000; "1,500" where commas also separate values is asked about', () => {
+  for (const [said, code] of [['set total to 1,000', 'let total = 1000;\n'], ['set total to 1,500', 'let total = 1500;\n'], ['set total to 1,000,000.50', 'let total = 1000000.50;\n'],
+    ['show 1,000', 'console.log(1000);\n'], ['set xs to [1,000, 2,000]', 'let xs = [1000, 2000];\n'], ['create a list called xs with 1,000, 2,000', 'let xs = [1000, 2000];\n'],
+    ['set total to 0\nif total is more than 12,500\n    show "big"', 'let total = 0;\nif (total > 12500) {\n  console.log("big");\n}\n'], ['every 1,000 seconds\n    show 1', 'setInterval(() => {\n  console.log(1);\n}, 1000000);\n']]) {
+    const r = js(said);
+    assert.deepEqual(r.errs, [], said);
+    assert.equal(r.text, code, said);
+    assert.match(r.notes.join(' '), /is written `\d+(?:\.\d+)?` in code: a comma there would split it in two/, said);
+  }
+  // one value, or two? a problem that says how to write each
+  assert.deepEqual(js('show 1,500').errs, ['"1,500" could be one number (1500) or two (1, 500). Write 1500 for one, or put a space after the comma.']);
+  assert.match(js('create a list called xs with 100,200,300').errs.join(' '), /could be one number \(100200300\) or several \(100, 200, 300\)\. Write 100200300 for one, or put a space after each comma\./);
+  assert.match(js('draw a rectangle at 100,200 sized 20 by 20 in "red" on game', { game: 'canvas' }).errs.join(' '), /"100,200" could be one number/);
+  // written as values already, or in text, it stays as it is
+  const kept = js('show 1, 500\nset xs to [100,200,300]\nshow "1,000"');
+  assert.deepEqual(kept.errs, []);
+  assert.equal(kept.text, 'console.log(1, 500);\nlet xs = [100,200,300];\nconsole.log("1,000");\n');
+  reads('js', 'let total = 1000;\nconsole.log("1,000");\n', 'set total to 1000\nshow "1,000"');
+});
+
+test('mechanics: money and percentages are numbers', () => {
+  for (const [said, code, why] of [['$5', '5', /`\$5` is the number `5` in code\. Text like "\$5" shows it with its \$\./], ['$5.99', '5.99', /5\.99/], ['€5', '5', /€/], ['£5', '5', /£/], ['$1,500', '1500', /1500/],
+    ['50%', '0.5', /`50%` is `0\.5` in code: a share of 1\./], ['12.5%', '0.125', /0\.125/], ['50% plus 1', '0.5 + 1', /0\.5/], ['15% of 200', '0.15 * 200', /`15%` of something is `0\.15` times it\./]]) {
+    const r = js(`set x to ${said}`);
+    assert.deepEqual(r.errs, [], said);
+    assert.equal(r.text, `let x = ${code};\n`, said);
+    assert.match(r.notes.join(' '), why, said);
+  }
+  // "mod" said with %, and text, stay as they are
+  assert.equal(js('set x to 7 % 2\nset y to 7%2\nshow "$5 is 50%"').text, 'let x = 7 % 2;\nlet y = 7%2;\nconsole.log("$5 is 50%");\n');
+  // × ÷ and − are * / and -
+  assert.equal(js('set x to 6 × 2 ÷ 3 − 1').text, 'let x = 6 * 2 / 3 - 1;\n');
+  // a number that isn't one is a problem, never code that can't run
+  assert.match(js('set price to 5 dollars').errs.join(' '), /"5 dollars" isn't a value: in code, a number can't have a word after it\. Write 5, or put it in quotes for text: "5 dollars"\./);
+  assert.match(js('set version to 1.5.2').errs.join(' '), /`1\.5\.2` isn't a number: a number has one decimal point\. For text, put it in quotes: "1\.5\.2"\./);
+  reads('js', 'let rate = 0.5;\nlet x = 7 % 2;\n', 'set rate to 0.5\nset x to 7 mod 2');
+});
+
+test('mechanics: names of several words, or with dashes, are one camelCase name everywhere in the file', () => {
+  const r = js('set total price to 5\nincrease total price by 1\nset high-score to 0\nif total price is more than high score\n    set high score to total price\nshow "Best: {high-score}, total {Total Price}"');
+  assert.deepEqual(r.errs, []);
+  assert.deepEqual(r.warns, []);
+  assert.equal(r.text, 'let totalPrice = 5;\ntotalPrice += 1;\nlet highScore = 0;\nif (totalPrice > highScore) {\n  highScore = totalPrice;\n}\nconsole.log(`Best: ${highScore}, total ${totalPrice}`);\n');
+  assert.ok(r.notes.includes('JavaScript names can\'t have spaces, so "total price" is written `totalPrice`.'));
+  assert.ok(r.notes.includes('JavaScript names can\'t have dashes (a dash is a minus), so "high-score" is written `highScore`.'));
+  // in every place a name is made: constant, list, store in, for each, a tool and its inputs, a timer; "the" left out
+  const more = js('constant max speed is 10\ncreate a list called shopping list\nadd "milk" to shopping list\nask "Name?" and store in first name\nfor each high score in [1, 2]\n    show high score\ndefine add item using item name, how much = 1\n    show item name, how much\nrun add item with "x"\nset the score to max speed\nevery 2 seconds as my timer\n    show 1\nstop my timer');
+  assert.deepEqual(more.errs, []);
+  assert.equal(more.text, 'const maxSpeed = 10;\nlet shoppingList = [];\nshoppingList.push("milk");\nlet firstName = prompt("Name?");\nfor (const highScore of [1, 2]) {\n  console.log(highScore);\n}\nfunction addItem(itemName, howMuch = 1) {\n  console.log(itemName, howMuch);\n}\naddItem("x");\nlet score = maxSpeed;\nlet myTimer = setInterval(() => {\n  console.log(1);\n}, 2000);\nclearInterval(myTimer);\n');
+  // words in text stay as they are, and phrases keep working beside a name that starts the same way
+  assert.equal(js('set total price to 1\nshow "total price"').text, 'let totalPrice = 1;\nconsole.log("total price");\n');
+  assert.equal(js('set new total to 1\nset d to a new Date\nset first name to "A"\nset xs to [1]\nset y to first item of xs').text, 'let newTotal = 1;\nlet d = new Date();\nlet firstName = "A";\nlet xs = [1];\nlet y = xs[0];\n');
+  // names that can't be one say why, and what to write
+  assert.deepEqual(js('set number of lives to 3').errs, ['"number of lives" can\'t be a name: sentences read "of" as part of a phrase. Say it in one word, like numberOfLives, or in other words.']);
+  assert.deepEqual(js('set 2nd place to 5').errs, ['A name can\'t start with a number, so "2nd place" can\'t be one. Put a word before it, like "my 2nd place".']);
+  assert.deepEqual(js('set 2nd to 5').errs, ['A name can\'t start with a number, so "2nd" can\'t be one. Put a word before it, like "my 2nd".']);
+  assert.match(js('set random number to 5').errs.join(' '), /"random number" starts like the phrase "random number …", so it can't be a name/);
+  assert.match(js('set main display to 1', { 'main-display': 'div' }).errs.join(' '), /"main display" is the name of an element in Structure, so a value can't have it too\. To change what it shows: set the text of main display to …/);
+  // read back, a camelCase name is said as it is, and writes the same code
+  reads('js', 'let totalPrice = 5;\ntotalPrice += 1;\n', 'set totalPrice to 5\nincrease totalPrice by 1');
+});
+
+test('curly quotes count as straight ones, in Mechanics', () => {
+  const curly = 'Curly quotes are taken as straight ones ("), which code needs.';
+  for (const [said, code] of [['show “Hi”', 'console.log("Hi");\n'], ['show ‘Hi’', 'console.log(\'Hi\');\n'], ['show “It’s here”', 'console.log("It’s here");\n'], ['set t to “a” if yes otherwise “b”', 'let t = true ? "a" : "b";\n'],
+    ['set the text of out to “Done”', 'document.getElementById("out").textContent = "Done";\n']]) {
+    const r = js(said, { out: 'p' });
+    assert.deepEqual(r.errs, [], said);
+    assert.equal(r.text, code, said);
+    assert.ok(r.notes.includes(curly), said);
+  }
+  // inside straight quotes, in a regular expression, and in exact code, they are kept
+  assert.equal(js('show "He said “hi”"\nset r to /[“”]/g\njs: console.log(“x”)').text, 'console.log("He said “hi”");\nlet r = /[“”]/g;\nconsole.log(“x”)\n');
+  reads('js', 'console.log("“Hi”", \'it’s\');\nconst r = /[“”]/g;\n', 'show "“Hi”", \'it’s\'\nconstant r is /[“”]/g');
+});
+
+test('mechanics: a colour on a drawing area, and an address, are taken as Styling and Structure take them', () => {
+  const draw = (c) => js(`fill game with ${c}`, { game: 'canvas' });
+  assert.match(draw('royal blue').text, /pen\.fillStyle = "royalblue";/);
+  assert.match(draw('fff').text, /pen\.fillStyle = "#fff";/);
+  assert.match(draw('gold').text, /pen\.fillStyle = "gold";/);
+  assert.match(draw('blurple').errs.join(' '), /I don't know the colour `blurple`/);
+  // "go to" and a new link: google.com is https://google.com
+  const go = js('go to "google.com"');
+  assert.equal(go.text, 'window.location.href = "https://google.com";\n');
+  assert.match(go.notes.join(' '), /Without https:\/\//);
+  assert.equal(js('go to "about.html"').text, 'window.location.href = "about.html";\n');
+  assert.match(js('make a new link to "me@example.com" saying "Mail" and store in a').text, /a\.href = "mailto:me@example\.com";/);
+  // read back, an address "go to" would change is said exactly
+  reads('js', 'window.location.href = "google.com";\n', 'set window.location.href to "google.com"');
+  reads('js', 'window.location.href = "https://google.com";\n', 'go to "https://google.com"');
+});
+
+test('mechanics: a value that would be broken code is a problem that says what to write', () => {
+  const errs = (said) => js(said).errs;
+  // one value where the sentence takes one (ask and "show a message" take several, as prompt and alert do)
+  assert.deepEqual(errs('set x to 5,5'), ['"5,5" is two values here, and this takes one. For a decimal, write 5.5; for a list, put it in square brackets: [5, 5].']);
+  assert.deepEqual(errs('set x to 1, 2'), ['"1, 2" is two values here, and this takes one. For a list, put them in square brackets: [1, 2].']);
+  assert.match(errs('define f\n    give back 1, 2').join(' '), /is two values here/);
+  assert.deepEqual(js('ask "Name?", "Ann" and store in name\nshow a message "a", "b"\nset x to the result of Math.max with 1, 2\nset y to x, or 3 if that is nothing').errs, []);
+  // a quote mark left open, or an apostrophe outside quotes
+  assert.deepEqual(errs('set name to "Bob'), ['A piece of text is missing its closing quote mark (").']);
+  assert.match(errs('show it\'s here').join(' '), /Put text in quotes, like "it's": in code, an apostrophe on its own starts a piece of text\./);
+  // a size for a style, and a unit or a currency after the number
+  assert.deepEqual(errs('set width to 50px'), ['`50px` isn\'t a number in code. A size for a style is text, "50px"; the number is 50 on its own.']);
+  assert.deepEqual(js('set width to "50px"\nset n to 0x1f\nset m to 1e3').errs, []);
+  assert.equal(js('set price to 5.00 €\nset rate to 10 percent').text, 'let price = 5.00;\nlet rate = 0.1;\n');
+});
+
+test('yes, no, true and nothing in any capitals', () => {
+  assert.equal(js('set a to Yes\nset b to TRUE\nset c to No\nset d to False\nset e to Nothing').text, 'let a = true;\nlet b = true;\nlet c = false;\nlet d = false;\nlet e = null;\n');
+});

@@ -329,7 +329,7 @@ test('mechanics: making elements, and reacting to them like elements from Struct
   assert.match(problems(site('', '', 'make a new button called b saying "x"'), 'mechanics').join(' '), /named at the end, with "and store in/);
   // a name only ever set to a number or text doesn't hold an element, so these stay mistakes to point out
   assert.match(problems(site('', '', 'set score to 0\nhide score'), 'mechanics').join(' '), /Nothing in Structure is called `score`/);
-  assert.match(problems(site('', '', 'set number of lives to 3'), 'mechanics').join(' '), /I don't recognise this sentence/);
+  assert.match(problems(site('', '', 'set number of lives to 3'), 'mechanics').join(' '), /"number of lives" can't be a name: sentences read "of" as part of a phrase/);
   assert.match(plain(site('', '', 'make a new button saying "x"').results.mechanics.info[0].warns).join(' '), /isn't put anywhere/);
   assert.match(site('', '', 'make a new list called scores with 1, 2').results.mechanics.text, /let scores = \[1, 2\];/, 'a list of values, not a list on the page');
 });

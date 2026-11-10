@@ -223,13 +223,13 @@ define save chart using values, path, title="Levels"
 add a drawing area called chart 480 by 200
 == js chart.js
 constant VALUES is [3, 5, 4, 8, 6, 9, 7, 11]
-constant top is Math.max(...VALUES)
+constant highest is Math.max(...VALUES)
 fill chart with "white"
 repeat VALUES.length - 1 times counting with i
     constant x1 is i * 480 / (VALUES.length - 1)
     constant x2 is (i + 1) * 480 / (VALUES.length - 1)
-    constant y1 is 190 - VALUES[i] / top * 180
-    constant y2 is 190 - VALUES[i + 1] / top * 180
+    constant y1 is 190 - VALUES[i] / highest * 180
+    constant y2 is 190 - VALUES[i + 1] / highest * 180
     draw a line from x1, y1 to x2, y2 in "#4f7cff" on chart`,
 
 // ---------------------------------------------------------------- files and system

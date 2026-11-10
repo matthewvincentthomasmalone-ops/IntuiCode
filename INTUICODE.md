@@ -2111,7 +2111,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 |  | `add a file picker called ‹name› for ‹pictures›` | `<input type="file" accept="image/*">` | Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›". |
 | **Media** | `add a picture of "‹file.jpg›" described as "‹what it shows›"` | `<img src="…" alt="…">` | The description is read aloud by screen readers. |
 |  | `add a drawing area called ‹game› ‹480› by ‹270›` | `<canvas id="game" width="480" height="270">` | Where a game or a picture is drawn, from Mechanics. |
-|  | `add a link to "‹https://…›" saying "‹text›"` | `<a href="…">…</a>` |  |
+|  | `add a link to "‹https://…›" saying "‹text›"` | `<a href="…">…</a>` | An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:…. |
 | **Layout** | `add a section called ‹name›` | `<section id="name">` | Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel. |
 |  | `add a list called ‹name›` | `<ul id="name">` | Indent "add a list item "…"" under it. |
 |  | `… in group ‹name›` | `class="name"` | Add to the end of any line to put it in a group (a CSS class). |
@@ -2175,7 +2175,7 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 |  | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
 |  | `add group ‹name›: ‹styles›` | `.name { … }` | The same as "create group". A group is a CSS class: put things in it with "add ‹thing› to group ‹name›". |
 |  | `add ‹name› to group ‹group›` | `class="group" in the HTML` | Puts an element from Structure in a group. It can be its name or its text in quotes. |
-|  | `add a colour called ‹main› ‹#4f7cff›` | `:root { --main: … }` | A shared colour. Use it as "the colour main". |
+|  | `add a colour called ‹main› ‹#4f7cff›` | `:root { --main: … }` | A shared colour. Use it as "the colour main". Its name runs up to the colour: "main blue #4f7cff" is the colour main blue. |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
 |  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
 |  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
@@ -2209,6 +2209,10 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `text weight 600` | `font-weight: 600` |
 | `background gradient from #fff to #000` | `background: linear-gradient(#fff, #000)` |
 | `the colour main` | `var(--main)` |
+| `background royal blue` | `background: royalblue` |
+| `width 50 percent` | `width: 50%` |
+| `text size 2 em` | `font-size: 2em` |
+| `background rgb 255 0 0` | `background: rgb(255, 0, 0)` |
 
 #### CSS: words for what to style
 
@@ -2297,7 +2301,7 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | **Server** | `fetch from "‹/api/items›" and store in ‹items›` | `await fetch(…).json()` |  |
 |  | `send ‹value› to "‹/api/items›"` | `fetch(…, { method: "POST" … })` |  |
 |  | `save ‹value› in the browser as "‹key›"` | `localStorage.setItem` | And "load "key" from the browser and store in …". |
-| **Logic** | `set ‹name› to ‹value›` | `let name = value` | Same sentences as Python: if, otherwise, repeat, for each, define, give back, run… |
+| **Logic** | `set ‹name› to ‹value›` | `let name = value` | Same sentences as Python: if, otherwise, repeat, for each, define, give back, run… A name of several words ("total price") is one name, totalPrice. |
 |  | `if ‹condition›` | `if (condition) {` |  |
 |  | `for each ‹item› in ‹list›` | `for (const item of list) {` |  |
 |  | `set item ‹i› of ‹list› to ‹value›` | `list[i] = value` | Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field). |
@@ -2387,6 +2391,12 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | `the smallest number in xs` | `Math.min(...xs)` |
 | `x, or y if that is nothing` | `x ?? y` |
 | `ua matches /win/i` | `/win/i.test(ua)` |
+| `total price` | `totalPrice` |
+| `high-score` | `highScore` |
+| `1,000` | `1000` |
+| `$5` | `5` |
+| `50%` | `0.5` |
+| `15% of total` | `0.15 * total` |
 
 ### C++
 
