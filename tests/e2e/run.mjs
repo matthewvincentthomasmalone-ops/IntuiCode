@@ -97,9 +97,10 @@ try {
       document.getElementById('newName').value = 'e2e new project';
       document.getElementById('newSave').checked = false;   // (a folder dialog can't be answered from here)
       document.getElementById('newGo').click();
-      return { files: [...document.querySelectorAll('#tree .ti-file')].map(x => x.textContent), folder: document.getElementById('folderName').textContent, sentences: document.getElementById('ta').value };
+      return { files: [...document.querySelectorAll('#tree .ti-file')].map(x => x.textContent), folder: document.getElementById('folderName').hidden ? null : document.getElementById('folderName').textContent, sentences: document.getElementById('ta').value };
     });
-    if (r.files.join() !== 'settings.py,tools.py,main.py' || r.folder !== 'not saved yet' || r.sentences !== '') throw new Error(JSON.stringify(r));
+    // no folder yet: the header shows no folder name
+    if (r.files.join() !== 'settings.py,tools.py,main.py' || r.folder !== null || r.sentences !== '') throw new Error(JSON.stringify(r));
   });
 
   let hasPython = false;

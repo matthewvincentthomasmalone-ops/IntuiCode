@@ -5535,11 +5535,12 @@
     try { return await invoke('pick_folder', { title }); }
     catch (e) { tLine('The folder picker could not open: ' + e, 't-err'); return null; }
   }
+  /* The project's folder in the header, only when it has one (• after it: changes not written there yet). */
   function showFolder() {
     const el = $('folderName');
-    el.hidden = !desk.on;
-    el.textContent = desk.folder ? baseName(desk.folder) + '/' : 'not saved yet';
-    el.title = desk.folder || 'This project is not saved to a folder yet. Press Save.';
+    el.hidden = !(desk.on && desk.folder);
+    el.textContent = desk.folder ? baseName(desk.folder) + '/' : '';
+    el.title = desk.folder || '';
     el.classList.toggle('unsaved', desk.dirty);
     document.title = desk.folder ? `IntuaCode — ${baseName(desk.folder)}` : 'IntuaCode';
   }
