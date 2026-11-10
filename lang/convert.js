@@ -1324,8 +1324,13 @@
             if (m === 'length') return `length of ${on}`;
           }
           if (!cchain(fn)) return null;
-          // a tool's result with no inputs reads as words anywhere: "if not the result of bob.passed"
-          if (!a.length && !classes.has(f) && /^[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*$/.test(f)) return `the result of ${fn.type === 'field_expression' && F(fn, 'argument').type === 'this' ? 'self.' + F(fn, 'field').text : f}`;
+          // a tool's result: "if not the result of bob.passed"; with inputs, in brackets that say where they end:
+          // "(the result of a.at with i, k) times 2" (a whole value goes without them: see whole)
+          const name = fn.type === 'field_expression' && F(fn, 'argument').type === 'this' ? (fn.text.includes('->') ? 'self.' + F(fn, 'field').text : null) : f;
+          if (name && !classes.has(f) && /^(?:self\.)?[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*$/.test(name)) {
+            if (!a.length) return `the result of ${name}`;
+            if (!args.some(x => /\b(?:and|with)\b|,/.test(outside(x)))) return `(the result of ${name} with ${args.join(', ')})`;
+          }
           return `${f}(${args.join(', ')})`;
         }
         case 'subscript_expression': {
@@ -1374,20 +1379,15 @@
       }
       return null;
     }
-    /* A whole value (what "set … to", "give back", "show" and "increase … by" are given): a tool's result reads
-       "the result of average with scores". The writer reads "with …" to the end of the value, so only here; in a
-       list of values (list), only a result with no inputs ("the result of a.rows"). */
+    /* A whole value (what "set … to", "give back", "show" and "increase … by" are given): a tool's result needs no
+       brackets there, "the result of average with scores", as the writer reads "with …" to the end of the value.
+       In a list of values (list), the brackets keep each result's inputs together. */
     function whole(n, list) {
       const e = ex(n);
-      if (e == null || !n || n.type !== 'call_expression') return e;
-      const fn = F(n, 'function'), a = argsOf(n);
-      if (!cchain(fn) || !/^[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*$/.test(fn.text) || (list && a.length)) return e;
-      const args = a.map(ex);
-      if (e !== `${fn.text}(${args.join(', ')})`) return e;   // said in words already ("time since start")
-      if (classes.has(fn.text) || args.some(x => /\b(?:and|with)\b|,/.test(bare(x)))) return e;
-      const name = fn.type === 'field_expression' && F(fn, 'argument').type === 'this' ? (fn.text.includes('->') ? 'self.' + F(fn, 'field').text : null) : fn.text;
-      return name ? `the result of ${name}${args.length ? ' with ' + args.join(', ') : ''}` : e;
+      return e != null && !list && n.type === 'call_expression' && /^\(the result of .+\)$/.test(e) ? e.slice(1, -1) : e;
     }
+    // the text outside quotes and brackets (where a comma or "and" would split a list)
+    const outside = (s) => { let t = bare(s); for (let u; (u = t.replace(/\([^()]*\)/g, '')) !== t;) t = u; return t; };
     const bodyOf = (n) => (n.type === 'compound_statement' ? named(n) : [n]);
     const block = (nodes, depth, key) => walkBlock(o, nodes, depth, key, force, 'c++:', src, stmt);
     const params = (fnDecl) => {
@@ -1450,7 +1450,7 @@
     };
     /* print(t, 2) on Arduino: a decimal with 2 decimal places; print(n, HEX): a whole number in hexadecimal */
     function printAs(v, how) {
-      const e = whole(v), BASE = { HEX: 'hexadecimal', BIN: 'binary', OCT: 'octal' };
+      const e = ex(v), BASE = { HEX: 'hexadecimal', BIN: 'binary', OCT: 'octal' };
       if (e == null || / with \d+ decimal places?$| in (?:hexadecimal|binary|octal)$/.test(e)) return null;
       if (BASE[how.text]) return `${e} in ${BASE[how.text]}`;
       const t = v.type === 'identifier' ? objType.get(v.text) : v.type === 'number_literal' && /\./.test(v.text) ? 'double' : null;

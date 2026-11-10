@@ -256,6 +256,31 @@
     else inf.errs.push(`There's no tool called ${code(name)}. Make one with "define ${name} using …".`);
   }
 
+  /* "(the result of f with a, b)" inside a value: the brackets say where its inputs end. Each becomes its code,
+     held as ⟪k⟫ (k: its place in codes) until the rest of the value is worked out. */
+  function bracketResults(s, x, inf) {
+    const codes = [];
+    const head = /^\(\s*(?:the\s+)?result of\s+(?:self\.[A-Za-z_]\w*|[A-Za-z_]\w*(?:(?:\.|->|::)[A-Za-z_]\w*)*)\s+with\s/i;
+    const quoteAt = (t, k) => t[k] === '"' || (t[k] === "'" && !/\w/.test(t[k - 1] || ''));
+    let out = '';
+    for (let i = 0, q = null; i < s.length; i++) {
+      const c = s[i];
+      if (q) { out += c; if (c === '\\') out += s[++i] || ''; else if (c === q) q = null; continue; }
+      if (quoteAt(s, i)) { q = c; out += c; continue; }
+      if (c === '(' && head.test(s.slice(i))) {
+        let depth = 0, j = i;
+        for (let qq = null; j < s.length; j++) {
+          const d = s[j];
+          if (qq) { if (d === '\\') j++; else if (d === qq) qq = null; continue; }
+          if (quoteAt(s, j)) qq = d; else if (d === '(') depth++; else if (d === ')' && --depth === 0) break;
+        }
+        if (j < s.length) { codes.push(cppExpr(s.slice(i + 1, j), x, inf)); out += ` ⟪${codes.length - 1}⟫ `; i = j; continue; }
+      }
+      out += c;
+    }
+    return { s: out, codes };
+  }
+
   function cppExpr(src, x, inf, cond = false) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return '0'; }
@@ -266,9 +291,13 @@
       unknownTool(res[1], x, inf);
       return `${name}(${res[2] ? splitItems(res[2]).map(a => cppExpr(a, x, inf)).join(', ') : ''})`;
     }
+    const br = /\(\s*(?:the\s+)?result of\s/i.test(s) ? bracketResults(s, x, inf) : null;
+    if (br) s = br.s;
     const strs = [];
     // a .name or […] typed right after the text stays attached to it: "abc".size()
     let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    // a tool's result in brackets is one value, like a text: ⟦n⟧ holds its code
+    if (br) q = q.replace(/⟪(\d+)⟫/g, (m, k) => { strs.push(br.codes[+k]); return `⟦${strs.length - 1}⟧`; });
     if (/'/.test(q.replace(/\b\w'\w/g, ''))) inf.warns.push("In C++, text goes in double quotes (\"like this\"). Single quotes are for one character.");
     // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
     const swap = (p, to) => { const re = R(p); if (p.endsWith('(OPD)')) for (const m of q.matchAll(re)) looseBrackets(m, q, strs, inf); q = q.replace(re, to); };
