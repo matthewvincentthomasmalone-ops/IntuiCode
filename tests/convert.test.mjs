@@ -41,16 +41,20 @@ const CASES = [
   // sensors, a button, millis() timing, switch, a servo, a screen, Serial.print runs; vectors, cin, switch, do-while
   ['tests/corpus_web/gadget.ino', 'arduino', null, null, 1],
   ['tests/corpus_web/grades.cpp', 'cpp', null, null, 0.95],
+  // text built with String(…) and +, F(), decimal places, a tool's result, items of a list, Serial.available
+  ['tests/corpus_web/weather.ino', 'arduino', null, null, 1],
   ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.95],
   ['samples/taskboard/static/style.css', 'css', 'samples/taskboard/static/index.html', null, 0.8],
   ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.75],
   ['samples/cpp/blink/blink.ino', 'arduino', null, null, 0.95],
-  ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.65],
+  ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.8],
+  // a class with an initializer list, const tools and a reference result: what can't be said stays code, member by member
+  ['tests/corpus_langs/matrix.cpp', 'cpp', null, null, 0.65],
   // held out: written after the converter, in other styles (classes, switch, templates, SVG, tables)
   ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.85],
   ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.6],
   ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.35],
-  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.55],
+  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.7],
   ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 1],
 ];
 
