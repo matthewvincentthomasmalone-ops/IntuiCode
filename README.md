@@ -62,9 +62,9 @@ when copy is clicked
         set the text of copied to "Select it and copy it yourself."
 ```
 
-Everything you can start from is in **Project Templates** (in the Menu), by kind of project: Games, Productivity, Money,
-Health & habits, Learning, Creative & media, Social & sharing, Tools & utilities, Websites, Online
-services and Gadgets, then One idea at a time and Starting points. Each project says where it runs (PC,
+Everything you can start from is in **Project Templates** (in the Menu), by kind of project: Websites, Online services, Tools &
+utilities, Productivity, Money, Health & habits, Learning, Creative & media, Social & sharing, Games, Learning
+modules and Gadgets, then One idea at a time and Starting points. A first visit opens on the Landing page, a small website. Each project says where it runs (PC,
 Phone, Web or Board), and the chips at the top show only those. A **kit** plans a whole kind of project
 step by step; a **blueprint** writes its sentences from a story with blanks. Blueprints are plain text:
 you can edit any of them, save your own, or turn your current project into a blueprint and put blanks
@@ -202,8 +202,8 @@ their own; otherwise the step's depth says). The map counts them (**3 of 9 done*
 project, and opening a project scrolls the map to the first step not done. A step's window lets you change its
 check line.
 
-**Hand to my AI.** For an AI assistant of your own to build from: **Hand to my AI** (under the map's count, or
-in the File menu) writes the map as an [OpenSpec](https://openspec.dev) change. `proposal.md` says why, what each
+**Hand to my AI.** For an AI assistant of your own to build from: **Hand to my AI** (under the map's count, once the
+project has a map) writes the map as an [OpenSpec](https://openspec.dev) change. `proposal.md` says why, what each
 step is for and which files it touches; `tasks.md` lists the steps as `- [ ] 1.1 …` tasks, each with its check,
 ticked ones as `- [x]`. The desktop app writes them into the saved project's folder, at
 `openspec/changes/<name>/`; the browser gives them as a `.zip` to unzip there. Nothing is sent anywhere: the AI
@@ -257,7 +257,7 @@ palette and a picker. Alt+↓ opens the list for the value at the cursor. What's
 `lang/values.js`. (A plain CSS property given a value too many, like `line-height: 1.1 #000000`, is pointed
 out with what was probably meant.)
 
-**Images:** **Menu → Add an image…** (or **Add an image…** under the project's folders) adds a PNG, JPEG,
+**Images:** **Menu → Add an image…** adds a PNG, JPEG,
 GIF, WebP or SVG to the project's `images/` folder, with a thumbnail. **Use** puts in a sentence that uses
 it, for the folder you're in: `add a picture of "images/cat.png" described as "…"` (Structure),
 `style page: background picture images/sky.jpg` (Styling), `load the picture "images/ship.png" as ship`
@@ -340,7 +340,7 @@ sentences, because their code goes above `main`; each statement in it is its own
 
 **Import: code from anywhere becomes the project's own files**
 
-**Import** (beside Project, or **Menu → Import code…**) brings in a single file, pasted code, a whole folder, a
+**Import** (beside Project) brings in a single file, pasted code, a whole folder, a
 `.zip` or the example project, such as code an AI wrote for you. A folder, `.zip` or example becomes a new
 project (the one before is kept: type `restore` to swap back); single files join the open project. Python,
 CSS, JavaScript, TypeScript and React come in as their exact lines, ready to translate any part in Unity; HTML
@@ -385,7 +385,8 @@ Each file in the tree shows a dot for Interface and one for Mechanics if it has 
 named as `Class::method()`, even when its `{` is on the next line or it sits in a `namespace`. A test is
 named by what it tests.
 
-The buttons at the top (**Interface**, **Mechanics**, **Setup**, **Data** and **Tests**) show only that
+The buttons at the top (**Interface**, **Mechanics**, **Setup**, **Data** and **Tests**; the last three appear
+only when the project has that kind of part) show only that
 kind of part:
 
 - The side panel switches to CodeParts (and back when you press the button again) and lists only those

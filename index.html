@@ -29,14 +29,12 @@
           <div class="menu-h" aria-hidden="true">File</div>
           <button type="button" role="menuitem" id="btnNew">New project…<kbd class="desk-only">Ctrl+N</kbd></button>
           <button type="button" role="menuitem" id="btnBuilder" title="Plan a project step by step: what you're making, its steps, then build">Plan a project…</button>
-          <button type="button" role="menuitem" id="btnHandAI2" title="The project map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI…</button>
           <button type="button" role="menuitem" id="btnOpenFolder" hidden title="Open a project folder on this computer">Open folder…<kbd>Ctrl+O</kbd></button>
           <button type="button" role="menuitem" id="btnSave" hidden title="Save the project as files">Save<kbd>Ctrl+S</kbd></button>
           <button type="button" role="menuitem" id="btnBackups" title="A copy of the project every 2 minutes it changes, for the last 30 minutes: go back to any of them">Backups…</button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">New file…</button>
           <button type="button" role="menuitem" id="btnAddFolder" title="Add a folder">New folder…</button>
-          <button type="button" role="menuitem" id="btnImport" title="Bring in code: a file, a folder or a .zip. It becomes the project's own files, in Unity and Split Mode">Import code…</button>
           <button type="button" role="menuitem" id="btnAddImage" title="Add a picture (PNG, JPEG, GIF, WebP or SVG) to the project's images/ folder">Add an image…</button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnBlueprints" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates…</button>
@@ -54,7 +52,7 @@
   <div class="workspace">
     <aside class="side" aria-label="Project">
       <div id="writeSide">
-        <div class="side-h side-top"><span id="sideTitle">Project</span><span class="side-acts"><button type="button" class="btn tiny" id="btnImport2" title="Import code: files, a folder or a .zip">Import</button><button type="button" class="btn tiny view-btn" id="btnSideView" title="Switch between the project's files and its code, part by part">CodeParts</button></span></div>
+        <div class="side-h side-top"><span id="sideTitle">Project</span><span class="side-acts"><button type="button" class="btn tiny" id="btnImport2" title="Bring in code: a file, a folder or a .zip, such as code an AI wrote for you. It becomes the project's own files, in Unity and Split Mode">Import</button><button type="button" class="btn tiny view-btn" id="btnSideView" title="Switch between the project's files and its code, part by part">CodeParts</button></span></div>
         <div id="filesView">
           <div class="tree-root" id="treeRoot"></div>
           <nav id="tree" class="tree"></nav>
@@ -70,16 +68,17 @@
         <div id="imgWrap" hidden>
           <div class="side-h">Images <span id="imgCount" class="count"></span></div>
           <ul id="imgList" class="img-list"></ul>
-          <div class="side-pad"><button type="button" class="btn small" id="btnAddImage2" title="Add a picture to the project's images/ folder">Add an image…</button></div>
         </div>
         <div id="planWrap">
-          <div class="side-h">Project map <span class="side-acts"><button type="button" class="btn tiny" id="btnAddStep" title="Add a step of your own to the map">+ Step</button></span></div>
+          <div class="side-h">Project map <span class="side-acts"><button type="button" class="btn tiny" id="btnAddStep" title="Add a step of your own to the map (Menu → Plan a project makes a project with a whole map)">+ Step</button></span></div>
           <p class="plan-path" id="planPath"></p>
           <div class="plan-done" id="planDone" hidden><b id="planCount" aria-live="polite"></b><span class="plan-bar" aria-hidden="true"><span id="planBar"></span></span><button type="button" class="btn tiny" id="btnHandAI" title="The map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI</button></div>
           <ol id="plan" class="plan"></ol>
         </div>
-        <div class="side-h">Problems <span id="probCount" class="count"></span></div>
-        <ul id="problems" class="problems"></ul>
+        <div id="probWrap" hidden>
+          <div class="side-h">Problems <span id="probCount" class="count"></span></div>
+          <ul id="problems" class="problems"></ul>
+        </div>
       </div>
     </aside>
 

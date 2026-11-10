@@ -55,21 +55,22 @@
     horizon: { label: 'Horizon', means: 'Explained and pointed at: what it is, what\'s usually used for it, and what to learn first. Not something to write in sentences yet.', check: 'It\'s made, and it does what its role says.' },
   };
 
-  /* The shelves of Project Templates, by kind of project. The builder's questions are made from them: "What are you
+  /* The shelves of Project Templates, by kind of project, in the order they're listed: websites, services and
+   * tools first, games and gadgets further down. The builder's questions are made from them: "What are you
    * making?" lists the shelves, and each shelf's question lists its kits, so a kit (yours too) appears in
    * planning as soon as it says which shelf it sits on. Kits and blueprints also say where they run. */
   const SHELVES = [
-    { id: 'modules', title: 'Learning modules', ask: 'Which module?', about: 'Classic games built step by step, in order: Snake, then Invaders, then a night sky, then a side-scrolling platformer. The annotated versions say what each part adds, and why.' },
-    { id: 'games', title: 'Games', ask: 'Which game?', about: 'Things to play: platformers, top-down adventures, puzzles, word games, one-thumb phone games.' },
+    { id: 'web', title: 'Websites', ask: 'Which kind of website?', about: 'Pages people visit in a browser.' },
+    { id: 'service', title: 'Online services', ask: 'Which online service?', about: 'Something people sign up for and use online: a server, data, accounts.' },
+    { id: 'tools', title: 'Tools & utilities', ask: 'Which tool?', about: 'Weather, passwords, converters, files: small things that save time.' },
     { id: 'productivity', title: 'Productivity', ask: 'Which kind of productivity app?', about: 'To-dos, notes, planners and timers: tools for getting things done.' },
     { id: 'money', title: 'Money', ask: 'Which money app?', about: 'Budgets, shared bills and subscriptions.' },
     { id: 'health', title: 'Health & habits', ask: 'Which health or habit app?', about: 'Habits, workouts, breathing and water.' },
     { id: 'learning', title: 'Learning', ask: 'What should it teach?', about: 'Flashcards, typing, quizzes: practice that adapts.' },
     { id: 'creative', title: 'Creative & media', ask: 'Which creative app?', about: 'Drawing, music, sound and photos.' },
     { id: 'social', title: 'Social & sharing', ask: 'Which social app?', about: 'Message walls, link pages: things people share.' },
-    { id: 'tools', title: 'Tools & utilities', ask: 'Which tool?', about: 'Weather, passwords, converters, files: small things that save time.' },
-    { id: 'web', title: 'Websites', ask: 'Which kind of website?', about: 'Pages people visit in a browser.' },
-    { id: 'service', title: 'Online services', ask: 'Which online service?', about: 'Something people sign up for and use online: a server, data, accounts.' },
+    { id: 'games', title: 'Games', ask: 'Which game?', about: 'Things to play: platformers, top-down adventures, puzzles, word games, one-thumb phone games.' },
+    { id: 'modules', title: 'Learning modules', ask: 'Which module?', about: 'Classic games built step by step, in order: Snake, then Invaders, then a night sky, then a side-scrolling platformer. The annotated versions say what each part adds, and why.' },
     { id: 'gadget', title: 'Gadgets', ask: 'Which gadget?', about: 'Devices on a board like an Arduino or an ESP32: lights, buttons, sensors, sound.' },
     { id: 'lessons', title: 'One idea at a time', about: 'Small programs that each show one way of thinking: lists, classes.' },
     { id: 'start', title: 'Starting points', about: 'Empty projects, laid out and ready for your own sentences.' },

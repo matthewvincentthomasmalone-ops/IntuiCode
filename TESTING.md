@@ -39,7 +39,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       folder the first time), then closes; Don't save closes. Without changes since the last Save it just closes.
 - [ ] Work for a few minutes, then **Menu → Backups…**: copies 2 minutes apart, newest first, each with its project's
       name and file count. Restore one: it opens, and a copy of what was open is now at the top (Restore that to undo).
-- [ ] In a browser: Ctrl+S downloads `<project>.zip`; Import code → Open a .zip opens it as it was. Change something and
+- [ ] In a browser: Ctrl+S downloads `<project>.zip`; Import → Open a .zip opens it as it was. Change something and
       reload: the browser asks before leaving.
 
 **Planning and Project Templates**
@@ -82,7 +82,8 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Browser: **Download .zip** gives `<name>-openspec.zip`; unzipped, it makes `openspec/changes/<name>/`. With
       OpenSpec installed, `openspec list` in that folder shows the change. Tick a task in the unzipped `tasks.md`, then
       **Take ticks from a tasks.md…** and choose it: that step is ticked on the map.
-- [ ] A project with no map (Import → Try the example project): Menu → Hand to my AI… says there's no map yet.
+- [ ] A project with no map (Import → Try the example project): the Project map is only its title and **+ Step**, and
+      Hand to my AI isn't offered (it's under the map's count once there are steps).
 
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
@@ -130,7 +131,7 @@ Tick each one. If something is off, note what you did and what the terminal said
       sentences are back.
 
 **Other languages**
-- [ ] Import code → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's added as `pasted.rs`,
+- [ ] Import → paste some Rust (or Go, C#, Swift…) with the language on **Auto-detect**: it's added as `pasted.rs`,
       the terminal says why it's Rust, and in Unity the help says what each part does, in plain words.
 - [ ] Import a folder with a `README.md`, a `package.json` and a `.sql` file: each is in the tree, `package.json` as Setup.
 
@@ -223,6 +224,19 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Open a folder of your own (a small website, a `.cpp` program or an Arduino sketch): it opens as sentences, with the ✓
       check or a clear reason. Any other folder of code comes in as a new, unsaved project.
 - [ ] Drag a folder of code from your file manager onto the window: it comes in as a project.
+
+### Only what applies
+
+- [ ] In a new private window, open the app: it starts on the **Landing page** website (Structure, Styling, Mechanics),
+      with the page in the Preview, not an Arduino sketch.
+- [ ] At the top, **Interface**, **Mechanics** and **Setup** show; **Data** and **Tests** don't. Add a file
+      `tests/test_page.js` with a `test(...)` in it: **Tests** appears, and shows only that file's parts.
+- [ ] No **Problems** box while there are none. Type a sentence IntuaCode doesn't know: Problems appears with it,
+      and goes again once it's fixed.
+- [ ] The Menu has no Import code… or Hand to my AI…: **Import** is beside Project, Hand to my AI under the map's
+      count. Images has no Add an image… of its own (the Menu has it).
+- [ ] **Project Templates** lists Websites, Online services and Tools & utilities first; Games, Learning modules and
+      Gadgets come after Social & sharing.
 
 ## 3. Things that are known not to work yet
 
