@@ -1140,6 +1140,15 @@
         },
         {
           "topic": "Text",
+          "say": "add a paragraph called ‹name› saying \"‹text›\"",
+          "becomes": "<p id=\"name\">…</p>",
+          "folders": [
+            "structure"
+          ],
+          "tip": "The name is how Styling and Mechanics refer to it (to change its text, say)."
+        },
+        {
+          "topic": "Text",
           "say": "add a paragraph \"‹text›\"",
           "becomes": "<p>…</p>",
           "folders": [
@@ -1545,12 +1554,66 @@
       "sentences": [
         {
           "topic": "Styles",
+          "say": "set ‹name› colour to ‹colour›",
+          "becomes": "#name { color: … }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Also background, border, text size, width, rounded corners, shadow. The thing can be a name, the text it shows in quotes (\"Welcome\"), or a kind: the big heading, every button."
+        },
+        {
+          "topic": "Styles",
+          "say": "give ‹name› a ‹red› border",
+          "becomes": "#name { border: 1px solid red }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Also \"give … rounded corners\", \"give … a shadow\"."
+        },
+        {
+          "topic": "Styles",
+          "say": "make ‹name› ‹bold›",
+          "becomes": "#name { font-weight: bold }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Or a colour: \"make save navy\". Also italic, underlined, hidden, centred."
+        },
+        {
+          "topic": "Styles",
           "say": "style ‹name›: background ‹colour›, text colour ‹colour›",
           "becomes": "#name { background: …; color: … }",
           "folders": [
             "styling"
           ],
           "tip": "Separate styles with commas."
+        },
+        {
+          "topic": "Styles",
+          "say": "add group ‹name›: ‹styles›",
+          "becomes": ".name { … }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "The same as \"create group\". A group is a CSS class: put things in it with \"add ‹thing› to group ‹name›\"."
+        },
+        {
+          "topic": "Styles",
+          "say": "add ‹name› to group ‹group›",
+          "becomes": "class=\"group\" in the HTML",
+          "folders": [
+            "styling"
+          ],
+          "tip": "Puts an element from Structure in a group. It can be its name or its text in quotes."
+        },
+        {
+          "topic": "Styles",
+          "say": "add a colour called ‹main› ‹#4f7cff›",
+          "becomes": ":root { --main: … }",
+          "folders": [
+            "styling"
+          ],
+          "tip": "A shared colour. Use it as \"the colour main\"."
         },
         {
           "topic": "Styles",
@@ -1727,6 +1790,54 @@
         {
           "say": "big headings",
           "becomes": "h1"
+        },
+        {
+          "say": "big heading",
+          "becomes": "h1"
+        },
+        {
+          "say": "small headings",
+          "becomes": "h3"
+        },
+        {
+          "say": "small heading",
+          "becomes": "h3"
+        },
+        {
+          "say": "image",
+          "becomes": "img"
+        },
+        {
+          "say": "text box",
+          "becomes": "input, textarea"
+        },
+        {
+          "say": "list",
+          "becomes": "ul, ol"
+        },
+        {
+          "say": "list item",
+          "becomes": "li"
+        },
+        {
+          "say": "blocks",
+          "becomes": "div"
+        },
+        {
+          "say": "block",
+          "becomes": "div"
+        },
+        {
+          "say": "boxes",
+          "becomes": "div"
+        },
+        {
+          "say": "drop-downs",
+          "becomes": "select"
+        },
+        {
+          "say": "drop-down",
+          "becomes": "select"
         },
         {
           "say": "links",
@@ -2196,6 +2307,303 @@
             "mechanics"
           ],
           "tip": "Also \"divide ‹name› by ‹amount›\" (/=)."
+        },
+        {
+          "topic": "Logic",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "name = tool(inputs)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a bigger value, put it in brackets: (the result of ‹tool›) plus 1."
+        },
+        {
+          "topic": "Logic",
+          "say": "set ‹name› to a new ‹Date›",
+          "becomes": "name = new Date()",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "An object made from a class. Add \"with ‹inputs›\" for what it starts with."
+        },
+        {
+          "topic": "Logic",
+          "say": "set ‹name› to ‹a› if ‹test› otherwise ‹b›",
+          "becomes": "name = test ? a : b",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "One value or the other, picked by the test."
+        },
+        {
+          "topic": "Logic",
+          "say": "depending on ‹value›",
+          "becomes": "switch (value) {",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Under it, one step in: \"when it is 1\", \"when it is 2 or 3\", \"otherwise\"."
+        },
+        {
+          "topic": "Logic",
+          "say": "when it is ‹1›",
+          "becomes": "case 1:",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Inside \"depending on\". Each case ends by itself (break); \"go on into the next case\" carries on instead."
+        },
+        {
+          "topic": "Logic",
+          "say": "do this, then repeat while ‹test›",
+          "becomes": "do { … } while (test);",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "The steps run once before the test."
+        },
+        {
+          "topic": "Logic",
+          "say": "define class ‹Store›",
+          "becomes": "class Store {",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "A blueprint for objects. Inside: \"when a new Store is made with ‹inputs›\" and \"define ‹tool›\". Add \"based on ‹Other›\" to build on another class."
+        },
+        {
+          "topic": "Logic",
+          "say": "when a new ‹Store› is made with ‹key›",
+          "becomes": "constructor(key) {",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Inside \"define class\": sets up each new object. Its own values are this.something."
+        },
+        {
+          "topic": "Logic",
+          "say": "bring in ‹fetchSales› from \"‹./api.js›\"",
+          "becomes": "import { fetchSales } from \"./api.js\";",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Tools another JavaScript file shares. The page loads this file as a module."
+        },
+        {
+          "topic": "Lists",
+          "say": "set ‹doubled› to a list of ‹x times 2› for each ‹x› in ‹list›",
+          "becomes": "list.map(x => x * 2)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "A new list, one value for each item. Add \"if ‹test›\" at the end to keep only some (.filter)."
+        },
+        {
+          "topic": "Lists",
+          "say": "set ‹found› to the first ‹x› in ‹list› where ‹test›",
+          "becomes": "list.find(x => test)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "The first item the test is true for."
+        },
+        {
+          "topic": "Lists",
+          "say": "set ‹ok› to ‹test› for every ‹x› in ‹list›",
+          "becomes": "list.every(x => test)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Yes when the test is true for every item. \"for any\": true for at least one (.some)."
+        },
+        {
+          "topic": "Lists",
+          "say": "set ‹line› to ‹list› joined by \"‹, ›\"",
+          "becomes": "list.join(\", \")",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "The items as one text, with the separator between them."
+        },
+        {
+          "topic": "Text",
+          "say": "set ‹shown› to ‹price› to ‹2› decimal places",
+          "becomes": "price.toFixed(2)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Also \"‹n› rounded\", \"rounded down\", \"rounded up\", \"‹text› trimmed\", \"‹text› split at \",\"."
+        },
+        {
+          "topic": "Text",
+          "say": "set ‹data› to ‹text› read as JSON",
+          "becomes": "JSON.parse(text)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "And \"‹data› as JSON text\" (JSON.stringify)."
+        },
+        {
+          "topic": "Page",
+          "say": "constant ‹total› is the element called \"‹total›\"",
+          "becomes": "document.getElementById(\"total\")",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "An element by its id, for one Structure doesn't name."
+        },
+        {
+          "topic": "Page",
+          "say": "constant ‹item› is a new \"‹li›\" element",
+          "becomes": "document.createElement(\"li\")",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "A new element of any tag; \"put ‹item› at the end of ‹list›\" puts it on the page."
+        },
+        {
+          "topic": "Page",
+          "say": "put ‹item› at the end of ‹list›",
+          "becomes": "list.appendChild(item)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Puts an element inside another, after what is already there."
+        },
+        {
+          "topic": "Page",
+          "say": "set the HTML of ‹name› to ‹value›",
+          "becomes": "name.innerHTML = value",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Replaces what is inside with this HTML. Only HTML you wrote: text people type could run as code."
+        },
+        {
+          "topic": "Page",
+          "say": "set the groups of ‹name› to \"‹card done›\"",
+          "becomes": "name.className = \"card done\"",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "All of its groups at once. To add or take out one, \"put ‹name› in group ‹g›\"."
+        },
+        {
+          "topic": "Page",
+          "say": "set the page title to ‹value›",
+          "becomes": "document.title = value",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "The title on the browser tab."
+        },
+        {
+          "topic": "Server",
+          "say": "constant ‹reply› is the reply from \"‹/api/items›\"",
+          "becomes": "await fetch(\"/api/items\")",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Then \"the JSON read from ‹reply›\" is what it sent (await reply.json())."
+        },
+        {
+          "topic": "Server",
+          "say": "wait for ‹navigator.clipboard.writeText› with ‹text›",
+          "becomes": "await navigator.clipboard.writeText(text)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Runs a tool that finishes later and waits for it."
+        },
+        {
+          "topic": "Server",
+          "say": "constant ‹saved› is the text saved in the browser as \"‹key›\"",
+          "becomes": "localStorage.getItem(\"key\")",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "The text as it was saved (null if there is none)."
+        },
+        {
+          "topic": "Lists",
+          "say": "do this for each ‹item› in ‹list›",
+          "becomes": "list.forEach((item) => {",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Add \", counting with ‹i›\" for its place (from 0). It is a little tool of its own: \"give back\" ends this round."
+        },
+        {
+          "topic": "Lists",
+          "say": "sort ‹list› from smallest to biggest",
+          "becomes": "list.sort((a, b) => a - b);",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Also \"from biggest to smallest\", and \"as text\" (10 before 9). \"reverse ‹list›\" turns it round."
+        },
+        {
+          "topic": "Logic",
+          "say": "constant ‹double› is a tool using ‹n› giving back ‹n times 2›",
+          "becomes": "const double = (n) => n * 2;",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "A little tool kept in a name (an arrow function). Leave out \"giving back …\" and indent its steps under it instead."
+        },
+        {
+          "topic": "Errors",
+          "say": "fail with \"‹Not found›\"",
+          "becomes": "throw new Error(\"Not found\");",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Stops with an error; \"if it fails\" round the steps that ran it catches it."
+        },
+        {
+          "topic": "Events",
+          "say": "when a key is pressed in ‹name›, with the event as ‹e›",
+          "becomes": "name.addEventListener(\"keydown\", (e) => …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "e.key is the key: \"Enter\", \"a\", \"ArrowLeft\". Also \"when a key is released in …\"."
+        },
+        {
+          "topic": "Events",
+          "say": "when ‹name› is double-clicked",
+          "becomes": "name.addEventListener(\"dblclick\", …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Also \"is focused\", \"is unfocused\" (blur), \"is scrolled\"; and \"when the window is resized\"."
+        },
+        {
+          "topic": "Events",
+          "say": "when the window has loaded",
+          "becomes": "window.addEventListener(\"load\", …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Once everything is in, pictures too. \"when the page has loaded\" is sooner."
+        },
+        {
+          "topic": "Page",
+          "say": "remove ‹name› from the page",
+          "becomes": "name.remove();",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Takes the element off the page."
+        },
+        {
+          "topic": "Logic",
+          "say": "run this now, keeping its names private",
+          "becomes": "(function () { … })();",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Indent the steps under it: the names made there don't clash with other scripts'. \"run this now, with root set to window, keeping …\" gives it a value. \"use strict rules\" first, for \"use strict\"."
         }
       ],
       "words": [
@@ -2250,6 +2658,138 @@
         {
           "say": "wait for x",
           "becomes": "await x"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "a new Date",
+          "becomes": "new Date()"
+        },
+        {
+          "say": "a if c otherwise b",
+          "becomes": "c ? a : b"
+        },
+        {
+          "say": "an empty list",
+          "becomes": "[]"
+        },
+        {
+          "say": "x is nothing",
+          "becomes": "x == null"
+        },
+        {
+          "say": "x is null",
+          "becomes": "x === null"
+        },
+        {
+          "say": "a list of x times 2 for each x in xs",
+          "becomes": "xs.map(x => x * 2)"
+        },
+        {
+          "say": "a list of x for each x in xs if x is more than 1",
+          "becomes": "xs.filter(x => x > 1)"
+        },
+        {
+          "say": "the first x in xs where x is 2",
+          "becomes": "xs.find(x => x === 2)"
+        },
+        {
+          "say": "x is more than 0 for every x in xs",
+          "becomes": "xs.every(x => x > 0)"
+        },
+        {
+          "say": "x is 2 for any x in xs",
+          "becomes": "xs.some(x => x === 2)"
+        },
+        {
+          "say": "xs joined by \", \"",
+          "becomes": "xs.join(\", \")"
+        },
+        {
+          "say": "name trimmed",
+          "becomes": "name.trim()"
+        },
+        {
+          "say": "line split at \",\"",
+          "becomes": "line.split(\",\")"
+        },
+        {
+          "say": "price to 2 decimal places",
+          "becomes": "price.toFixed(2)"
+        },
+        {
+          "say": "n rounded",
+          "becomes": "Math.round(n)"
+        },
+        {
+          "say": "n rounded down",
+          "becomes": "Math.floor(n)"
+        },
+        {
+          "say": "n rounded up",
+          "becomes": "Math.ceil(n)"
+        },
+        {
+          "say": "text read as JSON",
+          "becomes": "JSON.parse(text)"
+        },
+        {
+          "say": "data as JSON text",
+          "becomes": "JSON.stringify(data)"
+        },
+        {
+          "say": "the text saved in the browser as \"k\"",
+          "becomes": "localStorage.getItem(\"k\")"
+        },
+        {
+          "say": "the element called \"total\"",
+          "becomes": "document.getElementById(\"total\")"
+        },
+        {
+          "say": "a new \"li\" element",
+          "becomes": "document.createElement(\"li\")"
+        },
+        {
+          "say": "the page title",
+          "becomes": "document.title"
+        },
+        {
+          "say": "value of box",
+          "becomes": "box.value"
+        },
+        {
+          "say": "the reply from \"/api\"",
+          "becomes": "await fetch(\"/api\")"
+        },
+        {
+          "say": "the JSON read from reply",
+          "becomes": "await reply.json()"
+        },
+        {
+          "say": "a random whole number below 6",
+          "becomes": "Math.floor(Math.random() * 6)"
+        },
+        {
+          "say": "a random number below 1",
+          "becomes": "Math.random()"
+        },
+        {
+          "say": "the largest number in xs",
+          "becomes": "Math.max(...xs)"
+        },
+        {
+          "say": "the smallest number in xs",
+          "becomes": "Math.min(...xs)"
+        },
+        {
+          "say": "x, or y if that is nothing",
+          "becomes": "x ?? y"
+        },
+        {
+          "say": "ua matches /win/i",
+          "becomes": "/win/i.test(ua)"
         }
       ]
     },
@@ -2373,6 +2913,15 @@
             "program"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Show & ask",
+          "say": "show ‹value›, then start a new line",
+          "becomes": "std::cout << value << \"\\n\";",
+          "folders": [
+            "program"
+          ],
+          "tip": "A new-line character ends the line, where plain \"show\" uses std::endl."
         },
         {
           "topic": "Show & ask",
@@ -2556,6 +3105,15 @@
         },
         {
           "topic": "Lists",
+          "say": "sort ‹list›",
+          "becomes": "std::sort(list.begin(), list.end());",
+          "folders": [
+            "program"
+          ],
+          "tip": "Smallest first. Add \"biggest first\" to turn it round."
+        },
+        {
+          "topic": "Lists",
           "say": "set item ‹0› of ‹list› to ‹value›",
           "becomes": "list[0] = value;",
           "folders": [
@@ -2609,6 +3167,15 @@
           "tip": "Leaves a tool that gives nothing back."
         },
         {
+          "topic": "Errors",
+          "say": "fail with ‹std::invalid_argument›: ‹message›",
+          "becomes": "throw std::invalid_argument(message);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Stops with an error that the caller can catch. Not on Arduino."
+        },
+        {
           "topic": "Tools",
           "say": "run ‹tool› with ‹inputs› and store in ‹name›",
           "becomes": "auto name = tool(inputs);",
@@ -2616,6 +3183,15 @@
             "program"
           ],
           "tip": ""
+        },
+        {
+          "topic": "Tools",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "auto name = tool(inputs);",
+          "folders": [
+            "program"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2."
         },
         {
           "topic": "Classes",
@@ -2652,6 +3228,15 @@
             "program"
           ],
           "tip": "Inside a class: runs when a new object is made. Use \"set self.name to name\"."
+        },
+        {
+          "topic": "Classes",
+          "say": "define ‹area› giving back ‹a decimal›, without changing the object",
+          "becomes": "double area() const {",
+          "folders": [
+            "program"
+          ],
+          "tip": "Inside a class: a tool that reads the fields and never changes them."
         },
         {
           "topic": "Classes",
@@ -2750,6 +3335,30 @@
         {
           "say": "x limited to 0–255",
           "becomes": "std::clamp(x, 0, 255)"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "(the result of f with a) times 2",
+          "becomes": "f(a) * 2"
+        },
+        {
+          "say": "x as a decimal",
+          "becomes": "static_cast<double>(x)"
+        },
+        {
+          "say": "\"Hi \" plus name",
+          "becomes": "\"Hi \" + name"
+        },
+        {
+          "say": "square root of x",
+          "becomes": "std::sqrt(x)"
+        },
+        {
+          "say": "absolute value of x",
+          "becomes": "std::abs(x)"
         }
       ]
     },
@@ -2975,6 +3584,15 @@
         },
         {
           "topic": "Lists",
+          "say": "make a constant list of ‹whole numbers› called ‹PINS› with ‹2, 3, 4›",
+          "becomes": "const int PINS[] = {2, 3, 4};",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Items that never change, such as the pins the lights are on."
+        },
+        {
+          "topic": "Lists",
           "say": "set item ‹0› of ‹list› to ‹value›",
           "becomes": "list[0] = value;",
           "folders": [
@@ -3028,6 +3646,15 @@
           "tip": ""
         },
         {
+          "topic": "Tools",
+          "say": "set ‹name› to the result of ‹tool› with ‹inputs›",
+          "becomes": "auto name = tool(inputs);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2."
+        },
+        {
           "topic": "Classes",
           "say": "define class ‹Name›",
           "becomes": "class Name { public: … };",
@@ -3062,6 +3689,15 @@
             "sketch"
           ],
           "tip": "Inside a class: runs when a new object is made. Use \"set self.name to name\"."
+        },
+        {
+          "topic": "Classes",
+          "say": "define ‹area› giving back ‹a decimal›, without changing the object",
+          "becomes": "double area() const {",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Inside a class: a tool that reads the fields and never changes them."
         },
         {
           "topic": "Classes",
@@ -3245,6 +3881,33 @@
         },
         {
           "topic": "Serial",
+          "say": "show \"Temp: {‹t›}\"",
+          "becomes": "Serial.println(String(\"Temp: \") + t);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Text with a value in it. \"{t as text}\" right after the text joins as \"Temp: \" + String(t)."
+        },
+        {
+          "topic": "Serial",
+          "say": "show ‹t› with ‹2› decimal places",
+          "becomes": "Serial.println(t, 2);",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "For a decimal. \"show ‹n› in hexadecimal\" (or binary) shows a whole number in another base."
+        },
+        {
+          "topic": "Serial",
+          "say": "show \"‹Ready›\" kept in flash",
+          "becomes": "Serial.println(F(\"Ready\"));",
+          "folders": [
+            "sketch"
+          ],
+          "tip": "Fixed text kept in flash memory, so it takes none of the board's small working memory."
+        },
+        {
+          "topic": "Serial",
           "say": "end the line",
           "becomes": "Serial.println();",
           "folders": [
@@ -3364,6 +4027,26 @@
         {
           "say": "\"Hi {name}\"",
           "becomes": "String(\"Hi \") + name"
+        },
+        {
+          "say": "\"Temp: {t as text}\"",
+          "becomes": "\"Temp: \" + String(t)"
+        },
+        {
+          "say": "\"Ready\" kept in flash",
+          "becomes": "F(\"Ready\")"
+        },
+        {
+          "say": "the result of f with a, b",
+          "becomes": "f(a, b)"
+        },
+        {
+          "say": "t as a whole number",
+          "becomes": "(int)t"
+        },
+        {
+          "say": "square root of x",
+          "becomes": "sqrt(x)"
         }
       ]
     }

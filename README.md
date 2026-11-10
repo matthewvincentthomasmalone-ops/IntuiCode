@@ -32,6 +32,20 @@ rounded corners 8" and used with "when save is clicked". A live preview updates 
 **Pick from the page** puts an element's name into your sentence, and messages and errors from
 the page appear in the terminal, linked back to the sentence that caused them.
 
+Styling and Mechanics can point at a thing three ways:
+- by its **name**, in any capitals;
+- by the **text it shows**, in quotes. For example, `set "Welcome" colour to navy`: IntuaCode names it in the page for you.
+- by its **kind**: `the big heading`, `every button`.
+
+Styling also takes everyday sentences: `set save background to white`, `give save a red border`,
+`make the big heading bold`, `add group card: rounded corners, shadow`, `add save to group card`,
+`add a colour called main #4f7cff`.
+
+When a named part is added in Structure, Styling gets `style save:` ready to fill in. A button or form also
+gets `when save is clicked` (or `is sent`) in Mechanics. Predictive Mode in each file offers what the others
+have: Styling and Mechanics offer Structure's parts, and Structure offers the names they use that it doesn't
+have yet.
+
 Mechanics can make elements too, and they work like the ones in Structure:
 
 ```
@@ -293,6 +307,14 @@ code in the same place:
   added at the top;
 - a part with a problem stays as sentences until it's fixed, and the help says why (and shows the code
   it will write while you type).
+
+Pressing **Original Code** (or **Original Code (all)**) turns Predictive Mode off, and the button becomes a
+pressed **Revert**. Press it again to put the sentences, and Predictive Mode, back as they were. Edit the code
+in between and the button goes back to Original Code.
+
+**Split Mode's left pane is always sentences.** Code parts a file has in Unity are said in sentences when it's
+shown there (a line no sentence can say stays as exact code, and the terminal says which). Back in Unity they
+are code again: exactly as they were if nothing changed in Split Mode, or written from the sentences as edited.
 
 The **help** under the pane is Split Mode's help: on a green line, the sentence and the code it makes, its
 shape and its words; on a line of code, the terms in it and the part it belongs to. **Hide help** folds it

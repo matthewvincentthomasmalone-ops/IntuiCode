@@ -545,3 +545,69 @@ test('mechanics and styling: default inputs, multiply/divide, a worked-out posit
   const bad = site('', '', 'create list stars with 1, 2, 3\nset k to 0\nshow item k plus 1 of stars');
   assert.ok(problems(bad, 'mechanics').some(e => /has to be one value/.test(e)));
 });
+
+test('structure: text said with saying, says, reads or "with the text", after a name too', () => {
+  const p = (line) => { const r = site(line); return [problems(r, 'structure'), r.results.structure.text.match(/<(p|h2|span|button)\b[^>]*>[^<]*<\/\1>/)[0]]; };
+  assert.deepEqual(p('add a paragraph called "main description". Paragraph text reads "A good time to be alive"'), [[], '<p id="main-description">A good time to be alive</p>']);
+  assert.deepEqual(p('add a paragraph called intro saying "Hello"'), [[], '<p id="intro">Hello</p>']);
+  assert.deepEqual(p('add a paragraph called intro that says "Hello"'), [[], '<p id="intro">Hello</p>']);
+  assert.deepEqual(p('add a paragraph saying "Hello"'), [[], '<p>Hello</p>']);
+  assert.deepEqual(p('add a paragraph called main area with the text "Hi"'), [[], '<p id="main-area">Hi</p>']);
+  assert.deepEqual(p('add a paragraph called status "Saved"'), [[], '<p id="status">Saved</p>']);
+  assert.deepEqual(p('add a heading called prices saying "Prices"'), [[], '<h2 id="prices">Prices</h2>']);
+  assert.deepEqual(p('add a button called next that reads "Next"'), [[], '<button id="next" type="button">Next</button>']);
+  assert.deepEqual(p('add text saying "hi"'), [[], '<span>hi</span>']);
+});
+
+test('structure: a name given as "with id" counts, and a name with a space is flagged', () => {
+  const r = site('add a button saying "Next", with id quote');
+  assert.deepEqual(plain(r.results.structure.info[0].warns), []);
+  assert.match(r.results.structure.text, /<button id="quote" type="button">Next<\/button>/);
+  const spaced = site('add a block, with id "main display"');
+  assert.match(plain(spaced.results.structure.info[0].warns).join(' '), /space isn't valid.*main-display/);
+});
+
+test('styling: by the text something shows, which names it in the page', () => {
+  const r = site('add a big heading "The Quote Is Sinking"\nadd a heading "Quote Generator"', 'set "The Quote Is Sinking" colour to navy\nmake "Quote Generator" bold\nadd "Quote Generator" to group warm');
+  assert.deepEqual(problems(r, 'styling'), []);
+  assert.match(r.results.structure.text, /<h1 id="quote-is-sinking">The Quote Is Sinking<\/h1>/);
+  assert.match(r.results.structure.text, /<h2 id="quote-generator" class="warm">Quote Generator<\/h2>/);
+  assert.match(r.results.styling.text, /#quote-is-sinking \{\n  color: navy;\n\}/);
+  assert.match(r.results.styling.text, /#quote-generator \{\n  font-weight: bold;\n\}/);
+  const none = site('add a big heading "Hi"', 'set "Hello" colour to red');
+  assert.match(plain(none.results.styling.info[0].warns).join(' '), /Nothing in Structure says `Hello`/);
+});
+
+test('styling: set … to, give, make, by kind, and names in any capitals', () => {
+  const r = site('add a big heading "Hi"\nadd a button saying "Next", with id "Quote"\nadd a paragraph called "main description" saying "x"',
+    'set the big heading text size to 40\nset the border of quote to 2 dashed red\ngive the big heading a red border\nset every button rounded corners to 8\nstyle main description:\nset "main description" background to white\nset Quote transparency to 30%');
+  assert.deepEqual(problems(r, 'styling'), []);
+  const css = r.results.styling.text;
+  assert.match(css, /^h1 \{\n  font-size: 40px;\n\}/m);
+  assert.match(css, /^#Quote \{\n  border: 2px dashed red;\n\}/m);
+  assert.match(css, /^h1 \{\n  border: 1px solid red;\n\}/m);
+  assert.match(css, /^button \{\n  border-radius: 8px;\n\}/m);
+  assert.match(css, /^#main-description \{\n\}/m, 'a place for its styles, empty for now');
+  assert.match(css, /^#main-description \{\n  background: white;\n\}/m);
+  assert.match(css, /^#Quote \{\n  opacity: 0.7;\n\}/m);
+  assert.match(r.results.structure.text, /<p id="main-description">x<\/p>/, 'a quoted name with a space is a name without one');
+});
+
+test('styling: shared colours and groups said with add', () => {
+  const r = site('add a block called box', 'add a colour called main #4f7cff\nadd group card: background the colour main\nadd box to group card\nadd group empty');
+  assert.deepEqual(problems(r, 'styling'), []);
+  const css = r.results.styling.text;
+  assert.match(css, /--main: #4f7cff;/);
+  assert.match(css, /^\.card \{\n  background: var\(--main\);\n\}/m);
+  assert.match(r.results.structure.text, /<div id="box" class="card">/);
+  assert.match(css, /^\.empty \{\n\}/m);
+  assert.match(plain(r.results.styling.info[0].errs).join(''), /^$/);
+  assert.match(plain(site('', 'set "x" colour to #1003hy').results.styling.info[0].errs).join(' '), /isn't a colour code/);
+});
+
+test('mechanics: a name in other capitals, or something by its text', () => {
+  const r = site('add a button saying "Next", with id "Quote"\nadd a heading "Quote Generator"', '', 'when quote is clicked\n    set the text of "Quote Generator" to "New"');
+  assert.deepEqual(problems(r, 'mechanics'), []);
+  assert.match(r.results.mechanics.text, /document\.getElementById\("Quote"\)\.addEventListener\("click"/);
+  assert.match(r.results.structure.text, /<h2 id="quote-generator">Quote Generator<\/h2>/);
+});

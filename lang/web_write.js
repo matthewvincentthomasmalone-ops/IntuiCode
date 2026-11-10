@@ -172,7 +172,9 @@
   /* Names in sentences: a plain name (called save) is made into an id the way "called" always has; a name
      in quotes (called "helpToggle") is kept exactly. Several are joined with "and". */
   const NAME_TOKEN = `"(?:[^"\\\\]|\\\\.)*"|[\\w-]+`;
-  const nameOf = (t) => { const q = strOf(t); return q != null ? q : toId(t); };
+  // (a name in quotes is kept exactly, "helpToggle", unless it has spaces, which a name in the page can't:
+  // called "main description" is main-description, as called main description is)
+  const nameOf = (t) => { const q = strOf(t); return q != null ? (/\s/.test(q.trim()) ? toId(q) : q) : toId(t); };
   const namesOf = (t) => { const parts = outsideQuotes(t, (s) => s.replace(/\s+and\s+/gi, '\u0002')).split('\u0002').map(s => s.trim()); return parts.every(p => new RegExp(`^(?:${NAME_TOKEN})$`).test(p)) ? parts.map(nameOf).join(' ') : null; };
   /* A value in a phrase: text in quotes, or one word or number as it is (#873044, .4, userSpaceOnUse). */
   const valueOf = (t) => { t = String(t).trim(); const q = strOf(t); return q != null ? q : /^[^\s"',]+$/.test(t) ? t : null; };
@@ -448,9 +450,14 @@
     const g = s.match(/\s+in groups?\s+([\w\s,-]+)$/i);
     if (g && !/"[^"]*\bin groups?\b[^"]*"$/.test(s)) { groups = g[1].split(/\s*,\s*|\s+and\s+/).map(toId).filter(Boolean); s = s.slice(0, g.index); }
     // a name: called save, called main area (two words become main-area), or called "helpToggle" (kept exactly)
-    const CALLED = /\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+(?:\s+[\w-]+)?)(?=\s+(?:saying|with|of|described|showing|to)\b|\s+["']|$)/i;
+    // (the name ends at a full stop or comma, or at a word that starts what it says: saying, says, reads, with …)
+    const CALLED = /\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+(?:\s+(?!(?:saying|says|that|which|reads|reading|showing|shows|is|with|of|described|to)\b)[\w-]+)?)(?=[.,;:]|\s+(?:saying|says|that|which|reads|reading|showing|shows|is|with|of|described|to)\b|\s+["']|$)/i;
     const called = (t) => { const c = t.match(CALLED); return c ? nameOf(c[1]) : null; };
     const cut = (t) => t.replace(CALLED, '');
+    // the text it shows: "…" on its own, or after saying, says, reads, that says, with the text … (and after its
+    // name, if it has one: add a paragraph called intro. Its text reads "Hello" works too)
+    const SAYS = /^[.,;:]?\s*(?:and\s+)?(?:(?:it|that|which|its|the)\s+)?(?:(?:paragraph|heading|title|button|label|item|link)\s+)?(?:text\s+)?(?:(?:that|which)\s+)?(?:says|saying|reads|reading|shows|showing|is|with(?:\s+the)?\s+(?:text|words))\s+(?=["'])/i;
+    const textOf = (t) => strOf(cut(' ' + t).trim().replace(SAYS, ''));
     const el = (tag, extra = {}) => ({ tag, id: extra.id || null, groups, attrs: extra.attrs || {}, text: extra.text ?? null, container: !!extra.container });
 
     if ((m = s.match(/^(?:set the page title to|page title is|the page is called|title)\s+(.+)$/i))) {
@@ -460,18 +467,18 @@
     }
     if ((m = s.match(/^(?:page language is|the page is in)\s+([\w-]+)$/i))) return { lang: /^[a-z]{2}(?:-[a-z0-9]+)*$/i.test(m[1]) ? m[1] : m[1].toLowerCase().slice(0, 2) };
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(big |small |)heading\s+(.+)$/i))) {
-      const t = strOf(cut(m[2])); if (t == null) inf.errs.push('Put the heading text in quotes.');
+      const t = textOf(m[2]); if (t == null) inf.errs.push('Put the heading text in quotes, like: add a heading saying "Prices"');
       const tag = { 'big ': 'h1', 'small ': 'h3', '': 'h2' }[m[1].toLowerCase()];
       note(inf, `${code('<' + tag + '>')} is a heading. Use one big heading (h1) per page; screen readers and search engines use headings to understand the page.`);
-      return el(tag, { text: t || '', id: called(m[2]) });
+      return el(tag, { text: t || '', id: called(' ' + m[2]) });
     }
-    if ((m = s.match(/^add\s+(?:a\s+)?paragraph(?:\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+))?\s+(.+)$/i))) {
-      const t = strOf(m[2]); if (t == null) inf.errs.push('Put the paragraph text in quotes.');
-      return el('p', { text: t || '', id: m[1] ? nameOf(m[1]) : null });
+    if ((m = s.match(/^add\s+(?:a\s+)?paragraph(\s+.+|[.,;:].*)$/i))) {
+      const t = textOf(m[1]); if (t == null) inf.errs.push('Put the paragraph text in quotes, like: add a paragraph called intro saying "Hello"');
+      return el('p', { text: t || '', id: called(' ' + m[1]) });
     }
-    if ((m = s.match(/^add\s+text\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the text in quotes.'); return el('span', { text: t || '', id: nameOf(m[1]) }); }
-    if ((m = s.match(/^add\s+text\s+(.+)$/i))) return el('span', { text: strOf(m[1]) ?? m[1] });
-    if ((m = s.match(/^add\s+(?:a\s+)?button(.*?)\s+(?:saying|that says|labelled|labeled)\s+(.+)$/i))) {
+    if ((m = s.match(/^add\s+text\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+)$/i))) { const t = textOf(m[2]); if (t == null) inf.errs.push('Put the text in quotes.'); return el('span', { text: t || '', id: nameOf(m[1]) }); }
+    if ((m = s.match(/^add\s+text\s+(.+)$/i))) return el('span', { text: textOf(m[1]) ?? m[1] });
+    if ((m = s.match(/^add\s+(?:a\s+)?button(.*?)\s+(?:saying|(?:that |which )?(?:says|reads)|reading|showing|labelled|labeled|with(?: the)? text)\s+(.+)$/i))) {
       const t = strOf(m[2]); if (t == null) inf.errs.push('Put the button text in quotes.');
       const id = called(m[1] + ' ') || called(m[1]);
       if (!id) inf.warns.push('Give the button a name ("called save") so Styling and Mechanics can refer to it.');
@@ -589,6 +596,9 @@
         if (k === 'type') el.typeSaid = true;
         if (k === 'alt' && v == null) inf.warns = inf.warns.filter(w => !/described as/.test(w));
       }
+      // a name given after a comma ("with id …") is a name too
+      if (el.id) inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
+      if (el.id && /\s/.test(el.id)) inf.warns.push(`An id with a space isn't valid in a page (links to it break). Write "called ${el.id.trim().split(/\s+/).slice(0, 2).join(' ')}" instead: it becomes ${code(toId(el.id))}.`);
       if (el.tag && !VOID_TAGS.has(el.tag) && !/^(?:textarea|select)$/.test(el.tag) && !el.container && !el.children) el.container = true;   // anything can hold other things
     }
     if (glued) el.glued = true;
@@ -618,6 +628,7 @@
   const CHARSET_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\scharset\s*=/i, VIEWPORT_META = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*?\sname\s*=\s*["']?viewport["'\s>]/i;
 
   function compileHtml(sec, shared) {
+    shared.elements = [];   // each element made: { tag, id, text, line }, so Styling and Mechanics can find one by its text
     const lines = sec.text.split('\n');
     const info = makeInfo(lines);
     const rootEl = { tag: 'body', children: [], container: true };
@@ -677,6 +688,13 @@
       if (el.title != null) { title = el.title; inf.target = 'title'; return; }
       if (el.lang) { lang = el.lang; at.html = at.html ?? i; return; }
       el.src = i;
+      // a name Styling or Mechanics gave it, by its text ("style "Welcome": …")
+      if (!el.id && el.tag && shared.addIds && shared.addIds[i]) {
+        el.id = shared.addIds[i];
+        inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
+        note(inf, `Styling or Mechanics uses this by its text, so it's named ${code(el.id)} in the page.`);
+      }
+      if (el.tag && shared.elements) shared.elements.push({ tag: el.tag, id: el.id || null, text: el.text ?? null, line: i });
       for (const named of [el, ...(el.children || [])].filter(e => e.id)) {   // a checkbox's name is on the box inside its label
         if (shared.ids[named.id] && shared.ids[named.id].line !== i) inf.errs.push(`Another element is already called ${code(named.id)} (line ${shared.ids[named.id].line + 1}). Names must be unique on a page.`);
         else shared.ids[named.id] = { tag: named.tag, type: (named.attrs || {}).type || null, line: i };
@@ -775,7 +793,7 @@
   /* ================================================================== */
 
   const NAMED = new Set(['black', 'white', 'red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'grey', 'gray', 'brown', 'navy', 'teal', 'transparent', 'gold', 'silver', 'crimson', 'coral', 'salmon', 'tomato', 'turquoise', 'violet', 'indigo', 'lime', 'olive', 'maroon', 'beige', 'ivory', 'lavender', 'tan', 'khaki', 'aqua', 'cyan', 'magenta', 'lightgrey', 'darkgrey', 'whitesmoke', 'skyblue', 'hotpink']);
-  const TAG_WORDS = { buttons: 'button', button: 'button', headings: 'h1, h2, h3', heading: 'h1, h2, h3', 'big headings': 'h1', links: 'a', link: 'a', paragraphs: 'p', paragraph: 'p', pictures: 'img', images: 'img', 'text boxes': 'input, textarea', inputs: 'input', lists: 'ul, ol', 'list items': 'li', sections: 'section', 'the page': 'body', page: 'body', everything: '*', header: 'header', footer: 'footer', 'navigation bar': 'nav', forms: 'form', labels: 'label' };
+  const TAG_WORDS = { buttons: 'button', button: 'button', headings: 'h1, h2, h3', heading: 'h1, h2, h3', 'big headings': 'h1', 'big heading': 'h1', 'small headings': 'h3', 'small heading': 'h3', image: 'img', 'text box': 'input, textarea', list: 'ul, ol', 'list item': 'li', blocks: 'div', block: 'div', boxes: 'div', 'drop-downs': 'select', 'drop-down': 'select', links: 'a', link: 'a', paragraphs: 'p', paragraph: 'p', pictures: 'img', images: 'img', 'text boxes': 'input, textarea', inputs: 'input', lists: 'ul, ol', 'list items': 'li', sections: 'section', 'the page': 'body', page: 'body', everything: '*', header: 'header', footer: 'footer', 'navigation bar': 'nav', forms: 'form', labels: 'label' };
   const CSS_MORE = 'accent-color align-content all animation-delay animation-direction animation-duration animation-fill-mode animation-iteration-count animation-name animation-timing-function appearance backface-visibility background-attachment background-blend-mode background-clip background-origin background-repeat block-size border-bottom-color border-bottom-left-radius border-bottom-right-radius border-bottom-style border-bottom-width border-collapse border-image border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-spacing border-style border-top-color border-top-left-radius border-top-right-radius border-top-style border-top-width border-width caption-side caret-color clear clip-path color-scheme column-count column-gap columns content counter-increment counter-reset direction empty-cells fill flex-basis flex-flow flex-grow flex-shrink float font-feature-settings font-variant font-variant-numeric grid grid-area grid-auto-columns grid-auto-flow grid-auto-rows grid-column grid-column-end grid-column-start grid-gap grid-row grid-row-end grid-row-start grid-template grid-template-areas hyphens image-rendering inline-size inset isolation justify-items justify-self list-style-image list-style-position list-style-type margin-block margin-inline mask max-block-size max-inline-size min-block-size min-inline-size mix-blend-mode object-position order outline-color outline-offset outline-style outline-width overflow-wrap overflow-x overflow-y overscroll-behavior padding-block padding-inline perspective place-content place-items place-self pointer-events quotes resize rotate row-gap scale scroll-behavior scroll-margin scroll-padding scroll-snap-align scroll-snap-type scrollbar-color scrollbar-width stroke stroke-width tab-size table-layout text-align-last text-decoration-color text-decoration-line text-decoration-style text-decoration-thickness text-indent text-overflow text-rendering text-shadow text-underline-offset touch-action transform-origin transition-delay transition-duration transition-property transition-timing-function translate user-select vertical-align will-change word-break word-spacing word-wrap writing-mode'.split(' ');
   const HTML_TAGS = new Set('a abbr address article aside audio b blockquote body button canvas caption code dd details dialog div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html i iframe img input kbd label legend li main mark menu nav ol optgroup option output p picture pre progress q s section select small span strong sub summary sup svg table tbody td textarea tfoot th thead time tr u ul video'.split(' '));
   const CSS_PROPS = new Set([...CSS_MORE, 'align-items', 'align-self', 'animation', 'aspect-ratio', 'background', 'background-color', 'background-image', 'background-position', 'background-size', 'border', 'border-bottom', 'border-color', 'border-left', 'border-radius', 'border-right', 'border-top', 'bottom', 'box-shadow', 'box-sizing', 'color', 'cursor', 'display', 'flex', 'flex-direction', 'flex-wrap', 'font', 'font-family', 'font-size', 'font-style', 'font-weight', 'gap', 'grid-template-columns', 'grid-template-rows', 'height', 'justify-content', 'left', 'letter-spacing', 'line-height', 'list-style', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'max-height', 'max-width', 'min-height', 'min-width', 'object-fit', 'opacity', 'outline', 'overflow', 'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'position', 'right', 'text-align', 'text-decoration', 'text-transform', 'top', 'transform', 'transition', 'visibility', 'white-space', 'width', 'z-index', 'filter', 'backdrop-filter']);
@@ -945,8 +963,59 @@
     return out;
   }
 
+  /* An element by the text it shows: "The Quote Is Sinking", or the big heading "The Quote Is Sinking". One
+     with no name is given one in the page (from its text), so Styling and Mechanics can point at it.
+     -> its names; [] if nothing in Structure shows that text; null if this isn't text in quotes. */
+  function idsByText(name, shared) {
+    const m = String(name).trim().match(/^(?:(?:the|every|all(?:\s+the)?)\s+)?([a-z][a-z -]*?)?\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i);
+    if (!m || !shared.elements) return null;
+    const text = strOf(m[2]), kind = m[1] ? m[1].trim().toLowerCase() : '';
+    const tags = kind ? (TAG_WORDS[kind] || TAG_WORDS[kind + 's'] || '').split(/\s*,\s*/).filter(Boolean) : null;
+    if (kind && !tags.length) return null;
+    const same = (s) => String(s).trim().replace(/\s+/g, ' ').toLowerCase();
+    const found = shared.elements.filter(e => e.text != null && same(e.text) === same(text) && (!tags || tags.includes(e.tag)));
+    if (!found.length) { const id = findId(shared, text); return id ? [id] : []; }   // a name in quotes: "main description", "Quote"
+    shared.addIds = shared.addIds || {};
+    return found.map(e => {
+      if (e.id) return e.id;
+      let id = shared.addIds[e.line];
+      if (!id) {
+        const base = toId(text) || e.tag;
+        id = base;
+        for (let k = 2; shared.ids[id] || Object.values(shared.addIds).includes(id); k++) id = `${base}-${k}`;
+        shared.addIds[e.line] = id;
+      }
+      shared.ids[id] = shared.ids[id] || { tag: e.tag, type: null, line: e.line };
+      return id;
+    });
+  }
+  /* The name in Structure meant by how it's written here: exactly, as a name (main description is
+     main-description), or the same letters in other capitals (quote is "Quote"). null if there's none. */
+  function findId(shared, raw) {
+    const q = strOf(raw), s = q != null ? q : String(raw).trim();
+    if (shared.ids[s]) return s;
+    const id = toId(s);
+    if (id && shared.ids[id]) return id;
+    const low = s.toLowerCase();
+    return Object.keys(shared.ids).find(k => k.toLowerCase() === low || (id && toId(k) === id)) || null;
+  }
+  // a name as a CSS selector: #name, or [id="…"] for one a # can't take (a space in it)
+  const idSel = (id) => (/^-?[A-Za-z_][\w-]*$/.test(id) ? '#' + id : `[id="${String(id).replace(/["\\]/g, '\\$&')}"]`);
+
   function selectorFor(name, shared, inf) {
     let n = name.trim(), m;
+    const said = idsByText(n, shared);
+    if (said) {
+      const text = strOf(n.match(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/)[1]);
+      if (!said.length) {
+        inf.warns.push(`Nothing in Structure says ${code(text)}. Write its text exactly as it is there, or use its name.`);
+        return idSel(toId(text));
+      }
+      const auto = said.filter(id => Object.values(shared.addIds || {}).includes(id));
+      if (auto.length) note(inf, `Styles what says ${code(text)}: it has no name, so IntuaCode names it ${code(auto[0])} in the page. If its text changes, change it here too, or give it a name in Structure.`);
+      else if (said[0] !== text) note(inf, `${code(text)} is ${code(said[0])}, so this styles ${code(idSel(said[0]))}.`);
+      return said.map(idSel).join(', ');
+    }
     // "toast.shown" or "toast:hover": a name from Structure with a group or state on it, not a <toast> tag
     if ((m = n.match(/^([a-z][\w-]*)([.:][\w\s.:()-]*)$/i)) && !HTML_TAGS.has(m[1].toLowerCase())) {
       if (shared.ids[toId(m[1])]) { note(inf, `${code(m[1])} is the element called ${m[1]}, so this is ${code('#' + toId(m[1]) + m[2])}.`); return '#' + toId(m[1]) + m[2]; }
@@ -956,19 +1025,46 @@
     if (/^[.#:*\[]|[>~+\[]/.test(n) || /^[a-z]+[.#:]/.test(n)) { note(inf, `${code(n)} is a CSS selector written directly.`); return n; }
     if ((m = n.match(/^group\s+(.+)$/i))) return '.' + toId(m[1]);
     if ((m = n.match(/^(?:the element|element)\s+(.+)$/i))) return '#' + toId(m[1]);
-    const every = !!(m = n.match(/^every\s+(.+)$/i));
+    const every = !!(m = n.match(/^(?:every|all(?:\s+the)?)\s+(.+)$/i));
     if (every) n = m[1];
+    if ((m = n.match(/^the\s+(.+)$/i)) && !TAG_WORDS[n.toLowerCase()]) n = m[1];   // "the big heading" is the big heading
     const low = n.toLowerCase();
-    const id = toId(n);
+    const id = toId(n), known = findId(shared, n);
     // an element you named (Structure's "called header") is the one meant, as in Mechanics; "every header" is the tag
-    if (!every && shared.ids[id] && (TAG_WORDS[low] || HTML_TAGS.has(low))) { note(inf, `Structure has an element called ${code(id)}, so this styles that one (\`#${id}\`). To style every ${code(TAG_WORDS[low] || low)} element, write "style every ${n}".`); return '#' + id; }
+    if (!every && known && (TAG_WORDS[low] || HTML_TAGS.has(low))) { note(inf, `Structure has an element called ${code(known)}, so this styles that one (\`${idSel(known)}\`). To style every ${code(TAG_WORDS[low] || low)} element, write "style every ${n}".`); return idSel(known); }
     if (TAG_WORDS[low]) return TAG_WORDS[low];
-    if (shared.ids[id]) return '#' + id;
+    if (known) return idSel(known);
     if (shared.groups[id] || shared.cssGroups[id]) return '.' + id;
     if (HTML_TAGS.has(low)) return low;
     if (/^[a-z0-9]+(?:\s*,\s*[a-z0-9]+)+$/.test(low) && low.split(/\s*,\s*/).every(t => HTML_TAGS.has(t))) return low.split(/\s*,\s*/).join(', ');
     inf.warns.push(`Nothing on the page is called ${code(id)} yet. Add it in Structure, or write "group ${n}" to style a group.`);
+    if (shared.wanted && id) shared.wanted[id] = shared.wanted[id] || 'styling';   // Structure's Predictive Mode offers to add it
     return '#' + id;
+  }
+
+  /* Styling said the everyday way: "set "Welcome" colour to navy", "set the border of save to 2 dashed red",
+     "make the big heading bold", "give save a red border". The thing styled can be a name, a group, a kind of
+     element (the big heading, every button) or the text it shows, in quotes. */
+  const TARGET = String.raw`((?:(?:the|every|all)\s+)?(?:[a-z][\w -]*?\s*)?"(?:[^"\\]|\\.)*"|[^"]+?)`;
+  const STYLE_PROP = String.raw`text colou?r|background colou?r|colou?r|background|border|outline|(?:text |font )?size|font|(?:text |font )?weight|width|height|padding|space inside|margin|space around|rounded corners|corners|corner radius|shadow|line height|letter spacing|gap|opacity|transparency|(?:text )?alignment`;
+  const SET_PROP_OF = new RegExp(String.raw`^(?:set|change|make)\s+(?:the\s+)?(${STYLE_PROP})\s+of\s+${TARGET}\s+(?:to|as)\s+(.+)$`, 'i');
+  const SET_PROP = new RegExp(String.raw`^(?:set|change)\s+${TARGET}(?:'s)?\s+(${STYLE_PROP})\s+(?:to|as)\s+(.+)$`, 'i');
+  const GIVE = new RegExp(String.raw`^give\s+${TARGET}\s+(?:(?:a|an|some)\s+(.+)|(rounded corners(?:\s+\S+)?|shadow))$`, 'i');
+  const MAKE_LOOK = new RegExp(String.raw`^make\s+${TARGET}\s+(bold|italic|underlined|hidden|centred|centered|round|uppercase|capitals|#\S*|[a-z]+)$`, 'i');
+  /* "colour" and the value set to it, as the words cssProps knows: text colour navy, rounded corners 8 … */
+  function propPhrase(prop, value) {
+    const p = prop.toLowerCase().replace(/colour/g, 'color').replace(/\s+/g, ' '), v = value.trim();
+    if (/^(?:text )?color$/.test(p)) return `text colour ${v}`;
+    if (/^background/.test(p)) return `background ${v}`;
+    if (/size$/.test(p)) return `text size ${v}`;
+    if (/weight$/.test(p)) return `text weight ${v}`;
+    if (p === 'padding' || p === 'space inside') return `space inside ${v}`;
+    if (p === 'margin' || p === 'space around') return `space around ${v}`;
+    if (/corner/.test(p)) return `rounded corners ${v}`;
+    if (/alignment$/.test(p)) return `text aligned ${v}`;
+    if (p === 'transparency') return `${/%$/.test(v) ? v : v + '%'} see-through`;
+    if (p === 'opacity') { const pc = v.match(/^(\d+(?:\.\d+)?)%$/); return `opacity: ${pc ? +(pc[1] / 100).toFixed(2) : v}`; }
+    return `${p} ${v}`;   // border, outline, font, width, height, shadow, line height, letter spacing, gap
   }
 
   /* "h1, h2, h3" + ":hover" -> "h1:hover, h2:hover, h3:hover": each selector in a list gets it. */
@@ -983,7 +1079,7 @@
     const vars = [];
     let media = null, mediaInd = -1;
     // first pass: groups defined here
-    for (const raw of lines) { const g = raw.trim().match(/^(?:create|make) (?:a )?group\s+(.+?)\s*:/i); if (g) shared.cssGroups[toId(g[1])] = true; }
+    for (const raw of lines) { const g = raw.trim().match(/^(?:create|make|add) (?:a )?(?:new )?(?:colou?r |style )?group\s+(?:called\s+|named\s+)?(.+?)\s*(?::|$)/i); if (g) shared.cssGroups[toId(g[1])] = true; }
     lines.forEach((raw, i) => {
       const inf = info[i];
       if (!raw.trim()) return;
@@ -1019,10 +1115,11 @@
         inf.crossFile = 'structure';
         return;
       }
-      if ((m = s.match(/^(?:create|make)\s+(?:a\s+)?group\s+(.+?)\s*:\s*(.+)$/i))) {
+      if ((m = s.match(/^(?:create|make|add)\s+(?:a\s+)?(?:new\s+)?(?:colou?r\s+|style\s+)?group\s+(?:called\s+|named\s+)?(.+?)\s*(?::\s*(.*))?$/i))) {
         const sel = '.' + toId(m[1]);
         note(inf, `A group is a CSS class: ${code(sel)}. Put things in it with "${toId(m[1])} belongs to group …" or "in group …" in Structure.`);
-        rules.push({ sel, props: cssProps(m[2], inf), media, src: i });
+        if (!(m[2] || '').trim()) note(inf, 'Nothing in it yet: add styles after a colon, like "add group card: rounded corners, shadow".');
+        rules.push({ sel, props: (m[2] || '').trim() ? cssProps(m[2], inf) : [], media, src: i });
         return;
       }
       if ((m = s.match(/^when\s+(.+?)\s+is\s+(hovered|pointed at|clicked|focused with the keyboard|focused|selected|disabled|visited|empty)\s*:\s*(.+)$/i)) ||
@@ -1031,6 +1128,44 @@
         rules.push({ sel: withPseudo(selectorFor(m[1], shared, inf), pseudo), props: cssProps(m[3], inf), media, src: i });
         note(inf, `${code(pseudo)} applies these styles only ${m[2].toLowerCase() === 'hovered' || m[2].toLowerCase() === 'pointed at' ? 'while the mouse is over it' : m[2].toLowerCase() === 'has focus inside' ? 'while something inside it is focused' : 'while it is ' + m[2].toLowerCase()}.`);
         return;
+      }
+      // "set "Welcome" colour to navy", "set the border of save to 2 dashed red"
+      if ((m = s.match(SET_PROP_OF)) || (m = s.match(SET_PROP))) {
+        const [prop, target, value] = SET_PROP_OF.test(s) ? [m[1], m[2], m[3]] : [m[2], m[1], m[3]];
+        rules.push({ sel: selectorFor(target, shared, inf), props: cssProps(propPhrase(prop, value), inf), media, src: i });
+        return;
+      }
+      // "give save a red border", "give the big heading rounded corners"
+      if (!/:/.test(s) && (m = s.match(GIVE))) {
+        const phrase = (m[2] || m[3]).replace(/^(.+?)\s+(border|outline|shadow)$/i, '$2 $1').replace(/^(soft|big|strong)\s+shadow\s*$/i, '$1 shadow');
+        rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(phrase, inf), media, src: i });
+        return;
+      }
+      // "make the big heading bold", "make save navy"
+      if (!/:/.test(s) && (m = s.match(MAKE_LOOK)) && !/^(?:a|an|the|new)$/i.test(m[1].trim())) {
+        const w = m[2], word = /^(?:bold|italic|underlined|hidden|centred|centered|round|uppercase|capitals)$/i.test(w);
+        if (word || /^#/.test(w) || NAMED.has(w.toLowerCase()) || /^(?:light|dark)(?:grey|gray|blue|green|red)$/i.test(w)) {
+          rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(word ? w : `text colour ${w}`, inf), media, src: i });
+          return;
+        }
+      }
+      // "add a colour called main #4f7cff": a shared colour
+      if ((m = s.match(/^add\s+(?:a\s+)?(?:shared\s+|main\s+)?colou?r\s+(?:called\s+|named\s+)?([\w-]+)\s+(?:is\s+|as\s+|=\s*|of\s+)?(.+)$/i)) && !/^group$/i.test(m[1])) {
+        vars.push([`--${toId(m[1])}`, color(m[2], inf), i]);
+        note(inf, `A shared colour (a CSS variable). Use it anywhere as "the colour ${toId(m[1])}"; change it here to change it everywhere.`);
+        return;
+      }
+      // "add save to group primary", "add "Welcome" to group highlight": the same as "save belongs to group primary"
+      if ((m = s.match(new RegExp(String.raw`^add\s+${TARGET}\s+to\s+(?:the\s+)?group\s+([\w -]+)$`, 'i')))) {
+        const ids = idsByText(m[1], shared) || (shared.ids[toId(m[1])] ? [toId(m[1])] : null);
+        if (ids && ids.length) {
+          const g = toId(m[2]);
+          for (const id of ids) (shared.addGroups[id] = shared.addGroups[id] || []).push(g);
+          shared.cssGroups[g] = true;
+          note(inf, `Adds group ${code(g)} (a class) to ${code(ids[0])} in Structure, so the group's styles apply to it.`);
+          inf.crossFile = 'structure';
+          return;
+        }
       }
       // "add a border to card", "add rounded corners to group card": the same as "style card: border"
       if ((m = s.match(/^add\s+(?:a\s+|an\s+|some\s+)?(.+?)\s+to\s+(.+?)$/i)) && !/^(?:css|raw)\s*:/i.test(s)) {
@@ -1051,7 +1186,13 @@
         rules.push({ sel: selectorFor(m[1], shared, inf), props: cssProps(m[2], inf), media, src: i });
         return;
       }
-      inf.errs.push('I don\'t recognise this sentence. Styling sentences start like "style save: …", "create group card: …" or "on screens narrower than 600: …".');
+      // "style save:" with nothing after it yet: a place for its styles
+      if ((m = s.match(/^style\s+(.+?)\s*:?\s*$/i))) {
+        rules.push({ sel: selectorFor(m[1], shared, inf), props: [], media, src: i });
+        note(inf, `Nothing styled yet: add styles after the colon, like "style ${m[1]}: text colour navy".`);
+        return;
+      }
+      inf.errs.push('I don\'t recognise this sentence. Styling sentences start like "set save colour to navy", "style save: …", "give save a border", "add group card: …" or "on screens narrower than 600: …".');
     });
     if (vars.length) {
       push(':root {', vars[0][2]);
@@ -1196,16 +1337,145 @@
     }
   }
 
+  /* Exact JavaScript over several lines: is a template literal (`…`) still open at the end of this line? Gives
+     back what is open (templates, and ${ … } inside them), or null; open: the same, at the start of the line. */
+  function templateOpenAfter(line, open) {
+    const st = open ? [...open] : [];   // '`': a template's text; a number: braces open inside its ${ … }
+    let q = null;
+    for (let k = 0; k < line.length; k++) {
+      const c = line[k], top = st[st.length - 1];
+      if (q) { if (c === '\\') k++; else if (c === q) q = null; continue; }
+      if (top === '`') {
+        if (c === '\\') k++;
+        else if (c === '`') st.pop();
+        else if (c === '$' && line[k + 1] === '{') { st.push(0); k++; }
+        continue;
+      }
+      if (c === '"' || c === "'") q = c;
+      else if (c === '`') st.push('`');
+      else if (c === '/' && line[k + 1] === '/') break;
+      else if (typeof top === 'number') { if (c === '{') st[st.length - 1]++; else if (c === '}') { if (top === 0) st.pop(); else st[st.length - 1]--; } }
+    }
+    return st.includes('`') ? st : null;
+  }
+
+  /* s with quoted text and everything inside brackets hidden (the same length), so a phrase is only found at
+     the top level of a value. */
+  function topMask(s) {
+    const q = String(s).replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (m) => '\u0001'.repeat(m.length));
+    let out = '', depth = 0;
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i];
+      if ('([{⟦'.includes(c)) { out += depth ? '\u0001' : c; depth++; continue; }
+      if (')]}⟧'.includes(c)) { depth = Math.max(0, depth - 1); out += depth ? '\u0001' : c; continue; }
+      out += depth ? '\u0001' : c;
+    }
+    return out;
+  }
+  /* The first match of re in s at the top level: { at, end } (indexes into s), or null. */
+  const topFind = (s, re, from = 0) => { const m = re.exec(topMask(s).slice(from)); return m ? { at: from + m.index, end: from + m.index + m[0].length } : null; };
+  const JS_NAME = String.raw`[A-Za-z_$][\w$]*`, JS_PATH = String.raw`${JS_NAME}(?:\.${JS_NAME})*`;
+
+  /* Phrases that take a whole value, as Python's do: "the result of f with a, b", "a new Date", "a if c otherwise
+     b", "a list of x times 2 for each x in xs if x is more than 1", "x is done for every x in xs", "the first x in
+     xs where …", and "wait for" before any of them. In brackets they work inside a bigger value too (see
+     wholeGroups). Gives back the JavaScript, or null when s isn't one. */
+  function jsWhole(s, x, inf) {
+    s = String(s).trim();
+    let m, f;
+    const sub = (t, names = []) => {   // a part, with the little function's input as a name inside it
+      const added = names.filter(n => !x.vars.has(n));
+      added.forEach(n => x.vars.add(n));
+      try { return jsExpr(t, x, inf); } finally { added.forEach(n => x.vars.delete(n)); }
+    };
+    const body = (t, p) => { const v = sub(t, [p]); return /^\{/.test(v) ? `(${v})` : v; };   // (a record given back needs brackets)
+    const args = (t) => (t ? splitAnd(t).map(a => jsExpr(a, x, inf)).join(', ') : '');
+    if ((m = s.match(/^wait for\s+(.+)$/i))) { const w = jsWhole(m[1], x, inf); return w == null ? null : `await ${w}`; }
+    // "x, or y if that is nothing": x, unless it is null or undefined (??)
+    const tm = topMask(s), nothingAt = tm.search(/\s+if (?:that|it) is nothing$/i);
+    if (nothingAt > 0) {
+      const ors = [...tm.slice(0, nothingAt).matchAll(/,?\s+or\s+/gi)], or = ors[ors.length - 1];
+      if (or) {
+        note(inf, '`a ?? b` is a, unless a is null or undefined (nothing): then it is b.');
+        return `${jsExpr(s.slice(0, or.index), x, inf)} ?? ${jsExpr(s.slice(or.index + or[0].length, nothingAt), x, inf)}`;
+      }
+    }
+    // a list made from another, item by item: .map, and .filter for "if"
+    if ((m = s.match(/^a list of\s+/i)) && (f = topFind(s, /\s+for each\s+/i, m[0].length))) {
+      const e = s.slice(m[0].length, f.at), rest = s.slice(f.end), pm = rest.match(new RegExp(`^(${JS_NAME})\\s+in\\s+`, 'i'));
+      if (!pm || !e.trim()) return null;
+      const p = pm[1], tail = rest.slice(pm[0].length), c = topFind(tail, /\s+if\s+/i);
+      const list = jsExpr(c ? tail.slice(0, c.at) : tail, x, inf), cond = c ? body(tail.slice(c.end), p) : null;
+      const kept = cond ? `${list}.filter(${p} => ${cond})` : list;
+      note(inf, cond ? '`.filter` keeps the items the test is true for' + (e.trim() === p ? '.' : '; `.map` then makes a new list from each of them.') : '`.map` makes a new list, one value for each item.');
+      return e.trim() === p && cond ? kept : `${kept}.map(${p} => ${body(e, p)})`;
+    }
+    // a test of every item, or any item
+    if ((f = topFind(s, new RegExp(`\\s+for (every|any)\\s+(${JS_NAME})\\s+in\\s+`, 'i')))) {
+      const [, which, p] = s.slice(f.at, f.end).trim().match(new RegExp(`^for (every|any)\\s+(${JS_NAME})`, 'i'));
+      note(inf, /^every$/i.test(which) ? '`.every` is true when the test is true for every item.' : '`.some` is true when the test is true for at least one item.');
+      return `${jsExpr(s.slice(f.end), x, inf)}.${/^every$/i.test(which) ? 'every' : 'some'}(${p} => ${body(s.slice(0, f.at), p)})`;
+    }
+    if ((m = s.match(new RegExp(`^the first (${JS_NAME}) (?:in|of)\\s+`, 'i'))) && (f = topFind(s, /\s+where\s+/i, m[0].length))) {
+      note(inf, '`.find` gives back the first item the test is true for (`undefined` if there is none).');
+      return `${jsExpr(s.slice(m[0].length, f.at), x, inf)}.find(${m[1]} => ${body(s.slice(f.end), m[1])})`;
+    }
+    // "a if c otherwise b"
+    if ((f = topFind(s, /\s+if\s+/i))) {
+      const o = topFind(s, /\s+otherwise\s+/i, f.end);
+      if (o) {
+        note(inf, '`c ? a : b` is a if c is true, b otherwise.');
+        const was = x.cond; x.cond = true;
+        let c; try { c = jsExpr(s.slice(f.end, o.at), x, inf); } finally { x.cond = was; }
+        return `${c} ? ${jsExpr(s.slice(0, f.at), x, inf)} : ${jsExpr(s.slice(o.end), x, inf)}`;
+      }
+    }
+    if ((m = s.match(new RegExp(`^(?:the )?(?:result|answer) of (${JS_PATH})(?:\\s+with\\s+(.+))?$`, 'i')))) return `${jsExpr(m[1], x, inf)}(${args(m[2])})`;
+    if ((m = s.match(new RegExp(`^an? new (${JS_PATH})(?:\\s+with\\s+(.+))?$`, 'i'))) && !(/^[a-z]/.test(m[1]) && MAKE_NEW.test('make ' + s))) {   // ("a new button" is an element: make-new)
+      note(inf, `\`new\` makes a new ${code(m[1])} object.`);
+      return `new ${m[1]}(${args(m[2])})`;
+    }
+    return null;
+  }
+  /* Bracketed parts of a value that hold a whole-value phrase ("(the result of f with x) plus 1") become one
+     operand, ⟦n⟧, holding their JavaScript. q has its quoted text as ⟦n⟧ already. */
+  function wholeGroups(q, strs, x, inf) {
+    let out = '';
+    for (let i = 0; i < q.length; i++) {
+      if (q[i] === '(') {
+        let depth = 0, end = -1;
+        for (let k = i; k < q.length; k++) { if (q[k] === '(') depth++; else if (q[k] === ')' && --depth === 0) { end = k; break; } }
+        if (end > 0) {
+          const inner = q.slice(i + 1, end).replace(/⟦(\d+)⟧/g, (mm, n) => strs[+n]);
+          const js = /\s/.test(inner.trim()) ? jsWhole(inner, x, inf) : null;
+          // (a call needs no brackets of its own: f(x) + 1, new Date().getTime())
+          if (js != null) { strs.push(/^(?:the\s+)?(?:result|answer) of\s|^an? new\s/i.test(inner.trim()) ? js : `(${js})`); out += ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(q.slice(end + 1)) ? '' : ' '); i = end; continue; }
+        }
+      }
+      out += q[i];
+    }
+    return out;
+  }
+
   function jsExpr(src, x, inf) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return 'null'; }
+    const whole = jsWhole(s, x, inf);
+    if (whole != null) return whole;
     // text in quotes, and regular expressions like /  +/g (a / where a value starts), are kept exactly as written;
     // a .name or […] typed right after one stays attached to it: "abc".length
     const strs = [];
-    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^])\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^]|\bmatches)\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    q = wholeGroups(q, strs, x, inf);
+    // the keys of a record ({ equals: 1, is: 2 }) are names, never sentence words
+    q = q.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(?=\s*:(?!:))/g, (m, pre, k) => { strs.push(k); return `${pre}⟦${strs.length - 1}⟧`; });
     // An operand: quoted text, a number or a name (a page element's may have dashes), then any .names, calls and
     // indexes, with brackets inside brackets (see PAREN).
     const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|${nameSource(x)})(?:\.[\w$]+|${PAREN}|${SQUARE})*`;
+    // An operand, or a sum in brackets, but never a sentence word ("plus trimmed" is no name)
+    const OPX = String.raw`(?<![\w$.])(?!(?:plus|minus|times|divided|mod|and|or|not|is|if|otherwise|to|by|at)\b)(?:${PAREN}|${OPD})`;
+    const RX = (p) => new RegExp(p.replace(/OPX/g, () => OPX).replace(/OPD/g, () => OPD), 'gi');
+    const unwrap = (a) => (/^\(/.test(a) ? a.slice(1, -1).trim() : a);   // a bracketed sum, as a call's input
     // A phrase that starts with an operand ("x as text") never starts partway through one (after a .).
     const R = (p) => new RegExp(p.replace(/^\(OPD\)/, '(?<![\\w$.])(OPD)').replace(/OPD/g, () => OPD), 'gi');
     // Swaps a phrase. One that ends in an operand, like "length of x", first checks what follows it (see looseBrackets).
@@ -1225,8 +1495,19 @@
     const byId = (id) => { strs.push(`"${toId(id)}"`); return `document.getElementById(⟦${strs.length - 1}⟧)`; };
     // "the element matching "#sales tbody"", "every element matching ".card"": the page's elements by a CSS selector
     q = q.replace(/\b(every\s+)?element matching\s+⟦(\d+)⟧/gi, (m, every, n) => { note(inf, `${code(every ? 'querySelectorAll' : 'querySelector')} finds ${every ? 'every element' : 'the first element'} that the CSS selector ${code(strs[+n])} picks.`); return `document.querySelector${every ? 'All' : ''}(⟦${n}⟧)`; });
+    // "the element called "total"": an element by its id, as written (for one Structure doesn't name)
+    q = q.replace(/\belement called\s+⟦(\d+)⟧/gi, (m, n) => (/^["']/.test(strs[+n]) ? `document.getElementById(⟦${n}⟧)` : m));
+    // "a new "li" element": a new element of that tag, not on the page yet
+    q = q.replace(/\ban? new\s+⟦(\d+)⟧\s+element\b/gi, (m, n) => { if (!/^["']/.test(strs[+n])) return m; note(inf, `\`document.createElement\` makes a new ${code('<' + strOf(strs[+n]) + '>')} element; it isn't on the page until it is put somewhere.`); return `document.createElement(⟦${n}⟧)`; });
+    q = q.replace(/\bpage title\b/gi, 'document.title');
+    // the browser's memory, and the server's reply (both need the block to wait: see needsAsync)
+    q = q.replace(RX(String.raw`\btext saved in browser as (OPX)`), (m, k) => { note(inf, '`localStorage.getItem` gives back the text saved under that name in this browser, or `null` if there is none.'); return `localStorage.getItem(${unwrap(k)})`; });
+    q = q.replace(RX(String.raw`\breply from (OPX)`), (m, u) => { note(inf, '`fetch` asks the server, and `await` waits for its reply (a Response) without freezing the page.'); return `await fetch(${unwrap(u)})`; });
+    q = q.replace(RX(String.raw`\b(JSON|text) read from (OPX)`), (m, w, r) => { note(inf, `\`.${w === 'JSON' ? 'json' : 'text'}()\` reads the reply's body${w === 'JSON' ? ' as JSON, into values JavaScript can use' : ' as text'}; \`await\` waits for it.`); return `await ${r}.${w === 'JSON' ? 'json' : 'text'}()`; });
     q = q.replace(R(String.raw`\b(width|height) of ([\w-]+)`), (m, wh, id) => (x.shared.ids[toId(id)] ? `${byId(id)}.${wh.toLowerCase()}` : m));
-    q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `${byId(id)}.${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : m; });
+    // "text of x": a page element's text (what was typed, for a box); "value of x", "text of x" for a name holding one
+    q = q.replace(R(String.raw`\btext of ([\w-]+)`), (m, id) => { const t = x.shared.ids[toId(id)]; return t ? `${byId(id)}.${/^(input|textarea|select)$/.test(t.tag) ? 'value' : 'textContent'}` : holdsElement(id, x) ? `${id}.textContent` : m; });
+    q = q.replace(R(String.raw`\bvalue of (${JS_NAME})`), (m, id) => (!x.shared.ids[toId(id)] && holdsElement(id, x) ? `${id}.value` : m));
     // what was picked in a file picker
     q = q.replace(R(String.raw`\b(?:(first )?file|files) (?:in|of|from|picked in) ([\w-]+)`), (m, one, id) => ((x.shared.ids[toId(id)] || {}).type === 'file' ? `${byId(id)}.files${m.startsWith('files') ? '' : '[0]'}` : m));
     // items, innermost first: "item c of item r of grid" is grid[r][c]
@@ -1244,10 +1525,16 @@
     if (!x.vars.has('item') && /\bitem\s+\S.*?\s+of\s/i.test(q.replace(/⟦\d+⟧/g, ''))) inf.errs.push('The position in "item … of …" has to be one value: a number, a name, or a sum in brackets, like item (k plus 1) of stars.');
     swap(String.raw`\b(?:length|size) of (OPD)`, '$1.length');
     swap(String.raw`\bhow many (?:items )?in (OPD)`, '$1.length');
+    // "a random number below 1" (Math.random()), "a random whole number below 6" (0 to 5)
+    q = q.replace(RX(String.raw`\b(?:an? )?random whole number below (OPX)`), (m, n) => { note(inf, '`Math.random()` gives a decimal from 0 up to (not including) 1; times the number and rounded down, it is a whole number from 0 up to one less than it.'); return `Math.floor(Math.random() * ${n})`; })
+      .replace(/\b(?:an? )?random number below 1\b/gi, 'Math.random()');
+    // the largest and smallest number in a list
+    q = q.replace(RX(String.raw`\b(largest|biggest|smallest) number in (OPX)`), (m, w, l) => `Math.${/^smallest$/i.test(w) ? 'min' : 'max'}(...${l})`);
     q = randomRange(q, OPD, strs, inf, s);
     swap(String.raw`\brandom item (?:from|of|in) (OPD)`, '$1[Math.floor(Math.random() * $1.length)]');
     // words that follow their value: right after a sum they could mean the last value or the whole sum
-    for (const p of [String.raw`(OPD) as (?:a )?number\b`, String.raw`(OPD) as text\b`, String.raw`(OPD) in (?:capitals|uppercase)\b`, String.raw`(OPD) in lowercase\b`]) {
+    for (const p of [String.raw`(OPD) as (?:a )?number\b`, String.raw`(OPD) as text\b`, String.raw`(OPD) in (?:capitals|uppercase)\b`, String.raw`(OPD) in lowercase\b`,
+      String.raw`(OPD) read as JSON\b`, String.raw`(OPD) as JSON text\b`, String.raw`(OPD) joined by\b`, String.raw`(OPD) to (?:OPD) decimal places\b`, String.raw`(OPD) trimmed\b`, String.raw`(OPD) split at\b`, String.raw`(OPD) rounded(?: up| down)?\b`]) {
       for (const m of q.matchAll(R(p))) {
         const before = q.slice(0, m.index);
         if (!/(?:\b(?:plus|minus|times|divided by|mod)|[-+*/%])\s*$/i.test(before)) continue;
@@ -1257,12 +1544,21 @@
       }
     }
     q = q.replace(R(String.raw`(OPD) as (?:a )?number\b`), 'Number($1)').replace(R(String.raw`(OPD) as text\b`), 'String($1)');
-    q = q.replace(R(String.raw`(OPD) in (?:capitals|uppercase)\b`), '$1.toUpperCase()').replace(R(String.raw`(OPD) in lowercase\b`), '$1.toLowerCase()');
+    q = q.replace(RX(String.raw`(OPX) in (?:capitals|uppercase)\b`), '$1.toUpperCase()').replace(RX(String.raw`(OPX) in lowercase\b`), '$1.toLowerCase()');
+    // text and lists: "s trimmed", "s split at ",", "xs joined by ", "", "n to 2 decimal places", JSON
+    q = q.replace(RX(String.raw`(OPX) trimmed\b`), '$1.trim()').replace(RX(String.raw`(OPX) split at (OPX)`), (m, a, b) => `${a}.split(${unwrap(b)})`);
+    q = q.replace(RX(String.raw`(OPX) joined by (OPX)`), (m, a, b) => { note(inf, '`.join` puts the items together as one text, with the separator between them.'); return `${a}.join(${unwrap(b)})`; });
+    q = q.replace(RX(String.raw`(OPX) to (OPX) decimal places\b`), (m, a, n) => { note(inf, '`.toFixed` gives the number as text, rounded to that many decimal places.'); return `${a}.toFixed(${unwrap(n)})`; });
+    q = q.replace(RX(String.raw`(OPX) read as JSON\b`), (m, a) => { note(inf, '`JSON.parse` turns JSON text back into values.'); return `JSON.parse(${unwrap(a)})`; })
+      .replace(RX(String.raw`(OPX) as JSON text\b`), (m, a) => { note(inf, '`JSON.stringify` turns a value into JSON text.'); return `JSON.stringify(${unwrap(a)})`; });
+    q = q.replace(RX(String.raw`(OPX) rounded( up| down)?\b`), (m, a, way) => `Math.${!way ? 'round' : /up/.test(way) ? 'ceil' : 'floor'}(${unwrap(a)})`);
     // a checkbox, and an element's groups
     q = q.replace(R(String.raw`(OPD) is not (?:ticked|checked)\b`), '!$1.checked').replace(R(String.raw`(OPD) is (?:ticked|checked)\b`), (m, a) => { note(inf, '`.checked` is true while a checkbox is ticked.'); return `${a}.checked`; });
     q = q.replace(R(String.raw`(OPD) is not in group ([\w-]+)`), (m, a, g) => `!${a}.classList.contains(${quoted(toId(g))})`)
       .replace(R(String.raw`(OPD) is in group ([\w-]+)`), (m, a, g) => { note(inf, '`classList.contains` is true when the element is in that group (has that class).'); return `${a}.classList.contains(${quoted(toId(g))})`; });
     swap(String.raw`(OPD) contains (OPD)`, '$1.includes($2)');
+    // "ua matches /win/i": a regular expression's test
+    q = q.replace(R(String.raw`(OPD) matches (⟦\d+⟧)`), (m, a, re) => (/^\//.test(strs[+re.slice(1, -1)]) ? `${re}.test(${a})` : m));
     swap(String.raw`(OPD) is not (?:in|one of) (OPD)`, '!$2.includes($1)');
     swap(String.raw`(OPD) is (?:in|one of) (OPD)`, '$2.includes($1)');
     // "is an empty list": a new [] is never === another list, so it's about how many items there are
@@ -1327,10 +1623,17 @@
   function elementRef(name, x, inf) {
     const raw = String(name).trim(), id = toId(raw);
     if (x.made.has(raw)) return { js: raw, id: raw, tag: x.made.get(raw), made: true };
-    const el = x.shared.ids[id];
-    if (el) return { js: `document.getElementById("${id}")`, id, tag: el.tag };
+    // its name (in any capitals: quote is "Quote"), or the text it shows, in quotes
+    const real = x.shared.ids[id] ? id : ((idsByText(raw, x.shared) || [])[0] || findId(x.shared, raw));
+    const el = real && x.shared.ids[real];
+    if (el) return { js: `document.getElementById(${JSON.stringify(real)})`, id: real, tag: el.tag };
+    // "the element called "add"", "the element matching ".go"": found on the page as the code runs
+    if (/^(?:the\s+)?element (?:called|matching)\s+(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i.test(raw)) return { js: jsExpr(raw, x, inf), id: raw, tag: null };
+    if (/^the (?:page|document)$/i.test(raw)) return { js: 'document', id: 'the page', tag: null };
+    if (/^the window$/i.test(raw)) return { js: 'window', id: 'the window', tag: null };
     const v = holdsElement(raw, x);
     if (v) return { js: v[2] === raw ? raw : jsExpr(raw, x, inf), id: raw, tag: null };
+    if (x.shared.wanted && id) x.shared.wanted[id] = x.shared.wanted[id] || 'mechanics';   // Structure's Predictive Mode offers to add it
     inf.errs.push(`Nothing in Structure is called ${code(id)}. Add it there first, e.g. "add a button called ${id} saying "…"", or make it in Mechanics: "make a new button saying "…" in … and store in ${/^[A-Za-z_$][\w$]*$/.test(raw) ? raw : 'b'}".`);
     return { js: `document.getElementById("${id}")`, id, tag: null };
   }
@@ -1367,6 +1670,11 @@
       if ((m = s.match(/^when\s+.+?,?\s+with the event as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
       if ((m = s.match(/^load (?:the |a )?(?:picture|image)\s+.+?\s+(?:as|called)\s+([A-Za-z_$][\w$]*)$/i))) { x.vars.add(m[1]); x.pictures = (x.pictures || new Set()).add(m[1]); }
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }   // (greeting = "hi": the name is greeting)
+      if ((m = s.match(/^when (?:a )?new\s+[A-Za-z_$][\w$]*\s+is (?:made|created)\s+(?:with|using)\s+(.+)$/i))) m[1].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, '')));
+      if ((m = s.match(/^define (?:a )?class\s+([A-Za-z_$][\w$]*)/i))) x.vars.add(m[1]);
+      if ((m = s.match(/^(?:constant|set)\s+([A-Za-z_$][\w$]*)\s+(?:is|to)\s+a tool(?:\s+using\s+(.+?))?(?:\s+giving back\s.+)?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }
+      if ((m = s.match(/^do this for each\s+([A-Za-z_$][\w$]*)\s+in\s+.+?(?:,?\s+counting with\s+([A-Za-z_$][\w$]*))?$/i))) { x.vars.add(m[1]); if (m[2]) x.vars.add(m[2]); }
+      if ((m = s.match(/^bring in\s+(.+?)\s+from\s+["']/i))) m[1].split(/\s*,\s*|\s+and\s+/).forEach(n => x.vars.add(n.trim()));
       if ((m = s.match(MAKE_NEW)) && (m = m[2].match(/\band store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) x.made.set(m[1], MADE[s.match(MAKE_NEW)[1].toLowerCase().replace(/\s+/g, ' ')]);
       if ((m = s.match(/^(every|after)\s+.+?\s+seconds?\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) { x.vars.add(m[2]); x.timers.set(m[2], /^every$/i.test(m[1]) ? 'Interval' : 'Timeout'); }
       if ((m = s.match(/^(?:if|when) (?:it|that|this|anything|something) fails\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) x.vars.add(m[1]);
@@ -1431,11 +1739,11 @@
         const jInd = lines[j].match(/^ */)[0].length;
         if (jInd <= baseInd) break;
         if (inner != null && jInd > inner) continue;
-        inner = /^\s*(?:when |every |after |define )/i.test(lines[j]) ? jInd : null;
+        inner = /^\s*(?:when |every |after |define |do this for each |(?:constant|set) [A-Za-z_$][\w$]* (?:is|to) a tool\b)/i.test(lines[j]) ? jInd : null;
         if (inner != null) continue;
         if (/\b(fetch|send .+ to)\b/i.test(lines[j])) return true;
         if (/^\s*(?:note|comment)\s*:/i.test(lines[j])) continue;
-        if (/\bwait for\b/i.test(lines[j].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'))) return true;
+        if (/\bwait for\b|\breply from\b|\b(?:JSON|text) read from\b/i.test(lines[j].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'))) return true;
         const r = lines[j].trim().replace(FILLER, '').match(/^run\s+([A-Za-z_$][\w$]*)(?=\s|$)/i);
         if (r && x.fns.has(r[1]) && !/\swithout waiting(?:\s|$)/i.test(lines[j]) && fnIsAsync(r[1], seen)) return true;
         // exact code that waits (await) needs it too, unless it makes a function of its own there
@@ -1459,6 +1767,10 @@
       return idx >= 0 && needsAsync(idx, new Set([...seen, name]));
     };
     const insideFn = () => stack.some(b => b.kind === 'fn');
+    // a case of "depending on" ends with break, unless its last step leaves anyway or it goes on into the next case
+    const closeOf = (b) => [].concat(typeof b.close === 'function' ? b.close() : b.close);
+    const caseEnd = (b) => () => { const last = out[out.length - 1]; return b.fall || (last !== b.head && /^\s*(?:return\b|break;|continue;|throw\b)/.test(last.text)) ? [] : ['  break;']; };
+    let inTemplate = null;   // (exact code: a template literal that carries on to the next line, see templateOpenAfter)
     const FAILS = /^(?:if|when) (?:it|that|this|anything|something) fails\b/i, FINALLY = /^(?:finally|in any case|either way|whatever happens)[.:]?$/i;
     lines.forEach((raw, i) => {
       const inf = info[i];
@@ -1472,7 +1784,7 @@
         if (nextIsElse) { stack.push(b); for (const n of scopes[scopes.length - 1].keys()) x.gone.add(n); scopes[scopes.length - 1] = new Map(); break; }
         for (const n of scopes.pop().keys()) x.gone.add(n);
         while (out.length && out[out.length - 1].text === '') out.pop();
-        for (const c of [].concat(b.close)) push('  '.repeat(stack.length) + c, b.src);
+        for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src);
       }
       const pad = '  '.repeat(stack.length);
       const open = (head, close, kind, extra = {}) => { push(pad + head, i); stack.push({ ind, close, kind, src: i, head: out[out.length - 1], ...extra }); scopes.push(new Map()); };
@@ -1480,10 +1792,14 @@
       let m;
       if ((m = raw.trim().match(/^(?:js|javascript|raw)\s*:\s?(.*)$/i))) {
         const d = m[1].match(/^(let|const|var)\s+([A-Za-z_$][\w$]*)/);
-        if (d) declare(d[2], d[1] === 'const' ? 'const' : 'let');   // so a later "set …" changes it instead of making it again
+        if (d && !inTemplate) declare(d[2], d[1] === 'const' ? 'const' : 'let');   // so a later "set …" changes it instead of making it again
         note(inf, 'Raw JavaScript: copied exactly as written.');
-        return say(m[1]);
+        // a line inside a template literal (`…` over several lines) is its text: copied without the block's indent
+        const was = inTemplate;
+        inTemplate = templateOpenAfter(m[1], inTemplate);
+        return was ? push(m[1], i) : say(m[1]);
       }
+      inTemplate = null;
       // a description: what a tool is for, written as a JSDoc comment just above its function
       if ((m = raw.trim().match(/^description\s*:\s?(.*)$/i))) {
         const b = stack[stack.length - 1];
@@ -1537,17 +1853,39 @@
         note(inf, up ? `\`pointerup\` on ${code(el.id)}: a finger lifting, or a mouse button let go, over it. "tap x" and "tap y" are measured from its top left corner.` : `\`pointerdown\` on ${code(el.id)}: a finger or a mouse. "tap x" and "tap y" are measured from its top left corner.`);
         return open(handler(el.js, up ? 'pointerup' : 'pointerdown'), '});', 'fn');
       }
-      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
-        const ev = { clicked: 'click', pressed: 'click', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit' }[m[2].toLowerCase()];
+      // "when everything has loaded": the window's load, after pictures and the rest (the page's own, above, comes first)
+      if (/^when the window has loaded$/i.test(s)) {
+        note(inf, 'The window\'s `load` happens once everything is in: pictures, styles and the rest. "when the page has loaded" is sooner, as soon as the page itself is read.');
+        return open(handler('window', 'load', '()'), '});', 'fn');
+      }
+      // a key in one element (a box): "when a key is pressed in search, with the event as e"
+      if ((m = M(/^when (?:a|any) key is (pressed|released|let go)\s+(?:in|on)\s+(.+?)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
+        const el = elementRef(m[2], x, inf), ev = /^pressed$/i.test(m[1]) ? 'keydown' : 'keyup';
+        note(inf, `\`${ev}\` on ${code(el.id)}: ${m[3] || 'event'}.key is the key ("Enter", "a", "ArrowLeft").`);
+        open(handler(el.js, ev, m[3] ? `(${m[3]})` : usesEvent(i) ? '(event)' : '()'), '});', 'fn');
+        if (m[3]) declare(m[3]);
+        return;
+      }
+      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|double-clicked|changed|typed in|hovered|pointed at|sent|submitted|focused|unfocused|scrolled|resized)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
+        const ev = { clicked: 'click', pressed: 'click', 'double-clicked': 'dblclick', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit', focused: 'focus', unfocused: 'blur', scrolled: 'scroll', resized: 'resize' }[m[2].toLowerCase()];
         const el = elementRef(m[1], x, inf);
         const isForm = ev === 'submit', evName = m[3] || 'event';
-        note(inf, `${code('addEventListener("' + ev + '", …)')} runs the indented lines every time ${code(el.id)} ${ev === 'click' ? 'is clicked' : ev === 'submit' ? 'is sent' : 'changes'}.` + (isForm ? ' `preventDefault()` stops the browser from reloading the page when the form is sent.' : '') + (el.made ? ` ${code(el.id)} is an element made in Mechanics, so the listener is added to it here, as it is made.` : ''));
+        note(inf, `${code('addEventListener("' + ev + '", …)')} runs the indented lines every time ${code(el.id)} ${ev === 'click' ? 'is clicked' : ev === 'submit' ? 'is sent' : /^(?:change|input)$/.test(ev) ? 'changes' : 'is ' + m[2].toLowerCase()}.` + (isForm ? ' `preventDefault()` stops the browser from reloading the page when the form is sent.' : '') + (el.made ? ` ${code(el.id)} is an element made in Mechanics, so the listener is added to it here, as it is made.` : ''));
         if (m[3]) note(inf, `The event (what happened: ${code(m[3] + '.target')} is the element, for one) is called ${code(m[3])} in the indented lines.`);
         open(handler(el.js, ev, m[3] ? `(${m[3]})` : isForm || usesEvent(i) ? '(event)' : '()'), '});', 'fn');
         if (m[3]) declare(m[3]);
         if (isForm) push('  '.repeat(stack.length) + `${evName}.preventDefault();`, i);
         return;
       }
+      // a script's steps wrapped so its names stay its own, run straight away: (function () { … })();
+      if ((m = M(/^run this now,?(?:\s+with\s+([A-Za-z_$][\w$]*)\s+set to\s+(.+?),?)?\s+keeping its names private$/i))) {
+        note(inf, 'A function run as soon as it is made: the names made inside it don\'t clash with other scripts\' names.' + (m[1] ? ` Inside, ${code(m[1])} is the value given.` : ''));
+        const given = m[1] ? E(m[2], inf) : '';
+        open(`(function (${m[1] || ''}) {`, `})(${given});`, 'fn');
+        if (m[1]) declare(m[1]);
+        return;
+      }
+      if (/^use (?:JavaScript's )?strict rules$/i.test(s)) { note(inf, '`"use strict"` makes JavaScript stop with an error on some easy mistakes (like a name used before it is made).'); return say('"use strict";'); }
       if (/^every frame$/i.test(s)) {
         note(inf, '`requestAnimationFrame` runs the indented lines just before the screen is redrawn, usually 60 times a second, and asks for the next frame at the end.');
         return open('requestAnimationFrame(function frame() {', ['  requestAnimationFrame(frame);', '});'], 'fn');
@@ -1584,17 +1922,36 @@
         return say(`clear${kind || 'Interval'}(${m[1]});`);
       }
       // --- the page
-      if ((m = M(/^get the (?:text|value) (?:of|in|from)\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
-        const el = elementRef(m[1], x, inf);
-        const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
+      // (a page element's tag picks .value or .textContent; for one found as the code runs, the word does)
+      const textProp = (el, word) => (el.tag ? (/^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent') : /^value$/i.test(word) ? 'value' : 'textContent');
+      if ((m = M(/^get the (text|value) (?:of|in|from)\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
+        const el = elementRef(m[2], x, inf);
+        const prop = textProp(el, m[1]);
         note(inf, prop === 'value' ? 'Text boxes keep what was typed in `.value`.' : '`.textContent` is the text shown inside the element.');
-        return say(`${keyword(m[2], inf)}${m[2]} = ${el.js}.${prop};`);
+        return say(`${keyword(m[3], inf)}${m[3]} = ${el.js}.${prop};`);
       }
-      if ((m = M(/^set the (?:text|value) of\s+(.+?)\s+to\s+(.+)$/i))) {
+      if ((m = M(/^set the (text|value) of\s+(.+?)\s+to\s+(.+)$/i))) {
+        const el = elementRef(m[2], x, inf);
+        const prop = textProp(el, m[1]);
+        note(inf, prop === 'value' ? '`.value` is what a box holds: what was typed, or picked.' : '`textContent` sets plain text safely: anything typed by users is shown as text, never run as code.');
+        return say(`${el.js}.${prop} = ${E(m[3], inf)};`);
+      }
+      if ((m = M(/^set the HTML (?:of|in|inside)\s+(.+?)\s+to\s+(.+)$/i))) {
         const el = elementRef(m[1], x, inf);
-        const prop = /^(input|textarea|select)$/.test(el.tag) ? 'value' : 'textContent';
-        note(inf, '`textContent` sets plain text safely: anything typed by users is shown as text, never run as code.');
-        return say(`${el.js}.${prop} = ${E(m[2], inf)};`);
+        note(inf, '`innerHTML` replaces what is inside the element with this HTML. Only use it with HTML you wrote: text typed by users could run as code.');
+        return say(`${el.js}.innerHTML = ${E(m[2], inf)};`);
+      }
+      if ((m = M(/^set the groups of\s+(.+?)\s+to\s+(.+)$/i))) {
+        const el = elementRef(m[1], x, inf);
+        note(inf, '`className` is all of the element\'s groups (classes) as one text, separated by spaces; this replaces them.');
+        return say(`${el.js}.className = ${E(m[2], inf)};`);
+      }
+      if ((m = M(/^set the page(?:'s)? title to\s+(.+)$/i))) { note(inf, '`document.title` is the page title, shown on the browser tab.'); return say(`document.title = ${E(m[1], inf)};`); }
+      if ((m = M(/^remove\s+(.+?)\s+from the page$/i))) { const el = elementRef(m[1], x, inf); note(inf, '`remove()` takes the element off the page.'); return say(`${el.js}.remove();`); }
+      if ((m = M(/^put\s+(.+?)\s+at the end of\s+(.+)$/i))) {
+        const el = elementRef(m[2], x, inf), what = elementRef(m[1], x, inf);
+        note(inf, `\`appendChild\` puts ${code(what.id)} inside ${code(el.id)}, after everything already there (moving it, if it was on the page).`);
+        return say(`${el.js}.appendChild(${what.js});`);
       }
       if ((m = M(MAKE_NEW)) && !(/^(?:numbered )?list$/i.test(m[1]) && /^\s+(?:called\s+)?[A-Za-z_$][\w$]*(?:\s+with\s.+)?$/i.test(m[2]))) {   // ("make a new list called scores" is a list of values)
         const kind = m[1].toLowerCase().replace(/\s+/g, ' '), tag = MADE[kind];
@@ -1727,7 +2084,9 @@
       if ((m = M(/^wait for\s+(.+?)(?:\s+and store (?:it |the result |the answer )?in\s+([A-Za-z_$][\w$]*))?$/i))) {
         if (!insideFn()) inf.errs.push('"wait for" only works inside a block that runs later: "when …", "every …" or "define …".');
         note(inf, '`await` waits for something that finishes later (a promise), like copying, playing a sound or asking a server, without freezing the page. If it can fail, put it under "try", with "if it fails" after.');
-        const v = `await ${E(m[1], inf)}`;
+        // "wait for navigator.clipboard.writeText with text": a call, said the way "run" says one
+        const e = E(new RegExp(`^${JS_PATH}\\s+with\\s+\\S`, 'i').test(m[1]) ? 'the result of ' + m[1] : m[1], inf);
+        const v = /^await\s/.test(e) ? e : `await ${e}`;
         return say(m[2] ? `${replyKeyword(m[2])}${m[2]} = ${v};` : v + ';');
       }
       if (/^try$/i.test(s)) {
@@ -1755,6 +2114,60 @@
         note(inf, '`throw` stops with an error. Whoever ran this can catch it with "try" and "if it fails".');
         return say(`throw new Error(${E(m[1], inf)});`);
       }
+      // --- "depending on x", with "when it is 1" (or "1 or 2") and "otherwise" under it: the same words as C++
+      const top = stack[stack.length - 1];
+      if ((m = M(/^depending on\s+(.+)$/i))) {
+        note(inf, '`switch` runs the case whose value matches (`===`). Each case ends with `break;`, so only its own steps run.');
+        return open(`switch (${E(m[1], inf)}) {`, '}', 'switch');
+      }
+      const inSwitch = top && top.kind === 'switch';
+      if ((m = M(/^when it(?:'s|\s+is)\s+(.+)$/i)) || (inSwitch && /^(?:otherwise|else)$/i.test(s))) {
+        if (!inSwitch) { inf.errs.push('"when it is …" goes right under "depending on …", one step further in.'); return say(`// ??? ${s}`); }
+        if (!m && top.hasDefault) inf.errs.push('There is already an "otherwise" here. A "depending on" has only one.');
+        if (!m) top.hasDefault = true;
+        for (const h of m ? outsideQuotes(m[1], (t) => t.replace(/\s+or\s+/gi, '\u0002')).split('\u0002').map(v => `case ${E(v, inf)}:`) : ['default:']) say(h);
+        const b = { ind, kind: 'case', src: i, head: out[out.length - 1] };
+        b.close = caseEnd(b);
+        stack.push(b); scopes.push(new Map());
+        return;
+      }
+      if (/^(?:go on|carry on) into the next case$/i.test(s)) {
+        if (!top || top.kind !== 'case') { inf.errs.push('"go on into the next case" goes last in a case ("when it is …").'); return; }
+        top.fall = true;
+        note(inf, 'No `break;` at the end of this case, so JavaScript carries on with the steps of the next case.');
+        return;
+      }
+      if (inSwitch) { inf.errs.push('Under "depending on …", each step goes in a case: "when it is …" or "otherwise".'); return say(`// ??? ${s}`); }
+      if ((m = M(/^do this,? then repeat (?:while|as long as)\s+(.+)$/i))) {
+        note(inf, '`do … while` runs the steps once, then again for as long as the test is true.');
+        return open('do {', `} while (${E(m[1], inf, true)});`, 'loop');
+      }
+      // --- classes: "define class Store", with "when a new Store is made with key" and "define load" inside
+      if ((m = M(/^define (?:a )?class\s+([A-Za-z_$][\w$]*)(?:\s+based on\s+([A-Za-z_$][\w$.]*))?$/i))) {
+        note(inf, `A class is a blueprint for objects: each one made from it ("a new ${m[1]}") keeps its own values, \`this.…\`, and can use the tools defined inside it.` + (m[2] ? ` It builds on ${code(m[2])} (\`extends\`).` : ''));
+        declare(m[1]);
+        return open(`class ${m[1]}${m[2] ? ' extends ' + m[2] : ''} {`, '}', 'class', { cls: m[1] });
+      }
+      const inClass = top && top.kind === 'class';
+      if ((m = M(/^when (?:a )?new\s+([A-Za-z_$][\w$]*)\s+is (?:made|created)(?:\s+(?:with|using)\s+(.+))?$/i))) {
+        if (!inClass) inf.errs.push(`"when a new ${m[1]} is made" sets up each new object of a class, so it goes right inside "define class ${m[1]}".`);
+        else if (m[1] !== top.cls) inf.errs.push(`This is inside the class ${code(top.cls)}, so it's "when a new ${top.cls} is made".`);
+        const ps = m[2] ? splitItems(m[2]) : [];
+        note(inf, '`constructor` runs each time a new object is made, and sets up its values (`this.…`).');
+        open(`constructor(${ps.join(', ')}) {`, '}', 'fn', { def: true });
+        for (const p of ps) declare(p.replace(/\s*=.*$/, ''));
+        return;
+      }
+      if (inClass && !/^define\s/i.test(s)) { inf.errs.push('Inside "define class", each part is "when a new … is made" or "define …" (a tool of its own).'); return say(`// ??? ${s}`); }
+      // --- other files' tools: "bring in fetchSales from "./api.js""
+      if ((m = M(/^bring in\s+(.+?)\s+from\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i))) {
+        const names = splitAnd(m[1]).map(n => n.trim());
+        if (names.some(n => !/^[A-Za-z_$][\w$]*$/.test(n))) inf.errs.push('Name each thing to bring in, like: bring in fetchSales and saveSales from "./api.js".');
+        if (stack.length) inf.errs.push('"bring in" goes at the left edge, near the top.');
+        note(inf, '`import` brings in tools another JavaScript file shares (with `export`). The page has to load this file as a module.');
+        names.forEach(n => declare(n, 'const'));
+        return say(`import { ${names.join(', ')} } from ${m[2]};`);
+      }
       // --- logic (same sentences as Python, JavaScript output)
       if ((m = M(/^(?:otherwise if|else if)\s+(.+)$/i))) { push('  '.repeat(stack.length - 1) + `} else if (${E(m[1], inf, true)}) {`, i); return; }
       if (/^(?:otherwise|else)$/i.test(s)) { push('  '.repeat(stack.length - 1) + '} else {', i); return; }
@@ -1772,20 +2185,53 @@
         return;
       }
       if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${E(m[1], inf, true)}) {`, '}', 'loop');
+      // "do this for each todo in todos[, counting with i]": .forEach, a little tool run for each item
+      if ((m = M(/^do this for each\s+([A-Za-z_$][\w$]*)\s+in\s+(.+?)(?:,?\s+counting with\s+([A-Za-z_$][\w$]*))?$/i))) {
+        note(inf, '`.forEach` runs the indented lines once for each item' + (m[3] ? `, with ${code(m[3])} counting from 0.` : '.') + ' It is a little tool of its own: "give back" ends this round, and "stop the loop" doesn\'t work here.');
+        open(`${E(m[2], inf)}.forEach(${needsAsync(i) ? 'async ' : ''}(${m[1]}${m[3] ? ', ' + m[3] : ''}) => {`, '});', 'fn');
+        declare(m[1]); if (m[3]) declare(m[3]);
+        return;
+      }
+      if ((m = M(/^sort\s+(.+?)\s+(from (?:smallest|lowest) to (?:biggest|largest|highest)|from (?:biggest|largest|highest) to (?:smallest|lowest)|as text)$/i))) {
+        note(inf, /as text/i.test(m[2]) ? '`.sort()` puts the items in order as text (so 10 comes before 9), in the list itself.' : '`.sort` with `a - b` puts numbers in order, in the list itself.');
+        return say(`${E(m[1], inf)}.sort(${/as text/i.test(m[2]) ? '' : /^from (?:smallest|lowest)/i.test(m[2]) ? '(a, b) => a - b' : '(a, b) => b - a'});`);
+      }
+      if ((m = M(/^reverse\s+(.+)$/i))) { note(inf, '`.reverse()` turns the list round, in the list itself.'); return say(`${E(m[1], inf)}.reverse();`); }
+      // "constant double is a tool using n giving back n times 2", or with its steps indented under it: an arrow function
+      if ((m = M(/^(constant|set)\s+([A-Za-z_$][\w$]*)\s+(?:is|to)\s+a tool(?:\s+using\s+(.+?))?(?:\s+giving back\s+(.+))?$/i)) && !inClass) {
+        const constant = /^constant$/i.test(m[1]), ps = m[3] ? splitItems(m[3]) : [];
+        const kw = constant ? (scopes[scopes.length - 1].has(m[2]) ? (inf.errs.push(`${code(m[2])} already exists here, so it can't be made again.`), '') : (declare(m[2], 'const'), 'const ')) : keyword(m[2], inf);
+        note(inf, '`=>` makes a little tool (an arrow function), kept under this name; "run ' + m[2] + '" runs it.');
+        if (m[4] != null) {
+          const added = ps.map(p => p.replace(/\s*=.*$/, '')).filter(p => !x.vars.has(p));
+          added.forEach(p => x.vars.add(p));
+          let v; try { v = E(m[4], inf); } finally { added.forEach(p => x.vars.delete(p)); }
+          return say(`${kw}${m[2]} = ${/\bawait\b/.test(v) ? 'async ' : ''}(${ps.join(', ')}) => ${/^\{/.test(v) ? `(${v})` : v};`);
+        }
+        open(`${kw}${m[2]} = ${needsAsync(i) ? 'async ' : ''}(${ps.join(', ')}) => {`, '};', 'fn', { def: true });
+        for (const p of ps) declare(p.replace(/\s*=.*$/, ''));
+        return;
+      }
       if ((m = M(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) {
         const ps = m[2] ? splitItems(m[2]) : [];
-        note(inf, '`function` makes a reusable tool.');
-        open(`${needsAsync(i) ? 'async ' : ''}function ${m[1]}(${ps.join(', ')}) {`, '}', 'fn', { def: true });
+        note(inf, inClass ? `A tool of every ${top.cls} object (a method): inside it, \`this\` is the object it was used on.` : '`function` makes a reusable tool.');
+        open(`${needsAsync(i) ? 'async ' : ''}${inClass ? '' : 'function '}${m[1]}(${ps.join(', ')}) {`, '}', 'fn', { def: true });
         for (const p of ps) declare(p.replace(/\s*=.*$/, ''));   // its inputs are names inside it already
         return;
       }
       if ((m = M(/^(?:give back|return)\b\s*(.*)$/i))) {
         // "give back total and count": two values, or a yes/no test that both are true?
         const parts = m[1] ? splitAnd(m[1]) : [];
-        if (parts.length > 1 && !/,/.test(outsideQuotes(m[1], t => t))) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, give back a list: give back [${parts.join(', ')}].`);
+        // (one whole value, like "the result of f with a and b" or "a if b and c otherwise d", is one value)
+        const oneValue = /^(?:the\s+)?(?:result|answer) of\s|^an? new\s|^a list of\s|^the first\s/i.test(m[1].trim()) || (topFind(m[1], /\s+if\s+/i) && topFind(m[1], /\s+otherwise\s+/i)) || topFind(m[1], /\s+for (?:every|any)\s+/i);
+        if (parts.length > 1 && !/,/.test(outsideQuotes(m[1], t => t)) && !oneValue) inf.errs.push(`"give back ${m[1].trim()}" could mean two values, or a yes/no test that both are true. For two values, give back a list: give back [${parts.join(', ')}].`);
         return say(m[1] ? `return ${E(m[1], inf)};` : 'return;');
       }
-      if (/^stop the loop$/i.test(s)) return say('break;');
+      if (/^stop the loop$/i.test(s)) {
+        const near = [...stack].reverse().find(b => /^(?:loop|case|fn)$/.test(b.kind));
+        if (near && near.kind === 'case') inf.errs.push('Inside "depending on", `break` only ends the case, not the loop around it. To stop the loop from here, set a yes/no value and test it after "depending on".');
+        return say('break;');
+      }
       if (/^skip to next$/i.test(s)) return say('continue;');
       if ((m = M(/^(?:create|make)\s+(?:an?\s+)?(?:new\s+)?(?:empty\s+)?list\s+(?:called\s+)?([A-Za-z_$][\w$]*)(?:\s+with\s+(.+))?$/i))) {
         return say(`${keyword(m[1], inf)}${m[1]} = [${m[2] ? splitAnd(m[2]).map(v => E(v, inf)).join(', ') : ''}];`);
@@ -1868,7 +2314,7 @@
       inf.errs.push('I don\'t recognise this sentence. Open the Index to see what Mechanics understands, or start the line with js: to write JavaScript directly.');
       say('// ??? ' + s);
     });
-    while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of [].concat(b.close)) push('  '.repeat(stack.length) + c, b.src); }
+    while (stack.length) { const b = stack.pop(); while (out.length && out[out.length - 1].text === '') out.pop(); for (const c of closeOf(b)) push('  '.repeat(stack.length) + c, b.src); }
     out.forEach((o, idx) => { if (o.src >= 0) info[o.src].py.push(idx); });
     return { lines: out, info, text: out.map(o => o.text).join('\n').replace(/\n{3,}/g, '\n\n') + '\n' };
   }
@@ -1878,18 +2324,19 @@
   /* ================================================================== */
 
   function compileWebsite(project) {
-    const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {} };
+    const shared = { ids: {}, groups: {}, cssGroups: {}, addGroups: {}, addIds: {}, wanted: {} };
     const held = {};
     const sec = (f) => {
       if (!held[f]) { const s = project.sections.find(s => s.file === f) || { id: f, file: f, text: '' }; const h = holdBlanks(s.text); held[f] = { sec: { ...s, text: h.text }, blanks: h.blanks, strays: h.strays }; }
       return held[f].sec;
     };
-    // Structure first (names), then Styling (may add groups to Structure), then Structure again, then Mechanics
+    // Structure first (names), then Styling and Mechanics (they may add groups, or names for things they point
+    // at by their text), then Structure again with those
     compileHtml(sec('structure'), shared);
     const css = compileCss(sec('styling'), shared);
+    const js = compileJs(sec('mechanics'), shared);
     shared.ids = {};
     const html = compileHtml(sec('structure'), shared);
-    const js = compileJs(sec('mechanics'), shared);
     // the same page with each element marked with its sentence line, for the preview's Pick
     const marked = compileHtml(sec('structure'), { ...shared, ids: {}, mark: true });
     html.previewText = marked.text;
@@ -1931,6 +2378,7 @@
     T('Page', 'page title is "‹title›"', '<title>…</title>', 'Shown in the browser tab.', ['structure']),
     T('Text', 'add a big heading "‹text›"', '<h1>…</h1>', 'One per page: the main title.', ['structure']),
     T('Text', 'add a heading "‹text›"', '<h2>…</h2>', '', ['structure']),
+    T('Text', 'add a paragraph called ‹name› saying "‹text›"', '<p id="name">…</p>', 'The name is how Styling and Mechanics refer to it (to change its text, say).', ['structure']),
     T('Text', 'add a paragraph "‹text›"', '<p>…</p>', '', ['structure']),
     T('Controls', 'add a button called ‹name› saying "‹text›"', '<button id="name">…</button>', 'The name is how Styling and Mechanics refer to it.', ['structure']),
     T('Controls', 'add a text box called ‹name› with hint "‹hint›"', '<input id="name" placeholder="…">', 'Also: number box, password box, email box, big text box.', ['structure']),
@@ -1967,7 +2415,13 @@
     T('Drawings', 'add text "‹label›" at ‹10›, ‹20›', '<text x y>', 'Text drawn in the drawing.', ['structure']),
     T('Drawings', 'add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›', '<linearGradient><stop>…', 'Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts".', ['structure']),
     T('Drawings', 'add a set of shapes, outlined in ‹navy›', '<g stroke>', 'Settings on it apply to the shapes indented under it.', ['structure']),
+    T('Styles', 'set ‹name› colour to ‹colour›', '#name { color: … }', 'Also background, border, text size, width, rounded corners, shadow. The thing can be a name, the text it shows in quotes ("Welcome"), or a kind: the big heading, every button.', ['styling']),
+    T('Styles', 'give ‹name› a ‹red› border', '#name { border: 1px solid red }', 'Also "give … rounded corners", "give … a shadow".', ['styling']),
+    T('Styles', 'make ‹name› ‹bold›', '#name { font-weight: bold }', 'Or a colour: "make save navy". Also italic, underlined, hidden, centred.', ['styling']),
     T('Styles', 'style ‹name›: background ‹colour›, text colour ‹colour›', '#name { background: …; color: … }', 'Separate styles with commas.', ['styling']),
+    T('Styles', 'add group ‹name›: ‹styles›', '.name { … }', 'The same as "create group". A group is a CSS class: put things in it with "add ‹thing› to group ‹name›".', ['styling']),
+    T('Styles', 'add ‹name› to group ‹group›', 'class="group" in the HTML', 'Puts an element from Structure in a group. It can be its name or its text in quotes.', ['styling']),
+    T('Styles', 'add a colour called ‹main› ‹#4f7cff›', ':root { --main: … }', 'A shared colour. Use it as "the colour main".', ['styling']),
     T('Styles', 'create group ‹name›: rounded corners ‹8›, shadow', '.name { border-radius: 8px; box-shadow: … }', 'A group is a CSS class. Reuse it on many elements.', ['styling']),
     T('Styles', 'style ‹name›: border ‹2› ‹dashed› ‹navy›', '#name { border: 2px dashed navy }', 'The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border".', ['styling']),
     T('Styles', 'add a border to ‹name›', '#name { border: 1px solid currentColor }', 'The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …".', ['styling']),
@@ -2018,6 +2472,39 @@
     T('Logic', 'set item ‹i› of ‹list› to ‹value›', 'list[i] = value', 'Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field).', ['mechanics']),
     T('Logic', 'define ‹name› using ‹inputs›', 'function name(inputs) {', 'Its first lines can be "description: …", what the tool is for.', ['mechanics']),
     T('Logic', 'multiply ‹name› by ‹amount›', 'name *= amount;', 'Also "divide ‹name› by ‹amount›" (/=).', ['mechanics']),
+    T('Logic', 'set ‹name› to the result of ‹tool› with ‹inputs›', 'name = tool(inputs)', 'Keeps what the tool gives back. Inside a bigger value, put it in brackets: (the result of ‹tool›) plus 1.', ['mechanics']),
+    T('Logic', 'set ‹name› to a new ‹Date›', 'name = new Date()', 'An object made from a class. Add "with ‹inputs›" for what it starts with.', ['mechanics']),
+    T('Logic', 'set ‹name› to ‹a› if ‹test› otherwise ‹b›', 'name = test ? a : b', 'One value or the other, picked by the test.', ['mechanics']),
+    T('Logic', 'depending on ‹value›', 'switch (value) {', 'Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise".', ['mechanics']),
+    T('Logic', 'when it is ‹1›', 'case 1:', 'Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead.', ['mechanics']),
+    T('Logic', 'do this, then repeat while ‹test›', 'do { … } while (test);', 'The steps run once before the test.', ['mechanics']),
+    T('Logic', 'define class ‹Store›', 'class Store {', 'A blueprint for objects. Inside: "when a new Store is made with ‹inputs›" and "define ‹tool›". Add "based on ‹Other›" to build on another class.', ['mechanics']),
+    T('Logic', 'when a new ‹Store› is made with ‹key›', 'constructor(key) {', 'Inside "define class": sets up each new object. Its own values are this.something.', ['mechanics']),
+    T('Logic', 'bring in ‹fetchSales› from "‹./api.js›"', 'import { fetchSales } from "./api.js";', 'Tools another JavaScript file shares. The page loads this file as a module.', ['mechanics']),
+    T('Lists', 'set ‹doubled› to a list of ‹x times 2› for each ‹x› in ‹list›', 'list.map(x => x * 2)', 'A new list, one value for each item. Add "if ‹test›" at the end to keep only some (.filter).', ['mechanics']),
+    T('Lists', 'set ‹found› to the first ‹x› in ‹list› where ‹test›', 'list.find(x => test)', 'The first item the test is true for.', ['mechanics']),
+    T('Lists', 'set ‹ok› to ‹test› for every ‹x› in ‹list›', 'list.every(x => test)', 'Yes when the test is true for every item. "for any": true for at least one (.some).', ['mechanics']),
+    T('Lists', 'set ‹line› to ‹list› joined by "‹, ›"', 'list.join(", ")', 'The items as one text, with the separator between them.', ['mechanics']),
+    T('Text', 'set ‹shown› to ‹price› to ‹2› decimal places', 'price.toFixed(2)', 'Also "‹n› rounded", "rounded down", "rounded up", "‹text› trimmed", "‹text› split at ",".', ['mechanics']),
+    T('Text', 'set ‹data› to ‹text› read as JSON', 'JSON.parse(text)', 'And "‹data› as JSON text" (JSON.stringify).', ['mechanics']),
+    T('Page', 'constant ‹total› is the element called "‹total›"', 'document.getElementById("total")', 'An element by its id, for one Structure doesn\'t name.', ['mechanics']),
+    T('Page', 'constant ‹item› is a new "‹li›" element', 'document.createElement("li")', 'A new element of any tag; "put ‹item› at the end of ‹list›" puts it on the page.', ['mechanics']),
+    T('Page', 'put ‹item› at the end of ‹list›', 'list.appendChild(item)', 'Puts an element inside another, after what is already there.', ['mechanics']),
+    T('Page', 'set the HTML of ‹name› to ‹value›', 'name.innerHTML = value', 'Replaces what is inside with this HTML. Only HTML you wrote: text people type could run as code.', ['mechanics']),
+    T('Page', 'set the groups of ‹name› to "‹card done›"', 'name.className = "card done"', 'All of its groups at once. To add or take out one, "put ‹name› in group ‹g›".', ['mechanics']),
+    T('Page', 'set the page title to ‹value›', 'document.title = value', 'The title on the browser tab.', ['mechanics']),
+    T('Server', 'constant ‹reply› is the reply from "‹/api/items›"', 'await fetch("/api/items")', 'Then "the JSON read from ‹reply›" is what it sent (await reply.json()).', ['mechanics']),
+    T('Server', 'wait for ‹navigator.clipboard.writeText› with ‹text›', 'await navigator.clipboard.writeText(text)', 'Runs a tool that finishes later and waits for it.', ['mechanics']),
+    T('Server', 'constant ‹saved› is the text saved in the browser as "‹key›"', 'localStorage.getItem("key")', 'The text as it was saved (null if there is none).', ['mechanics']),
+    T('Lists', 'do this for each ‹item› in ‹list›', 'list.forEach((item) => {', 'Add ", counting with ‹i›" for its place (from 0). It is a little tool of its own: "give back" ends this round.', ['mechanics']),
+    T('Lists', 'sort ‹list› from smallest to biggest', 'list.sort((a, b) => a - b);', 'Also "from biggest to smallest", and "as text" (10 before 9). "reverse ‹list›" turns it round.', ['mechanics']),
+    T('Logic', 'constant ‹double› is a tool using ‹n› giving back ‹n times 2›', 'const double = (n) => n * 2;', 'A little tool kept in a name (an arrow function). Leave out "giving back …" and indent its steps under it instead.', ['mechanics']),
+    T('Errors', 'fail with "‹Not found›"', 'throw new Error("Not found");', 'Stops with an error; "if it fails" round the steps that ran it catches it.', ['mechanics']),
+    T('Events', 'when a key is pressed in ‹name›, with the event as ‹e›', 'name.addEventListener("keydown", (e) => …)', 'e.key is the key: "Enter", "a", "ArrowLeft". Also "when a key is released in …".', ['mechanics']),
+    T('Events', 'when ‹name› is double-clicked', 'name.addEventListener("dblclick", …)', 'Also "is focused", "is unfocused" (blur), "is scrolled"; and "when the window is resized".', ['mechanics']),
+    T('Events', 'when the window has loaded', 'window.addEventListener("load", …)', 'Once everything is in, pictures too. "when the page has loaded" is sooner.', ['mechanics']),
+    T('Page', 'remove ‹name› from the page', 'name.remove();', 'Takes the element off the page.', ['mechanics']),
+    T('Logic', 'run this now, keeping its names private', '(function () { … })();', 'Indent the steps under it: the names made there don\'t clash with other scripts\'. "run this now, with root set to window, keeping …" gives it a value. "use strict rules" first, for "use strict".', ['mechanics']),
   ];
   const GUIDES = {
     structure: {
@@ -2039,9 +2526,18 @@
   const WORDS = {
     structure: [['called save', 'id="save"'], ['called "helpToggle"', 'id="helpToggle" (exactly)'], ['in group card', 'class="card"'], ['hidden from screen readers', 'aria-hidden="true"'], ['storing chord "C"', 'data-chord="C"'], ['drawing', '<svg>'], ['set of shapes', '<g>'], ['big heading', '<h1>'], ['heading', '<h2>'], ['block', '<div>'], ['navigation bar', '<nav>'], ['main area', '<main>'], ['side panel', '<aside>'], ['picture', '<img>'], ['text box', '<input>'], ['big text box', '<textarea>']],
     styling: [['background navy', 'background: navy'], ['background #000 40% see-through', 'background: rgba(0,0,0,0.6)'], ['50% see-through', 'opacity: 0.5'], ['text colour white', 'color: white'], ['text size 20', 'font-size: 20px'], ['space inside 12', 'padding: 12px'], ['space around 8', 'margin: 8px'], ['rounded corners 8', 'border-radius: 8px'], ['shadow', 'box-shadow: …'], ['in a row', 'display: flex'], ['in a grid of 3 columns', 'display: grid'], ['hand cursor', 'cursor: pointer'], ['centred', 'margin: 0 auto'], ['hidden', 'display: none'], ['border 2 dashed navy', 'border: 2px dashed navy'], ['underlined', 'text-decoration: underline'], ['line height 1.5', 'line-height: 1.5'], ['text weight 600', 'font-weight: 600'], ['background gradient from #fff to #000', 'background: linear-gradient(#fff, #000)'], ['the colour main', 'var(--main)']],
-    mechanics: [['a is b', 'a === b'], ['a is not b', 'a !== b'], ['a and b', 'a && b'], ['not a', '!a'], ['length of x', 'x.length'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'Math.floor(Math.random()*6)+1'], ['text of name', 'name.value / .textContent'], ['"Hi {name}"', '`Hi ${name}`'], ['box is ticked', 'box.checked'], ['card is in group done', 'card.classList.contains("done")'], ['the file in picker', 'picker.files[0]'], ['wait for x', 'await x']],
+    mechanics: [['a is b', 'a === b'], ['a is not b', 'a !== b'], ['a and b', 'a && b'], ['not a', '!a'], ['length of x', 'x.length'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'Math.floor(Math.random()*6)+1'], ['text of name', 'name.value / .textContent'], ['"Hi {name}"', '`Hi ${name}`'], ['box is ticked', 'box.checked'], ['card is in group done', 'card.classList.contains("done")'], ['the file in picker', 'picker.files[0]'], ['wait for x', 'await x'],
+      ['the result of f with a, b', 'f(a, b)'], ['a new Date', 'new Date()'], ['a if c otherwise b', 'c ? a : b'], ['an empty list', '[]'], ['x is nothing', 'x == null'], ['x is null', 'x === null'],
+      ['a list of x times 2 for each x in xs', 'xs.map(x => x * 2)'], ['a list of x for each x in xs if x is more than 1', 'xs.filter(x => x > 1)'], ['the first x in xs where x is 2', 'xs.find(x => x === 2)'],
+      ['x is more than 0 for every x in xs', 'xs.every(x => x > 0)'], ['x is 2 for any x in xs', 'xs.some(x => x === 2)'], ['xs joined by ", "', 'xs.join(", ")'],
+      ['name trimmed', 'name.trim()'], ['line split at ","', 'line.split(",")'], ['price to 2 decimal places', 'price.toFixed(2)'], ['n rounded', 'Math.round(n)'], ['n rounded down', 'Math.floor(n)'], ['n rounded up', 'Math.ceil(n)'],
+      ['text read as JSON', 'JSON.parse(text)'], ['data as JSON text', 'JSON.stringify(data)'], ['the text saved in the browser as "k"', 'localStorage.getItem("k")'],
+      ['the element called "total"', 'document.getElementById("total")'], ['a new "li" element', 'document.createElement("li")'], ['the page title', 'document.title'], ['value of box', 'box.value'],
+      ['the reply from "/api"', 'await fetch("/api")'], ['the JSON read from reply', 'await reply.json()'],
+      ['a random whole number below 6', 'Math.floor(Math.random() * 6)'], ['a random number below 1', 'Math.random()'], ['the largest number in xs', 'Math.max(...xs)'], ['the smallest number in xs', 'Math.min(...xs)'],
+      ['x, or y if that is nothing', 'x ?? y'], ['ua matches /win/i', '/win/i.test(ua)']],
   };
-  const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
+  const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|run this now|(?:constant|set) [\w$]+ (?:is|to) a tool(?!.*\sgiving back\s)|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
     readAttr, sayAttr, elementWord,

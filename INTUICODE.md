@@ -117,7 +117,7 @@ check it; the language does, when the program runs or is compiled.
 | `doctype:` | Structure | the first line of the page |
 | `no doctype`, `no title`, `no page language`, `leave out the character set`, `leave out the viewport` | Structure | leaves that part out |
 | `css:`, `raw:` | Styling | as a line, inside the current `on screens …` block if any |
-| `js:`, `javascript:`, `raw:` | Mechanics | as a line. `let`, `const`, `var` and `function` names it makes become known. |
+| `js:`, `javascript:`, `raw:` | Mechanics | as a line, at the indent of the block it is in. `let`, `const`, `var` and `function` names it makes become known; the lines inside a template literal (`` `…` `` over several lines) are its text, copied exactly, without the block's indent. |
 | `c++:`, `cpp:`, `raw:` | C++ | where it stands |
 | `above main:`, `outside main:`, `at the top:` | C++ | above `main` (left edge only) |
 
@@ -217,7 +217,8 @@ print(high_score + end)
 - `{…}` inside double-quoted text fills in a value, and what is inside the braces is itself a value
   (`"{n plus 1}"`). `{{` and `}}` are braces.
 - A fill-in becomes an f-string in Python, a template literal in JavaScript, the `text("Hi ", name)`
-  helper in C++ and `String("Hi ") + name` on Arduino.
+  helper in C++ and `String("Hi ") + name` on Arduino. On Arduino, text then `{x as text}` joins as it is:
+  `"Temp: {t as text}"` is `"Temp: " + String(t)`.
 - Single-quoted text keeps `{…}` as it is. Python text with a prefix (`f"…"`, `r"…"`, `b"…"`) is kept
   exactly. In C++, single quotes are one character (`'a'`); text in them gets a warning. JavaScript text in
   backticks is kept as it is.
@@ -667,9 +668,15 @@ screen      = "when" [ "the" ] ( "screen" | "page" | "mouse" | "pointer" | "fing
 moves       = "when" [ "the" ] ( "pointer" | "mouse" | "finger" ) ( "moves" | "is moved" )
               [ ( "over" | "on" | "across" | "in" | "inside" ) element ] ;           (* → pointermove *)
 tapped      = "when" element "is" ( "tapped" | "touched" | "released" | "let go" | "lifted" ) ;
-event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" )
+event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted"
+              | "double-clicked" | "focused" | "unfocused" | "scrolled" | "resized" )
               [ [ "," ] "with the event as" name ] ;   (* the event under its own name: (e) => … *)
-                         (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault) *)
+                         (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault),
+                              dblclick, focus, blur, scroll, resize *)
+key-in      = "when" ( "a" | "any" ) "key is" ( "pressed" | "released" | "let go" ) ( "in" | "on" ) element
+              [ [ "," ] "with the event as" name ] ;                                (* → keydown / keyup on it *)
+window-load = "when the window has loaded" ;                                        (* → window's load: pictures too *)
+                         (* element can also be "the page" (document) or "the window" *)
 frame       = "every frame" ;                                                       (* → requestAnimationFrame loop *)
 keys        = "keep track of" [ "the" ] "keys" ;                                    (* → keysDown, a Set *)
 timer       = ( "every" | "after" ) [ value ] ( "second" | "seconds" ) [ "as" name ] ;  (* → setInterval / setTimeout *)
@@ -677,7 +684,13 @@ stop-timer  = "stop" [ "repeating" | "the repeat" | "the timer" ] name ;        
 
 (* The page *)
 get-text    = "get the" ( "text" | "value" ) ( "of" | "in" | "from" ) element "and store" [ "it" ] "in" name ;
-set-text    = "set the" ( "text" | "value" ) "of" element "to" value ;  (* → .value for boxes, .textContent otherwise *)
+set-text    = "set the" ( "text" | "value" ) "of" element "to" value ;  (* → .value for boxes, .textContent otherwise;
+                                     for an element held in a name, the word says which *)
+set-html    = "set the HTML" ( "of" | "in" | "inside" ) element "to" value ;         (* → .innerHTML *)
+set-groups  = "set the groups of" element "to" value ;                              (* → .className *)
+page-title  = "set the page" [ "'s" ] "title to" value ;                            (* → document.title *)
+append      = "put" element "at the end of" element ;                               (* → .appendChild *)
+remove      = "remove" element "from the page" ;                                    (* → .remove() *)
 make-new    = ( "make" | "create" | "add" ) [ "a" | "an" ] "new" kind
               [ ( "saying" | "showing" | "that says" ) value ] [ "to" value ] [ "of" value [ "described as" value ] ]
               [ "in" ( "group" | "groups" ) names ] [ ( "in" | "into" ) element ] [ "and store" [ "it" ] "in" name ] ;
@@ -710,7 +723,8 @@ fetch       = ( "fetch" | "get" | "load" ) [ "data" ] "from" value "and store" [
 send        = "send" value "to" value [ "and store the reply in" name ] ;           (* → POST as JSON *)
 save        = "save" value "in the browser as" value ;                              (* → localStorage.setItem *)
 load        = "load" value "from the browser and store" [ "it" ] "in" name ;       (* → JSON.parse(localStorage.getItem …) *)
-wait-for    = "wait for" value [ "and store" [ "it" | "the result" | "the answer" ] "in" name ] ; (* → await value *)
+wait-for    = "wait for" ( value | path "with" items ) [ "and store" [ "it" | "the result" | "the answer" ] "in" name ] ;
+                                    (* → await value; await path(items) *)
 try         = "try" ;  except = ( "if" | "when" ) ( "it" | "that" | "this" | "anything" | "something" ) "fails" [ "as" name ] ;
 finally     = "finally" | "in any case" | "either way" | "whatever happens" ;
 fail        = "fail with" value ;                                                   (* → throw new Error(value) *)
@@ -720,7 +734,23 @@ elif        = ( "otherwise if" | "else if" ) cond ;   else = "otherwise" | "else
 times       = "repeat" value ( "time" | "times" ) [ "counting with" name ] ;      (* → for (let i = 0; i < value; i++) *)
 for-each    = "for each" name "in" value ;                                          (* → for (const name of value) *)
 while       = ( "while" | "as long as" ) cond ;
-define      = "define" name [ "using" params ] ;                                    (* → [async] function name(params) *)
+do-while    = "do this" [ "," ] "then repeat" ( "while" | "as long as" ) cond ;      (* → do { … } while (cond); *)
+switch      = "depending on" value ;   case = "when it" ( "is" | "'s" ) value { "or" value } | "otherwise" ;
+fall        = ( "go on" | "carry on" ) "into the next case" ;   (* a case ends with break, unless it leaves or says this *)
+define      = "define" name [ "using" params ] ;                                    (* → [async] function name(params);
+                                                                                       a param can be "name = value" *)
+class       = "define" [ "a" ] "class" name [ "based on" path ] ;                   (* → class name [extends path] *)
+constructor = "when" [ "a" ] "new" name "is" ( "made" | "created" ) [ ( "with" | "using" ) params ] ;  (* → constructor(…) *)
+                                    (* inside a class, "define" makes a method; other steps go in these two *)
+import      = "bring in" names "from" text ;                                        (* → import { names } from text; *)
+for-each-do = "do this for each" name "in" value [ [ "," ] "counting with" name ] ; (* → value.forEach((name[, i]) => { … }) *)
+sort        = "sort" value ( "from smallest to biggest" | "from biggest to smallest" | "as text" ) ;
+                                    (* → .sort((a, b) => a - b), b - a, .sort() *)   reverse = "reverse" value ;
+arrow-tool  = ( "constant" name "is" | "set" name "to" ) "a tool" [ "using" params ] [ "giving back" value ] ;
+                                    (* → const name = (params) => value; without "giving back", the steps go under it *)
+private     = "run this now" [ "," ] [ "with" name "set to" value [ "," ] ] "keeping its names private" ;
+                                    (* → (function ([name]) { … })([value]); *)
+strict      = "use" [ "JavaScript's" ] "strict rules" ;                             (* → "use strict"; *)
 return      = ( "give back" | "return" ) [ value ] ;
 break       = "stop the loop" ;   continue = "skip to next" ;
 make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "new" ] [ "empty" ] "list" [ "called" ] name [ "with" items ] ;
@@ -738,7 +768,11 @@ show        = "show" items ;                                                    
 ```
 
 In Mechanics, `items` split at commas only, except in `show`, which also splits at `and` before a word or
-a quote.
+a quote. A value that has commas or `and` of its own goes in brackets: `show (the result of f with a, b), c`.
+In a record, the keys are names (`{ equals: 1 }` stays `equals`).
+
+Reading code, Mechanics says JavaScript with these sentences where it can, and keeps the rest as `js:`
+lines: a list or record written over several lines stays code when it would make one long line.
 
 ```intuicode html
 add a text box called name with hint "Your name"
@@ -800,7 +834,8 @@ access      = ( "the rest is" | "from here on" ) ( "private" | "public" ) | ( "p
 made        = "when" ( "made" | "created" | "built" ) [ ( "using" | "with" ) params ] ; (* → the constructor; every input needs a type *)
 
 (* Tools: at the left edge or in a class, placed above main *)
-define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] ;  (* → type name(params) { … }, auto when unsaid *)
+define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] [ [ "," ] "without changing the object" ] ;
+                (* → type name(params) { … }, auto when unsaid;  without changing the object (in a class) → … const { … } *)
 param       = [ type ] name ;
 type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" [ "value" ] | "character" | "nothing"
             | "list of" type | c++-type | class-name
@@ -839,6 +874,7 @@ for-each    = "for each" [ type ] name "in" value [ "," ( "so it can be changed"
 while       = ( "while" | "as long as" ) cond ;
 do-while    = "do this" [ "," ] "then repeat" ( "while" | "as long as" ) cond ;     (* → do { … } while (cond); *)
 break       = "stop the loop" ;   continue = "skip to next" ;   (* stop the loop in a case of "depending on" is an error *)
+fail        = "fail with" Name [ ":" value ] ;          (* → throw Name(value);  std:: errors add <stdexcept>;  an error on Arduino *)
 
 (* Arduino: pins, time, sound *)
 pin-mode    = ( "make" | "set" ) [ "pin" ] pin ( "a" | "an" | "as" [ "a" | "an" ] ) ( "output" | "input" ) [ "with" [ "a" ] "pull-up" ] ;
@@ -865,10 +901,13 @@ stop-tone   = "stop the" ( "tone" | "note" | "sound" ) "on" [ "pin" ] pin ;     
 pin         = value | "the built-in light" | "the built-in led" ;                   (* → LED_BUILTIN *)
 
 (* Showing and asking *)
-show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" ] ;
+show        = "show" ( value { "followed by" value } | items ) [ "on the same line" | "without ending the line" | [ "," ] "then start a new line" ] ;
+                (* then start a new line → … << "\n";  on Arduino it is the same as plain show *)
                 (* "and" or "," put a space between the pieces, "followed by" none
                    → std::cout << a << " " << b << std::endl;  on the same line adds << " ", without ending the line
-                   adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said *)
+                   adds nothing;  Arduino: Serial.print for each piece, Serial.println for the last unless either is said;
+                   Arduino, after a piece: "with" number "decimal place(s)" → print(x, 2);
+                   "in" ( "hexadecimal" | "binary" | "octal" ) → print(x, HEX | BIN | OCT); also after show-on's value *)
 end-line    = "end the line" ;                                    (* → std::cout << std::endl;  Arduino: Serial.println(); *)
 printf      = "show" text "filled in with" items ;                (* → printf(text, items);  Arduino: Serial.printf *)
 ask         = "ask" [ "for" [ "a" | "an" ] ( "whole number" | "number" | "decimal" ) ] value "and store" [ "it" ] "in" name ;
@@ -883,7 +922,8 @@ clear       = "clear" name ;                                                  (*
 start       = "start" name [ "with" items ] ;                                 (* → name.begin(items) *)
 
 (* Values *)
-make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "empty" ] "list" [ "of" [ size ] holds ] [ "called" ] name [ "with" items ] ;
+make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "constant" ] [ "empty" ] "list" [ "of" [ size ] holds ] [ "called" ] name [ "with" items ] ;
+                (* constant → const …, and it needs its items *)
 holds       = "numbers" | "whole numbers" | "decimals" | "text" | "words" | "characters" | "yes/no values" | c++-type "values" ;
 size        = number | CONSTANT ;
                 (* → std::vector<T> name = {…}; (no items: std::vector<T> name;)  with a size → T name[size] = {…};
@@ -892,6 +932,7 @@ make-called = ( "make" | "create" ) [ "a" | "an" | "some" ] [ "empty" ] [ "new" 
                 (* → type name;  Class name(items);  "empty" only for text;  a Class is one defined here, or starts with a capital *)
 keep        = "keep" path "between" value "and" value ;           (* → path = std::clamp(path, a, b);  Arduino: constrain *)
 add         = "add" value "to" name ;                    (* → push_back for a list, an error for an Arduino list, += otherwise *)
+sort        = "sort" path [ "biggest first" ] ;          (* → std::sort(path.begin(), path.end()[, std::greater<>()]);  an error on Arduino *)
 increase    = ( "increase" | "decrease" ) target [ "by" value ] ;                   (* → +=, -=, ++, -- *)
 new-object  = "make" [ "a" ] "new" Class [ "with" items ] "and store" [ "it" ] "in" name ; (* → Class name(items); *)
 run         = "run" path [ "with" items ] [ "and store" [ "it" | "the result" ] "in" name ] ; (* → [auto name =] path(items); *)
@@ -1073,6 +1114,88 @@ int main() {
 }
 ```
 
+Text with values in it, text kept in flash, decimal places and a tool's result (alone, it needs no brackets;
+inside a calculation, brackets say where its inputs end):
+
+```intuicode arduino
+set t to 21.5
+set count to 0
+set status to "ok"
+define twice using whole number n giving back a whole number
+    give back n times 2
+when the board starts
+    start the serial monitor at 9600
+    show "Ready" kept in flash
+over and over
+    increase count
+    show "Count: {count}"
+    show "Temp: {t as text} C"
+    show "Status: " plus status
+    show t with 1 decimal place
+    show count in hexadecimal
+    show the result of twice with count
+    show "Twice plus one: " followed by (the result of twice with count) plus 1
+    wait 1 second
+```
+
+```cpp
+double t = 21.5;
+int count = 0;
+String status = "ok";
+int twice(int n) {
+    return n * 2;
+}
+void setup() {
+    Serial.begin(9600);
+    Serial.println(F("Ready"));
+}
+void loop() {
+    count++;
+    Serial.println(String("Count: ") + count);
+    Serial.println("Temp: " + String(t) + " C");
+    Serial.println("Status: " + status);
+    Serial.println(t, 1);
+    Serial.println(count, HEX);
+    Serial.println(twice(count));
+    Serial.print("Twice plus one: "); Serial.println(twice(count) + 1);
+    delay(1000);
+}
+```
+
+A class's tool that only looks at the object, and text joined to a number made into text:
+
+```intuicode cpp
+define class Box
+    field size: whole number = 2
+    define area giving back a whole number, without changing the object
+        give back size times size
+make a Box called b
+set n to the result of b.area
+set label to "Area: " plus n as text
+show label
+```
+
+```cpp
+#include <iostream>
+#include <string>
+
+class Box {
+public:
+    int size = 2;
+    int area() const {
+        return size * size;
+    }
+};
+
+int main() {
+    Box b;
+    auto n = b.area();
+    std::string label = "Area: " + std::to_string(n);
+    std::cout << label << std::endl;
+    return 0;
+}
+```
+
 ## How a value is read: binding and precedence
 
 A value (the part after `set … to`, `if`, `show` …) is read in fixed stages. No stage builds a syntax
@@ -1201,6 +1324,24 @@ not an operand, so `length of (a plus b)` isn't read.
 | 24 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
 | 25 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
 
+Before those stages, a value that is one of these whole phrases is read as it: `wait for P` (any of them),
+`A, or B if that is nothing` (`A ?? B`),
+`a list of E for each x in L [if T]` (`L.map(x => E)`, `L.filter(x => T)`), `T for every x in L` /
+`for any` (`.every` / `.some`), `the first x in L where T` (`.find`), `A if T otherwise B` (`T ? A : B`),
+`the result of f [with items]` (`f(items)`) and `a new C [with items]` (`new C(items)`). In brackets
+they work inside a bigger value: `(the result of f with 2) plus 1`.
+
+Next to the phrases above, these come early (after 3): `the element called "x"`
+(`document.getElementById("x")`), `a new "li" element` (`document.createElement("li")`), `the page title`,
+`the text saved in the browser as K` (`localStorage.getItem(K)`), `the reply from U` (`await fetch(U)`), `the
+JSON read from R` / `the text read from R` (`await R.json()` / `.text()`), and `text of N` / `value of N` for a
+name holding an element. With `how many in` (7) come `a random number below 1` (`Math.random()`), `a random
+whole number below N` (`Math.floor(Math.random() * N)`) and `the largest number in L` / `smallest`
+(`Math.max(...L)` / `min`). `X matches /re/` is `/re/.test(X)`, with `contains`. With `as number` (10) come `X trimmed`, `X split at S`, `X joined by S`,
+`X to N decimal places`, `X read as JSON`, `X as JSON text` and `X rounded` / `rounded down` / `rounded up`
+(`Math.round`, `floor`, `ceil`); for these, X can be a sum in brackets, and after a sum they are an error,
+as `as number` is.
+
 JavaScript's precedence then applies, tightest first: `!` (on the operand right after it); `*` `/` `%`;
 `+` `-`; `<` `<=` `>` `>=`; `===` `!==` `==` `!=`; `&&`; `||`. Unlike Python, `not` binds to one
 operand: see [Known wrong translations](#javascript-writer).
@@ -1227,14 +1368,17 @@ An operand is a quoted text, a number or a name with any `.name`, `::name` or `-
 
 | # | Phrase | C++ | Arduino |
 |---|---|---|---|
+| 0 | the whole value `the result of F with A, B` (`with …` runs to the end); in a value, `(the result of F with A, B)` or `the result of F` (no inputs); `with` inside a value without the brackets is an error | `F(A, B)`, `F()` | the same |
+| 0b | `"…" kept in flash` | | `F("…")` |
 | 1 | `self.` | `this->` | `this->` |
 | 2 | `the built-in light`, `pin P is on` (`off`, `high`, `low`), `reading of pin P` (`[analog] level`; `of`, `on`), `how long pin P stays on` (`off`), `pin P`, `time since start`, `at least N milliseconds have passed since T` (`more than`, `less than`, `at most`; `not` before it tests all of it), `X scaled from A–B to C–D` | | `LED_BUILTIN`, `digitalRead(P) == HIGH`, `analogRead(P)`, `pulseIn(P, HIGH)`, `P`, `millis()`, `millis() - T >= N` (`>`, `<`, `<=`; `!(…)`), `map(X, A, B, C, D)` |
 | 2b | `X limited to A–B` | `std::clamp(X, A, B)` (and `<algorithm>`) | `constrain(X, A, B)` |
 | 3 | `first item of X` / `last item of X` | `X.front()` / `X.back()` | `X[0]` / `X[(sizeof(X) / sizeof(X[0])) - 1]` |
 | 4 | `item K of X` | `X[K]` | `X[K]` |
 | 5 | `length of X`, `size of X` | `X.size()` | `X.length()` for text, `(sizeof(X) / sizeof(X[0]))` for a list |
+| 5b | `square root of X`, `absolute value of X` (X an operand, or a sum in brackets) | `std::sqrt(X)`, `std::abs(X)` (and `<cmath>`) | `sqrt(X)`, `abs(X)` |
 | 6 | `random number from A to B` | `random_number(A, B)` (a helper is added) | `random(A, B + 1)` |
-| 7 | `X as number` / `X as decimal` / `X as text` | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)` | `X.toInt()` / `X.toFloat()` / `String(X)` |
+| 7 | `X as number` / `X as decimal` / `X as text` (also `as a whole number`, `as a decimal`) | `std::stoi(X)` / `std::stod(X)` / `std::to_string(X)`; a number: `static_cast<int>(X)` / `static_cast<double>(X)` | `X.toInt()` / `X.toFloat()` / `String(X)`; a number: `(int)X` / `(double)X` |
 | 8 | `X squared` | `(X * X)` | `(X * X)` |
 | 9 | `[not] S is even`, `S is odd` (`is not`, `isn't`); a sum before it is checked whole | `(S) % 2 == 0`, `… != 0` | the same |
 | 10 | `is not`, `isn't`; `is at least`; `is at most`; `is greater than`; `is less than`; `is`, `equals` | `!=`, `>=`, `<=`, `>`, `<`, `==` | the same |
@@ -1415,9 +1559,10 @@ for (const item of [1, 2]) {
 | Declare or assign? | The first `set` of a name in a block declares it (`int x = 1;`); later ones assign. As in C++, a name declared inside a block is gone after it. `make a … called x` and `… and call it x` always declare (twice in one block is an error); `… and store it in x` assigns a name made before. A count that names a name made before (`count pos from 0 to 180`, `counting with pos`) counts with it. |
 | Cases | Each case of `depending on` ends with `break;` unless its last step leaves (`give back`, `skip to next`, a `return` or `break` in exact code) or it says `go on into the next case`. A case that makes a name and isn't the last goes in braces. |
 | `add V to L` | `L.push_back(V)` for a list; an error for an Arduino list (fixed size); `L += V` otherwise. |
-| Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool is an error; making an unknown class is a warning. |
+| Tools and classes | Collected in a first pass, so `run` can use one defined further down. Running an unknown tool (or using `the result of` one) is an error, or a warning when the program includes a file beyond the ones the writer adds (the tool can come from it); making an unknown class is a warning. |
+| Text joined with `plus` | Quoted text becomes a `std::string` (`String` on Arduino) before `+`, and a known number goes through `std::to_string`, unless the other side is text already (a text name, or `x as text`): `"Hi " plus name` is `"Hi " + name`, `"Score: " plus n as text` is `"Score: " + std::to_string(n)`. |
 | Arduino tools | Inputs without a type are `int`; the result is `int` when the block gives something back, `void` otherwise. |
-| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, when a sentence needs them. |
+| Includes and helpers | `<vector>`, `<random>` with `random_number`, `<sstream>` with `text(…)`, `<cstdlib>` for `std::exit`, `<algorithm>` for `std::clamp`, `<cstdio>` for `printf`, `<stdexcept>` for `fail with std::…`, when a sentence needs them. |
 | Arduino checks | Steps at the left edge are an error; only one `setup` and one `loop`; `show` before `start the serial monitor` is a warning. |
 
 ### Unknown names, errors and warnings
@@ -1425,7 +1570,7 @@ for (const item of [1, 2]) {
 | Situation | Python | JavaScript | C++ |
 |---|---|---|---|
 | A name not set anywhere, in a value | warning, with "Did you mean …?" | warning | warning |
-| `run` a tool that doesn't exist | error | nothing said | error |
+| `run` a tool that doesn't exist | error | nothing said | error (a warning when the program includes other files) |
 | `add` to a name that doesn't exist | error | `.push` | `+=` |
 | A sentence that fits no rule | error, `# ???` line | error, `// ???` line | error, `// ???` line |
 
@@ -1955,6 +2100,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 | **Page** | `page title is "‹title›"` | `<title>…</title>` | Shown in the browser tab. |
 | **Text** | `add a big heading "‹text›"` | `<h1>…</h1>` | One per page: the main title. |
 |  | `add a heading "‹text›"` | `<h2>…</h2>` |  |
+|  | `add a paragraph called ‹name› saying "‹text›"` | `<p id="name">…</p>` | The name is how Styling and Mechanics refer to it (to change its text, say). |
 |  | `add a paragraph "‹text›"` | `<p>…</p>` |  |
 | **Controls** | `add a button called ‹name› saying "‹text›"` | `<button id="name">…</button>` | The name is how Styling and Mechanics refer to it. |
 |  | `add a text box called ‹name› with hint "‹hint›"` | `<input id="name" placeholder="…">` | Also: number box, password box, email box, big text box. |
@@ -2023,7 +2169,13 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 
 | Topic | Say | Becomes | Note |
 |---|---|---|---|
-| **Styles** | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
+| **Styles** | `set ‹name› colour to ‹colour›` | `#name { color: … }` | Also background, border, text size, width, rounded corners, shadow. The thing can be a name, the text it shows in quotes ("Welcome"), or a kind: the big heading, every button. |
+|  | `give ‹name› a ‹red› border` | `#name { border: 1px solid red }` | Also "give … rounded corners", "give … a shadow". |
+|  | `make ‹name› ‹bold›` | `#name { font-weight: bold }` | Or a colour: "make save navy". Also italic, underlined, hidden, centred. |
+|  | `style ‹name›: background ‹colour›, text colour ‹colour›` | `#name { background: …; color: … }` | Separate styles with commas. |
+|  | `add group ‹name›: ‹styles›` | `.name { … }` | The same as "create group". A group is a CSS class: put things in it with "add ‹thing› to group ‹name›". |
+|  | `add ‹name› to group ‹group›` | `class="group" in the HTML` | Puts an element from Structure in a group. It can be its name or its text in quotes. |
+|  | `add a colour called ‹main› ‹#4f7cff›` | `:root { --main: … }` | A shared colour. Use it as "the colour main". |
 |  | `create group ‹name›: rounded corners ‹8›, shadow` | `.name { border-radius: 8px; box-shadow: … }` | A group is a CSS class. Reuse it on many elements. |
 |  | `style ‹name›: border ‹2› ‹dashed› ‹navy›` | `#name { border: 2px dashed navy }` | The line can be solid, dashed, dotted or double; without a width it is 1px. Also "outline …", "bottom border …" (top, left, right) and "no border". |
 |  | `add a border to ‹name›` | `#name { border: 1px solid currentColor }` | The same as "style ‹name›: border". Also "add a 2 dashed navy border to …", "add a shadow to …", "add rounded corners to …". |
@@ -2067,6 +2219,18 @@ Styling → `style.css`. Writer: `lang/web_write.js`.
 | `headings` | `h1, h2, h3` |
 | `heading` | `h1, h2, h3` |
 | `big headings` | `h1` |
+| `big heading` | `h1` |
+| `small headings` | `h3` |
+| `small heading` | `h3` |
+| `image` | `img` |
+| `text box` | `input, textarea` |
+| `list` | `ul, ol` |
+| `list item` | `li` |
+| `blocks` | `div` |
+| `block` | `div` |
+| `boxes` | `div` |
+| `drop-downs` | `select` |
+| `drop-down` | `select` |
 | `links` | `a` |
 | `link` | `a` |
 | `paragraphs` | `p` |
@@ -2139,6 +2303,39 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 |  | `set item ‹i› of ‹list› to ‹value›` | `list[i] = value` | Also for records: "set item "‹key›" of ‹record› to …", or "set ‹field› of ‹record› to …" (record.field). |
 |  | `define ‹name› using ‹inputs›` | `function name(inputs) {` | Its first lines can be "description: …", what the tool is for. |
 |  | `multiply ‹name› by ‹amount›` | `name *= amount;` | Also "divide ‹name› by ‹amount›" (/=). |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `name = tool(inputs)` | Keeps what the tool gives back. Inside a bigger value, put it in brackets: (the result of ‹tool›) plus 1. |
+|  | `set ‹name› to a new ‹Date›` | `name = new Date()` | An object made from a class. Add "with ‹inputs›" for what it starts with. |
+|  | `set ‹name› to ‹a› if ‹test› otherwise ‹b›` | `name = test ? a : b` | One value or the other, picked by the test. |
+|  | `depending on ‹value›` | `switch (value) {` | Under it, one step in: "when it is 1", "when it is 2 or 3", "otherwise". |
+|  | `when it is ‹1›` | `case 1:` | Inside "depending on". Each case ends by itself (break); "go on into the next case" carries on instead. |
+|  | `do this, then repeat while ‹test›` | `do { … } while (test);` | The steps run once before the test. |
+|  | `define class ‹Store›` | `class Store {` | A blueprint for objects. Inside: "when a new Store is made with ‹inputs›" and "define ‹tool›". Add "based on ‹Other›" to build on another class. |
+|  | `when a new ‹Store› is made with ‹key›` | `constructor(key) {` | Inside "define class": sets up each new object. Its own values are this.something. |
+|  | `bring in ‹fetchSales› from "‹./api.js›"` | `import { fetchSales } from "./api.js";` | Tools another JavaScript file shares. The page loads this file as a module. |
+| **Lists** | `set ‹doubled› to a list of ‹x times 2› for each ‹x› in ‹list›` | `list.map(x => x * 2)` | A new list, one value for each item. Add "if ‹test›" at the end to keep only some (.filter). |
+|  | `set ‹found› to the first ‹x› in ‹list› where ‹test›` | `list.find(x => test)` | The first item the test is true for. |
+|  | `set ‹ok› to ‹test› for every ‹x› in ‹list›` | `list.every(x => test)` | Yes when the test is true for every item. "for any": true for at least one (.some). |
+|  | `set ‹line› to ‹list› joined by "‹, ›"` | `list.join(", ")` | The items as one text, with the separator between them. |
+| **Text** | `set ‹shown› to ‹price› to ‹2› decimal places` | `price.toFixed(2)` | Also "‹n› rounded", "rounded down", "rounded up", "‹text› trimmed", "‹text› split at ",". |
+|  | `set ‹data› to ‹text› read as JSON` | `JSON.parse(text)` | And "‹data› as JSON text" (JSON.stringify). |
+| **Page** | `constant ‹total› is the element called "‹total›"` | `document.getElementById("total")` | An element by its id, for one Structure doesn't name. |
+|  | `constant ‹item› is a new "‹li›" element` | `document.createElement("li")` | A new element of any tag; "put ‹item› at the end of ‹list›" puts it on the page. |
+|  | `put ‹item› at the end of ‹list›` | `list.appendChild(item)` | Puts an element inside another, after what is already there. |
+|  | `set the HTML of ‹name› to ‹value›` | `name.innerHTML = value` | Replaces what is inside with this HTML. Only HTML you wrote: text people type could run as code. |
+|  | `set the groups of ‹name› to "‹card done›"` | `name.className = "card done"` | All of its groups at once. To add or take out one, "put ‹name› in group ‹g›". |
+|  | `set the page title to ‹value›` | `document.title = value` | The title on the browser tab. |
+| **Server** | `constant ‹reply› is the reply from "‹/api/items›"` | `await fetch("/api/items")` | Then "the JSON read from ‹reply›" is what it sent (await reply.json()). |
+|  | `wait for ‹navigator.clipboard.writeText› with ‹text›` | `await navigator.clipboard.writeText(text)` | Runs a tool that finishes later and waits for it. |
+|  | `constant ‹saved› is the text saved in the browser as "‹key›"` | `localStorage.getItem("key")` | The text as it was saved (null if there is none). |
+| **Lists** | `do this for each ‹item› in ‹list›` | `list.forEach((item) => {` | Add ", counting with ‹i›" for its place (from 0). It is a little tool of its own: "give back" ends this round. |
+|  | `sort ‹list› from smallest to biggest` | `list.sort((a, b) => a - b);` | Also "from biggest to smallest", and "as text" (10 before 9). "reverse ‹list›" turns it round. |
+| **Logic** | `constant ‹double› is a tool using ‹n› giving back ‹n times 2›` | `const double = (n) => n * 2;` | A little tool kept in a name (an arrow function). Leave out "giving back …" and indent its steps under it instead. |
+| **Errors** | `fail with "‹Not found›"` | `throw new Error("Not found");` | Stops with an error; "if it fails" round the steps that ran it catches it. |
+| **Events** | `when a key is pressed in ‹name›, with the event as ‹e›` | `name.addEventListener("keydown", (e) => …)` | e.key is the key: "Enter", "a", "ArrowLeft". Also "when a key is released in …". |
+|  | `when ‹name› is double-clicked` | `name.addEventListener("dblclick", …)` | Also "is focused", "is unfocused" (blur), "is scrolled"; and "when the window is resized". |
+|  | `when the window has loaded` | `window.addEventListener("load", …)` | Once everything is in, pictures too. "when the page has loaded" is sooner. |
+| **Page** | `remove ‹name› from the page` | `name.remove();` | Takes the element off the page. |
+| **Logic** | `run this now, keeping its names private` | `(function () { … })();` | Indent the steps under it: the names made there don't clash with other scripts'. "run this now, with root set to window, keeping …" gives it a value. "use strict rules" first, for "use strict". |
 
 #### JavaScript words inside sentences
 
@@ -2157,6 +2354,39 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | `card is in group done` | `card.classList.contains("done")` |
 | `the file in picker` | `picker.files[0]` |
 | `wait for x` | `await x` |
+| `the result of f with a, b` | `f(a, b)` |
+| `a new Date` | `new Date()` |
+| `a if c otherwise b` | `c ? a : b` |
+| `an empty list` | `[]` |
+| `x is nothing` | `x == null` |
+| `x is null` | `x === null` |
+| `a list of x times 2 for each x in xs` | `xs.map(x => x * 2)` |
+| `a list of x for each x in xs if x is more than 1` | `xs.filter(x => x > 1)` |
+| `the first x in xs where x is 2` | `xs.find(x => x === 2)` |
+| `x is more than 0 for every x in xs` | `xs.every(x => x > 0)` |
+| `x is 2 for any x in xs` | `xs.some(x => x === 2)` |
+| `xs joined by ", "` | `xs.join(", ")` |
+| `name trimmed` | `name.trim()` |
+| `line split at ","` | `line.split(",")` |
+| `price to 2 decimal places` | `price.toFixed(2)` |
+| `n rounded` | `Math.round(n)` |
+| `n rounded down` | `Math.floor(n)` |
+| `n rounded up` | `Math.ceil(n)` |
+| `text read as JSON` | `JSON.parse(text)` |
+| `data as JSON text` | `JSON.stringify(data)` |
+| `the text saved in the browser as "k"` | `localStorage.getItem("k")` |
+| `the element called "total"` | `document.getElementById("total")` |
+| `a new "li" element` | `document.createElement("li")` |
+| `the page title` | `document.title` |
+| `value of box` | `box.value` |
+| `the reply from "/api"` | `await fetch("/api")` |
+| `the JSON read from reply` | `await reply.json()` |
+| `a random whole number below 6` | `Math.floor(Math.random() * 6)` |
+| `a random number below 1` | `Math.random()` |
+| `the largest number in xs` | `Math.max(...xs)` |
+| `the smallest number in xs` | `Math.min(...xs)` |
+| `x, or y if that is nothing` | `x ?? y` |
+| `ua matches /win/i` | `/win/i.test(ua)` |
 
 ### C++
 
@@ -2180,6 +2410,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | **Show & ask** | `show ‹value›` | `std::cout << value << std::endl;` | Join several things with "and" (a space between) or "followed by" (no space). |
 |  | `show ‹value› without ending the line` | `std::cout << value;` | What is shown next carries on the same line. "end the line" ends it. |
 |  | `end the line` | `std::cout << std::endl;` |  |
+|  | `show ‹value›, then start a new line` | `std::cout << value << "\n";` | A new-line character ends the line, where plain "show" uses std::endl. |
 |  | `show "‹%d tries›" filled in with ‹tries›` | `printf("%d tries", tries);` | The % codes are filled in, in order: %d a whole number, %f a decimal, %s text. |
 |  | `ask for a number "‹question›" and store in ‹name›` | `std::cin >> name;` | Or "ask … and store in …" for text. |
 |  | `read ‹age› from the keyboard` | `std::cin >> age;` | What the person types, up to a space. "read a line from the keyboard into ‹name›" reads a whole line. |
@@ -2200,17 +2431,21 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `std::vector<int> name = {1, 2, 3};` | Also "list of text", "list of decimals". Leave off "with …" for an empty list. |
 |  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
 |  | `add ‹value› to ‹list›` | `list.push_back(value);` |  |
+|  | `sort ‹list›` | `std::sort(list.begin(), list.end());` | Smallest first. Add "biggest first" to turn it round. |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
 |  | `define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›` | `double average(const std::vector<int>& values) {` | "read-only" looks at the caller's value without copying it; "the caller's" lets the tool change it. |
 |  | `give back ‹value›` | `return value;` |  |
 |  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
-|  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
+| **Errors** | `fail with ‹std::invalid_argument›: ‹message›` | `throw std::invalid_argument(message);` | Stops with an error that the caller can catch. Not on Arduino. |
+| **Tools** | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `auto name = tool(inputs);` | Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2. |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
 |  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
+|  | `define ‹area› giving back ‹a decimal›, without changing the object` | `double area() const {` | Inside a class: a tool that reads the fields and never changes them. |
 |  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 |  | `above main: ‹C++ code›` | `code (outside main)` | C++ copied exactly, outside main. |
@@ -2235,6 +2470,12 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `self.name` | `this->name` |
 | `a followed by b` | `a << b` |
 | `x limited to 0–255` | `std::clamp(x, 0, 255)` |
+| `the result of f with a, b` | `f(a, b)` |
+| `(the result of f with a) times 2` | `f(a) * 2` |
+| `x as a decimal` | `static_cast<double>(x)` |
+| `"Hi " plus name` | `"Hi " + name` |
+| `square root of x` | `std::sqrt(x)` |
+| `absolute value of x` | `std::abs(x)` |
 
 ### Arduino
 
@@ -2269,16 +2510,19 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 |  | `do this, then repeat while ‹condition›` | `do { … } while (condition);` | The steps run once before the test. |
 | **Lists** | `make a list of ‹whole numbers› called ‹name› with ‹1, 2, 3›` | `int name[] = {1, 2, 3};` | Also "list of text", "list of decimals". |
 |  | `make a list of ‹4› ‹whole numbers› called ‹readings›` | `int readings[4];` | A fixed number of items. Add "with 0, 0, 0, 0" to give them. |
+|  | `make a constant list of ‹whole numbers› called ‹PINS› with ‹2, 3, 4›` | `const int PINS[] = {2, 3, 4};` | Items that never change, such as the pins the lights are on. |
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
 |  | `give back ‹value›` | `return value;` |  |
 |  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |
 |  | `run ‹tool› with ‹inputs› and store in ‹name›` | `auto name = tool(inputs);` |  |
+|  | `set ‹name› to the result of ‹tool› with ‹inputs›` | `auto name = tool(inputs);` | Keeps what the tool gives back. Inside a calculation, brackets say where its inputs end: (the result of ‹tool› with ‹inputs›) times 2. |
 | **Classes** | `define class ‹Name›` | `class Name { public: … };` | A blueprint for objects. Indent its fields and tools under it. |
 |  | `define structure ‹Point›` | `struct Point { … };` | Named values bundled together, all public. Fields go under it. |
 |  | `field ‹name›: ‹text›` | `std::string name;` | Inside a class. Also "has whole number count starting at 0". |
 |  | `when made using ‹text name›` | `Name(std::string name) {` | Inside a class: runs when a new object is made. Use "set self.name to name". |
+|  | `define ‹area› giving back ‹a decimal›, without changing the object` | `double area() const {` | Inside a class: a tool that reads the fields and never changes them. |
 |  | `make a new ‹Class› with ‹inputs› and store in ‹name›` | `Class name(inputs);` | Creates an object from a class. Also "make a ‹Class› called ‹name› with ‹inputs›". |
 | **Program** | `include ‹cmath›` | `#include <cmath>` | Brings in a library. |
 | **Other** | `c++: ‹code›` | `code` | Write C++ directly. |
@@ -2299,6 +2543,9 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | **Serial** | `start the serial monitor at ‹9600›` | `Serial.begin(9600);` | Put it in "when the board starts". |
 |  | `show ‹value›` | `Serial.println(value);` | Shows in the serial monitor. "show a followed by b" shows them on one line. |
 |  | `show ‹value› on the same line` | `Serial.print(value);` | What is shown next carries on the line. "end the line" ends it. |
+|  | `show "Temp: {‹t›}"` | `Serial.println(String("Temp: ") + t);` | Text with a value in it. "{t as text}" right after the text joins as "Temp: " + String(t). |
+|  | `show ‹t› with ‹2› decimal places` | `Serial.println(t, 2);` | For a decimal. "show ‹n› in hexadecimal" (or binary) shows a whole number in another base. |
+|  | `show "‹Ready›" kept in flash` | `Serial.println(F("Ready"));` | Fixed text kept in flash memory, so it takes none of the board's small working memory. |
 |  | `end the line` | `Serial.println();` |  |
 | **Screens** | `start ‹lcd› with ‹16, 2›` | `lcd.begin(16, 2);` | A library's start-up, in "when the board starts". "start pixels" if it needs nothing. |
 |  | `show ‹value› on ‹lcd›` | `lcd.print(value);` | Add ", then start a new line" to move down a line (println). |
@@ -2324,5 +2571,10 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `x as number` | `x.toInt()` |
 | `x as text` | `String(x)` |
 | `"Hi {name}"` | `String("Hi ") + name` |
+| `"Temp: {t as text}"` | `"Temp: " + String(t)` |
+| `"Ready" kept in flash` | `F("Ready")` |
+| `the result of f with a, b` | `f(a, b)` |
+| `t as a whole number` | `(int)t` |
+| `square root of x` | `sqrt(x)` |
 
 <!-- index:end -->

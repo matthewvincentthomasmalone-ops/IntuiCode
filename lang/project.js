@@ -103,10 +103,10 @@
     const take = (out) => { Object.assign(results, out.results); for (const [k, v] of out.syms) if (!syms.has(k)) syms.set(k, v); return out; };
     const pyOrder = groups.python && [...groups.python.filter(s => s.id !== p.start), ...groups.python.filter(s => s.id === p.start)];
     const pySyms = groups.python ? take(W.LANG.compileProject({ ...p, sections: pyOrder })).syms : new Map();
-    let page = null;
+    let page = null, web = null;
     if (groups.website) {
       const t = webTriple(groups.website), main = Object.values(t).filter(Boolean);
-      take(W.WEB.compileWebsite({ ...p, sections: main }));
+      web = take(W.WEB.compileWebsite({ ...p, sections: main })).shared || null;   // the page's names, groups and elements
       for (const s of groups.website) {
         if (main.includes(s)) continue;
         results[s.id] = W.WEB.compileWebsite({ ...p, sections: [...main.filter(m => m.file !== s.file), s] }).results[s.id];
@@ -115,7 +115,7 @@
     }
     if (groups.cpp) take(W.CPP.compileCppProject({ ...p, kind: 'cpp', sections: groups.cpp }));
     if (groups.arduino) take(W.CPP.compileCppProject({ ...p, kind: 'arduino', sections: groups.arduino }));
-    return { results, syms, pySyms, page };
+    return { results, syms, pySyms, page, web };
   }
 
   /* ---------- Notes and data, shown as what they are ---------- */

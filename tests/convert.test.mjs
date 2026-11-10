@@ -41,16 +41,22 @@ const CASES = [
   // sensors, a button, millis() timing, switch, a servo, a screen, Serial.print runs; vectors, cin, switch, do-while
   ['tests/corpus_web/gadget.ino', 'arduino', null, null, 1],
   ['tests/corpus_web/grades.cpp', 'cpp', null, null, 0.95],
+  // text built with String(…) and +, F(), decimal places, a tool's result, items of a list, Serial.available
+  ['tests/corpus_web/weather.ino', 'arduino', null, null, 1],
+  // a constant list, an interrupt, a fade, typed commands (only the volatile name stays code)
+  ['tests/corpus_web/fader.ino', 'arduino', null, null, 0.95],
   ['samples/taskboard/static/index.html', 'html', null, ['/static/style.css', '/static/app.js'], 0.95],
   ['samples/taskboard/static/style.css', 'css', 'samples/taskboard/static/index.html', null, 0.8],
   ['samples/taskboard/static/app.js', 'js', 'samples/taskboard/static/index.html', null, 0.75],
   ['samples/cpp/blink/blink.ino', 'arduino', null, null, 0.95],
-  ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.65],
+  ['samples/cpp/inventory/main.cpp', 'cpp', null, null, 0.8],
+  // a class with an initializer list, const tools and a reference result: what can't be said stays code, member by member
+  ['tests/corpus_langs/matrix.cpp', 'cpp', null, null, 0.65],
   // held out: written after the converter, in other styles (classes, switch, templates, SVG, tables)
   ['tests/heldout_web/dashboard.html', 'html', null, ['dashboard.css'], 0.85],
   ['tests/heldout_web/dashboard.css', 'css', 'tests/heldout_web/dashboard.html', null, 0.6],
   ['tests/heldout_web/main.js', 'js', 'tests/heldout_web/dashboard.html', null, 0.35],
-  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.55],
+  ['tests/heldout_web/shapes.cpp', 'cpp', null, null, 0.7],
   ['tests/heldout_web/thermostat.ino', 'arduino', null, null, 1],
 ];
 
@@ -80,8 +86,8 @@ test('code -> sentences: the sentences read naturally', () => {
   const cpp = convert('cpp', read('tests/corpus_web/scores.cpp')).text;
   assert.match(cpp, /^define class Student\n    field name: text\n    field score: whole number = 0$/m);
   assert.match(cpp, /^    when made using text name, whole number score\n        set self\.name to name$/m);
-  assert.match(cpp, /^show ada\.name followed by " got " followed by ada\.grade\(\)$/m);
-  assert.match(cpp, /^set decimal avg to average\(all\)$/m);
+  assert.match(cpp, /^show ada\.name followed by " got " followed by the result of ada\.grade$/m);
+  assert.match(cpp, /^set decimal avg to the result of average with all$/m);
   const ino = convert('arduino', read('tests/corpus_web/button_led.ino')).text;
   assert.match(ino, /^when the board starts\n    make pin BUTTON an input with pull-up$/m);
   assert.match(ino, /^    if pin BUTTON is off$/m);
@@ -96,7 +102,8 @@ test('code -> sentences: the sentences read naturally', () => {
 test('code -> sentences: anything that can\'t be said stays exact code', () => {
   const r = convert('js', 'class A { #x = 1; get x() { return this.#x; } }\nconst a = new A();\nlabel: for (;;) { break label; }\n');
   assert.equal(r.exact, true);
-  assert.match(r.text, /^js: class A/m);
+  // (a class is said part by part: the parts sentences have no words for stay code inside it)
+  assert.match(r.text, /^define class A\n    js: #x = 1;\n    js: get x\(\) \{ return this\.#x; \}\nconstant a is a new A\njs: label: for/m);
   const c = convert('cpp', 'template <typename T> T twice(T v) { return v * 2; }\nint main() {\n  int n = twice(4);\n  std::cout << n << std::endl;\n  return 0;\n}\n');
   assert.equal(c.exact, true, c.reason);
   assert.match(c.text, /^above main: template <typename T>/m);
@@ -182,7 +189,7 @@ test('code -> sentences: exact where the checker used to look away', () => {
   // a reply that changes later is kept with let; x++ and x += 1 say different things
   let r = exact('js', 'let data = await (await fetch("/api")).json();\ndata = data.items;\n', null, /^fetch from "\/api" and store in data\nset data to data\.items$/m);
   assert.equal(r.kept, 0, r.text);
-  exact('js', 'let data = await (await fetch("/api")).json();\nconsole.log(data);\n', null, /^set data to await \(await fetch\("\/api"\)\)\.json\(\)$/m);
+  exact('js', 'let data = await (await fetch("/api")).json();\nconsole.log(data);\n', null, /^set data to the JSON read from \(the reply from "\/api"\)$/m);
   r = exact('js', 'let n = 0;\nn++;\nn += 1;\n', null, /^increase n\nincrease n by 1$/m);
   assert.equal(r.kept, 0, r.text);
   exact('js', 'function f(a) {\n  a = a + 1;\n  return a;\n}\nfor (let x of [1, 2]) {\n  x = x * 2;\n}\n', null, /^    set a to a plus 1$/m);
@@ -226,7 +233,7 @@ test('code -> sentences: an Arduino sketch reads as plain sentences, with no c++
     /^    set item slot of history to level$/m,
     /^    show "Level: " followed by level followed by " Distance: " followed by cm$/m,
     /^    clear lcd\n    move lcd's cursor to 0, 0\n    show level on lcd$/m,
-    /^    repeat 4 times, counting with i\n        show history\[i\] followed by " " on the same line\n    end the line$/m,
+    /^    repeat 4 times, counting with i\n        show item i of history followed by " " on the same line\n    end the line$/m,
   ]) assert.match(r.text, re);
 });
 

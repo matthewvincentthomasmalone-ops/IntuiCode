@@ -6,6 +6,7 @@
  *
  *   history(typed, lines, limit)  -> [sentence]: sentences that start with what's typed, each once, in order
  *   rest(typed, label)            -> what's still to type of label, or '' if label doesn't carry on from typed
+ *   after(typed, pattern)         -> the rest of a pattern once its blanks so far are filled in, or ''
  *   nextWord(rest)                -> the next word of a prediction (with the spaces before it)
  *   remember(list, line, max)     -> list with line at the front (once), at most max long
  *   worth(line)                   -> is this line worth predicting again (a whole sentence, not a note or code)
@@ -55,6 +56,29 @@
     return m ? m[0] : String(r);
   }
 
+  /* The rest of a sentence pattern once its blanks so far are filled in: with "add a paragraph called ‹name›
+     saying "‹text›"", what's typed as "add a paragraph called intro" carries on as ' saying "‹text›"'.
+     '' if what's typed doesn't fit the pattern, or only a closing quote is left. */
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+  function after(typed, pattern) {
+    typed = String(typed); pattern = String(pattern);
+    const parts = pattern.split(/(‹[^›]*›)/);   // words, blank, words, blank, …
+    let re = '';
+    for (let k = 1; k < parts.length; k += 2) {
+      const q = parts[k - 1].slice(-1);
+      // a blank in quotes takes anything up to the quote; one outside them, a word or something in quotes
+      re += esc(parts[k - 1]) + (q === '"' ? '[^"]*' : q === "'" ? "[^']*" : '(?:"[^"]*"|\'[^\']*\'|[^\\s"\']+)');
+      const m = typed.match(new RegExp('^' + re + '([\\s\\S]*)$', 'i'));
+      if (!m) return '';
+      const tail = m[1], rest = parts.slice(k + 1).join('');
+      if (tail.length < rest.length && rest.slice(0, tail.length).toLowerCase() === tail.toLowerCase()) {
+        const out = rest.slice(tail.length);
+        return /[a-z‹]/i.test(out) ? out : '';
+      }
+    }
+    return '';
+  }
+
   function remember(list, line, max = 300) {
     const s = clean(line);
     if (!worth(s)) return list.slice(0, max);
@@ -62,5 +86,5 @@
     return [s, ...list.filter(x => x.toLowerCase() !== low)].slice(0, max);
   }
 
-  root.IntuiPredict = { history, rest, nextWord, remember, worth };
+  root.IntuiPredict = { history, rest, after, nextWord, remember, worth };
 })(typeof window !== 'undefined' ? window : globalThis);
