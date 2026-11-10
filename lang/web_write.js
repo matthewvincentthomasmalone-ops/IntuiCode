@@ -1228,6 +1228,15 @@
     const body = (t, p) => { const v = sub(t, [p]); return /^\{/.test(v) ? `(${v})` : v; };   // (a record given back needs brackets)
     const args = (t) => (t ? splitAnd(t).map(a => jsExpr(a, x, inf)).join(', ') : '');
     if ((m = s.match(/^wait for\s+(.+)$/i))) { const w = jsWhole(m[1], x, inf); return w == null ? null : `await ${w}`; }
+    // "x, or y if that is nothing": x, unless it is null or undefined (??)
+    const tm = topMask(s), nothingAt = tm.search(/\s+if (?:that|it) is nothing$/i);
+    if (nothingAt > 0) {
+      const ors = [...tm.slice(0, nothingAt).matchAll(/,?\s+or\s+/gi)], or = ors[ors.length - 1];
+      if (or) {
+        note(inf, '`a ?? b` is a, unless a is null or undefined (nothing): then it is b.');
+        return `${jsExpr(s.slice(0, or.index), x, inf)} ?? ${jsExpr(s.slice(or.index + or[0].length, nothingAt), x, inf)}`;
+      }
+    }
     // a list made from another, item by item: .map, and .filter for "if"
     if ((m = s.match(/^a list of\s+/i)) && (f = topFind(s, /\s+for each\s+/i, m[0].length))) {
       const e = s.slice(m[0].length, f.at), rest = s.slice(f.end), pm = rest.match(new RegExp(`^(${JS_NAME})\\s+in\\s+`, 'i'));
@@ -1293,7 +1302,7 @@
     // text in quotes, and regular expressions like /  +/g (a / where a value starts), are kept exactly as written;
     // a .name or […] typed right after one stays attached to it: "abc".length
     const strs = [];
-    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^])\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^]|\bmatches)\s*)\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+\/[dgimsuvy]*/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_$]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
     q = wholeGroups(q, strs, x, inf);
     // An operand: quoted text, a number or a name (a page element's may have dashes), then any .names, calls and
     // indexes, with brackets inside brackets (see PAREN).
@@ -1351,6 +1360,11 @@
     if (!x.vars.has('item') && /\bitem\s+\S.*?\s+of\s/i.test(q.replace(/⟦\d+⟧/g, ''))) inf.errs.push('The position in "item … of …" has to be one value: a number, a name, or a sum in brackets, like item (k plus 1) of stars.');
     swap(String.raw`\b(?:length|size) of (OPD)`, '$1.length');
     swap(String.raw`\bhow many (?:items )?in (OPD)`, '$1.length');
+    // "a random number below 1" (Math.random()), "a random whole number below 6" (0 to 5)
+    q = q.replace(RX(String.raw`\b(?:an? )?random whole number below (OPX)`), (m, n) => { note(inf, '`Math.random()` gives a decimal from 0 up to (not including) 1; times the number and rounded down, it is a whole number from 0 up to one less than it.'); return `Math.floor(Math.random() * ${n})`; })
+      .replace(/\b(?:an? )?random number below 1\b/gi, 'Math.random()');
+    // the largest and smallest number in a list
+    q = q.replace(RX(String.raw`\b(largest|biggest|smallest) number in (OPX)`), (m, w, l) => `Math.${/^smallest$/i.test(w) ? 'min' : 'max'}(...${l})`);
     q = randomRange(q, OPD, strs, inf, s);
     swap(String.raw`\brandom item (?:from|of|in) (OPD)`, '$1[Math.floor(Math.random() * $1.length)]');
     // words that follow their value: right after a sum they could mean the last value or the whole sum
@@ -1378,6 +1392,8 @@
     q = q.replace(R(String.raw`(OPD) is not in group ([\w-]+)`), (m, a, g) => `!${a}.classList.contains(${quoted(toId(g))})`)
       .replace(R(String.raw`(OPD) is in group ([\w-]+)`), (m, a, g) => { note(inf, '`classList.contains` is true when the element is in that group (has that class).'); return `${a}.classList.contains(${quoted(toId(g))})`; });
     swap(String.raw`(OPD) contains (OPD)`, '$1.includes($2)');
+    // "ua matches /win/i": a regular expression's test
+    q = q.replace(R(String.raw`(OPD) matches (⟦\d+⟧)`), (m, a, re) => (/^\//.test(strs[+re.slice(1, -1)]) ? `${re}.test(${a})` : m));
     swap(String.raw`(OPD) is not (?:in|one of) (OPD)`, '!$2.includes($1)');
     swap(String.raw`(OPD) is (?:in|one of) (OPD)`, '$2.includes($1)');
     // "is an empty list": a new [] is never === another list, so it's about how many items there are
@@ -1447,6 +1463,7 @@
     // "the element called "add"", "the element matching ".go"": found on the page as the code runs
     if (/^(?:the\s+)?element (?:called|matching)\s+(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i.test(raw)) return { js: jsExpr(raw, x, inf), id: raw, tag: null };
     if (/^the (?:page|document)$/i.test(raw)) return { js: 'document', id: 'the page', tag: null };
+    if (/^the window$/i.test(raw)) return { js: 'window', id: 'the window', tag: null };
     const v = holdsElement(raw, x);
     if (v) return { js: v[2] === raw ? raw : jsExpr(raw, x, inf), id: raw, tag: null };
     inf.errs.push(`Nothing in Structure is called ${code(id)}. Add it there first, e.g. "add a button called ${id} saying "…"", or make it in Mechanics: "make a new button saying "…" in … and store in ${/^[A-Za-z_$][\w$]*$/.test(raw) ? raw : 'b'}".`);
@@ -1487,6 +1504,8 @@
       if ((m = s.match(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }   // (greeting = "hi": the name is greeting)
       if ((m = s.match(/^when (?:a )?new\s+[A-Za-z_$][\w$]*\s+is (?:made|created)\s+(?:with|using)\s+(.+)$/i))) m[1].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, '')));
       if ((m = s.match(/^define (?:a )?class\s+([A-Za-z_$][\w$]*)/i))) x.vars.add(m[1]);
+      if ((m = s.match(/^(?:constant|set)\s+([A-Za-z_$][\w$]*)\s+(?:is|to)\s+a tool(?:\s+using\s+(.+?))?(?:\s+giving back\s.+)?$/i))) { x.fns.add(m[1]); if (m[2]) m[2].split(/\s*,\s*/).forEach(p => x.vars.add(p.replace(/\s*=.*$/, ''))); }
+      if ((m = s.match(/^do this for each\s+([A-Za-z_$][\w$]*)\s+in\s+.+?(?:,?\s+counting with\s+([A-Za-z_$][\w$]*))?$/i))) { x.vars.add(m[1]); if (m[2]) x.vars.add(m[2]); }
       if ((m = s.match(/^bring in\s+(.+?)\s+from\s+["']/i))) m[1].split(/\s*,\s*|\s+and\s+/).forEach(n => x.vars.add(n.trim()));
       if ((m = s.match(MAKE_NEW)) && (m = m[2].match(/\band store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) x.made.set(m[1], MADE[s.match(MAKE_NEW)[1].toLowerCase().replace(/\s+/g, ' ')]);
       if ((m = s.match(/^(every|after)\s+.+?\s+seconds?\s+as\s+([A-Za-z_$][\w$]*)[.:]?$/i))) { x.vars.add(m[2]); x.timers.set(m[2], /^every$/i.test(m[1]) ? 'Interval' : 'Timeout'); }
@@ -1552,7 +1571,7 @@
         const jInd = lines[j].match(/^ */)[0].length;
         if (jInd <= baseInd) break;
         if (inner != null && jInd > inner) continue;
-        inner = /^\s*(?:when |every |after |define )/i.test(lines[j]) ? jInd : null;
+        inner = /^\s*(?:when |every |after |define |do this for each |(?:constant|set) [A-Za-z_$][\w$]* (?:is|to) a tool\b)/i.test(lines[j]) ? jInd : null;
         if (inner != null) continue;
         if (/\b(fetch|send .+ to)\b/i.test(lines[j])) return true;
         if (/^\s*(?:note|comment)\s*:/i.test(lines[j])) continue;
@@ -1661,17 +1680,36 @@
         note(inf, up ? `\`pointerup\` on ${code(el.id)}: a finger lifting, or a mouse button let go, over it. "tap x" and "tap y" are measured from its top left corner.` : `\`pointerdown\` on ${code(el.id)}: a finger or a mouse. "tap x" and "tap y" are measured from its top left corner.`);
         return open(handler(el.js, up ? 'pointerup' : 'pointerdown'), '});', 'fn');
       }
-      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|changed|typed in|hovered|pointed at|sent|submitted)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
-        const ev = { clicked: 'click', pressed: 'click', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit' }[m[2].toLowerCase()];
+      // "when everything has loaded": the window's load, after pictures and the rest (the page's own, above, comes first)
+      if (/^when the window has loaded$/i.test(s)) {
+        note(inf, 'The window\'s `load` happens once everything is in: pictures, styles and the rest. "when the page has loaded" is sooner, as soon as the page itself is read.');
+        return open(handler('window', 'load', '()'), '});', 'fn');
+      }
+      // a key in one element (a box): "when a key is pressed in search, with the event as e"
+      if ((m = M(/^when (?:a|any) key is (pressed|released|let go)\s+(?:in|on)\s+(.+?)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
+        const el = elementRef(m[2], x, inf), ev = /^pressed$/i.test(m[1]) ? 'keydown' : 'keyup';
+        note(inf, `\`${ev}\` on ${code(el.id)}: ${m[3] || 'event'}.key is the key ("Enter", "a", "ArrowLeft").`);
+        open(handler(el.js, ev, m[3] ? `(${m[3]})` : usesEvent(i) ? '(event)' : '()'), '});', 'fn');
+        if (m[3]) declare(m[3]);
+        return;
+      }
+      if ((m = M(/^when\s+(.+?)\s+is\s+(clicked|pressed|double-clicked|changed|typed in|hovered|pointed at|sent|submitted|focused|unfocused|scrolled|resized)(?:,?\s+with the event as\s+([A-Za-z_$][\w$]*))?$/i))) {
+        const ev = { clicked: 'click', pressed: 'click', 'double-clicked': 'dblclick', changed: 'change', 'typed in': 'input', hovered: 'mouseenter', 'pointed at': 'mouseenter', sent: 'submit', submitted: 'submit', focused: 'focus', unfocused: 'blur', scrolled: 'scroll', resized: 'resize' }[m[2].toLowerCase()];
         const el = elementRef(m[1], x, inf);
         const isForm = ev === 'submit', evName = m[3] || 'event';
-        note(inf, `${code('addEventListener("' + ev + '", …)')} runs the indented lines every time ${code(el.id)} ${ev === 'click' ? 'is clicked' : ev === 'submit' ? 'is sent' : 'changes'}.` + (isForm ? ' `preventDefault()` stops the browser from reloading the page when the form is sent.' : '') + (el.made ? ` ${code(el.id)} is an element made in Mechanics, so the listener is added to it here, as it is made.` : ''));
+        note(inf, `${code('addEventListener("' + ev + '", …)')} runs the indented lines every time ${code(el.id)} ${ev === 'click' ? 'is clicked' : ev === 'submit' ? 'is sent' : /^(?:change|input)$/.test(ev) ? 'changes' : 'is ' + m[2].toLowerCase()}.` + (isForm ? ' `preventDefault()` stops the browser from reloading the page when the form is sent.' : '') + (el.made ? ` ${code(el.id)} is an element made in Mechanics, so the listener is added to it here, as it is made.` : ''));
         if (m[3]) note(inf, `The event (what happened: ${code(m[3] + '.target')} is the element, for one) is called ${code(m[3])} in the indented lines.`);
         open(handler(el.js, ev, m[3] ? `(${m[3]})` : isForm || usesEvent(i) ? '(event)' : '()'), '});', 'fn');
         if (m[3]) declare(m[3]);
         if (isForm) push('  '.repeat(stack.length) + `${evName}.preventDefault();`, i);
         return;
       }
+      // a script's steps wrapped so its names stay its own, run straight away: (function () { … })();
+      if (/^run this now,? keeping its names private$/i.test(s)) {
+        note(inf, 'A function run as soon as it is made: the names made inside it don\'t clash with other scripts\' names.');
+        return open('(function () {', '})();', 'fn');
+      }
+      if (/^use (?:JavaScript's )?strict rules$/i.test(s)) { note(inf, '`"use strict"` makes JavaScript stop with an error on some easy mistakes (like a name used before it is made).'); return say('"use strict";'); }
       if (/^every frame$/i.test(s)) {
         note(inf, '`requestAnimationFrame` runs the indented lines just before the screen is redrawn, usually 60 times a second, and asks for the next frame at the end.');
         return open('requestAnimationFrame(function frame() {', ['  requestAnimationFrame(frame);', '});'], 'fn');
@@ -1733,6 +1771,7 @@
         return say(`${el.js}.className = ${E(m[2], inf)};`);
       }
       if ((m = M(/^set the page(?:'s)? title to\s+(.+)$/i))) { note(inf, '`document.title` is the page title, shown on the browser tab.'); return say(`document.title = ${E(m[1], inf)};`); }
+      if ((m = M(/^remove\s+(.+?)\s+from the page$/i))) { const el = elementRef(m[1], x, inf); note(inf, '`remove()` takes the element off the page.'); return say(`${el.js}.remove();`); }
       if ((m = M(/^put\s+(.+?)\s+at the end of\s+(.+)$/i))) {
         const el = elementRef(m[2], x, inf), what = elementRef(m[1], x, inf);
         note(inf, `\`appendChild\` puts ${code(what.id)} inside ${code(el.id)}, after everything already there (moving it, if it was on the page).`);
@@ -1970,6 +2009,33 @@
         return;
       }
       if ((m = M(/^(?:while|as long as)\s+(.+)$/i))) return open(`while (${E(m[1], inf, true)}) {`, '}', 'loop');
+      // "do this for each todo in todos[, counting with i]": .forEach, a little tool run for each item
+      if ((m = M(/^do this for each\s+([A-Za-z_$][\w$]*)\s+in\s+(.+?)(?:,?\s+counting with\s+([A-Za-z_$][\w$]*))?$/i))) {
+        note(inf, '`.forEach` runs the indented lines once for each item' + (m[3] ? `, with ${code(m[3])} counting from 0.` : '.') + ' It is a little tool of its own: "give back" ends this round, and "stop the loop" doesn\'t work here.');
+        open(`${E(m[2], inf)}.forEach(${needsAsync(i) ? 'async ' : ''}(${m[1]}${m[3] ? ', ' + m[3] : ''}) => {`, '});', 'fn');
+        declare(m[1]); if (m[3]) declare(m[3]);
+        return;
+      }
+      if ((m = M(/^sort\s+(.+?)\s+(from (?:smallest|lowest) to (?:biggest|largest|highest)|from (?:biggest|largest|highest) to (?:smallest|lowest)|as text)$/i))) {
+        note(inf, /as text/i.test(m[2]) ? '`.sort()` puts the items in order as text (so 10 comes before 9), in the list itself.' : '`.sort` with `a - b` puts numbers in order, in the list itself.');
+        return say(`${E(m[1], inf)}.sort(${/as text/i.test(m[2]) ? '' : /^from (?:smallest|lowest)/i.test(m[2]) ? '(a, b) => a - b' : '(a, b) => b - a'});`);
+      }
+      if ((m = M(/^reverse\s+(.+)$/i))) { note(inf, '`.reverse()` turns the list round, in the list itself.'); return say(`${E(m[1], inf)}.reverse();`); }
+      // "constant double is a tool using n giving back n times 2", or with its steps indented under it: an arrow function
+      if ((m = M(/^(constant|set)\s+([A-Za-z_$][\w$]*)\s+(?:is|to)\s+a tool(?:\s+using\s+(.+?))?(?:\s+giving back\s+(.+))?$/i)) && !inClass) {
+        const constant = /^constant$/i.test(m[1]), ps = m[3] ? splitItems(m[3]) : [];
+        const kw = constant ? (scopes[scopes.length - 1].has(m[2]) ? (inf.errs.push(`${code(m[2])} already exists here, so it can't be made again.`), '') : (declare(m[2], 'const'), 'const ')) : keyword(m[2], inf);
+        note(inf, '`=>` makes a little tool (an arrow function), kept under this name; "run ' + m[2] + '" runs it.');
+        if (m[4] != null) {
+          const added = ps.map(p => p.replace(/\s*=.*$/, '')).filter(p => !x.vars.has(p));
+          added.forEach(p => x.vars.add(p));
+          let v; try { v = E(m[4], inf); } finally { added.forEach(p => x.vars.delete(p)); }
+          return say(`${kw}${m[2]} = ${/\bawait\b/.test(v) ? 'async ' : ''}(${ps.join(', ')}) => ${/^\{/.test(v) ? `(${v})` : v};`);
+        }
+        open(`${kw}${m[2]} = ${needsAsync(i) ? 'async ' : ''}(${ps.join(', ')}) => {`, '};', 'fn', { def: true });
+        for (const p of ps) declare(p.replace(/\s*=.*$/, ''));
+        return;
+      }
       if ((m = M(/^define\s+([A-Za-z_$][\w$]*)(?:\s+using\s+(.+))?$/i))) {
         const ps = m[2] ? splitItems(m[2]) : [];
         note(inf, inClass ? `A tool of every ${top.cls} object (a method): inside it, \`this\` is the object it was used on.` : '`function` makes a reusable tool.');
@@ -2244,6 +2310,15 @@
     T('Server', 'constant ‹reply› is the reply from "‹/api/items›"', 'await fetch("/api/items")', 'Then "the JSON read from ‹reply›" is what it sent (await reply.json()).', ['mechanics']),
     T('Server', 'wait for ‹navigator.clipboard.writeText› with ‹text›', 'await navigator.clipboard.writeText(text)', 'Runs a tool that finishes later and waits for it.', ['mechanics']),
     T('Server', 'constant ‹saved› is the text saved in the browser as "‹key›"', 'localStorage.getItem("key")', 'The text as it was saved (null if there is none).', ['mechanics']),
+    T('Lists', 'do this for each ‹item› in ‹list›', 'list.forEach((item) => {', 'Add ", counting with ‹i›" for its place (from 0). It is a little tool of its own: "give back" ends this round.', ['mechanics']),
+    T('Lists', 'sort ‹list› from smallest to biggest', 'list.sort((a, b) => a - b);', 'Also "from biggest to smallest", and "as text" (10 before 9). "reverse ‹list›" turns it round.', ['mechanics']),
+    T('Logic', 'constant ‹double› is a tool using ‹n› giving back ‹n times 2›', 'const double = (n) => n * 2;', 'A little tool kept in a name (an arrow function). Leave out "giving back …" and indent its steps under it instead.', ['mechanics']),
+    T('Errors', 'fail with "‹Not found›"', 'throw new Error("Not found");', 'Stops with an error; "if it fails" round the steps that ran it catches it.', ['mechanics']),
+    T('Events', 'when a key is pressed in ‹name›, with the event as ‹e›', 'name.addEventListener("keydown", (e) => …)', 'e.key is the key: "Enter", "a", "ArrowLeft". Also "when a key is released in …".', ['mechanics']),
+    T('Events', 'when ‹name› is double-clicked', 'name.addEventListener("dblclick", …)', 'Also "is focused", "is unfocused" (blur), "is scrolled"; and "when the window is resized".', ['mechanics']),
+    T('Events', 'when the window has loaded', 'window.addEventListener("load", …)', 'Once everything is in, pictures too. "when the page has loaded" is sooner.', ['mechanics']),
+    T('Page', 'remove ‹name› from the page', 'name.remove();', 'Takes the element off the page.', ['mechanics']),
+    T('Logic', 'run this now, keeping its names private', '(function () { … })();', 'Indent the steps under it: the names made there don\'t clash with other scripts\'. "use strict rules" first, for "use strict".', ['mechanics']),
   ];
   const GUIDES = {
     structure: {
@@ -2272,9 +2347,11 @@
       ['name trimmed', 'name.trim()'], ['line split at ","', 'line.split(",")'], ['price to 2 decimal places', 'price.toFixed(2)'], ['n rounded', 'Math.round(n)'], ['n rounded down', 'Math.floor(n)'], ['n rounded up', 'Math.ceil(n)'],
       ['text read as JSON', 'JSON.parse(text)'], ['data as JSON text', 'JSON.stringify(data)'], ['the text saved in the browser as "k"', 'localStorage.getItem("k")'],
       ['the element called "total"', 'document.getElementById("total")'], ['a new "li" element', 'document.createElement("li")'], ['the page title', 'document.title'], ['value of box', 'box.value'],
-      ['the reply from "/api"', 'await fetch("/api")'], ['the JSON read from reply', 'await reply.json()']],
+      ['the reply from "/api"', 'await fetch("/api")'], ['the JSON read from reply', 'await reply.json()'],
+      ['a random whole number below 6', 'Math.floor(Math.random() * 6)'], ['a random number below 1', 'Math.random()'], ['the largest number in xs', 'Math.max(...xs)'], ['the smallest number in xs', 'Math.min(...xs)'],
+      ['x, or y if that is nothing', 'x ?? y'], ['ua matches /win/i', '/win/i.test(ua)']],
   };
-  const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
+  const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|run this now|(?:constant|set) [\w$]+ (?:is|to) a tool(?!.*\sgiving back\s)|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
   const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
     readAttr, sayAttr, elementWord,

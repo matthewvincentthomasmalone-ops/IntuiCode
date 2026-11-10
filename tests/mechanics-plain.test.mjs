@@ -93,8 +93,23 @@ test('mechanics: classes and bringing in other files\' tools', () => {
   assert.match(js('when a new A is made\n    show 1').errs[0], /goes right inside "define class A"/);
 });
 
+test('mechanics: "do this for each" (.forEach), sorting, random numbers, the largest, "or … if that is nothing"', () => {
+  both('set todos to [{ done: false }]\ndo this for each todo in todos, counting with index\n    set done of item index of todos to not todo.done\ndo this for each todo in todos\n    show todo\nset nums to [3, 1]\nsort nums from smallest to biggest\nsort nums from biggest to smallest\nsort nums as text\nreverse nums\nconstant roll is a random whole number below 6 plus 1\nconstant chance is a random number below 1\nconstant pick is random item from nums\nconstant top is the largest number in nums\nconstant name is todos.name, or "guest" if that is nothing',
+    'let todos = [{ done: false }];\ntodos.forEach((todo, index) => {\n  todos[index].done = !todo.done;\n});\ntodos.forEach((todo) => {\n  console.log(todo);\n});\nlet nums = [3, 1];\nnums.sort((a, b) => a - b);\nnums.sort((a, b) => b - a);\nnums.sort();\nnums.reverse();\nconst roll = Math.floor(Math.random() * 6) + 1;\nconst chance = Math.random();\nconst pick = nums[Math.floor(Math.random() * nums.length)];\nconst top = Math.max(...nums);\nconst name = todos.name ?? "guest";\n');
+  // .forEach with one expression is the same as with a block; with no brackets round its input too
+  reads('const items = document.querySelectorAll(".item");\nitems.forEach(item => item.classList.toggle("active"));\n', 'constant items is every element matching ".item"\ndo this for each item in items\n    switch group active on item');
+  reads('let saved = JSON.parse(localStorage.getItem("todos")) || [];\n', 'set saved to (the text saved in the browser as "todos") read as JSON or an empty list');
+});
+
+test('mechanics: tools kept in a name (arrow functions), more events, named timers, failing, removing, matching', () => {
+  both('constant double is a tool using n giving back n times 2\nconstant load is a tool using url\n    constant reply is the reply from url\n    if not reply.ok\n        fail with "Request failed"\n    give back the JSON read from reply\nconstant box is the element called "search"\nwhen a key is pressed in box, with the event as e\n    if e.key is "Enter"\n        run box.blur\nwhen box is focused\n    put box in group active\nwhen box is unfocused\n    take box out of group active\nwhen box is double-clicked\n    remove box from the page\nwhen the window is resized\n    show "resized"\nwhen the window has loaded\n    show "loaded"\nset timer to nothing\nevery 1 seconds as timer\n    show "tick"\nstop timer\nif "Mozilla" matches /moz/i\n    show 1',
+    'const double = (n) => n * 2;\nconst load = async (url) => {\n  const reply = await fetch(url);\n  if (!reply.ok) {\n    throw new Error("Request failed");\n  }\n  return await reply.json();\n};\nconst box = document.getElementById("search");\nbox.addEventListener("keydown", (e) => {\n  if (e.key === "Enter") {\n    box.blur();\n  }\n});\nbox.addEventListener("focus", () => {\n  box.classList.add("active");\n});\nbox.addEventListener("blur", () => {\n  box.classList.remove("active");\n});\nbox.addEventListener("dblclick", () => {\n  box.remove();\n});\nwindow.addEventListener("resize", () => {\n  console.log("resized");\n});\nwindow.addEventListener("load", () => {\n  console.log("loaded");\n});\nlet timer = null;\ntimer = setInterval(() => {\n  console.log("tick");\n}, 1000);\nclearInterval(timer);\nif (/moz/i.test("Mozilla")) {\n  console.log(1);\n}\n');
+  // a script wrapped so its names stay its own, and strict rules
+  both('run this now, keeping its names private\n    use strict rules\n    constant n is 1\n    show n', '(function () {\n  "use strict";\n  const n = 1;\n  console.log(n);\n})();\n');
+});
+
 test('templates: the new Mechanics templates, filled in with their own words, have no problems', () => {
-  const NEW = /the result of|a new ‹Date›| if ‹test› otherwise|^depending on|^when it is|^do this|class|^bring in|a list of|the first ‹x›|for every|joined by|decimal places|read as JSON|element called|"‹li›" element|at the end of|the HTML of|the groups of|page title to|the reply from|^wait for ‹navigator|saved in the browser as/;
+  const NEW = /the result of|a new ‹Date›| if ‹test› otherwise|^depending on|^when it is|^do this|class|^bring in|a list of|the first ‹x›|for every|joined by|decimal places|read as JSON|element called|"‹li›" element|at the end of|the HTML of|the groups of|page title to|the reply from|^wait for ‹navigator|saved in the browser as|^sort|is a tool|^fail with|key is pressed in|double-clicked|window has loaded|from the page$|^run this now/;
   const fill = (p) => p.replace(/‹([^›]*)›/g, '$1');
   let n = 0;
   for (const t of WEB.TEMPLATES.filter(t => t.sections.includes('mechanics') && NEW.test(t.pattern))) {
@@ -102,13 +117,13 @@ test('templates: the new Mechanics templates, filled in with their own words, ha
     if (/^when it is/.test(line)) line = `depending on 1\n    ${line}\n        show 1`;
     else if (/^when a new/.test(line)) line = `define class Store\n    ${line}\n        set this.key to key`;
     else if (/^depending on/.test(line)) line = `set value to 1\n${line}\n    otherwise\n        show 1`;
-    else if (/^do this/.test(line)) line = `set test to yes\n${line}\n    show 1`;
+    else if (/^(?:do this|run this now|when )/.test(line)) line = `set test to yes\n${line}\n    show 1`;
     else if (/^wait for/.test(line)) line = `define go using text\n    ${line}`;
     const r = js(`${/^constant item\b/.test(line) ? '' : 'constant item is a new "li" element\n'}constant list is the element called "items"\nset price to 1\nset text to "[]"\n${line}`, { name: 'div' });
     assert.deepEqual(r.errs, [], `${t.pattern}\n${line}`);
     n++;
   }
-  assert.ok(n >= 20, `only ${n} templates checked`);
+  assert.ok(n >= 30, `only ${n} templates checked`);
 });
 
 test('checker: quotes, a last comma, (x) =>, and the break ending a switch change nothing; holes and other breaks do', () => {

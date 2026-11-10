@@ -197,7 +197,7 @@
   /* ================================================================== */
 
   const JS_OPS = { '===': 'is', '!==': 'is not', '&&': 'and', '||': 'or', '+': 'plus', '-': 'minus', '*': 'times', '/': 'divided by', '%': 'mod', '>': 'is greater than', '<': 'is less than', '>=': 'is at least', '<=': 'is at most' };
-  const EVENTS = { click: 'clicked', change: 'changed', input: 'typed in', mouseenter: 'hovered', submit: 'sent' };
+  const EVENTS = { click: 'clicked', dblclick: 'double-clicked', change: 'changed', input: 'typed in', mouseenter: 'hovered', submit: 'sent', focus: 'focused', blur: 'unfocused', scroll: 'scrolled', resize: 'resized' };
   // tags the writer's "make a new … and store in …" makes, by its word for each
   const MADE_WORD = { li: 'list item', div: 'block', p: 'paragraph', span: 'text', a: 'link', img: 'picture', button: 'button', h1: 'big heading', h2: 'heading', h3: 'small heading', section: 'section', ul: 'list', ol: 'numbered list', label: 'label', option: 'option', tr: 'row', td: 'cell', canvas: 'drawing area' };
   const isChain = (n) => n && (n.type === 'identifier' || n.type === 'this' || (n.type === 'member_expression' && F(n, 'property').type === 'property_identifier' && isChain(F(n, 'object'))));
@@ -223,7 +223,7 @@
     const holder = (n) => {
       if (!n) return null;
       if (elId(n)) return elId(n);
-      if (n.type === 'identifier') return n.text === 'document' && !ids.page ? 'the page' : !ids[n.text] && !/^(?:document|window|event|this)$/.test(n.text) ? n.text : null;
+      if (n.type === 'identifier') return n.text === 'document' && !ids.page ? 'the page' : n.text === 'window' && !ids.window ? 'the window' : !ids[n.text] && !/^(?:document|window|event|this)$/.test(n.text) ? n.text : null;
       if (n.type !== 'call_expression') return null;
       const a = args(n), f = F(n, 'function').text;
       if (a.length !== 1 || !plainString(a[0])) return null;
@@ -280,8 +280,11 @@
         }
         case 'parenthesized_expression': { const e = ex(named(n)[0]); return e == null ? null : `(${e})`; }
         case 'binary_expression': {
-          const op = F(n, 'operator').type, l = tight(ex(F(n, 'left'))), r = tight(ex(F(n, 'right')));
+          // a whole-value phrase goes in brackets; "x read as JSON" too after plus, minus… (the writer would ask which part it goes with)
+          const op = F(n, 'operator').type, arith = /^(?:[-+*/%]|\*\*)$/.test(op);
+          const l = inList(ex(F(n, 'left'))), r0 = /^(?:\|\||\?\?)$/.test(op) ? val(F(n, 'right')) : ex(F(n, 'right')), r = arith ? tight(r0) : inList(r0);
           if (l == null || r == null) return null;
+          if (op === '??') return W(`${l}, or ${r} if that is nothing`);
           // x == null: nothing or undefined (the writer's "is nothing"); x === null: null itself
           if ((op === '==' || op === '!=') && F(n, 'right').type === 'null') return `${l} ${op === '==' ? 'is' : 'is not'} nothing`;
           if (F(n, 'right').type === 'null') return JS_OPS[op] ? `${l} ${JS_OPS[op]} null` : `${l} ${op} null`;
@@ -311,6 +314,7 @@
           const o2 = ex(obj), list = o2 != null && /^(?:first |last )?item /.test(o2) ? o2 : opd(o2);
           if (list == null || !at) return null;
           if (at.type === 'number' && at.text === '0') return `first item of ${list}`;
+          if (isChain(obj) && at.text.replace(/\s+/g, '') === `Math.floor(Math.random()*${obj.text}.length)`) return `random item from ${list}`;
           if (isChain(obj) && at.type === 'binary_expression' && F(at, 'operator').type === '-' && F(at, 'right').text === '1' && F(at, 'left').text === `${obj.text}.length`) return `last item of ${list}`;
           const i = ex(at);
           return i == null ? null : `item ${simple(i) ? i : `(${i})`} of ${list}`;
@@ -330,7 +334,14 @@
           if (f === 'localStorage.getItem' && one != null) return P(`the text saved in the browser as ${opx(one)}`);
           if (f === 'JSON.parse' && one != null) return P(`${opx(one)} read as JSON`);
           if (f === 'JSON.stringify' && one != null) return P(`${opx(one)} as JSON text`);
+          // random numbers: Math.random() is from 0 up to 1; Math.floor(Math.random() * n) a whole number from 0 up to n - 1
+          if (f === 'Math.random' && !a.length) return P('a random number below 1');
+          if (f === 'Math.floor' && a.length === 1 && a[0].type === 'binary_expression' && F(a[0], 'operator').type === '*' && F(a[0], 'left').type === 'call_expression' && F(a[0], 'left').text.replace(/\s+/g, '') === 'Math.random()') {
+            const k = ex(F(a[0], 'right'));
+            if (k != null) return P(`a random whole number below ${opx(k)}`);
+          }
           if (/^Math\.(?:round|floor|ceil)$/.test(f) && one != null) return P(`${opx(one)} rounded${{ 'Math.floor': ' down', 'Math.ceil': ' up' }[f] || ''}`);
+          if (/^Math\.(?:max|min)$/.test(f) && a.length === 1 && a[0].type === 'spread_element') { const l = ex(named(a[0])[0]); if (l != null) return P(`the ${f === 'Math.max' ? 'largest' : 'smallest'} number in ${opx(l)}`); }
           if (f === 'Number' && a.length === 1 && isChain(a[0])) return `${one} as number`;
           if (f === 'String' && a.length === 1 && isChain(a[0])) return `${one} as text`;
           if (fn.type === 'member_expression' && F(fn, 'property').type === 'property_identifier' && !kids(fn).some(k => k.type === 'optional_chain')) {
@@ -343,6 +354,7 @@
               if (m === 'trim' && !a.length) return P(`${opx(on)} trimmed`);
               if (/^to(?:Upper|Lower)Case$/.test(m) && !a.length && opd(on) != null) return P(`${opd(on)} in ${m === 'toUpperCase' ? 'capitals' : 'lowercase'}`);
               if (m === 'includes' && a.length === 1 && opd(on) != null && opd(one) != null) return `${opd(on)} contains ${opd(one)}`;
+              if (m === 'test' && obj.type === 'regex' && a.length === 1 && opd(one) != null) return `${opd(one)} matches ${on}`;
               if (m === 'contains' && F(obj, 'property') && F(obj, 'property').text === 'classList' && a.length === 1 && plainString(a[0]) && simpleName(a[0].text.slice(1, -1)) && opd(ex(F(obj, 'object'))) != null && simple(ex(F(obj, 'object')))) return `${ex(F(obj, 'object'))} is in group ${a[0].text.slice(1, -1)}`;
               // a list made from another, item by item: .map, .filter (and both), .find, .every, .some
               const lf = a.length === 1 ? little(a[0]) : null;
@@ -412,11 +424,11 @@
 
     /* () => { … }, (event) => { … }, or one expression, () => f(x), which counts as { f(x); } where nothing reads
        what it gives back (a listener or a timer). name: the event's name when it isn't "event". */
-    function handler(fnNode, allowEvent) {
+    function handler(fnNode, allowEvent, most = 1) {
       if (!fnNode || fnNode.type !== 'arrow_function') return null;
       const params = F(fnNode, 'parameters') || F(fnNode, 'parameter');
       const p = params ? (params.type === 'identifier' ? [params] : named(params)) : [];
-      if (p.length > 1 || (p.length === 1 && (!allowEvent || p[0].type !== 'identifier'))) return null;
+      if (p.length > most || (p.length && (!allowEvent || p.some(q => q.type !== 'identifier')))) return null;
       const body = F(fnNode, 'body');
       if (!body) return null;
       const name = p.length ? p[0].text : null;
@@ -427,6 +439,12 @@
       return { body: [stmt], usesEvent: p.length === 1, name };
     }
 
+    /* setInterval(() => { … }, 2000) or setTimeout: { every, secs, h (its lines) }, or null */
+    const timerOf = (c) => {
+      if (!c || c.type !== 'call_expression' || !/^(?:setInterval|setTimeout)$/.test(F(c, 'function').text) || args(c).length !== 2 || args(c)[1].type !== 'number') return null;
+      const h = handler(args(c)[0], false);
+      return h && { every: F(c, 'function').text === 'setInterval', secs: +args(c)[1].text / 1000, h };
+    };
     /* await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) }):
        the writer's "send v to url". Gives back { v, u } in words, or null. */
     function sendOf(c) {
@@ -470,13 +488,14 @@
           block(h.body, depth + 1, e.startIndex);
           return true;
         }
+        if (/^clear(?:Interval|Timeout)$/.test(fnText) && a.length === 1 && a[0].type === 'identifier') return say(`stop ${a[0].text}`);
         if (fn.type === 'member_expression') {
           const obj = F(fn, 'object'), prop = F(fn, 'property').text;
           if (prop === 'addEventListener' && a.length === 2 && a[0].type === 'string') {
             const ev = a[0].text.slice(1, -1);
-            if (obj.text === 'document' && ev === 'DOMContentLoaded') { const h = handler(a[1], false); if (!h) return false; say('when the page has loaded'); block(h.body, depth + 1, e.startIndex); return true; }
-            const id = holder(obj);
-            if (!id || !EVENTS[ev]) return false;
+            if ((obj.text === 'document' && ev === 'DOMContentLoaded') || (obj.text === 'window' && ev === 'load')) { const h = handler(a[1], false); if (!h) return false; say(ev === 'load' ? 'when the window has loaded' : 'when the page has loaded'); block(h.body, depth + 1, e.startIndex); return true; }
+            const id = holder(obj), key = /^key(?:down|up)$/.test(ev);
+            if (!id || (!EVENTS[ev] && !key) || (key && /^the (?:page|window)$/.test(id))) return false;
             const h = handler(a[1], true);
             if (!h) return false;
             let body = h.body;
@@ -488,7 +507,7 @@
             // the writer calls the event "event", and only names it when the lines use it; say so otherwise
             const usesName = h.name && body.some(s => new RegExp(`\\b${h.name.replace(/\$/g, '\\$')}\\b`).test(s.text.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')));
             const named_ = h.name && (h.name !== 'event' || (ev !== 'submit' && !usesName)) ? `, with the event as ${h.name}` : '';
-            say(`when ${id} is ${EVENTS[ev]}${named_}`);
+            say(key ? `when a key is ${ev === 'keydown' ? 'pressed' : 'released'} in ${id}${named_}` : `when ${id} is ${EVENTS[ev]}${named_}`);
             block(body, depth + 1, e.startIndex);
             return true;
           }
@@ -508,7 +527,20 @@
             return k != null && v != null && say(`save ${v} in the browser as ${k}`);
           }
           if (prop === 'push' && a.length === 1 && obj.type === 'identifier' && !ids[obj.text]) { const v = item(ex(a[0])); return v != null && say(`add ${v} to ${obj.text}`); }
-          if (prop === 'appendChild' && a.length === 1) { const h = holder(obj), w = holder(a[0]); return !!h && !!w && h !== 'the page' && w !== 'the page' && say(`put ${w} at the end of ${h}`); }
+          if (prop === 'appendChild' && a.length === 1) { const h = holder(obj), w = holder(a[0]); return !!h && !!w && !/^the (?:page|window)$/.test(h) && !/^the (?:page|window)$/.test(w) && say(`put ${w} at the end of ${h}`); }
+          if (prop === 'remove' && !a.length && holder(obj) && !/^the (?:page|window)$/.test(holder(obj))) return say(`remove ${holder(obj)} from the page`);
+          // sorting a list in place, and turning it round
+          if (prop === 'sort' && (!a.length || (a.length === 1 && /^\(a,b\)=>(?:a-b|b-a)$/.test(a[0].text.replace(/\s+/g, ''))))) { const l = ex(obj); return l != null && say(`sort ${l} ${!a.length ? 'as text' : /a-b$/.test(a[0].text.replace(/\s+/g, '')) ? 'from smallest to biggest' : 'from biggest to smallest'}`); }
+          if (prop === 'reverse' && !a.length) { const l = ex(obj); return l != null && say(`reverse ${l}`); }
+          // .forEach(x => { … }): "do this for each x in xs", a little tool run for each item
+          if (prop === 'forEach' && a.length === 1 && a[0].type === 'arrow_function') {
+            const ps = F(a[0], 'parameters') ? named(F(a[0], 'parameters')) : [F(a[0], 'parameter')];
+            const l = ex(obj), h = handler(a[0], true, 2);
+            if (l == null || !h || !ps.length || ps.length > 2 || ps.some(p => !p || p.type !== 'identifier') || /\scounting with\s/.test(l)) return false;
+            say(`do this for each ${ps[0].text} in ${l}${ps[1] ? ', counting with ' + ps[1].text : ''}`);
+            inside(null, () => block(h.body, depth + 1, e.startIndex));
+            return true;
+          }
         }
         if (isChain(fn)) { const v = rest(a); if (v.some(x => x == null)) return false; return say(`run ${fnText}${v.length ? ' with ' + v.join(', ') : ''}`); }
         return false;
@@ -533,9 +565,16 @@
           if (prop === 'hidden' && /^(true|false)$/.test(right.text) && holder(F(left, 'object'))) return say(`${right.text === 'true' ? 'hide' : 'reveal'} ${holder(F(left, 'object'))}`);
           if (left.text === 'window.location.href') { const v = ex(right); return v != null && say(`go to ${v}`); }
           if (isChain(left) && !id) { const v = val(right); return v != null && say(`set ${left.text} to ${v}`); }
+          // a value inside one item: "set done of item index of todos to …" (todos[index].done)
+          if (obj.type === 'subscript_expression' && F(left, 'property').type === 'property_identifier' && !kids(left).some(k => k.type === 'optional_chain')) {
+            const t = ex(obj), v = val(right);
+            return !!t && /^(?:first |last )?item /.test(t) && v != null && !/^(?:text|value)$/.test(prop) && say(`set ${prop} of ${t} to ${v}`);
+          }
           return false;
         }
         if (left.type !== 'identifier') return false;
+        const tm = timerOf(right);
+        if (tm) { say(`${tm.every ? 'every' : 'after'} ${tm.secs} seconds as ${left.text}`); block(tm.h.body, depth + 1, e.startIndex); return true; }
         const v = val(right);
         return v != null && say(`set ${left.text} to ${v}`);
       }
@@ -559,6 +598,14 @@
       switch (n.type) {
         case 'expression_statement': {
           const e = named(n)[0], c = e && e.type === 'await_expression' ? named(e)[0] : e;
+          if (e && e.type === 'string' && /^use strict$/.test(e.text.slice(1, -1))) return say('use strict rules');
+          // (function () { … })(): run straight away, with names of its own
+          const wrapped = e && e.type === 'call_expression' && !args(e).length && F(e, 'function').type === 'parenthesized_expression' ? named(F(e, 'function'))[0] : null;
+          if (!lvl && wrapped && /^function(?:_expression)?$/.test(wrapped.type) && !F(wrapped, 'name') && !kids(wrapped).some(k => k.type === 'async' || k.type === '*') && !named(F(wrapped, 'parameters')).length) {
+            say('run this now, keeping its names private');
+            inside(null, () => block(named(F(wrapped, 'body')), depth + 1, n.startIndex));
+            return true;
+          }
           // running a tool of this file: the writer may wait for it (await) where the code doesn't, or the other way round
           if (c && c.type === 'call_expression' && fileFns.has(F(c, 'function').text)) o.careful.add(n.startIndex);
           return exprStmt(e, depth, lvl);
@@ -571,6 +618,17 @@
           const t = v.text.replace(/\s+/g, '');
           const fetchUrl = () => { const f = v.descendantsOfType('call_expression').find(c => F(c, 'function').text === 'fetch'); return f && args(f).length === 1 ? ex(args(f)[0]) : null; };
           o.careful.add(n.startIndex);
+          // a little tool kept under a name: "constant double is a tool using n giving back n times 2", or its steps under it
+          if (v.type === 'arrow_function' && !lvl) {
+            const ps = F(v, 'parameter') ? [F(v, 'parameter').text] : paramList(v), body = F(v, 'body');
+            const head = ps && `${constant ? 'constant' : 'set'} ${name} ${constant ? 'is' : 'to'} a tool${ps.length ? ' using ' + ps.join(', ') : ''}`;
+            if (head && body.type === 'statement_block') { say(head); inside(null, () => block(named(body), depth + 1, n.startIndex)); return true; }
+            const g = head ? val(body) : null;
+            if (g != null && !/\sgiving back\s/.test(g)) return say(`${head} giving back ${g}`);
+          }
+          // a timer kept under a name, so "stop …" can stop it (the writer makes it with let)
+          const tm = !constant && !lvl ? timerOf(v) : null;
+          if (tm) { say(`${tm.every ? 'every' : 'after'} ${tm.secs} seconds as ${name}`); block(tm.h.body, depth + 1, n.startIndex); return true; }
           // Mechanics writes let for these sentences, const for "constant …", and const for a fetched reply
           // unless a later line changes it. When that doesn't match the original, say let/const outright.
           if (lvl || constant) {
@@ -713,6 +771,12 @@
           inside(null, () => block(named(F(n, 'body')), depth + 1, n.startIndex));
           return true;
         }
+        case 'throw_statement': {
+          const v = named(n).filter(x => !isComment(x))[0], a = v && v.type === 'new_expression' && F(v, 'constructor').text === 'Error' && F(v, 'arguments') ? args(v) : null;
+          if (!a || a.length !== 1) return false;
+          const e = ex(a[0]);
+          return e != null && say(`fail with ${e}`);
+        }
         case 'try_statement': {
           const h = F(n, 'handler'), fin = F(n, 'finalizer'), param = h && F(h, 'parameter');
           if (param && param.type !== 'identifier') return false;
@@ -772,7 +836,7 @@
       if (n.type === 'arrow_function' && F(n, 'body') && F(n, 'body').type !== 'statement_block' && F(n, 'body').type !== 'update_expression' && n.parent && n.parent.type === 'arguments') {
         const call = n.parent.parent, fn = call && F(call, 'function'), list = named(n.parent).filter(x => !isComment(x));
         const listener = fn && fn.type === 'member_expression' && F(fn, 'property').text === 'addEventListener' && list[1] && list[1].startIndex === n.startIndex;
-        const timer = fn && /^(?:setTimeout|setInterval)$/.test(fn.text) && list[0] && list[0].startIndex === n.startIndex;
+        const timer = fn && (/^(?:setTimeout|setInterval)$/.test(fn.text) || (fn.type === 'member_expression' && F(fn, 'property').text === 'forEach')) && list[0] && list[0].startIndex === n.startIndex;
         const body = F(n, 'body'), i = o.c.findIndex(x => x.k === body.startIndex && x.t === body.type);
         if ((listener || timer) && i >= 0) o.c[i] = { t: 'statement_block', k: body.startIndex, block: true, c: [{ t: 'expression_statement', k: body.startIndex, c: [o.c[i]] }] };
       }

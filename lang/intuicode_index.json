@@ -2412,6 +2412,87 @@
             "mechanics"
           ],
           "tip": "The text as it was saved (null if there is none)."
+        },
+        {
+          "topic": "Lists",
+          "say": "do this for each ‹item› in ‹list›",
+          "becomes": "list.forEach((item) => {",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Add \", counting with ‹i›\" for its place (from 0). It is a little tool of its own: \"give back\" ends this round."
+        },
+        {
+          "topic": "Lists",
+          "say": "sort ‹list› from smallest to biggest",
+          "becomes": "list.sort((a, b) => a - b);",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Also \"from biggest to smallest\", and \"as text\" (10 before 9). \"reverse ‹list›\" turns it round."
+        },
+        {
+          "topic": "Logic",
+          "say": "constant ‹double› is a tool using ‹n› giving back ‹n times 2›",
+          "becomes": "const double = (n) => n * 2;",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "A little tool kept in a name (an arrow function). Leave out \"giving back …\" and indent its steps under it instead."
+        },
+        {
+          "topic": "Errors",
+          "say": "fail with \"‹Not found›\"",
+          "becomes": "throw new Error(\"Not found\");",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Stops with an error; \"if it fails\" round the steps that ran it catches it."
+        },
+        {
+          "topic": "Events",
+          "say": "when a key is pressed in ‹name›, with the event as ‹e›",
+          "becomes": "name.addEventListener(\"keydown\", (e) => …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "e.key is the key: \"Enter\", \"a\", \"ArrowLeft\". Also \"when a key is released in …\"."
+        },
+        {
+          "topic": "Events",
+          "say": "when ‹name› is double-clicked",
+          "becomes": "name.addEventListener(\"dblclick\", …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Also \"is focused\", \"is unfocused\" (blur), \"is scrolled\"; and \"when the window is resized\"."
+        },
+        {
+          "topic": "Events",
+          "say": "when the window has loaded",
+          "becomes": "window.addEventListener(\"load\", …)",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Once everything is in, pictures too. \"when the page has loaded\" is sooner."
+        },
+        {
+          "topic": "Page",
+          "say": "remove ‹name› from the page",
+          "becomes": "name.remove();",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Takes the element off the page."
+        },
+        {
+          "topic": "Logic",
+          "say": "run this now, keeping its names private",
+          "becomes": "(function () { … })();",
+          "folders": [
+            "mechanics"
+          ],
+          "tip": "Indent the steps under it: the names made there don't clash with other scripts'. \"use strict rules\" first, for \"use strict\"."
         }
       ],
       "words": [
@@ -2574,6 +2655,30 @@
         {
           "say": "the JSON read from reply",
           "becomes": "await reply.json()"
+        },
+        {
+          "say": "a random whole number below 6",
+          "becomes": "Math.floor(Math.random() * 6)"
+        },
+        {
+          "say": "a random number below 1",
+          "becomes": "Math.random()"
+        },
+        {
+          "say": "the largest number in xs",
+          "becomes": "Math.max(...xs)"
+        },
+        {
+          "say": "the smallest number in xs",
+          "becomes": "Math.min(...xs)"
+        },
+        {
+          "say": "x, or y if that is nothing",
+          "becomes": "x ?? y"
+        },
+        {
+          "say": "ua matches /win/i",
+          "becomes": "/win/i.test(ua)"
         }
       ]
     },

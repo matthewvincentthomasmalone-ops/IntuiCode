@@ -667,9 +667,15 @@ screen      = "when" [ "the" ] ( "screen" | "page" | "mouse" | "pointer" | "fing
 moves       = "when" [ "the" ] ( "pointer" | "mouse" | "finger" ) ( "moves" | "is moved" )
               [ ( "over" | "on" | "across" | "in" | "inside" ) element ] ;           (* → pointermove *)
 tapped      = "when" element "is" ( "tapped" | "touched" | "released" | "let go" | "lifted" ) ;
-event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted" )
+event       = "when" element "is" ( "clicked" | "pressed" | "changed" | "typed in" | "hovered" | "pointed at" | "sent" | "submitted"
+              | "double-clicked" | "focused" | "unfocused" | "scrolled" | "resized" )
               [ [ "," ] "with the event as" name ] ;   (* the event under its own name: (e) => … *)
-                         (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault) *)
+                         (* → click, click, change, input, mouseenter, mouseenter, submit (+ preventDefault),
+                              dblclick, focus, blur, scroll, resize *)
+key-in      = "when" ( "a" | "any" ) "key is" ( "pressed" | "released" | "let go" ) ( "in" | "on" ) element
+              [ [ "," ] "with the event as" name ] ;                                (* → keydown / keyup on it *)
+window-load = "when the window has loaded" ;                                        (* → window's load: pictures too *)
+                         (* element can also be "the page" (document) or "the window" *)
 frame       = "every frame" ;                                                       (* → requestAnimationFrame loop *)
 keys        = "keep track of" [ "the" ] "keys" ;                                    (* → keysDown, a Set *)
 timer       = ( "every" | "after" ) [ value ] ( "second" | "seconds" ) [ "as" name ] ;  (* → setInterval / setTimeout *)
@@ -683,6 +689,7 @@ set-html    = "set the HTML" ( "of" | "in" | "inside" ) element "to" value ;    
 set-groups  = "set the groups of" element "to" value ;                              (* → .className *)
 page-title  = "set the page" [ "'s" ] "title to" value ;                            (* → document.title *)
 append      = "put" element "at the end of" element ;                               (* → .appendChild *)
+remove      = "remove" element "from the page" ;                                    (* → .remove() *)
 make-new    = ( "make" | "create" | "add" ) [ "a" | "an" ] "new" kind
               [ ( "saying" | "showing" | "that says" ) value ] [ "to" value ] [ "of" value [ "described as" value ] ]
               [ "in" ( "group" | "groups" ) names ] [ ( "in" | "into" ) element ] [ "and store" [ "it" ] "in" name ] ;
@@ -735,6 +742,13 @@ class       = "define" [ "a" ] "class" name [ "based on" path ] ;               
 constructor = "when" [ "a" ] "new" name "is" ( "made" | "created" ) [ ( "with" | "using" ) params ] ;  (* → constructor(…) *)
                                     (* inside a class, "define" makes a method; other steps go in these two *)
 import      = "bring in" names "from" text ;                                        (* → import { names } from text; *)
+for-each-do = "do this for each" name "in" value [ [ "," ] "counting with" name ] ; (* → value.forEach((name[, i]) => { … }) *)
+sort        = "sort" value ( "from smallest to biggest" | "from biggest to smallest" | "as text" ) ;
+                                    (* → .sort((a, b) => a - b), b - a, .sort() *)   reverse = "reverse" value ;
+arrow-tool  = ( "constant" name "is" | "set" name "to" ) "a tool" [ "using" params ] [ "giving back" value ] ;
+                                    (* → const name = (params) => value; without "giving back", the steps go under it *)
+private     = "run this now" [ "," ] "keeping its names private" ;                  (* → (function () { … })(); *)
+strict      = "use" [ "JavaScript's" ] "strict rules" ;                             (* → "use strict"; *)
 return      = ( "give back" | "return" ) [ value ] ;
 break       = "stop the loop" ;   continue = "skip to next" ;
 make-list   = ( "create" | "make" ) [ "a" | "an" ] [ "new" ] [ "empty" ] "list" [ "called" ] name [ "with" items ] ;
@@ -1216,6 +1230,7 @@ not an operand, so `length of (a plus b)` isn't read.
 | 25 | `yes`, `true` / `no`, `false` / `nothing`, `none` | `true` / `false` / `null` |
 
 Before those stages, a value that is one of these whole phrases is read as it: `wait for P` (any of them),
+`A, or B if that is nothing` (`A ?? B`),
 `a list of E for each x in L [if T]` (`L.map(x => E)`, `L.filter(x => T)`), `T for every x in L` /
 `for any` (`.every` / `.some`), `the first x in L where T` (`.find`), `A if T otherwise B` (`T ? A : B`),
 `the result of f [with items]` (`f(items)`) and `a new C [with items]` (`new C(items)`). In brackets
@@ -1225,7 +1240,9 @@ Next to the phrases above, these come early (after 3): `the element called "x"`
 (`document.getElementById("x")`), `a new "li" element` (`document.createElement("li")`), `the page title`,
 `the text saved in the browser as K` (`localStorage.getItem(K)`), `the reply from U` (`await fetch(U)`), `the
 JSON read from R` / `the text read from R` (`await R.json()` / `.text()`), and `text of N` / `value of N` for a
-name holding an element. With `as number` (10) come `X trimmed`, `X split at S`, `X joined by S`,
+name holding an element. With `how many in` (7) come `a random number below 1` (`Math.random()`), `a random
+whole number below N` (`Math.floor(Math.random() * N)`) and `the largest number in L` / `smallest`
+(`Math.max(...L)` / `min`). `X matches /re/` is `/re/.test(X)`, with `contains`. With `as number` (10) come `X trimmed`, `X split at S`, `X joined by S`,
 `X to N decimal places`, `X read as JSON`, `X as JSON text` and `X rounded` / `rounded down` / `rounded up`
 (`Math.round`, `floor`, `ceil`); for these, X can be a sum in brackets, and after a sum they are an error,
 as `as number` is.
@@ -2192,6 +2209,15 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | **Server** | `constant ‹reply› is the reply from "‹/api/items›"` | `await fetch("/api/items")` | Then "the JSON read from ‹reply›" is what it sent (await reply.json()). |
 |  | `wait for ‹navigator.clipboard.writeText› with ‹text›` | `await navigator.clipboard.writeText(text)` | Runs a tool that finishes later and waits for it. |
 |  | `constant ‹saved› is the text saved in the browser as "‹key›"` | `localStorage.getItem("key")` | The text as it was saved (null if there is none). |
+| **Lists** | `do this for each ‹item› in ‹list›` | `list.forEach((item) => {` | Add ", counting with ‹i›" for its place (from 0). It is a little tool of its own: "give back" ends this round. |
+|  | `sort ‹list› from smallest to biggest` | `list.sort((a, b) => a - b);` | Also "from biggest to smallest", and "as text" (10 before 9). "reverse ‹list›" turns it round. |
+| **Logic** | `constant ‹double› is a tool using ‹n› giving back ‹n times 2›` | `const double = (n) => n * 2;` | A little tool kept in a name (an arrow function). Leave out "giving back …" and indent its steps under it instead. |
+| **Errors** | `fail with "‹Not found›"` | `throw new Error("Not found");` | Stops with an error; "if it fails" round the steps that ran it catches it. |
+| **Events** | `when a key is pressed in ‹name›, with the event as ‹e›` | `name.addEventListener("keydown", (e) => …)` | e.key is the key: "Enter", "a", "ArrowLeft". Also "when a key is released in …". |
+|  | `when ‹name› is double-clicked` | `name.addEventListener("dblclick", …)` | Also "is focused", "is unfocused" (blur), "is scrolled"; and "when the window is resized". |
+|  | `when the window has loaded` | `window.addEventListener("load", …)` | Once everything is in, pictures too. "when the page has loaded" is sooner. |
+| **Page** | `remove ‹name› from the page` | `name.remove();` | Takes the element off the page. |
+| **Logic** | `run this now, keeping its names private` | `(function () { … })();` | Indent the steps under it: the names made there don't clash with other scripts'. "use strict rules" first, for "use strict". |
 
 #### JavaScript words inside sentences
 
@@ -2237,6 +2263,12 @@ Mechanics → `script.js`. Writer: `lang/web_write.js`.
 | `value of box` | `box.value` |
 | `the reply from "/api"` | `await fetch("/api")` |
 | `the JSON read from reply` | `await reply.json()` |
+| `a random whole number below 6` | `Math.floor(Math.random() * 6)` |
+| `a random number below 1` | `Math.random()` |
+| `the largest number in xs` | `Math.max(...xs)` |
+| `the smallest number in xs` | `Math.min(...xs)` |
+| `x, or y if that is nothing` | `x ?? y` |
+| `ua matches /win/i` | `/win/i.test(ua)` |
 
 ### C++
 
