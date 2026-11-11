@@ -668,11 +668,74 @@
           renderExplain(); renderProblems();
         }, 60);
       }
-      return '<div class="ex-fix wait"><span class="ex-lbl">Looking for a fix that works…</span></div>';
+      return FIX_WAIT_HTML;
     }
-    if (!fixes.length) return '';
+    return fixListHtml(li, text, fixes, 'say');
+  }
+  const FIX_WAIT_HTML = '<div class="ex-fix wait"><span class="ex-lbl">Looking for a fix that works…</span></div>';
+  /* The fixes, each with Use this (where: 'say' in Split Mode, 'unity' in Unity), its changed words marked. */
+  function fixListHtml(li, text, fixes, where) {
+    if (!fixes || !fixes.length) return '';
     return `<div class="ex-fix"><span class="ex-lbl">${fixes.length === 1 ? 'A fix that works' : 'Fixes that work'} · checked: the line translates with no errors</span><ul>${fixes.map((f, k) =>
-      `<li><button type="button" class="btn small${k ? '' : ' primary'}" data-fix-line="${li}" data-fix-text="${escHtml(f.text)}">Use this</button><span class="ex-say">${fixMarked(text, f.text)}</span><span class="ex-why">${escHtml(f.why)}${(f.warns || []).length ? ` · a warning stays: ${withCode(f.warns[0])}` : ''}</span></li>`).join('')}</ul></div>`;
+      `<li><button type="button" class="btn small${k ? '' : ' primary'}" data-fix-line="${li}" data-fix-where="${where}" data-fix-text="${escHtml(f.text)}">Use this</button><span class="ex-say">${fixMarked(text, f.text)}</span><span class="ex-why">${escHtml(f.why)}${(f.warns || []).length ? ` · a warning stays: ${withCode(f.warns[0])}` : ''}</span></li>`).join('')}</ul></div>`;
+  }
+
+  /* Unity: the same fixes for a line in a green part, each checked the way Unity writes the part back as code
+     (UNITY.toCode, with the rest of the file as it is). Worked out a moment after the strip shows. */
+  const uFixCache = new Map();
+  let uFixWait = '';
+  const uFixKey = (li) => 'unity\u0001' + unity.id + '\u0001' + li + '\u0001' + compileN + '\u0001' + uTa.value;
+  function uFixCheck(li, at) {
+    const lines = uLines(), regions = unity.regions, lang = unity.lang;
+    return (t) => {
+      const add = String(t).split('\n'), extra = add.length - 1, ls = lines.slice();
+      ls.splice(li, 1, ...add);
+      // a fix of two lines makes its green part a line longer, and moves the parts after it down
+      const rs = regions.map((r, k) => (k === at ? { ...r, to: r.to + extra } : r.from > li ? { ...r, from: r.from + extra, to: r.to + extra } : r));
+      const out = UNITY.toCode(lang, ls, rs, at, uW());
+      const ps = out.problems.filter(p => p.line >= li && p.line < li + add.length);
+      return { errs: ps.flatMap(p => p.errs), warns: ps.flatMap(p => p.warns) };
+    };
+  }
+  function uFixesFor(li, at, text, errs) {
+    const key = uFixKey(li);
+    if (uFixCache.has(key)) return uFixCache.get(key);
+    const sec = uSec() || activeSec();
+    let fixes = [];
+    if (FIX && unity.lang && text.trim()) {
+      try {
+        fixes = FIX.suggest(text, { errs, words: fixWords(sec), values: WEB_ROLE[sec.lang] ? WEB.COLOURS || [] : [], names: fixNames(),
+          patterns: isSentences(sec) ? closeMatches(sec, text, 6).filter(x => !x.other).map(x => x.pattern) : [], check: uFixCheck(li, at), budget: 250 });
+      } catch (e) { console.error(e); }
+    }
+    if (uFixCache.size > 40) uFixCache.clear();
+    uFixCache.set(key, fixes);
+    return fixes;
+  }
+  function uFixHtml(li, at, text, errs) {
+    if (!FIX || !UNITY) return '';
+    const key = uFixKey(li);
+    if (uFixCache.has(key)) return fixListHtml(li, text, uFixCache.get(key), 'unity');
+    if (uFixWait !== key) {
+      uFixWait = key;
+      setTimeout(() => {
+        if (uFixWait === key) uFixWait = '';
+        if (mode !== 'unity' || uLineOf(uTa.selectionStart) !== li || uFixKey(li) !== key) return;   // moved on
+        uFixesFor(li, at, text, errs);
+        renderExplainUnity(); renderProblems();
+      }, 60);
+    }
+    return FIX_WAIT_HTML;
+  }
+  /* Use a fix in Unity: the line becomes it, as one edit (the green part grows with it), as Use does for a close match. */
+  function uApplyFix(li, text) {
+    const start = uPosOf(li), line = uLines()[li];
+    if (line == null) return;
+    uTa.focus();
+    uTa.setSelectionRange(start, start + line.length);
+    document.execCommand('insertText', false, text);
+    uTa.setSelectionRange(start + text.length, start + text.length);
+    uTools();
   }
   /* Use a fix: it replaces the line (two lines for a block), as one edit that Undo takes back. */
   function applyFix(secId, li, text) {
@@ -690,8 +753,21 @@
   let fixTimer = null, fixRuns = 0;
   function fixSoon() { clearTimeout(fixTimer); fixRuns = 0; if (FIX) fixTimer = setTimeout(fixIdle, 700); }
   function fixIdle() {
-    if (mode === 'unity' || !compiled || fixRuns >= 8) return;
+    if (!compiled || fixRuns >= 8) return;
     const n = compileN;
+    const again = () => { fixRuns++; renderProblems(); fixTimer = setTimeout(() => { if (compileN === n) fixIdle(); }, 40); };
+    if (mode === 'unity') {
+      // Unity shows one file, line for line as it's saved: its green parts' lines with problems, checked as Unity writes them
+      const r = UNITY && unity.lang && secResult(unity.id), lines = uLines();
+      if (!r) return;
+      for (let i = 0; i < r.info.length; i++) {
+        const at = uRegionAt(i);
+        if (at < 0 || !r.info[i].errs.length || uFixCache.has(uFixKey(i))) continue;
+        uFixesFor(i, at, lines[i] || '', r.info[i].errs);
+        return again();
+      }
+      return;
+    }
     for (const s of project.sections) {
       const r = secResult(s.id);
       if (!r || !isSentences(s)) continue;
@@ -1346,11 +1422,14 @@
     const offered = new Set();   // a line's fix shows once, under its first problem
     $('problems').innerHTML = items.length
       ? items.slice(0, 60).map(p => {
-        const text = p.kind === 'err' && mode !== 'unity' ? lineOfSec(p.s, p.i) : null, fixes = text != null ? fixKnown(p.s, p.i, text) : null;
+        // in Unity: the file it shows, a line in a green part (its fixes checked as Unity writes the part)
+        const inU = p.kind === 'err' && mode === 'unity' && !!UNITY && p.s.id === unity.id && uRegionAt(p.i) >= 0;
+        const text = p.kind !== 'err' ? null : inU ? uLines()[p.i] || '' : mode !== 'unity' ? lineOfSec(p.s, p.i) : null;
+        const fixes = text == null ? null : inU ? uFixCache.get(uFixKey(p.i)) || null : fixKnown(p.s, p.i, text);
         const key = p.s.id + ':' + p.i, fix = fixes && fixes.length && !offered.has(key) ? fixes[0] : null;
         if (fix) offered.add(key);
         return `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(tidyMsg(p.msg, fixes)))}</span></button>`
-          + (fix ? `<div class="prob-fix"><button type="button" class="btn small" data-fix-sec="${escHtml(p.s.id)}" data-fix-line="${p.i}" data-fix-text="${escHtml(fix.text)}" title="Checked: the line translates with no errors. ${escHtml(fix.why)}">Fix</button><span class="fx-line">${fixMarked(text, fix.text)}</span></div>` : '')
+          + (fix ? `<div class="prob-fix"><button type="button" class="btn small" data-fix-sec="${escHtml(p.s.id)}" data-fix-line="${p.i}" data-fix-where="${inU ? 'unity' : 'say'}" data-fix-text="${escHtml(fix.text)}" title="Checked: the line translates with no errors. ${escHtml(fix.why)}">Fix</button><span class="fx-line">${fixMarked(text, fix.text)}</span></div>` : '')
           + '</li>';
       }).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
@@ -1988,7 +2067,7 @@
   });
   $('problems').addEventListener('click', (e) => {
     const f = e.target.closest('[data-fix-text]');
-    if (f) return applyFix(f.dataset.fixSec, +f.dataset.fixLine, f.dataset.fixText);
+    if (f) return f.dataset.fixWhere === 'unity' ? uApplyFix(+f.dataset.fixLine, f.dataset.fixText) : applyFix(f.dataset.fixSec, +f.dataset.fixLine, f.dataset.fixText);
     const b = e.target.closest('button[data-sec]');
     if (!b) return;
     const blank = /^Fill in ‹/.test(b.textContent.replace(/^.*?line \d+/, ''));
@@ -2162,7 +2241,7 @@
       if (where === 'unity') { uCommit(); setMode('write'); }
       return useSentence(pattern, role || null, +line);
     }
-    if ((b = t('[data-fix-text]'))) return applyFix(project.active, +b.dataset.fixLine, b.dataset.fixText);
+    if ((b = t('[data-fix-text]'))) return b.dataset.fixWhere === 'unity' ? uApplyFix(+b.dataset.fixLine, b.dataset.fixText) : applyFix(project.active, +b.dataset.fixLine, b.dataset.fixText);
     if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
     if ((b = t('[data-keep-code]'))) return keepNewCode(project.active, +b.dataset.keepCode);
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
@@ -4258,6 +4337,7 @@
     if (uFromSplit()) { uTa.value = unity.text; uBefore = unity.text.split('\n'); uCommit(); }
     renderUnity();
     if (line != null) uGoTo(line);
+    fixSoon();   // the fixes for Problems, in Unity's terms
   }
   function uGoTo(line) {
     const p = uPosOf(line) + (uLines()[line] || '').length;
@@ -4451,19 +4531,22 @@
       else {
         try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { items.push(`<li class="err">The writer hit a problem: ${escHtml(e.message)}</li>`); }
         if (out) {
-          out.problems.forEach(p => { p.errs.forEach(e => items.push(`<li class="err">Line ${p.line + 1}: ${withCode(e)}</li>`)); p.warns.forEach(w => items.push(`<li class="warn">Line ${p.line + 1}: ${withCode(w)}</li>`)); });
+          const known = uFixCache.get(uFixKey(li));
+          out.problems.forEach(p => { p.errs.forEach(e => items.push(`<li class="err">Line ${p.line + 1}: ${withCode(p.line === li ? tidyMsg(e, known) : e)}</li>`)); p.warns.forEach(w => items.push(`<li class="warn">Line ${p.line + 1}: ${withCode(w)}</li>`)); });
           label = out.problems.some(p => p.errs.length) ? 'Can\'t go back to code yet' : 'Original Code will write';
         }
       }
       const codeLines = out ? (out.problems.some(p => p.errs.length) ? [] : out.code) : r.original || [];
+      const lineErrs = out ? out.problems.filter(p => p.line === li).flatMap(p => p.errs) : [];   // the cursor's line: its fixes
       box.innerHTML = `<div class="ex-map">
           <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
           <div class="ex-arrow" aria-hidden="true">→</div>
           <div class="ex-cell"><span class="ex-lbl">${escHtml(label || 'Code')} · ${escHtml(langName(sec.lang))}</span><div class="ex-py">${codeLines.map(l => hlCode(code, l)).join('\n') || '<span class="dim">Nothing yet.</span>'}</div></div>
         </div>
-        ${text.trim() ? shapeHtml(sec, text) : ''}
         ${items.length ? `<ul class="ex-notes">${items.slice(0, 5).join('')}</ul>` : ''}
+        ${lineErrs.length ? uFixHtml(li, at, text, lineErrs) : ''}
         ${out && out.problems.some(p => p.line === li && p.errs.some(e => UNKNOWN_LINE.test(e))) ? closeMatchesHtml(sec, text, li, 'unity') : ''}
+        ${text.trim() ? shapeHtml(sec, text) : ''}
         ${out && out.needs.length ? `<p class="ex-guide">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</p>` : ''}
         <p class="ex-foot"><span>Green part · lines ${r.from + 1}–${r.to + 1}${part ? ` · ${escHtml(PARTS.typeOf(part.type).name)}` : ''}</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> Original Code</span></p>`;
       return;
