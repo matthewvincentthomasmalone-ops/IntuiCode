@@ -263,6 +263,14 @@ the dim text, **Ctrl+→** one word, **↑ ↓** choose another, **Tab** or **En
 **Esc** puts it away. Off, nothing pops up while you type. IntuaCode remembers whether it's on, and the
 history of lines stays in this browser or app (`lang/predict.js`).
 
+**Fixes that work:** when a line has a problem, the help under the sentences (and **Problems**), in Split
+Mode and in Unity's green parts, offers a fix made from the line itself: a word spelled the way IntuaCode spells it (`backgrond` → `background`), a name
+your project has (`buyy` → `buy`), what the problem suggests (`whit` → `white`), "when buy is clicked, show
+"hi"" split into the event and the line inside it, or the closest sentence with your own values in it. Each
+one is translated before it's shown, and only those that come out with no errors are offered, with the
+changed words marked. **Use this** (or **Fix** in Problems) puts it in; **Ctrl+Z** takes it back. When no
+small change works, nothing is offered rather than a guess (`lang/fixes.js`).
+
 **Drop down:** the **Drop down** button on the sentences puts a small box under every value: numbers (with
 or without units), colour codes, colour names and CSS words like `center` or `bold`. **−** and **+** nudge it
 (hold for more; for a colour they make it darker or lighter), and **▾** lists the values usually chosen in

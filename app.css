@@ -211,11 +211,11 @@ code { font-family: var(--f-py); font-size: .92em; }
 .ti-badge.warn { background: var(--warn); }
 
 .problems { list-style: none; margin: 0; padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
-.problems li button {
+.problems li > button {
   width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 6px 8px 6px 10px; border-radius: 6px;
   display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; font-size: 12.5px; color: var(--ink-2);
 }
-.problems li button:hover { background: var(--panel-2); }
+.problems li > button:hover { background: var(--panel-2); }
 .problems .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: var(--bad); }
 .problems .warn .dot { background: var(--warn); }
 .problems .where { display: block; font-weight: 600; color: var(--ink); font-size: 12px; }
@@ -662,8 +662,8 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .side { border-right: 0; background: var(--texture), linear-gradient(180deg, #141518, #111214); box-shadow: inset -1px 0 0 #000, inset -2px 0 0 rgba(255, 255, 255, .03); }
 .side-h { color: var(--rose); letter-spacing: .12em; }
 .side-h::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(213, 155, 170, .45), transparent); }
-.tree-item, .problems li button, .ol-item, .plan-step { border-radius: 3px; }
-.tree-item:hover, .problems li button:hover, .ol-item:hover, .plan-step:hover { background: rgba(255, 255, 255, .045); }
+.tree-item, .problems li > button, .ol-item, .plan-step { border-radius: 3px; }
+.tree-item:hover, .problems li > button:hover, .ol-item:hover, .plan-step:hover { background: rgba(255, 255, 255, .045); }
 .tree-item.active, .ol-item.on { background: linear-gradient(90deg, rgba(232, 170, 186, .16), rgba(232, 170, 186, .05)); box-shadow: inset 2px 0 0 var(--rose), inset 0 0 0 1px rgba(232, 170, 186, .12); }
 .tree-item.active .ti-title, .tree-item.active .ti-icon { color: var(--rose-hi); }
 .tree-item.active .ti-file { color: var(--ink-2); }
@@ -1560,3 +1560,15 @@ details.pg > summary .count { margin-left: auto; }
 .about-body p { margin: 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
 .about-tabs { align-self: flex-start; margin-top: 4px; }
 .about-text { margin: 0; max-height: 46vh; overflow: auto; padding: 12px 14px; border-radius: 5px; background: #050506; box-shadow: var(--sunken); color: var(--ink-2); font: 12px/1.5 var(--f-py); white-space: pre-wrap; }
+
+/* Fixes that work: made from the line itself, each checked to translate with no problems before it's shown */
+.ex-fix { margin-top: 8px; padding: 8px 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); background: color-mix(in srgb, var(--good) 7%, transparent); }
+.ex-fix.wait { border-style: dashed; background: none; }
+.ex-fix ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ex-fix li { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: baseline; }
+.ex-fix .ex-say { white-space: pre-wrap; }
+.ex-fix .ex-why { grid-column: 2; font-size: 12px; color: var(--ink-3); }
+.ex-fix mark, .prob-fix mark { background: color-mix(in srgb, var(--good) 28%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+.prob-fix { display: flex; align-items: baseline; gap: 8px; padding: 0 8px 6px 28px; font-size: 12px; color: var(--ink-2); min-width: 0; }
+.prob-fix .btn { flex: none; }
+.prob-fix .fx-line { font-family: var(--f-say); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }

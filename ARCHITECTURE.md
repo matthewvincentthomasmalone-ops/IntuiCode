@@ -29,6 +29,7 @@ the desktop app.
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
+| `lang/fixes.js` | Fixes that work: for a line with a problem, small changes to the line itself (spelling as the sentences and the project's names spell it, the problem's own suggestion, "when …, …" split into a block, the closest sentence with the line's values), each translated before it's offered; the help strip and Problems show only those with no errors |
 | `lang/library.js` | The Library: kinds of project (the languages they use, open-source projects to learn from) and the parts they're made of, each in one or more languages, from the plain-text packs in `lang/library/`; Coding integration parts give both sides of a link between two languages |
 | `lang/ts_patch.js` | Fixes to the tree-sitter runtime: C library functions some grammars' scanners need (HTML with SVG or custom elements, Ruby, PHP, Bash, Vue, YAML) |
 
