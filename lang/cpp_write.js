@@ -507,11 +507,14 @@
         return `F(⟦${k}⟧)`;
       });
       q = q.replace(/\bbuilt-?in (?:light|led)\b/gi, 'LED_BUILTIN');
-      swap(String.raw`\bpin (OPD) is (on|off|high|low)\b`, (m, p, v) => { note(inf, '`digitalRead` checks whether a pin is on (HIGH) or off (LOW).'); return `digitalRead(${p}) == ${/on|high/i.test(v) ? 'HIGH' : 'LOW'}`; });
+      // "pin 2", "pin LED": the pin phrase. A name pin (a field, self.pin, "set pin to 9") followed by a word for maths
+      // or a comparison ("pin times 2", "pin is 9") is the name, and so is one after a . or ->.
+      const PIN = String.raw`(?<![\w.>])pin (?!(?:times|plus|minus|divided|mod|is|isn't|equals|and|or|not|squared|as|limited|scaled|followed|to|than|from|between|of|in)\b)`;
+      swap(PIN + String.raw`(OPD) is (on|off|high|low)\b`, (m, p, v) => { note(inf, '`digitalRead` checks whether a pin is on (HIGH) or off (LOW).'); return `digitalRead(${p}) == ${/on|high/i.test(v) ? 'HIGH' : 'LOW'}`; });
       swap(String.raw`\b(?:analog )?(?:reading|level) (?:of|on) pin (OPD)`, (m, p) => { note(inf, '`analogRead` measures the voltage on a pin as a number from 0 to 1023.'); return `analogRead(${p})`; });
       // "how long pin echo stays on": pulseIn waits for the pin to turn on, then times how long it stays on (in microseconds)
       swap(String.raw`\bhow long pin (OPD) stays (on|off|high|low)\b`, (m, p, v) => { note(inf, '`pulseIn` waits for the pin to change, then measures how long it stays that way, in microseconds (millionths of a second).'); return `pulseIn(${p}, ${/on|high/i.test(v) ? 'HIGH' : 'LOW'})`; });
-      swap(String.raw`\bpin (OPD)`, '$1');
+      swap(PIN + '(OPD)', '$1');
       q = q.replace(/\b(?:time|milliseconds) since (?:the )?start\b/gi, () => { note(inf, '`millis()` is how many milliseconds have passed since the board started.'); return 'millis()'; });
       // "at least 500 milliseconds have passed since lastBlink": millis() - lastBlink >= 500 (the way to wait without stopping)
       swap(String.raw`\b(at least|more than|less than|at most) (OPD) milliseconds? (?:have|has) passed since (OPD)`, (m, how, n, since, off, all) => {
@@ -1139,7 +1142,7 @@
         out = topOut;
         return open('void loop()', 'fn', { loopFn: true });
       }
-      if (A && !stack.length && !/^(?:(?:set|let)\s+(?!pin\b|the (?:brightness|level|power)\b)[\w\s/:<>&*']+?\s+(?:to|be)\b|constant\s|(?:create|make)\s+(?:an?\s+)?(?:constant\s+)?(?:empty\s+)?list\b|make\s+(?:a\s+)?new\b|(?:create|make)\s+.+?\s+called\s+[A-Za-z_]\w*)/i.test(s)) {
+      if (A && !stack.length && !/^(?:(?:set|let)\s+(?!pin\b(?!\s+(?:to|be)\b)|the (?:brightness|level|power)\b)[\w\s/:<>&*']+?\s+(?:to|be)\b|constant\s|(?:create|make)\s+(?:an?\s+)?(?:constant\s+)?(?:empty\s+)?list\b|make\s+(?:a\s+)?new\b|(?:create|make)\s+.+?\s+called\s+[A-Za-z_]\w*)/i.test(s)) {
         inf.errs.push('In a sketch, steps go inside "when the board starts" (once) or "over and over" (forever). Only settings like "set led to 13" go at the left edge.');
         return;
       }

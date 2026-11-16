@@ -221,6 +221,10 @@ export const CPP_SKETCHES = [
   sketch({ lines: 'define structure Point\n    field x: whole number = 0\n    field label: text = "p"\nmake a Point called p\nover and over\n    set p.x to 3', names: { 'p.x': '3', 'p.label': '"p"' } }),
   sketch({ lines: 'include math.h\nover and over\n    set r to sqrt(9)', names: { r: '3.0' } }),
   sketch({ lines: 'over and over\n    c++: int n = 2 + 2;', names: { n: '4' } }),
+  // a name pin is a name, not the pin phrase: before a word for maths or a comparison, or after self.
+  sketch({ lines: 'define class Light\n    field pin: whole number\n    when made using whole number p\n        set self.pin to p\n    define twice giving back a whole number\n        give back pin times 2\n    define isNine giving back a yes/no value\n        give back self.pin is 9\nmake a new Light with 9 and store in lamp\nover and over\n    set t to the result of lamp.twice\n    set nine to the result of lamp.isNine\n    turn pin lamp.pin on',
+    names: { t: '18', nine: 'true' }, does: 'digitalWrite 9 HIGH' }),
+  sketch({ lines: 'set pin to 9\nover and over\n    set total to pin plus 1\n    if pin is 9\n        turn pin 13 on\n    turn pin pin off', names: { total: '10' }, does: 'digitalWrite 13 HIGH / digitalWrite 9 LOW' }),
   // value words
   sketch({ lines: 'define add using whole number a, whole number b giving back whole number\n    give back a plus b\nover and over\n    set r to the result of add with 2, 3', names: { r: '5' } }),
   sketch({ lines: 'over and over\n    if pin 2 is on\n        show "pressed"\n    otherwise\n        show "not"', inputs: { 2: 'HIGH' }, prints: 'pressed\n' }),
