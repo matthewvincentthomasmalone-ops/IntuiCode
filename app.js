@@ -135,6 +135,11 @@
         })),
       };
     }
+    // the parts INTENT.md says are yours: each one's code as you last left it, and whether it changed outside IntuaCode
+    if (Array.isArray(p.mine)) {
+      out.mine = p.mine.slice(0, 40).filter(e => e && typeof e.key === 'string' && e.key.length <= 400 && typeof e.path === 'string' && !pathProblem(e.path) && typeof e.code === 'string' && e.code.length <= 200000)
+        .map(e => ({ key: e.key, path: e.path, name: typeof e.name === 'string' ? e.name.slice(0, 120) : '', code: e.code, ...(e.changed && typeof e.changed.at === 'string' ? { changed: { at: e.changed.at.slice(0, 10) } } : {}) }));
+    }
     return out;
   }
 
@@ -157,6 +162,11 @@
 
   let project = loadProject();
   let compiled = null;
+  // INTENT.md, checked against the code after every compile (checkIntent): each promise's state, each step's checks,
+  // and the parts no step covers. Worked out each time from the code as it is, never kept as done.
+  const PROMISES = window.IntuiPromises;
+  let intent = { results: [], steps: new Map(), outside: [], sec: null };
+  let intentSeen = null;   // each promise's state the last time, so a promise that stops being kept is said once
   let runtimeMark = null;  // {sec, line, msg}
   let typingLine = -1;     // errors on the line being typed wait until the cursor leaves it
   let mode = store.get('intuicode.mode.v1', 'unity') === 'write' ? 'write' : 'unity';   // Unity, unless Split Mode was used last
@@ -182,6 +192,7 @@
     backups.due = true;
     setUnsaved(!(desk.on && folder));   // only a project opened from its folder is saved as it is
     planToNext = true;   // its map opens at the first step not done
+    intentSeen = null;   // its promises are new to this session: nothing has "stopped" being kept yet
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
     ta.value = activeSec().text;
@@ -237,6 +248,7 @@
     try { compiled = compileAll(project); }
     catch (e) { console.error(e); return; }
     checkDrift();
+    try { checkIntent(); } catch (e) { console.error(e); }
     try { webStubs(); } catch (e) { console.error(e); }
   }
 
@@ -480,7 +492,8 @@
     $('pyFile').textContent = fileName(sec);
     $('codeTitle').textContent = l.name;
     let body = '';
-    if (sec.lang === 'markdown') { $('codeSub').textContent = 'How it reads, as a page.'; body = `<div class="md-page">${mdToHtml(sec.text) || '<p class="dim">Nothing written yet.</p>'}</div>`; }
+    if (isIntent(sec)) { $('codeTitle').textContent = 'Intent'; $('codeSub').textContent = 'Each promise, checked against the code just now.'; body = intentSideHtml(); }
+    else if (sec.lang === 'markdown') { $('codeSub').textContent = 'How it reads, as a page.'; body = `<div class="md-page">${mdToHtml(sec.text) || '<p class="dim">Nothing written yet.</p>'}</div>`; }
     else if (sec.lang === 'csv') {
       const rows = csvRows(sec.text);
       $('codeSub').textContent = rows.length ? `A table: ${Math.max(0, rows.length - 1)}${rows.length >= 200 ? '+' : ''} rows under a header row.` : 'A table, one row per line, cells separated by commas.';
@@ -498,10 +511,12 @@
   }
   /* The strip under the windows, for a code or notes file: where the cursor is, and (code) what that part does. */
   function renderExplainFile(sec) {
+    if (isIntent(sec)) { $('explain').innerHTML = intentLineHtml(caretLine()); return; }
     const li = caretLine(), l = LANGS.byId(sec.lang) || { name: 'Text', write: 'text' };
     const a = l.write === 'code' ? readOf(sec) : null;
     const part = a && a.sections && a.sections.find(s => li + 1 >= s.start && li + 1 <= s.end);
     $('explain').innerHTML = `<p class="ex-guide">${withCode(metaOf(sec).purpose)}.${l.write === 'code' ? ' Changing its language (⋯ beside it in Project) keeps the text as it is.' : ''}</p>`
+      + `<p class="ex-guide">${mineButton(sec, li)}</p>`
       + (part ? `<div class="ex-map"><div class="ex-cell"><span class="ex-lbl">Line ${li + 1} is in</span><div class="ex-say">${escHtml(part.title)}</div></div><div class="ex-cell"><span class="ex-lbl">What it does</span><div>${rich(part.headline || '')}</div></div></div>` : '');
   }
 
@@ -578,7 +593,7 @@
       </div>
       ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${!typing && inf.errs.length && !fill ? fixHtml(sec, li, text, inf.errs) : ''}${inf.errs.some(e => UNKNOWN_LINE.test(e)) ? closeMatchesHtml(sec, text, li) : ''}
       ${shapeHtml(sec, text)}${sayTutorHtml(sec, li)}
-      <p class="ex-foot">${why}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
+      <p class="ex-foot">${why}${mineButton(sec, li)}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
   }
   /* A line the writer doesn't recognise: the known sentences closest to what it says, each one click away. */
   const UNKNOWN_LINE = /don't recognise|don't understand|isn't a sentence|no sentence/i;
@@ -937,6 +952,7 @@
   /* How many problems ('errs') or warnings ('warns') a folder's sentences have; `waitForTyping`
    * leaves out the line being typed, whose problems show once the cursor leaves it. */
   function issues(s, kind, waitForTyping) {
+    if (intent.sec && s.id === intent.sec.id) return intent.results.filter(r => (kind === 'errs' ? r.ok === false : r.ok === null)).length;
     const r = secResult(s.id);
     return r ? r.info.reduce((n, inf, i) => n + (waitForTyping && s.id === project.active && i === typingLine ? 0 : inf[kind].length), 0) : 0;
   }
@@ -1404,8 +1420,8 @@
   $('fileLang').addEventListener('input', showFileHow);
 
   function renderProblems() {
-    const items = [];
-    let errCount = 0;
+    const items = intentItems();   // promises not kept come first: they're about what you meant
+    let errCount = items.filter(p => p.kind === 'err').length;
     for (const s of project.sections) {
       const r = secResult(s.id);
       if (!r) continue;
@@ -1422,6 +1438,7 @@
     const offered = new Set();   // a line's fix shows once, under its first problem
     $('problems').innerHTML = items.length
       ? items.slice(0, 60).map(p => {
+        if (p.intent) return intentProblemHtml(p);
         // in Unity: the file it shows, a line in a green part (its fixes checked as Unity writes the part)
         const inU = p.kind === 'err' && mode === 'unity' && !!UNITY && p.s.id === unity.id && uRegionAt(p.i) >= 0;
         const text = p.kind !== 'err' ? null : inU ? uLines()[p.i] || '' : mode !== 'unity' ? lineOfSec(p.s, p.i) : null;
@@ -1451,7 +1468,7 @@
   function refreshAll() {
     clearTimeout(compileTimer);
     compile();
-    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPartsView(); renderPlan(); renderProblems();
+    renderOverlay(); renderPython(); renderExplain(); renderTree(); renderParts(); renderPartsView(); renderPlan(); renderIntent(); renderProblems();
     renderGroupButtons();
     tutorSoon();
     fixSoon();
@@ -4537,8 +4554,9 @@
     if (!UNITY || mode !== 'unity') return;
     const box = $('explain'), sec = uSec() || activeSec();
     const li = uLineOf(uTa.selectionStart), lines = uLines(), text = lines[li] || '', at = uRegionAt(li), code = uCodeLang();
+    if (isIntent(sec)) { box.innerHTML = intentLineHtml(li); return; }
     const part = partAt(sec, li), selected = uTa.selectionEnd > uTa.selectionStart;
-    const partCell = part ? `<div class="ex-cell"><span class="ex-lbl">In the part · lines ${part.from + 1}–${part.to + 1}</span><div class="ex-part">${typeChip(part.type)} <b>${escHtml(part.title)}</b></div><div class="dim">${escHtml(PARTS.typeOf(part.type).about)}</div></div>` : '';
+    const partCell = part ? `<div class="ex-cell"><span class="ex-lbl">In the part · lines ${part.from + 1}–${part.to + 1}</span><div class="ex-part">${typeChip(part.type)} <b>${escHtml(part.title)}</b> ${mineButton(sec, li)}</div><div class="dim">${escHtml(PARTS.typeOf(part.type).about)}</div></div>` : '';
     if (at >= 0) {
       const r = unity.regions[at], items = [];
       let label, out = null;
@@ -4564,7 +4582,7 @@
         ${text.trim() ? shapeHtml(sec, text) : ''}
         ${out && out.needs.length ? `<p class="ex-guide">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</p>` : ''}
         ${uCheckOf(r, lines) ? `<p class="ex-guide u-check-says ${uCheckOf(r, lines)}">${escHtml(uCheckSays(r, lines))}</p>` : ''}
-        <p class="ex-foot"><span>Green part · lines ${r.from + 1}–${r.to + 1}${part ? ` · ${escHtml(PARTS.typeOf(part.type).name)}` : ''}</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> Original Code</span></p>`;
+        <p class="ex-foot"><span>Green part · lines ${r.from + 1}–${r.to + 1}${part ? ` · ${escHtml(PARTS.typeOf(part.type).name)}` : ''}</span>${mineButton(sec, li)}<span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> Original Code</span></p>`;
       return;
     }
     if (!text.trim() && !selected) {
@@ -5598,6 +5616,7 @@
     $('planWrap').classList.toggle('plan-none', !steps.length);
     if (!steps.length) {
       $('planPath').textContent = '';
+      $('planOther').hidden = true;
       $('planDone').hidden = true;
       $('plan').innerHTML = '';
       planToNext = false;
@@ -5610,8 +5629,11 @@
     $('planBar').style.width = Math.round(100 * p.done / p.total) + '%';
     $('plan').innerHTML = steps.map(s => `<li class="plan-item${s.done ? ' plan-ticked' : ''}${s.n === p.next ? ' plan-next' : ''}" data-step-n="${s.n}">
       <input type="checkbox" class="plan-tick" data-tick="${s.n}"${s.done ? ' checked' : ''} aria-label="Step ${s.n} done: ${escHtml(s.name)}" title="${s.done ? 'Done. Untick if it isn\'t any more.' : 'Tick when it\'s done: ' + escHtml(stepCheck(s))}">
-      <button type="button" class="plan-step" data-plan="${s.n}" title="${escHtml(s.name)}: what it's for, how to check it's done"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}</button>
+      <button type="button" class="plan-step" data-plan="${s.n}" title="${escHtml(s.name)}: what it's for, how to check it's done"><span class="plan-n">${s.n}</span><span class="plan-name">${escHtml(s.name)}</span>${depthChip(s.depth)}${stepPill(s)}</button>
       ${s.done ? '' : `<span class="plan-check" title="How to check it's done: ${escHtml(stepCheck(s))}">${escHtml(stepCheck(s))}</span>`}</li>`).join('');
+    const out = intent.outside.length;
+    $('planOther').hidden = !out;
+    $('planOther').textContent = out ? `${out} part${out > 1 ? 's' : ''} of the code ${out > 1 ? 'aren\'t' : 'isn\'t'} in any step` : '';
     if (planToNext) {
       planToNext = false;
       const li = p.next != null && $('plan').querySelector(`[data-step-n="${p.next}"]`);
@@ -5628,6 +5650,8 @@
     if (!$('stepModal').hidden) openStep(n);
     const p = OPENSPEC.progress(project.plan.steps);
     tLine(done ? `Step ${n}, "${s.name}", is done: ${p.done} of ${p.total}.${p.next != null ? ` Next: step ${p.next}.` : ' Every step is done.'}` : `Step ${n}, "${s.name}", is to do again.`, 't-sys');
+    const bad = done ? failingChecks(n) : [];
+    if (bad.length) tLine(`Ticked, but ${bad.length > 1 ? `${bad.length} of its checks don't` : 'one of its checks doesn\'t'} hold: ${bad.map(c => `"${c.text}" (${plainWhy(c.why)})`).join('; ')}`, 't-err');
   }
   $('plan').addEventListener('change', (e) => { const t = e.target.closest('[data-tick]'); if (t) tickStep(+t.dataset.tick, t.checked); });
   const stepText = (sec) => (sec.id === project.active ? ta.value : sec.text);
@@ -5654,6 +5678,7 @@
       ${step.learn ? `<h4>Learn first</h4><p>${withCode(step.learn)}</p>` : ''}
       <h4>How to check it's done</h4>
       <div class="plan-check-edit"><label class="plan-done-tog"><input type="checkbox" data-step-done="${step.n}"${step.done ? ' checked' : ''}> Done</label><input data-step-check="${step.n}" value="${escHtml(step.check || '')}" placeholder="${escHtml(BUILDER.DEPTHS[step.depth].check)}" maxlength="300" spellcheck="true" aria-label="How to check it's done"></div>
+      ${PROMISES ? stepChecksHtml(step) : ''}
       ${places.length ? `<div class="step-go">${places.map(p => `<button type="button" class="btn small primary" data-go-sec="${escHtml(p.sec.id)}" data-go-line="${p.line}">Go to its sentences in ${escHtml(metaOf(p.sec).title)}</button>`).join('')}</div>` : ''}
       <div class="bp-actions step-nav">
         <button type="button" class="btn small" data-step-to="${step.n - 1}"${step.n > 1 ? '' : ' disabled'}>← Step ${step.n - 1 || ''}</button>
@@ -5701,10 +5726,12 @@
     if (e.target.id === 'stepModal') return closeStep();
     const to = e.target.closest('[data-step-to]');
     if (to) return openStep(+to.dataset.stepTo);
+    const add = e.target.closest('[data-step-promise-go]');
+    if (add) return addStepPromise(+add.dataset.stepPromiseGo);
     const go = e.target.closest('[data-go-sec]');
     if (go) {
       closeStep();
-      if (mode !== 'unity') return openSection(go.dataset.goSec, +go.dataset.goLine);
+      if (mode !== 'unity' || go.dataset.goPlain) return openSection(go.dataset.goSec, +go.dataset.goLine);
       // Unity shows the file's code with its sentences in place: the step's note is found in that text
       const n = +$('stepTitle').dataset.n, step = project.plan && project.plan.steps.find(s => s.n === n);
       openSection(go.dataset.goSec);
@@ -5719,12 +5746,333 @@
     if (s) { s.check = c.value.replace(/\s+/g, ' ').trim().slice(0, 300); save(); autosave(); }
     return s;
   };
+  // a check of the step's own, written as a promise under its heading in INTENT.md
+  function addStepPromise(n) {
+    const step = project.plan && project.plan.steps.find(s => s.n === n), box = $('stepBody').querySelector(`[data-step-promise="${n}"]`);
+    if (!step || !box || !box.value.trim()) return;
+    const said = PROMISES.parse('## Step 1\n- ' + box.value).items[0];
+    if (said && said.error) { box.setCustomValidity(plainWhy(said.error)); box.reportValidity(); return; }
+    box.setCustomValidity('');
+    if (addPromise(box.value, step)) { tLine(`INTENT.md: step ${n}, "${step.name}", is checked for "${box.value.trim()}" now.`, 't-sys'); openStep(n); }
+  }
+  $('stepModal').addEventListener('keydown', (e) => { const b = e.target.closest('[data-step-promise]'); if (b && e.key === 'Enter') { e.preventDefault(); addStepPromise(+b.dataset.stepPromise); } });
+  $('planOther').addEventListener('click', openOutside);
   $('stepModal').addEventListener('input', checkInput);
   $('stepModal').addEventListener('change', (e) => {
     const d = e.target.closest('[data-step-done]');
     if (d) return tickStep(+d.dataset.stepDone, d.checked);
     if (checkInput(e)) renderPlan();
   });
+
+  /* ---------- INTENT.md: what you meant, checked against the code (lang/promises.js) ----------
+   * After every compile each promise in INTENT.md is checked again against the code as it is now (the files as
+   * they're written to disk, not the sentences): kept, not kept, or can't be told. That feeds Problems, the project
+   * map (each step's checks, and the parts no step covers) and Hand to my AI. Nothing is changed for you: a
+   * promise not kept is shown, with where, and what to do is yours.
+   *
+   * "‹part› is mine" keeps that part's code (project.mine) as you last left it. Changed here, by you, it's still
+   * yours as it is now. Changed outside IntuaCode (found when its folder is opened: an AI, another editor, Git),
+   * it shows as not kept until you keep the change or put yours back. */
+  const INTENT_START = '# Intent\n\nWhat this project must keep doing. Each line that starts with "- " is a promise: IntuaCode checks it against the code every time the project changes.\n\n';
+  const intentSec = () => (PROMISES ? project.sections.find(s => PROMISES.isIntentPath(s.path)) : null) || null;
+  const isIntent = (sec) => !!(PROMISES && sec && PROMISES.isIntentPath(sec.path));
+  const errLines = (s) => { const r = secResult(s.id); return r && isSentences(s) ? r.info.map((inf, i) => (inf.errs.length ? i : -1)).filter(i => i >= 0) : []; };
+  const intentFacts = () => ({ files: project.sections.map(s => ({ path: s.path, lang: s.lang, write: isSentences(s) ? 'sentences' : PRJ.writeOf(s), text: s.text, code: codeOf(s), errs: errLines(s) })) });
+  const mineKey = (ref) => (ref.path || '').toLowerCase() + '#' + (ref.name || '');
+  const sameCode = (a, b) => String(a).replace(/\s+$/, '') === String(b).replace(/\s+$/, '');
+  const plainWhy = (s) => String(s || '').replace(/`/g, '');
+  const markOf = (ok) => (ok === true ? '✓' : ok === false ? '✗' : '?');
+
+  function checkIntent() {
+    if (!PROMISES) return;
+    const sec = intentSec(), steps = project.plan && project.plan.steps.length ? project.plan.steps : null;
+    if (!sec && !steps) { intent = { results: [], steps: new Map(), outside: [], sec: null }; return; }
+    const facts = intentFacts();
+    const results = sec ? PROMISES.check(sec.text, facts) : [];
+    reconcileMine(results);
+    intent = { results, steps: steps ? PROMISES.stepChecks(steps, results, facts) : new Map(), outside: steps ? PROMISES.outsideSteps(facts, steps) : [], sec };
+    sayIntentChanges(results);
+  }
+
+  function reconcileMine(results) {
+    const list = project.mine || [], live = new Set();
+    let changed = false;
+    for (const r of results) {
+      if (r.kind !== 'mine' || !r.ref) continue;
+      const key = mineKey(r.ref);
+      live.add(key);
+      const e = list.find(x => x.key === key);
+      if (!r.mine) continue;   // the part isn't there now: the promise isn't kept, and its last code waits for it
+      if (!e) { list.push({ key, path: r.mine.path, name: r.mine.name, code: r.mine.code }); changed = true; continue; }
+      if (e.changed) {
+        if (sameCode(r.mine.code, e.code)) { delete e.changed; changed = true; }   // put back as it was, by hand
+        else {
+          r.ok = false;
+          r.changed = { was: e.code, now: r.mine.code, at: e.changed.at };
+          r.why = `It was changed outside IntuaCode${e.changed.at ? ` (found ${e.changed.at})` : ''}: ${r.mine.name ? `lines ${r.mine.from + 1}–${r.mine.to + 1} of ${r.mine.path} aren't` : `${r.mine.path} isn't`} what you left. Keep the change, or put yours back.`;
+        }
+      } else if (!sameCode(r.mine.code, e.code)) { e.code = r.mine.code; e.path = r.mine.path; changed = true; }   // changed here, by you: still yours
+    }
+    // a promise taken out here lets its part go; one changed outside is kept, in case its line comes back
+    const kept = list.filter(e => live.has(e.key) || e.changed);
+    if (kept.length !== list.length) changed = true;
+    if (kept.length || project.mine) project.mine = kept;
+    if (changed) save();
+  }
+
+  /* A promise that was kept and now isn't, said in the terminal (once a minute at most, so typing doesn't chatter). */
+  const intentSaid = new Map();
+  function sayIntentChanges(results) {
+    const now = new Map();
+    for (const r of results) if (!r.error) now.set(r.text, r.ok);
+    if (intentSeen) {
+      for (const r of results) {
+        if (r.ok !== false || intentSeen.get(r.text) !== true || Date.now() - (intentSaid.get(r.text) || 0) < 60000) continue;
+        intentSaid.set(r.text, Date.now());
+        tLine(`INTENT.md, line ${r.li + 1}: "${r.text}" isn't kept any more. ${plainWhy(r.why)}`, 't-err');
+      }
+    }
+    intentSeen = now;
+  }
+  function sayIntentOnOpen() {
+    const told = intent.results.filter(r => !r.error), bad = told.filter(r => r.ok === false);
+    if (bad.length) tLine(`INTENT.md: ${bad.length} of ${told.length} promise${told.length > 1 ? 's' : ''} ${bad.length > 1 ? 'aren\'t' : 'isn\'t'} kept: ${bad.slice(0, 3).map(r => `"${r.text}"`).join(', ')}${bad.length > 3 ? '…' : ''}. Problems says where.`, 't-err');
+    else if (told.length) tLine(`INTENT.md: all ${told.length} promise${told.length > 1 ? 's are' : ' is'} kept. ✓`, 't-sys');
+  }
+
+  /* Opening a saved project's folder found these files changed outside IntuaCode ([[sec, the code on disk]]). Before
+     they're read in: the parts INTENT.md says are yours are compared with the code you left, and INTENT.md itself
+     with what it said, so a promise taken out by someone else is said, not just gone. */
+  function noteOutsideChanges(changed) {
+    if (!PROMISES) return;
+    intentSeen = null;   // what's found is said once, by sayIntentOnOpen, not again as each promise stops being kept
+    for (const [s, onDisk] of changed) {
+      if (PROMISES.isIntentPath(s.path)) {
+        const now = new Set(PROMISES.parse(onDisk).items.map(i => i.text));
+        const gone = PROMISES.parse(s.text).items.map(i => i.text).filter(t => !now.has(t));
+        if (gone.length) tLine(`INTENT.md was changed outside IntuaCode, and no longer says: ${gone.join('; ')}. If you didn't take ${gone.length > 1 ? 'them' : 'it'} out, put ${gone.length > 1 ? 'them' : 'it'} back.`, 't-err');
+        continue;
+      }
+      for (const e of project.mine || []) {
+        if (e.changed || e.path.toLowerCase() !== s.path.toLowerCase()) continue;
+        const at = PROMISES.locate({ files: [{ path: s.path, lang: s.lang, write: 'code', text: onDisk, code: onDisk, errs: [] }] }, s.path, e.name);
+        if (!at.error && sameCode(at.code, e.code)) continue;
+        e.changed = { at: today() };
+        tLine(`${e.name ? `${e.name} in ` : ''}${s.path}, which INTENT.md says is yours, was changed outside IntuaCode. Problems shows it: keep the change, or put yours back.`, 't-err');
+      }
+    }
+    save();
+  }
+
+  /* Lines of a file's code and lines of its sentences, both ways (for a file of code they're the same lines). */
+  function textLineOf(sec, line) {
+    if (!isSentences(sec)) return line;
+    const r = secResult(sec.id);
+    if (!r) return line;
+    let near = 0;
+    for (let i = 0; i < r.info.length; i++) {
+      const py = (r.info[i] && r.info[i].py) || [];
+      if (py.includes(line)) return i;
+      if (py.length && Math.min(...py) <= line) near = i;
+    }
+    return near;
+  }
+  function codeLineOf(sec, li) {
+    if (!isSentences(sec)) return li;
+    const r = secResult(sec.id);
+    for (let i = li; r && i >= 0; i--) { const py = (r.info[i] && r.info[i].py) || []; if (py.length) return i === li ? Math.min(...py) : Math.max(...py); }
+    return li;
+  }
+  function goToPlace(w) {
+    const sec = w && project.sections.find(s => s.path.toLowerCase() === String(w.path).toLowerCase());
+    if (sec) openSection(sec.id, w.space === 'code' ? textLineOf(sec, w.line) : w.line);
+  }
+  const placeBtn = (w, label = 'Show where') => (w ? `<button type="button" class="btn small" data-intent-go="${escHtml(JSON.stringify(w))}" title="${escHtml(w.path)}, line ${w.line + 1}">${escHtml(label)}</button>` : '');
+
+  /* A file's text, changed by IntuaCode for you (a promise added, your part put back). */
+  function setSecText(sec, text) {
+    sec.text = text;
+    if (sec.id === project.active) ta.value = text;
+    refreshAll(); save(); autosave();
+    if (sec.id === project.active && mode === 'unity') unityShow();
+  }
+
+  /* A promise added to INTENT.md (made if there isn't one): under "## Step n" when it's a step's, otherwise above
+     the steps. -> INTENT.md's file, or null. */
+  function addPromise(promise, step) {
+    promise = String(promise || '').replace(/\s+/g, ' ').trim().replace(/^[-*+]\s+/, '');
+    if (!promise || !PROMISES) return null;
+    let sec = intentSec();
+    if (!sec) {
+      const copy = JSON.parse(JSON.stringify(project));
+      copy.sections.push({ id: newId(), path: 'INTENT.md', lang: 'markdown', text: INTENT_START });
+      const err = changeProject(copy, null, 'Added INTENT.md: what the project must keep doing, checked against the code.');
+      if (err) { tLine(err, 't-err'); return null; }
+      sec = intentSec();
+    }
+    const lines = sec.text.replace(/\n+$/, '').split('\n'), item = '- ' + promise;
+    if (PROMISES.parse(sec.text).items.some(i => i.text.toLowerCase() === promise.replace(/[.;]$/, '').toLowerCase() && (i.step || null) === (step ? step.n : null))) return sec;   // it says that already
+    const isHead = (l) => /^\s{0,3}#{1,6}\s/.test(l);
+    const put = (at) => { if (at > 0 && lines[at - 1].trim() && !/^\s*[-*+]\s/.test(lines[at - 1])) lines.splice(at++, 0, ''); lines.splice(at, 0, item); };
+    if (step) {
+      const head = lines.findIndex(l => new RegExp(`^\\s{0,3}#{1,6}\\s+step\\s+${step.n}\\b`, 'i').test(l));
+      if (head < 0) lines.push('', `## Step ${step.n} · ${String(step.name).replace(/\s+/g, ' ')}`, item);
+      else { let at = head + 1; while (at < lines.length && !isHead(lines[at])) at++; while (at > head + 1 && !lines[at - 1].trim()) at--; put(at); }
+    } else {
+      const first = lines.findIndex(l => /^\s{0,3}#{1,6}\s+step\s+\d+/i.test(l));
+      if (first < 0) put(lines.length);
+      else { let at = first; while (at > 0 && !lines[at - 1].trim()) at--; put(at); lines.splice(at + 1, 0, ''); }
+    }
+    setSecText(sec, lines.join('\n').replace(/\n{3,}/g, '\n\n') + '\n');
+    return sec;
+  }
+
+  /* The part around line `li` of a file (its sentences' line, or its code's), named as INTENT.md would say it: the
+     smallest part with a name only it has in the file, or the whole file. */
+  function mineAt(sec, li) {
+    const code = codeOf(sec), cl = codeLineOf(sec, li);
+    const defs = PROMISES.definitions(sec.lang, code, sec.path).filter(d => d.kind !== 'el' && d.kind !== 'table');
+    const around = defs.filter(d => d.from <= cl && cl <= d.to).sort((a, b) => (a.to - a.from) - (b.to - b.from));
+    const d = around.find(x => defs.filter(y => y.name === x.name).length === 1);
+    const name = d ? (/\s/.test(d.name) ? '`' + d.name + '`' : d.name) : '';
+    return { name, promise: name ? `${name} in ${sec.path} is mine` : `${sec.path} is mine` };
+  }
+  const isMine = (promise) => intent.results.some(r => r.kind === 'mine' && r.text.toLowerCase() === promise.toLowerCase());
+  function mineButton(sec, li) {
+    if (!PROMISES || !sec || isIntent(sec)) return '';
+    const m = mineAt(sec, li);
+    return isMine(m.promise)
+      ? `<span class="mine-chip" title="INTENT.md: ${escHtml(m.promise)}">Yours</span>`
+      : `<button type="button" class="btn tiny" data-mine-line="${li}" title="Adds &quot;${escHtml(m.promise)}&quot; to INTENT.md: a change made to it outside IntuaCode (an AI, another editor, Git) shows until you keep it or put yours back">${m.name ? 'This part is mine' : 'This file is mine'}</button>`;
+  }
+  function markMine(sec, li) {
+    const m = mineAt(sec, li);
+    if (addPromise(m.promise)) tLine(`INTENT.md: "${m.promise}". A change made to it outside IntuaCode (by an AI, another editor or Git) will show in Problems until you keep it or put yours back.`, 't-sys');
+  }
+
+  const mineResult = (key) => intent.results.find(r => r.ref && mineKey(r.ref) === key && r.changed);
+  function keepMineChange(key) {
+    const e = (project.mine || []).find(x => x.key === key), r = mineResult(key);
+    if (!e || !r || !r.mine) return;
+    e.code = r.mine.code; delete e.changed;
+    save(); autosave(); refreshAll();
+    tLine(`Kept the change to ${r.ref.name || r.mine.path}: it's yours as it is now.`, 't-sys');
+  }
+  async function putMineBack(key) {
+    const e = (project.mine || []).find(x => x.key === key), r = mineResult(key);
+    const sec = r && r.mine && project.sections.find(s => s.path === r.mine.path);
+    if (!e || !sec) return;
+    const lines = codeOf(sec).split('\n');
+    lines.splice(r.mine.from, r.mine.to - r.mine.from + 1, ...e.code.replace(/\n$/, '').split('\n'));
+    const code = lines.join('\n'), raw = UNITY && UNITY.RAW[sec.lang];
+    const what = `${r.ref.name ? r.ref.name + ' in ' : ''}${sec.path}`;
+    if (!isSentences(sec)) setSecText(sec, code);
+    else if (raw && sec.text.split('\n').every(l => !l.trim() || l.trimStart().startsWith(raw))) setSecText(sec, UNITY.toFile(sec.lang, code.replace(/\n+$/, '').split('\n'), []) + '\n');
+    else {
+      // sentences are written around it: putting code back in place would rewrite them, so it's yours to paste
+      try { await navigator.clipboard.writeText(e.code); } catch (_) { /* no clipboard: the terminal has it */ }
+      tLine(`${sec.path} is written in sentences, so IntuaCode can't put your code back in place without rewriting them. Your ${what} is copied: paste it over lines ${r.mine.from + 1}–${r.mine.to + 1} of its code (Unity), then it's kept again.`, 't-sys');
+      return;
+    }
+    tLine(`Put your ${what} back, as you left it.`, 't-sys');
+  }
+
+  /* Problems: promises not kept (and ones that can't be told), first, with where and what you can do. */
+  function intentItems() {
+    return intent.sec ? intent.results.filter(r => r.ok !== true).map(r => ({ s: intent.sec, i: r.li, kind: r.ok === false ? 'err' : 'warn', intent: r, msg: '' })) : [];
+  }
+  function intentProblemHtml(p) {
+    const r = p.intent;
+    const head = r.error ? 'IntuaCode doesn\'t know this promise' : r.ok === false ? 'Promise not kept' : 'Can\'t be checked';
+    const key = r.changed ? escHtml(mineKey(r.ref)) : '';
+    const acts = (r.changed ? `<button type="button" class="btn small" data-mine-keep="${key}" title="It's yours as it is now">Keep the change</button><button type="button" class="btn small" data-mine-back="${key}" title="Your code, as you left it, back in place">Put mine back</button>` : '')
+      + (r.where && r.where[0] ? placeBtn(r.where[0]) : '');
+    return `<li class="${p.kind} prob-intent"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">INTENT.md · line ${p.i + 1}</span><b>${head}:</b> ${escHtml(r.text)}. ${withCode(r.why)}</span></button>${acts ? `<div class="prob-fix">${acts}</div>` : ''}</li>`;
+  }
+
+  /* On the project map: a step's checks, held of told (✓ when all hold; ! when it's ticked but they don't). */
+  function stepPill(s) {
+    const c = intent.steps.get(s.n);
+    if (!c || !c.total) return '';
+    const claim = s.done && c.state !== 'all';
+    const list = c.checks.map(x => `${markOf(x.ok)} ${x.text}`).join('\n');
+    return `<span class="plan-checks st-${c.state}${claim ? ' claim-bad' : ''}" title="${escHtml((claim ? 'Ticked, but not every check holds:\n' : 'What IntuaCode checks:\n') + list)}">${claim ? '! ' : c.state === 'all' ? '✓ ' : ''}${c.held}/${c.total}</span>`;
+  }
+  function stepChecksHtml(step) {
+    const c = intent.steps.get(step.n);
+    const list = c && c.checks.length
+      ? `<ul class="step-checks">${c.checks.map(x => `<li class="sc-${x.ok === true ? 'ok' : x.ok === false ? 'bad' : 'unk'}"><span class="sc-mark" aria-hidden="true">${markOf(x.ok)}</span><span><b>${escHtml(x.text)}</b>${x.auto ? ' <span class="dim">(every step)</span>' : ''}<span class="sc-why">${withCode(x.why)}</span>${x.where && x.where[0] && x.ok === false ? placeBtn(x.where[0]) : ''}</span></li>`).join('')}</ul>`
+      : '<p class="dim">Nothing to check yet: add a promise for this step below, and IntuaCode checks it against the code every time it changes.</p>';
+    const claim = c && step.done && c.total && c.state !== 'all' ? `<p class="step-claim">Ticked, but ${c.total - c.held} of ${c.total} check${c.total > 1 ? 's don\'t' : ' doesn\'t'} hold.</p>` : '';
+    return `<h4>What IntuaCode checks</h4>${claim}${list}
+      <div class="step-add-check"><input data-step-promise="${step.n}" placeholder="Add a check, like: there is a button called save" maxlength="300" spellcheck="true" aria-label="A check for this step, in INTENT.md"><button type="button" class="btn small" data-step-promise-go="${step.n}">Add to INTENT.md</button></div>`;
+  }
+  function failingChecks(n) {
+    const c = intent.steps.get(n);
+    return c ? c.checks.filter(x => x.ok === false) : [];
+  }
+
+  /* The parts no step covers (code the plan doesn't account for), listed in the step window. */
+  function openOutside() {
+    const list = intent.outside;
+    $('stepTitle').textContent = `Not in any step · ${list.length} part${list.length === 1 ? '' : 's'}`;
+    $('stepTitle').dataset.n = '';
+    const bySec = (p) => project.sections.find(s => s.path === p.path);
+    $('stepBody').innerHTML = `<p>These parts of the code are outside every step on the map: nothing in the plan says what they're for. Code an AI added on its own often shows up here. Read them, then add a step for them (<b>+ Step</b>), or take them out.</p>
+      <ul class="outside-list">${list.slice(0, 80).map(p => { const s = bySec(p); return s ? `<li><span class="pdot t-${p.type}" aria-hidden="true"></span><b>${escHtml(p.title)}</b> <span class="dim">${escHtml(p.path)}, line ${p.from + 1}</span> <button type="button" class="btn tiny" data-go-sec="${escHtml(s.id)}" data-go-line="${p.from}" data-go-plain="1">Open</button></li>` : ''; }).join('')}</ul>`;
+    $('stepModal').hidden = false;
+  }
+
+  /* INTENT.md in Split Mode's right pane, and in the help under the pane: each promise, as it stands now. */
+  function intentSideHtml() {
+    const rs = intent.results;
+    if (!rs.length) return `<div class="md-page"><p>No promises yet. Write one per line, starting with <code>- </code>, like:</p><ul>${PROMISES.TEMPLATES.slice(0, 7).map(t => `<li><code>${escHtml(t.example)}</code></li>`).join('')}</ul></div>`;
+    const told = rs.filter(r => r.ok !== null), kept = told.filter(r => r.ok).length;
+    return `<div class="md-page intent-side"><p class="intent-sum"><b>${kept} of ${told.length}</b> kept${rs.length > told.length ? `, ${rs.length - told.length} can't be checked` : ''}. Checked against the code just now.</p>
+      <ul class="step-checks">${rs.map(r => `<li class="sc-${r.ok === true ? 'ok' : r.ok === false ? 'bad' : 'unk'}"><span class="sc-mark" aria-hidden="true">${markOf(r.ok)}</span><span><b>${escHtml(r.text)}</b>${r.step ? ` <span class="dim">(step ${r.step})</span>` : ''}<span class="sc-why">${withCode(r.why)}</span>${r.where && r.where[0] ? placeBtn(r.where[0]) : ''}</span></li>`).join('')}</ul></div>`;
+  }
+  function intentLineHtml(li) {
+    const r = intent.results.find(x => x.li === li);
+    if (!r) {
+      return `<p class="ex-guide">INTENT.md: what the project must keep doing. Each line that starts with <code>- </code> is a promise, checked against the code every time it changes; other lines are notes. A <code>## Step n</code> heading gives the promises under it to that step of the map.</p>
+        <div class="ex-hint">${PROMISES.TEMPLATES.map(t => `<span title="${escHtml(t.about)}"><code>${escHtml(t.pattern)}</code></span>`).join('')}</div>`;
+    }
+    const state = r.error ? 'IntuaCode doesn\'t know this promise' : r.ok === true ? 'Kept' : r.ok === false ? 'Not kept' : 'Can\'t be checked';
+    const changed = r.changed ? `<div class="ex-map"><div class="ex-cell"><span class="ex-lbl">You left</span><div class="ex-py">${escHtml(r.changed.was)}</div></div><div class="ex-arrow" aria-hidden="true">→</div><div class="ex-cell"><span class="ex-lbl">It is now</span><div class="ex-py">${escHtml(r.changed.now)}</div></div></div>
+        <div class="prob-fix"><button type="button" class="btn small" data-mine-keep="${escHtml(mineKey(r.ref))}">Keep the change</button><button type="button" class="btn small" data-mine-back="${escHtml(mineKey(r.ref))}">Put mine back</button></div>` : '';
+    return `<div class="ex-map"><div class="ex-cell"><span class="ex-lbl">Promise · line ${li + 1}${r.step ? ` · step ${r.step}` : ''}</span><div class="ex-say">${escHtml(r.text)}</div></div><div class="ex-arrow" aria-hidden="true">→</div>
+        <div class="ex-cell"><span class="ex-lbl">${markOf(r.ok)} ${state}</span><div>${withCode(r.why)}</div></div></div>
+      ${changed}${!r.changed && r.where && r.where[0] ? `<p class="ex-guide">${placeBtn(r.where[0])}</p>` : ''}
+      <p class="ex-foot"><span>Checked against the code every time the project changes. Nothing here changes the code.</span></p>`;
+  }
+
+  /* The Intent block in the side: how many promises are kept, and a way in. Shown once INTENT.md exists. */
+  function renderIntent() {
+    const has = !!intent.sec;
+    $('intentWrap').hidden = !has;
+    if (!has) return;
+    const told = intent.results.filter(r => r.ok !== null), kept = told.filter(r => r.ok).length, unk = intent.results.length - told.length;
+    $('intentCount').textContent = told.length ? `${kept}/${told.length}` : '';
+    $('intentCount').className = 'count' + (kept < told.length ? ' bad' : '');
+    $('intentSum').innerHTML = !intent.results.length ? 'No promises yet.'
+      : `${kept === told.length && told.length ? '✓ ' : ''}${kept} of ${told.length} kept${unk ? `, ${unk} can't be checked` : ''}${(project.mine || []).length ? ` · ${(project.mine || []).length} part${project.mine.length > 1 ? 's' : ''} yours` : ''}`;
+  }
+  function openIntent() {
+    const sec = intentSec() || addPromise('nothing has problems');
+    if (sec) openSection(sec.id);
+  }
+  $('btnIntent').addEventListener('click', () => { setFileMenu(false); openIntent(); });
+  $('intentOpen').addEventListener('click', openIntent);
+  // Show where / Keep the change / Put mine back / This part is mine, wherever they're shown
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest && e.target.closest('[data-intent-go], [data-mine-keep], [data-mine-back], [data-mine-line]');
+    if (!t) return;
+    e.preventDefault(); e.stopPropagation();
+    if (t.dataset.intentGo) { try { closeStep(); goToPlace(JSON.parse(t.dataset.intentGo)); } catch (_) { /* not a place */ } }
+    else if (t.dataset.mineKeep) keepMineChange(t.dataset.mineKeep);
+    else if (t.dataset.mineBack) putMineBack(t.dataset.mineBack);
+    else if (t.dataset.mineLine) { activeSec().text = mode === 'write' ? ta.value : activeSec().text; markMine(activeSec(), +t.dataset.mineLine); }
+  }, true);
 
   /* Hand to my AI: the map as an OpenSpec change (lang/openspec.js), for an AI assistant of your own to work
    * from. The desktop app writes it into the saved project's folder, at openspec/changes/<name>/; the browser
@@ -5747,6 +6095,10 @@
       planToNext = true;   // the map shows the next step still to do
       renderPlan(); save(); autosave();
       said = `Took ${r.ticked.length} tick${r.ticked.length > 1 ? 's' : ''} from ${from}: ${stepList(r.ticked)}. ${OPENSPEC.progress(plan.steps).done} of ${plan.steps.length} done; untick any that aren't.`;
+      // a tick is a claim: the steps whose checks don't hold, said
+      refreshAll();
+      const bad = r.ticked.filter(n => failingChecks(n).length);
+      if (bad.length) said += ` But ${stepList(bad)} ${bad.length > 1 ? 'have' : 'has'} checks that don't hold (the map marks ${bad.length > 1 ? 'them' : 'it'} !).`;
     }
     if (r.tasks && r.unknown.length) said += ` No task there is about ${stepList(r.unknown)} (renamed, perhaps).`;
     if (quiet && !r.ticked.length) return '';
@@ -5756,7 +6108,11 @@
   function handFiles() {
     const plan = project.plan;
     if (!plan || !plan.steps.length) return [];
-    return OPENSPEC.files({ ...plan, steps: plan.steps.map(s => ({ ...s, check: stepCheck(s) })) }, { name: project.name, files: project.sections.map(fileName), date: today() });
+    const told = intent.results.filter(r => !r.error);
+    const steps = {};
+    for (const r of told) if (r.step != null) (steps[r.step] = steps[r.step] || []).push(r.text);
+    const said = { mine: told.filter(r => r.kind === 'mine').map(r => r.text.replace(/\s+(?:is|are) (?:mine|my own)$/i, '')), promises: told.filter(r => r.kind !== 'mine' && r.step == null).map(r => r.text), steps };
+    return OPENSPEC.files({ ...plan, steps: plan.steps.map(s => ({ ...s, check: stepCheck(s) })) }, { name: project.name, files: project.sections.map(fileName), date: today(), intent: intent.sec ? said : null });
   }
   async function openHand() {
     hand.files = handFiles();
@@ -6570,6 +6926,7 @@
           written.set(folder + '|' + fileName(s), { text: same ? codeOf(s) : null, crlf: onDisk.includes('\r\n'), end: lf.match(/\n*$/)[0] });
           if (!same) changed.push([s, lf]);
         }
+        noteOutsideChanges(changed);   // before the new code is read in: was anything INTENT.md says is yours changed?
         // a Vite app's files, and TypeScript, come back as their exact lines, as when the folder was first opened
         const asCode = (s) => s.lang === 'ts' || s.lang === 'tsx' || (PRJ.devServerOf(project) && UNITY && UNITY.LANGS.includes(s.lang) && s.lang !== 'python');
         for (const [s, onDisk] of changed) {
@@ -6585,6 +6942,7 @@
           if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
         }
         if (changed.length) { ta.value = activeSec().text; refreshAll(); if (mode === 'write') splitPlain(); }
+        sayIntentOnOpen();
         showFolder();
         return;
       }

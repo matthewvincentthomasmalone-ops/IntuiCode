@@ -31,6 +31,9 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
   what it uses; [Known wrong translations](#known-wrong-translations) lists, with tests, what still comes
   out wrong. And in the app, if an edit somewhere changes the code of a line you didn't touch, that line
   is flagged until you've looked at it.
+- **What you meant can be written down and checked.** [INTENT.md](#intentmd-what-you-meant-checked) holds
+  promises in plain sentences ("no file mentions \"service_role\"", "save in main.py is mine"). Each is checked
+  against the code every time the project changes, with no guessing: a search of the real code, never a reading of it.
 
 ## Contents
 
@@ -44,9 +47,10 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 8. [Context: what the writers remember](#context-what-the-writers-remember)
 9. [What IntuaCode has no words for](#what-intuacode-has-no-words-for)
 10. [Guarantees and limits](#guarantees-and-limits)
-11. [Known wrong translations](#known-wrong-translations)
-12. [About the examples](#about-the-examples)
-13. [Index](#index)
+11. [INTENT.md: what you meant, checked](#intentmd-what-you-meant-checked)
+12. [Known wrong translations](#known-wrong-translations)
+13. [About the examples](#about-the-examples)
+14. [Index](#index)
 
 ## Files and folders
 
@@ -2206,6 +2210,55 @@ Not proven yet:
 - TypeScript's types are written as they are said; nothing checks them (TypeScript's own checker does, when you
   build). What a component shows is checked for its shape (one thing under "only if", an "otherwise" after "if"),
   not for whether the props a component takes exist.
+
+## INTENT.md: what you meant, checked
+
+The code says what a project does; nothing in it says what you meant it to do. `INTENT.md`, a Markdown file at the
+top of the project, says that, as promises (`lang/promises.js`). Each bullet (`- ` or `* `) is a promise; any other
+line is a note. Bullets under a `## Step n` heading belong to that step of the project map.
+
+```markdown
+# Intent
+
+- no file mentions "service_role"
+- every table has row-level security
+- handleSave in src/App.tsx is mine
+
+## Step 2 · Contact form
+- there is a form called contact
+- contact.js mentions "formspree.io"
+```
+
+After every change, each promise is checked against the code as it is written to disk (not the sentences), and is
+**kept**, **not kept** (with where), or **can't be checked** (with why). Nothing is stored as kept: a promise's state
+is worked out from the code each time, so it can't disagree with it. Nothing is changed for you either.
+
+| Promise | Kept when |
+|---|---|
+| `‹where› mentions "‹text›"` | the text is in that code. ‹where› is a file (`src/api.ts`), a folder (`src/`), a part by name (`save`, or `save in main.py`) or the project |
+| `‹where› doesn't mention "‹text›"`, `no file mentions "‹text›"` | it's nowhere in it. `no file` looks in code and data files, not notes (Markdown, text) or `INTENT.md` |
+| `‹file› has no problems`, `nothing has problems` | none of its sentences has a problem listed. A file IntuaCode only reads can't be checked |
+| `there is a ‹kind› called ‹name›`, `‹file› exists` | the code defines it. Kinds: function, component, class, part, style rule, button, heading, link, input, picture, form, list, list item, paragraph, section, header, footer, menu, element, table, file, folder, page. An element is found by its name (`id="…"`) in HTML and JSX |
+| `every table has row-level security` | every `create table` in the project's `.sql` files has an `alter table … enable row level security`. With no `create table` it can't be checked (Supabase's dashboard keeps tables outside the code) |
+| `‹part› in ‹file› is mine`, `‹file› is mine` | that code is as you left it (see below) |
+| `every ‹blank› is filled in`, `its sentences have no problems` | under a step: its own sentences (from its `── Step n` note to the next) say so |
+
+**A name the code has twice** is refused, never guessed: `save is in a.py and b.py: say which`. A kind or a promise
+IntuaCode doesn't know is said, with the ones it does.
+
+**Yours.** "‹part› is mine" keeps that part's code (in `.intuicode/project.json`). Changed in IntuaCode, by you, it's
+still yours as it is now. Changed outside IntuaCode (found when the project's folder is opened: an AI, another editor,
+Git), it's not kept until you **keep the change** or **put yours back**; a promise taken out of `INTENT.md` outside
+IntuaCode is said too. Putting code back in place works where the file is code (or code lines in Unity); in a file
+written in sentences, your code is copied for you to paste, so the sentences aren't rewritten.
+
+**Steps.** Each step of the map gets IntuaCode's own checks (its sentences have no problems; a hallway step's ‹blanks›
+are filled in) and the promises under its heading. The map shows how many hold (`✓ 2/2`, or `! 1/3` for a ticked step
+whose checks don't), and how many parts of the code no step covers. A tick stays yours: checks never tick or untick.
+
+**What it can't do.** It checks text and names in the code, not behaviour: `save mentions "/api/save"` is kept by a
+comment that says `/api/save` too. Parts are found by their first line (`def`, `function`, `const x = () =>`, a
+selector), and their end by indentation or braces, as `lang/parts.js` does.
 
 ## Known wrong translations
 
