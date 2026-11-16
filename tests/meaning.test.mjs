@@ -1,24 +1,25 @@
 // The round trip proves sentences rebuild the same code. It can't prove the words are true: a rule that said
 // a - b as "a plus b", and read "a plus b" back as a - b, would pass it. These tests run an example of each of the
-// Python writer's value words on concrete values (tests/helpers/meaning_python.mjs) and check the result is what
-// the words say, worked out by hand. `npm run meaning` prints which rules have an example.
+// Python writer's value words and statements on concrete values (tests/helpers/meaning_python.mjs) and check the
+// result is what the words say, worked out by hand. `npm run meaning` prints which rules have an example.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadEngine, ROOT } from './helpers/engine.mjs';
-import { runExamples, ruleCoverage, ruleLabel } from './helpers/meaning.mjs';
-import { EXAMPLES, NOT_RUN } from './helpers/meaning_python.mjs';
+import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from './helpers/meaning.mjs';
+import { EXAMPLES, STATEMENTS, NOT_RUN } from './helpers/meaning_python.mjs';
 
 const { L, WEB } = loadEngine();
-const results = runExamples(L, EXAMPLES);
+const ALL = [...EXAMPLES, ...STATEMENTS];
+const results = runExamples(L, ALL);
 
 test('meaning: every example gives what its words say', () => {
-  const bad = results.filter(r => !r.ok).map(r => `"${r.ex.say}" ${r.why}\n    ${r.code.trim().replace(/\n+/g, '\n    ')}`);
+  const bad = results.filter(r => !r.ok).map(r => `"${nameOf(r.ex)}" ${r.why}\n    ${r.code.trim().replace(/\n+/g, '\n    ')}`);
   assert.deepEqual(bad, []);
 });
 
-test('meaning: every value word has an example that runs, or says why not', () => {
+test('meaning: every value word and statement has an example that runs, or says why not', () => {
   const rows = ruleCoverage(L, results, NOT_RUN);
   const missing = rows.filter(r => !r.examples.length && !r.why).map(r => r.label);
   assert.deepEqual(missing, [], 'these rules have no example: add one to tests/helpers/meaning_python.mjs');
@@ -39,9 +40,18 @@ test('meaning: a wrong rule is caught, whatever the reader says', () => {
     const r = rule(label), was = r.to;
     r.to = to;
     try {
-      const caught = runExamples(W, EXAMPLES).filter(x => !x.ok).map(x => x.ex.say);
+      const caught = runExamples(W, EXAMPLES).filter(x => !x.ok);
       assert.ok(caught.length, `"${label.replace(' →', '')}" written as ${to.trim()} passed every example`);
     } finally { r.to = was; }
+  }
+  // statements: one doing another's work, with the same words to fill in
+  const statement = (label) => W.rules.STATEMENTS.find(r => statementLabel(r).startsWith(label));
+  for (const [label, as] of [['increase x', 'decrease x'], ['repeat until', 'while x'], ['take x out of', 'take item x out of'], ['count down x from', 'for each x in'], ['otherwise if x', 'if x']]) {
+    const r = statement(label), was = r.fn;
+    r.fn = statement(as).fn;
+    try {
+      assert.ok(runExamples(W, STATEMENTS).some(x => !x.ok), `"${label}" doing what "${as}" does passed every example`);
+    } finally { r.fn = was; }
   }
 });
 

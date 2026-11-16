@@ -31,7 +31,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 11 | Unity first, Split Mode beside it (Read mode folded in: imported code becomes the project's files); parts by type (Interface & Display, Backend & Mechanics, Setup & Settings, Data & Notes) and by language, with two buttons that show one side of the project; Project Link: the code behind what's in use in the preview, in pink; Predictive Mode in Unity and from the Library | done (first version) |
 | 12 | React and TypeScript as sentence languages: `.ts`, `.tsx` (and React in `.jsx`/`.js`) translatable in Unity and editable in Split Mode, checked exact with types counted; components, state, effects and JSX in words; the Lovable stack (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) as phrase packs | done (first version, 2026-11-10) |
 | 13 | Running React: a Vite app's folder opens in place, and Run starts its own dev server in the desktop Preview, with hot reload; other sites it contacts are listed | done (first version, 2026-11-10; desktop app only) |
-| 14 | Words that mean what they say: an example of each Python value word runs on real values and must give what the words say; known wrong translations warn on their line; Unity shows each translated part's check (✓ exact) | done for Python's value words (2026-11-16); statements and the other languages next |
+| 14 | Words that mean what they say: an example of each Python value word runs on real values and must give what the words say; known wrong translations warn on their line; Unity shows each translated part's check (✓ exact) | done for Python's value words (2026-11-16) and statements (2026-11-17); the other languages next |
 
 The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
@@ -134,18 +134,23 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   the local Python and checks the result against the value the words say, worked out by hand
   (`tests/helpers/meaning_python.mjs`, 119 examples). Every rule needs an example or a reason; a run with four
   rules made wrong on purpose checks the examples notice.
+- Statements (2026-11-17): 90 more examples, each a few lines of sentences run as a program, checked for the
+  values left in names, what's shown, and the error it stops with ("ask" gets set answers, "wait" is noted, not
+  waited). 70 of 73 statements have one; the three without need Flask, FastAPI or a window. A loop that doesn't
+  end fails its example instead of hanging the tests. Making statements do each other's work found one gap,
+  closed with an example: "otherwise if" written as a plain "if" passed when only one condition was true.
 - Known wrong translations now warn on their line where the writer can tell: Python's `is` written as Python,
   and a `fetch` or `send` at the left edge of a page's classic script. The test checks each row its example in
   `INTUICODE.md` shows.
 - Unity: each part Translate makes keeps what the check found and shows it on the part (✓ exact, ≠ not exact,
   ✎ edited since) and in the help under it, not only in the terminal.
-- Still not proven: statements, the other languages' words, values beyond the examples', and rules combined in
-  longer values. See [What the words mean](INTUICODE.md#what-the-words-mean).
+- Still not proven: the other languages' words, values beyond the examples', and rules combined in longer
+  values or blocks. See [What the words mean](INTUICODE.md#what-the-words-mean).
 
 ## What could come next
 
-- Examples that run for statements (`repeat`, `count from … to …`, `add … to …`) and for the JavaScript, C++ and
-  TypeScript writers' value words (with Node and the local compiler), so `npm run meaning` covers every writer.
+- Examples that run for the JavaScript, C++ and TypeScript writers' words (with Node and the local compiler), so
+  `npm run meaning` covers every writer.
 
 - Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
   dependency and a decision for the owner.
@@ -166,13 +171,15 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   than `python:` lines;
 - **exact**: files whose sentences rebuild exactly the same program. This must always be all of them.
 
-`npm run meaning` reports a second number: how many of the Python writer's value words have an example that
-runs and gives what the words say (and how many of the rules the reader's sentences use for the corpus do).
+`npm run meaning` reports a second number: how many of the Python writer's value words and statements have an
+example that runs and gives what the words say (and how many of the rules the reader's sentences use for the
+corpus do).
 `npm run meaning -- --mutate` also checks the examples notice each rule made wrong.
 
-| Date | Value words with an example that runs | Used reading the corpus | Wrong rules caught |
-|------|---------------------------------------|-------------------------|--------------------|
-| 2026-11-16 first version | 87/89 (the two without need Flask) | 44/46 | 80/82 |
+| Date | Rules with an example that runs | Used reading the corpus | Wrong rules caught |
+|------|---------------------------------|-------------------------|--------------------|
+| 2026-11-16 value words | 87/89 (the two without need Flask) | 44/46 | 80/82 |
+| 2026-11-17 statements too (value words / statements) | 87/89 / 70/73 (the five without need Flask, FastAPI or a window) | 44/46 / 44/47 | 80/82 / 67/69 |
 
 `tests/heldout/` holds programs written *after* the rules, to measure fairly. Once a
 held-out file has been used to fix something, it counts as seen; add new unseen files
@@ -204,4 +211,4 @@ statements that differ are kept as `python:` lines automatically and the check r
    React/TypeScript (sentences since step 12); C++ is hardest and is scheduled last.
 6. **Browser limits.** No real servers, packages or file system. Mitigation: the desktop app (step 4).
 7. **Words that are wrong both ways.** A rule pair that says the wrong words and reads them back to the same
-   code passes the round trip. Mitigation: examples that run (step 14), so far for Python's value words only.
+   code passes the round trip. Mitigation: examples that run (step 14), so far for Python's value words and statements.

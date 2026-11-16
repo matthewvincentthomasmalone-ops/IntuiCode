@@ -1827,7 +1827,7 @@
     // raw Python, notes and descriptions are never touched (raw Python keeps any spaces at its end)
     for (const r of RULES.slice(0, 3)) {
       const m = (r === RULES[0] ? text.replace(/^\s+/, '').replace(/\r$/, '') : s0).match(r.re);
-      if (m) return r.fn(m, x);
+      if (m) { if (ruleTrace) ruleTrace.add(r); return r.fn(m, x); }
     }
     let { text: s, removed } = stripFiller(straightQuotes(s0, x));
     s = thousands(shownAsTyped(s, x), x);
@@ -1863,7 +1863,7 @@
       .replace(/\s+(?:then|do)$/i, '');
     for (const r of RULES.slice(3)) {
       const m = qmatch(s, r.re);
-      if (m) { const res = r.fn(m, x); if (res) return res; }
+      if (m) { const res = r.fn(m, x); if (res) { if (ruleTrace) ruleTrace.add(r); return res; } }
     }
     // Fallback: a bare call like print("hi") or greet(name) is fine as-is.
     const e = tExpr(s, x);
@@ -2207,10 +2207,10 @@
   window.IntuiLang = window.IntuiLang || {};
   window.IntuiLang.python = {
     compileProject, translateOne, TEMPLATES, WORDS, GUIDE, OPENS_BLOCK, sectionTitle,
-    // The value words (tests/meaning.test.mjs runs an example of each): trace(fn) runs fn and gives back the
-    // rules its translations used.
+    // The value words and the statements (tests/meaning.test.mjs runs an example of each): trace(fn) runs fn
+    // and gives back the rules, of both, its translations used.
     rules: {
-      EXPR_RULES,
+      EXPR_RULES, STATEMENTS: RULES,
       trace(fn) { const was = ruleTrace, used = new Set(); ruleTrace = used; try { fn(); } finally { ruleTrace = was; } return used; },
     },
     FILLER: { lead: LEAD_FILLER, words: ['please', 'kindly', 'just', 'simply', 'basically', 'really', 'actually', 'quickly'], steps: ['then', 'afterwards'] },

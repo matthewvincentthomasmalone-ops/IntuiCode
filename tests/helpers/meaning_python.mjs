@@ -1,12 +1,18 @@
-// What the Python writer's value words mean, on concrete values. Each example is translated as
-// "set result to <say>" (after its given lines, as exact Python) and run; `means` is the value the words say,
-// worked out by hand, not from the code. A result must be equal to it and of the same type (3 is not 3.0).
-//   say     the words
-//   given   Python lines that set up the names (also run on their own to work out `means`)
-//   means   the value the words say, as Python
-//   holds   a check on `result` (and `results`, every run's) instead, for words with randomness
+// What the Python writer's words mean, on concrete values. A value example is translated as
+// "set result to <say>", a statement example as its lines, after its given lines (as exact Python), and run.
+// What it must give is what the words say, worked out by hand, not from the code. Values must be equal and of
+// the same type (3 is not 3.0).
+//   say     a value, in words
+//   lines   statements, in words (one or more lines, indented as in a sentence file)
+//   given   Python lines that set up the names (also run on their own to work out the expected values)
+//   means   the value `say` means, as Python
+//   names   names and the values the words leave in them, as Python
+//   prints  what the words show, exactly (prompts from "ask" included)
+//   input   the answers "ask" gets, in order
+//   raises  the error the words stop with
+//   holds   a check on the names, `result` (and `results`, every run's), `shown` and `slept` (what "wait" asked for)
 //   runs    how many times to run it (random is seeded 0, 1, 2 …, so it's the same every time)
-//   after   names whose value the words also change, and what to
+//   after   names whose value the words also change, and what to (as names)
 // Rules with no example are in NOT_RUN, with why.
 
 export const EXAMPLES = [
@@ -142,8 +148,122 @@ export const EXAMPLES = [
   { say: 'not no', means: 'True' },
 ];
 
+// A folder of its own for the examples that make files (the runner goes back to where it was after each)
+const TEMP = 'import os, tempfile\nos.chdir(tempfile.mkdtemp())';
+
+export const STATEMENTS = [
+  // Exact code, notes and descriptions
+  { lines: 'python: n = 2 + 3', names: { n: '5' } },
+  { lines: 'n = 2 + 3', names: { n: '5' } },
+  { lines: 'set n to 1\nnote: set n to 99', names: { n: '1' } },
+  { lines: 'define one\n    description: Gives back 1.\n    give back 1', holds: 'one.__doc__ == "Gives back 1." and one() == 1' },
+  // The program
+  { lines: 'bring in sqrt from math\nset r to sqrt(16)', names: { r: '4.0' } },
+  { lines: 'bring in math\nset r to math.floor(2.5)', names: { r: '2' } },
+  { lines: 'use the math module\nset r to math.ceil(2.5)', names: { r: '3' } },
+  { lines: 'if this file is run directly\n    show "main"', prints: 'main\n' },
+  { lines: 'decorate with twice\ndefine two\n    give back 1\nset r to the result of two', given: 'twice = lambda f: (lambda: f() * 2)', names: { r: '2' } },
+  { lines: 'set count to 0\ndefine bump\n    use the shared count\n    increase count by 1\nrun bump\nrun bump', names: { count: '2' } },
+  // Values
+  { lines: 'set n to 5', names: { n: '5' } },
+  { lines: 'set high score to 10', names: { high_score: '10' } },
+  { lines: 'remember 5 as n', names: { n: '5' } },
+  { lines: 'set n to 7\nincrease n by 2', names: { n: '9' } },
+  { lines: 'set n to 7\nincrease n', names: { n: '8' } },
+  { lines: 'set n to 7\ndecrease n by 2', names: { n: '5' } },
+  { lines: 'set n to 7\ndecrease n', names: { n: '6' } },
+  { lines: 'set n to 7\nsubtract 3 from n', names: { n: '4' } },
+  { lines: 'set n to 7\nmultiply n by 3', names: { n: '21' } },
+  { lines: 'set n to 7\ndivide n by 2', names: { n: '3.5' } },
+  { lines: 'set n to 7\nadd 5 to n', names: { n: '12' } },
+  // Lists, sets and dictionaries
+  { lines: 'create list xs with 1, 2 and 3', names: { xs: '[1, 2, 3]' } },
+  { lines: 'create an empty list called xs', names: { xs: '[]' } },
+  { lines: 'create dictionary prices', names: { prices: '{}' } },
+  { lines: 'create dictionary d\nset item "a" of d to 1', names: { d: '{"a": 1}' } },
+  { lines: 'add 4 to xs', given: 'xs = [1, 2, 3]', names: { xs: '[1, 2, 3, 4]' } },
+  { lines: 'append 4 to xs', given: 'xs = [1, 2, 3]', names: { xs: '[1, 2, 3, 4]' } },
+  { lines: 'add each item of ys to xs', given: 'xs = [1]\nys = [2, 3]', names: { xs: '[1, 2, 3]', ys: '[2, 3]' } },
+  { lines: 'add 1 to the set s', given: 's = {2}', names: { s: '{1, 2}' } },
+  { lines: 'insert 0 into xs at position 0', given: 'xs = [1, 2]', names: { xs: '[0, 1, 2]' } },
+  { lines: 'take the last item out of xs', given: 'xs = [1, 2, 3]', names: { xs: '[1, 2]' } },
+  { lines: 'take item 0 out of xs', given: 'xs = [1, 2, 3]', names: { xs: '[2, 3]' } },
+  { lines: 'take 2 out of xs', given: 'xs = [1, 2, 3, 2]', names: { xs: '[1, 3, 2]' } },
+  { lines: 'remove 2 from xs', given: 'xs = [1, 2, 3, 2]', names: { xs: '[1, 3, 2]' } },
+  { lines: 'delete item "a" of d', given: 'd = {"a": 1, "b": 2}', names: { d: '{"b": 2}' } },
+  { lines: 'sort xs', given: 'xs = [3, 1, 2]', names: { xs: '[1, 2, 3]' } },
+  { lines: 'sort xs biggest first', given: 'xs = [3, 1, 2]', names: { xs: '[3, 2, 1]' } },
+  { lines: 'sort xs by len', given: 'xs = ["bb", "a", "ccc"]', names: { xs: '["a", "bb", "ccc"]' } },
+  { lines: 'sort xs by len biggest first', given: 'xs = ["bb", "a", "ccc"]', names: { xs: '["ccc", "bb", "a"]' } },
+  { lines: 'reverse xs', given: 'xs = [1, 2, 3]', names: { xs: '[3, 2, 1]' } },
+  { lines: 'empty xs', given: 'xs = [1, 2, 3]', names: { xs: '[]' } },
+  { lines: 'shuffle xs', given: 'xs = [1, 2, 3, 4]', runs: 30, holds: 'sorted(xs) == [1, 2, 3, 4]' },
+  // Objects
+  { lines: 'define class Animal\n    when a new Animal is made with name\n        set self.name to name\n    define speak using self\n        give back "..."\ndefine class Dog based on Animal\n    define speak using self\n        give back self.name followed by " says woof"\nset d to a new Dog with "Rex"\nset r to the result of d.speak',
+    names: { r: '"Rex says woof"' } },
+  { lines: 'bring in dataclass from dataclasses\ndecorate with dataclass\ndefine class Point\n    field x: whole number\n    field y: whole number = 0\nset p to a new Point with 3', holds: 'p.x == 3 and p.y == 0' },
+  { lines: 'make a new Fraction with 1 and 2 and store it in half', given: 'from fractions import Fraction', names: { half: 'Fraction(1, 2)' } },
+  { lines: 'make a new Note', given: 'made = []\nNote = lambda: made.append("note")', names: { made: '["note"]' } },
+  { lines: 'run double with 21 and store it in r', given: 'double = lambda n: n * 2', names: { r: '42' } },
+  { lines: 'run made.append with 1', given: 'made = []', names: { made: '[1]' } },
+  // Tools
+  { lines: 'define add one using n\n    give back n plus 1\nset r to the result of add one with 41', names: { r: '42' } },
+  { lines: 'define nothing back\n    give back\nset r to the result of nothing back', names: { r: 'None' } },
+  // Decisions
+  { lines: 'set n to 5\nif n is more than 10\n    set size to "big"\notherwise if n is more than 3\n    set size to "middle"\notherwise\n    set size to "small"', names: { size: '"middle"' } },
+  { lines: 'set n to 1\nif n is more than 10\n    set size to "big"\notherwise if n is more than 3\n    set size to "middle"\notherwise\n    set size to "small"', names: { size: '"small"' } },
+  // (both are true: only the first runs)
+  { lines: 'set n to 20\nif n is more than 10\n    set size to "big"\notherwise if n is more than 3\n    set size to "middle"', names: { size: '"big"' } },
+  { lines: 'set n to 1\nif n is 1\n    do nothing\nset m to 2', names: { n: '1', m: '2' } },
+  // Loops: how many times, and with which values
+  { lines: 'set n to 0\nrepeat 3 times\n    increase n', names: { n: '3' } },
+  { lines: 'set n to 0\nrepeat twice\n    increase n', names: { n: '2' } },
+  { lines: 'set seen to an empty list\nrepeat 3 times counting with i\n    add i to seen', names: { seen: '[0, 1, 2]' } },
+  { lines: 'set seen to an empty list\ncount i from 1 to 5\n    add i to seen', names: { seen: '[1, 2, 3, 4, 5]' } },
+  { lines: 'set seen to an empty list\ncount down i from 3 to 1\n    add i to seen', names: { seen: '[3, 2, 1]' } },
+  { lines: 'set seen to an empty list\ncount i from 0 to 10 in steps of 5\n    add i to seen', names: { seen: '[0, 5, 10]' } },
+  { lines: 'set total to 0\nfor each n in xs\n    increase total by n', given: 'xs = [1, 2, 3]', names: { total: '6' } },
+  { lines: 'set seen to an empty list\nfor each n in xs\n    if n is even\n        skip to next\n    add n to seen', given: 'xs = [1, 2, 3, 4]', names: { seen: '[1, 3]' } },
+  { lines: 'set n to 0\nrepeat forever\n    increase n\n    if n is 3\n        stop the loop', names: { n: '3' } },
+  { lines: 'set n to 0\nrepeat until n is 4\n    increase n', names: { n: '4' } },
+  { lines: 'set n to 4\nrepeat until n is 4\n    increase n', names: { n: '4' } },
+  { lines: 'set n to 0\nwhile n is less than 4\n    increase n by 3', names: { n: '6' } },
+  // Showing and asking
+  { lines: 'show "hello"', prints: 'hello\n' },
+  { lines: 'show "Score:" and 3', prints: 'Score: 3\n' },
+  { lines: 'set name to "Ann"\nshow "Hi {name}"', prints: 'Hi Ann\n' },
+  // (what's shown next carries on after a space, as between things joined with "and")
+  { lines: 'show "a" on the same line\nshow "b"', prints: 'a b\n' },
+  { lines: 'show a blank line', prints: '\n' },
+  { lines: 'ask "Name? " and store in name', input: ['Bob'], names: { name: '"Bob"' }, prints: 'Name? ' },
+  { lines: 'ask for a number "Age? " and store in age', input: ['42'], names: { age: '42' }, prints: 'Age? ' },
+  { lines: 'ask for a decimal "Height? " and store in h', input: ['1.5'], names: { h: '1.5' }, prints: 'Height? ' },
+  { lines: 'ask "Ready? "', input: ['yes'], prints: 'Ready? ' },
+  // Errors
+  { lines: 'set log to an empty list\ntry\n    fail with ValueError: "bad"\nif it fails with ValueError as e\n    add e as text to log\nif nothing failed\n    add "fine" to log\nin any case\n    add "done" to log', names: { log: '["bad", "done"]' } },
+  { lines: 'set log to an empty list\ntry\n    add "ok" to log\nif it fails with ValueError as e\n    add e as text to log\nif nothing failed\n    add "fine" to log\nin any case\n    add "done" to log', names: { log: '["ok", "fine", "done"]' } },
+  { lines: 'set log to an empty list\ntry\n    try\n        fail with KeyError: "k"\n    if it fails\n        add "inner" to log\n        fail again\nif it fails with KeyError\n    add "outer" to log', names: { log: '["inner", "outer"]' } },
+  { lines: 'fail with ValueError: "bad"', raises: 'ValueError' },
+  { lines: 'check that 1 plus 1 is 3', raises: 'AssertionError' },
+  { lines: 'check that 1 plus 1 is 2\nset ok to yes', names: { ok: 'True' } },
+  { lines: 'show "a"\nstop the program\nshow "b"', prints: 'a\n', raises: 'SystemExit' },
+  // Files, JSON, SQL and context
+  { lines: 'open the file "notes.txt" for writing as f\n    write "hi" into f\nopen the file "notes.txt" for adding as f\n    write "!" into f\nopen the file "notes.txt" as f\n    set t to the result of f.read', given: TEMP, names: { t: '"hi!"' } },
+  { lines: 'open the file "d.json" for writing as f\n    save xs as JSON in f\nopen the file "d.json" as f\n    set back to the JSON read from f', given: TEMP + '\nxs = [1, 2]', names: { back: '[1, 2]' } },
+  { lines: 'run the SQL "create table t (n integer)" on conn\nrun the SQL "insert into t values (?)" on conn with the values 5\nsave the changes to conn\npython: rows = conn.execute("select n from t").fetchall()', given: 'import sqlite3\nconn = sqlite3.connect(":memory:")', names: { rows: '[(5,)]' } },
+  { lines: 'set log to an empty list\nusing contextlib.suppress(ZeroDivisionError)\n    set r to 1 divided by 0\n    add "not here" to log\nadd "after" to log', given: 'import contextlib', names: { log: '["after"]' } },
+  { lines: 'set seen to an empty list\ndefine async work\n    async using lock\n        add 1 to seen\npython: asyncio.run(work())', given: 'import asyncio\nlock = asyncio.Lock()', names: { seen: '[1]' } },
+  // Waiting (noted, not waited)
+  { lines: 'wait 3 seconds', holds: 'slept == [3]' },
+  { lines: 'wait 2 minutes', holds: 'slept == [120]' },
+  { lines: 'wait 500 milliseconds', holds: 'slept == [0.5]' },
+];
+
 // Rules with no example yet, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
 export const NOT_RUN = {
   'x as a JSON reply': 'needs a Flask app to make the reply',
   'JSON sent with x': 'needs a Flask request to read it from',
+  'when x gets y at z': 'a Flask route: needs a Flask app',
+  'when x handles GET': 'a FastAPI or Flask route: needs the web framework',
+  'add a x saying y to z': 'a tkinter window part: needs a window to put it in',
 };

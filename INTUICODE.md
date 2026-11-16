@@ -14,12 +14,12 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 
 - **Code to sentences is checked.** The sentences are translated back and compared with the original;
   anything that differs stays as code, and IntuaCode says when the result still isn't exact.
-- **What Python's value words mean is tested.** The check above proves nothing was dropped or added, not
-  that the words are true: a rule that said `a - b` as "a plus b", and read that back as `a - b`, would pass
-  it. So each of the Python writer's value words (plus, is at least, length of, contains, is even …) has an
-  example that runs on real values, and the result must be what the words say
-  ([What the words mean](#what-the-words-mean)). Statements, and the other languages' words, aren't tested
-  this way yet: there, the truth of the words rests on the rule table.
+- **What Python's words mean is tested.** The check above proves nothing was dropped or added, not that
+  the words are true: a rule that said `a - b` as "a plus b", and read that back as `a - b`, would pass it.
+  So each of the Python writer's value words (plus, is at least, length of, contains, is even …) and
+  statements (count from … to …, repeat until, take … out of, if it fails …) has an example that runs on real
+  values, and the result must be what the words say ([What the words mean](#what-the-words-mean)). The other
+  languages' words aren't tested this way yet: there, the truth of the words rests on the rule table.
 - **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
@@ -2091,7 +2091,7 @@ would rewrite.
 | Same input, same output | yes | yes |
 | Checked | yes: the sentences are translated back and the syntax trees compared with the original | no: the code isn't compared with anything, parsed, or run |
 | When it can't | keeps the part as exact code and checks again; reports what still differs | an error on the line |
-| The words mean what they say | Python's value words: an example of each runs (below); the rest rests on the rule table | the same |
+| The words mean what they say | Python's value words and statements: an example of each runs (below); the other languages' rest on the rule table | the same |
 
 **Reading, Python** (`lang/python_reader.py`, used by `checkedSentences` in `app.js`): the original and
 the code made from the sentences are parsed with Python's `ast` and their dumps compared. Comments don't
@@ -2135,19 +2135,33 @@ the rule table, so the rules get evidence of their own.
   counts too: 3 is not 3.0. Where the words decide an edge, it's tested: "between 1 and 5" counts 5, "is more
   than 5" doesn't, "random number from 1 to 6" gives 6 too, "x is not nothing" is true for 0, "sorted xs"
   leaves xs as it was, "n plus 1 is even" is about n plus 1.
+- **Python's statements** (the writer's `RULES`): each example is a few lines of sentences, run as a program.
+  What it must do is written by hand: the values it leaves in names, what it shows (exactly), the error it
+  stops with. "ask" gets the example's answers, "wait" is noted instead of waited, and files go in a folder
+  of their own. Edges again: "count from 1 to 5" counts 5, "repeat 3 times counting with i" starts at 0,
+  "repeat until n is 4" doesn't run when n is already 4, "otherwise if" doesn't run after an "if" that did,
+  "take 2 out of xs" takes only the first 2, "divide n by 2" leaves a decimal, "in any case" runs after an
+  error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
+  the tests.
 - **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
-  passes uses it. Today 87 of 89 rules have one; the two without need a Flask app (`as a JSON reply`, `JSON
-  sent with`). Of the 46 rules the reader's sentences use for `samples/`, `tests/corpus/` and
-  `tests/heldout/`, 44 have one. A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
-- **The examples notice a wrong rule:** `npm run meaning -- --mutate` swaps each rule's code for another
-  rule's of the same shape, one at a time, and checks some example fails: 80 of 82 do (not the two Flask
-  rules). The tests do this for four rules on every run, whatever the reader says.
+  passes uses it. Today 87 of 89 value words and 70 of 73 statements have one. The five without need a web
+  framework or a window: `as a JSON reply`, `JSON sent with`, the Flask and FastAPI routes (`when app gets
+  …`, `when app handles …`) and tkinter's `add a tk.Button …`. Of the rules the reader's sentences use for
+  `samples/`, `tests/corpus/` and `tests/heldout/`, 44 of 46 value words and 44 of 47 statements have one.
+  A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
+- **The examples notice a wrong rule:** `npm run meaning -- --mutate` makes each rule do another's work,
+  one at a time: a value word gets another's code, a statement another's with as many words to fill in. It
+  checks some example fails: 80 of 82 value words and 67 of 69 statements do (the misses are the web rules
+  with no example). Two pairs that write the very same code, two ways of saying one thing, aren't counted:
+  `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
+  in z`. The tests do this for nine rules on every run, whatever the reader says.
 
 Not proven yet:
 
-- Statements (`set`, `repeat 3 times`, `count from 1 to 10`, `add … to …`) and the JavaScript, TypeScript,
-  C++ and website writers' words have no examples that run. Their meaning rests on the rule table and on
-  review.
+- The JavaScript, TypeScript, C++ and website writers' words have no examples that run. Their meaning
+  rests on the rule table and on review.
+- A statement's example checks what it does on its own and in the few lines around it, not in every
+  block it can sit in.
 - An example checks a rule on the values it's given. A rule can still be wrong on others, and in how it
   combines with other rules in a longer value.
 - Reading: the reader's sentences are as true as the rules they use. One with an example is checked; one
