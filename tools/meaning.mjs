@@ -11,6 +11,8 @@
 // neither). Also counted by the Index, and the entries the sentences for tests/corpus_langs' .cpp and .ino use.
 // Then, in a real browser (Chrome or Edge, without a window; skipped with neither): the JavaScript examples again,
 // and the website's Structure and Styling, counted by the Index.
+// Then TypeScript's own words: types by TypeScript's checker, components by React in the browser (needs the
+// typescript, react and react-dom dev packages).
 // --mutate: makes each rule do another's work, one at a time (a value word gets another's code, a statement
 // another's with as many words to fill in; for JavaScript and C++, each word for comparisons and maths), and
 // checks some example fails.
@@ -26,6 +28,8 @@ import { CPP_VALUES, CPP_STATEMENTS, CPP_SKETCHES, NOT_RUN_CPP } from '../tests/
 import { findChrome } from '../tests/helpers/browser.mjs';
 import { runJsInBrowser, runSiteInBrowser, siteCoverage, siteNameOf, mutateContainers } from '../tests/helpers/meaning_browser.mjs';
 import { HTML_STRUCTURE, HTML_STYLING, NOT_RUN_HTML } from '../tests/helpers/meaning_html.mjs';
+import { missingPackages, runTsExamples, tsCoverage, tsNameOf, mutateTypeWords } from '../tests/helpers/meaning_ts.mjs';
+import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, NOT_RUN_TS } from '../tests/helpers/meaning_ts_examples.mjs';
 
 const args = process.argv.slice(2);
 const mutate = args.includes('--mutate');
@@ -197,4 +201,32 @@ else {
     for (const x of m.missed) console.log(`  missed: ${x}`);
   }
 }
-if (failed.length || jsFailed.length || cppFailed.length || browserFailed.length) process.exitCode = 1;
+
+/* ---- TypeScript's own words: types by TypeScript's checker, components by React in the browser ---- */
+let tsFailed = [];
+const noPackages = missingPackages();
+if (noPackages) console.log(`\nTypeScript: ${noPackages}, so its examples are skipped`);
+else {
+  const { TS } = loadEngine();
+  const TS_ALL = [...TS_TYPES, ...TS_FILES, ...TS_REACT, ...TS_PACKS];
+  const res = await runTsExamples(TS, TS_ALL, { browser: !!findChrome() });
+  tsFailed = res.filter(r => !r.ok);
+  const rows = tsCoverage(TS, res, NOT_RUN_TS);
+  for (const [kind, title] of [['statement', 'sentences'], ['value', 'words']]) {
+    console.log(`\nTypeScript and React ${title} (the Index)`.padEnd(65) + 'examples');
+    for (const e of rows.filter(e => e.kind === kind)) console.log(e.label.slice(0, 62).padEnd(64) + (e.examples.length ? String(e.examples.length) : `none: ${e.why || 'no example yet'}`));
+  }
+  console.log('-'.repeat(72));
+  console.log(`${res.length - tsFailed.length}/${res.length} TypeScript examples check and run as their words say${findChrome() ? '' : ' (types only: no browser for React)'}`);
+  for (const f of tsFailed) console.log(`  NO: "${tsNameOf(f.ex)}" ${f.why}`);
+  for (const [kind, title] of [['statement', 'Index sentences'], ['value', 'Index words']]) {
+    const all = rows.filter(e => e.kind === kind), tested = all.filter(e => e.examples.length).length;
+    console.log(`${tested}/${all.length} TypeScript ${title} have an example that runs (${Math.round(100 * tested / all.length)}%)`);
+  }
+  if (mutate) {
+    const m = mutateTypeWords(TS, TS_ALL);
+    console.log(`mutations: ${m.tried - m.missed.length}/${m.tried} wrong words for types caught by the checker`);
+    for (const x of m.missed) console.log(`  missed: ${x}`);
+  }
+}
+if (failed.length || jsFailed.length || cppFailed.length || browserFailed.length || tsFailed.length) process.exitCode = 1;

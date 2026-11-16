@@ -136,6 +136,7 @@ function server(origin, files, replies = {}) {
     }
     if (where.origin === origin && where.pathname === '/style.css') return { type: 'text/css', body: files.css };
     if (where.origin === origin && where.pathname === '/script.js') return { type: 'text/javascript', body: files.js };
+    if (where.origin === origin && files.more && files.more[where.pathname]) return files.more[where.pathname];
     if (kind === 'Fetch' || kind === 'XHR') {
       seen.requests.push({ url: local(url), method: request.method, body: request.postData });
       const key = Object.keys(replies).find(k => new URL(k, origin + '/').href === url);
@@ -151,7 +152,7 @@ function server(origin, files, replies = {}) {
 }
 
 /* Opens one website in the tab and runs `then`. -> { seen, raised } */
-async function show(tab, k, files, ex) {
+export async function show(tab, k, files, ex) {
   const origin = `http://ex-${k}.localhost`;   // (a secure page, as on https: the clipboard is only there on one)
   const { seen, answer } = server(origin, files, ex.replies);
   const answers = [...(ex.answers || [])], shown = [];
@@ -215,7 +216,7 @@ export function runJsInBrowser(WEB, examples) {
 
 /* Runs fn(tab, k, example) for each example, in a few tabs at once, and gives back the results in order. One the
    browser didn't answer in time (a busy computer) runs once more, in a new tab: one that hangs, hangs again. */
-async function inTabs(examples, fn, count = 4) {
+export async function inTabs(examples, fn, count = 4) {
   const browser = await openBrowser();
   try {
     const out = new Array(examples.length);
@@ -277,7 +278,7 @@ export { jsNameOf };
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /* A sentence's ‹slots› and a leading … are anything. A word's quoted text is any text and its numbers any number;
    the rest has to be there as it is. */
-function sitePattern(e) {
+export function sitePattern(e) {
   if (e.pattern) return new RegExp('^\\s*' + e.pattern.split(/‹[^›]*›|…/).map(escRe).join('.*?') + '\\s*$', 'i');
   let src = '';
   for (const m of e.words[0].matchAll(/"[^"]*"|\d+(?:\.\d+)?|\s+|[^\s"\d]+/g)) {

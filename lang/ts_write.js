@@ -1279,5 +1279,5 @@
   };
   const OPENS_BLOCK = new RegExp(String.raw`^\s*(?:define (?:shared |main )?(?:component|shape) |define (?:shared )?type \S+ as a shape|constant \S+ is a component|show:?\s*$|when \S+ (?:first appears|goes away)\s*$|whenever .+ changes|give back a change made by |when it (?:works|fails)\s*$|only if |together\s*$)|` + root.IntuiWeb.OPENS_BLOCK.source, 'i');
 
-  root.IntuiTs = { compileTs, typeTs, paramTs, ext: extFor, tailwindWords, tailwindClasses, TEMPLATES, WORDS, GUIDE, OPENS_BLOCK };
+  root.IntuiTs = { compileTs, typeTs, paramTs, ext: extFor, tailwindWords, tailwindClasses, TEMPLATES, WORDS, GUIDE, OPENS_BLOCK, BASIC, LIST_OF };
 })(typeof window !== 'undefined' ? window : globalThis);

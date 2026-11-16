@@ -21,8 +21,8 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
   values, and the result must be what the words say ([What the words mean](#what-the-words-mean)). So does
   each of the JavaScript writer's Mechanics sentences and value words in its Index, run on a stand-in page and
   again in a real browser (Chrome); each Structure (HTML) and Styling (CSS) entry, checked by what Chrome makes of
-  it; and each C++ and Arduino entry, compiled and run. TypeScript's own words (types, React) aren't tested this
-  way yet: there, the truth of the words rests on the rule table.
+  it; each C++ and Arduino entry, compiled and run; and TypeScript's own words, types by TypeScript's own checker
+  and components by React in Chrome. The few left (other libraries' sentences) say why.
 - **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
@@ -2211,12 +2211,30 @@ the rule table, so the rules get evidence of their own.
   `tests/corpus_langs/matrix.cpp` and `thermostat.ino` use. `--mutate` gives each word for comparisons and
   maths (`CPP_VALUE_WORDS`) the next one's code: all 16 are caught. The tests do this for three on every run.
   With no compiler, these tests are skipped; with no Chrome or Edge, the browser's are.
+- **TypeScript's own words** (`lang/ts_write.js`): 58 examples (`tests/helpers/meaning_ts_examples.mjs`).
+  - Types are checked by TypeScript's own checker (the `typescript` dev package, strict, with React's types).
+    Each example's code must check clean, the lines it `accepts` must check after it, and the lines it
+    `refuses` must be errors. So "(a number)" takes 5 and refuses "5"; "(text, if any)" can be left out but
+    isn't a number; "a User or nothing" takes null and a User, not 5 or undefined; "read-only id is text"
+    can't be changed; "bring in Thing (the main part)" is the file's default export, and plain "bring in" a
+    named one.
+  - Components are run by React itself (`react` and `react-dom`, in Chrome): the code is compiled by
+    TypeScript, React shows the main component, and the example clicks and types with Chrome's input. A React
+    warning fails it. Edges: "change count to count plus 1" twice in one click adds 1 (both from the value
+    shown), "change count from c to c plus 1" twice adds 2; "when App first appears" runs once, "whenever count
+    changes" on each change; "when Ticker goes away" stops its timer when the Ticker is no longer shown.
+  - 34 of 38 Index sentences and 25 of 26 words have one. The 5 without need a library the tests don't have:
+    react-router's Route, TanStack Query's three, a shadcn/ui dialog's `onOpenChange`. Another library's
+    sentence that the tests can't run (Supabase's query) is checked by the code it writes and by the checker,
+    with a stand-in for the library's types.
+  - `--mutate` gives each word for a type (`BASIC`, `LIST_OF`: "a number" is `number`) another type: all 7 the
+    examples use are caught by the checker. The tests do this for two on every run. With the packages missing,
+    these tests are skipped.
 
 Not proven yet:
 
-- TypeScript's own words, for types and React, have no examples that run. (TypeScript shares JavaScript's
-  Mechanics words, which are run.) Their meaning rests on the rule table and on review: checking a type needs
-  TypeScript's own checker, and a component needs React, neither of which the tests have yet.
+- Other libraries' sentences for React (react-router, TanStack Query, shadcn/ui) aren't run: the tests don't
+  have those libraries. Tailwind's classes are checked as written, not as styled.
 - The browser is Chrome (or Edge). Firefox and Safari aren't run. The clock is the test's, not the browser's.
 - A sketch runs on a stand-in board, not a real one: what the board does with a pin, a screen or a servo is
   what the stand-in records, not what the hardware does.
@@ -2240,8 +2258,8 @@ Not proven yet:
 - Not every sentence exists in every writer. JavaScript has no `count`, `repeat forever`, `repeat until`,
   `when` as `if`, `wait … seconds`, `is even`, `is larger than`, `is above` or number words. C++ has no
   `contains`, `is in` or `nothing`. These are errors or warnings, not silent.
-- TypeScript's types are written as they are said; nothing checks them (TypeScript's own checker does, when you
-  build). What a component shows is checked for its shape (one thing under "only if", an "otherwise" after "if"),
+- TypeScript's types are written as they are said; nothing in the writer checks them (TypeScript's own checker
+  does, when you build, and the tests check what each type word means with it). What a component shows is checked for its shape (one thing under "only if", an "otherwise" after "if"),
   not for whether the props a component takes exist.
 
 ## INTENT.md: what you meant, checked
