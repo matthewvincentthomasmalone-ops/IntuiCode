@@ -3186,7 +3186,8 @@
   };
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|run this now|(?:constant|set) [\w$]+ (?:is|to) a tool(?!.*\sgiving back\s)|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
-  const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
+  // (JS_WORDS: the words for comparisons and maths, which tests/meaning.test.mjs makes wrong on purpose)
+  const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, JS_WORDS, OPENS_BLOCK, toId, TAG_WORDS,
     readAttr, sayAttr, elementWord, wordTag: (w, svg) => (svg ? SVG_WORD_TAG : HTML_WORD_TAG).get(String(w).toLowerCase()) || null, splitAnd, splitItems, strOf, quoteText,
     addressFor: (t, kind) => address(t, kind).value,
     cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf), COLOURS: [...NAMED] };

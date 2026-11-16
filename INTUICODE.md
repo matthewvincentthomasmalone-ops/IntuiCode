@@ -18,8 +18,10 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
   the words are true: a rule that said `a - b` as "a plus b", and read that back as `a - b`, would pass it.
   So each of the Python writer's value words (plus, is at least, length of, contains, is even …) and
   statements (count from … to …, repeat until, take … out of, if it fails …) has an example that runs on real
-  values, and the result must be what the words say ([What the words mean](#what-the-words-mean)). The other
-  languages' words aren't tested this way yet: there, the truth of the words rests on the rule table.
+  values, and the result must be what the words say ([What the words mean](#what-the-words-mean)). So does
+  each of the JavaScript writer's Mechanics sentences and value words in its Index, run on a stand-in page.
+  TypeScript's own words, C++'s and HTML and CSS's aren't tested this way yet: there, the truth of the words
+  rests on the rule table.
 - **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
@@ -2091,7 +2093,7 @@ would rewrite.
 | Same input, same output | yes | yes |
 | Checked | yes: the sentences are translated back and the syntax trees compared with the original | no: the code isn't compared with anything, parsed, or run |
 | When it can't | keeps the part as exact code and checks again; reports what still differs | an error on the line |
-| The words mean what they say | Python's value words and statements: an example of each runs (below); the other languages' rest on the rule table | the same |
+| The words mean what they say | Python's value words and statements, and JavaScript's Mechanics (by its Index): an example of each runs (below); the other languages' rest on the rule table | the same |
 
 **Reading, Python** (`lang/python_reader.py`, used by `checkedSentences` in `app.js`): the original and
 the code made from the sentences are parsed with Python's `ast` and their dumps compared. Comments don't
@@ -2155,11 +2157,32 @@ the rule table, so the rules get evidence of their own.
   with no example). Two pairs that write the very same code, two ways of saying one thing, aren't counted:
   `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
   in z`. The tests do this for nine rules on every run, whatever the reader says.
+- **JavaScript: a website's Mechanics** (`lang/web_write.js`): 161 examples
+  (`tests/helpers/meaning_js.mjs`), each a page (its Structure) and Mechanics, run in Node on a stand-in
+  page (`tests/helpers/page.mjs`). It's not a browser: it has the page's elements, events, the browser's
+  memory, `fetch` with set replies, timers and animation frames that wait until the test moves the clock
+  on, and a canvas pen and sound that note what they're asked to do. Each example checks the values left
+  in names, what the page shows, the requests sent, what was drawn. Edges: "x is nothing" is true for
+  `undefined` too, "x is null" isn't; "x, or y if that is nothing" keeps 0; "n rounded down" takes -2.5 to
+  -3; "sort xs from smallest to biggest" puts 10 after 9; "every 2 seconds" runs 3 times in 6 seconds;
+  "if "left" is held" stops when the key is let go.
+- **JavaScript coverage** is counted by the Index, not by rules: the JavaScript writer's rules are written
+  in place, not in a table, so what's counted is what it offers, its Mechanics sentences and value words
+  (`TEMPLATES` and `WORDS`). An entry counts when a line of an example that passes says it. 74 of 75
+  sentences and all 52 value words have one; the one without, `bring in … from "…"`, needs a second file
+  and a module loader. The 19 entries the reader's sentences use for `tests/corpus_web`'s script all have
+  one. Words the writer knows but the Index doesn't list aren't counted.
+- **A wrong JavaScript word is caught:** `--mutate` gives each of the writer's words for comparisons and
+  maths (`JS_WORDS`) the next one's code: all 20 are caught. Its other rules are written in place, so they
+  can't be swapped this way. The tests do this for four words on every run.
 
 Not proven yet:
 
-- The JavaScript, TypeScript, C++ and website writers' words have no examples that run. Their meaning
-  rests on the rule table and on review.
+- The TypeScript, C++ and HTML and CSS writers' words have no examples that run. Their meaning rests on the
+  rule table and on review. (TypeScript shares JavaScript's Mechanics words, but its own, for types and
+  React, aren't run.)
+- JavaScript runs on a stand-in page, not in a browser. What the stand-in has, it does as a browser does
+  for the code IntuaCode writes; layout, styles and real network replies aren't there.
 - A statement's example checks what it does on its own and in the few lines around it, not in every
   block it can sit in.
 - An example checks a rule on the values it's given. A rule can still be wrong on others, and in how it

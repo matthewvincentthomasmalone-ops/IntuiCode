@@ -1,7 +1,8 @@
 // The round trip proves sentences rebuild the same code. It can't prove the words are true: a rule that said
 // a - b as "a plus b", and read "a plus b" back as a - b, would pass it. These tests run an example of each of the
-// Python writer's value words and statements on concrete values (tests/helpers/meaning_python.mjs) and check the
-// result is what the words say, worked out by hand. `npm run meaning` prints which rules have an example.
+// Python writer's value words and statements on concrete values (tests/helpers/meaning_python.mjs), and of the
+// JavaScript writer's Mechanics on a stand-in page (tests/helpers/meaning_js.mjs), and check the result is what
+// the words say, worked out by hand. `npm run meaning` prints which rules have an example.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,6 +10,8 @@ import path from 'node:path';
 import { loadEngine, ROOT } from './helpers/engine.mjs';
 import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from './helpers/meaning.mjs';
 import { EXAMPLES, STATEMENTS, NOT_RUN } from './helpers/meaning_python.mjs';
+import { runJsExamples, indexCoverage, jsNameOf } from './helpers/meaning_web.mjs';
+import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS } from './helpers/meaning_js.mjs';
 
 const { L, WEB } = loadEngine();
 const ALL = [...EXAMPLES, ...STATEMENTS];
@@ -52,6 +55,40 @@ test('meaning: a wrong rule is caught, whatever the reader says', () => {
     try {
       assert.ok(runExamples(W, STATEMENTS).some(x => !x.ok), `"${label}" doing what "${as}" does passed every example`);
     } finally { r.fn = was; }
+  }
+});
+
+/* ------------------------------------------------------------------ the JavaScript writer (website Mechanics) */
+
+const JS_ALL = [...JS_VALUES, ...JS_STATEMENTS];
+const jsResults = await runJsExamples(WEB, JS_ALL);
+
+test('meaning, JavaScript: every example does what its words say, on a stand-in page', () => {
+  const bad = jsResults.filter(r => !r.ok).map(r => `"${jsNameOf(r.ex)}" ${r.why}\n    ${(r.code || '').trim().replace(/\n+/g, '\n    ')}`);
+  assert.deepEqual(bad, []);
+});
+
+test('meaning, JavaScript: every Mechanics entry in the Index has an example that runs, or says why not', () => {
+  const rows = indexCoverage(WEB, jsResults, NOT_RUN_JS);
+  const missing = rows.filter(r => !r.examples.length && !r.why).map(r => r.label);
+  assert.deepEqual(missing, [], 'these Index entries have no example: add one to tests/helpers/meaning_js.mjs');
+  for (const [k, why] of Object.entries(NOT_RUN_JS)) {
+    const named = rows.filter(r => r.label.startsWith(k));
+    assert.equal(named.length, 1, `NOT_RUN_JS "${k}" names ${named.length} entries`);
+    assert.equal(named[0].examples.length, 0, `"${k}" has an example now: take it out of NOT_RUN_JS (${why})`);
+  }
+});
+
+test('meaning, JavaScript: a wrong word is caught', async () => {
+  // its own engine, so the others' words stay right
+  const { WEB: W } = loadEngine();
+  const entry = (word) => W.JS_WORDS.find(([re]) => new RegExp(re.source, 'i').test(word));
+  for (const [word, to] of [['minus', ' + '], ['is at least', ' > '], ['is not nothing', ' == null'], ['and', ' || ']]) {
+    const e = entry(word), was = e[1];
+    e[1] = to;
+    try {
+      assert.ok((await runJsExamples(W, JS_ALL)).some(r => !r.ok), `"${word}" written as ${to.trim()} passed every example`);
+    } finally { e[1] = was; }
   }
 });
 
