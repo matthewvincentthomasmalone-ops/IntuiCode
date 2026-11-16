@@ -187,7 +187,7 @@ export const JS_STATEMENTS = [
   { page: GAME, lines: 'set taps to 0\nwhen the screen is tapped\n    increase taps by 1', then: 'await page.pointer("pointerdown", "game", 3, 4);', holds: 'taps === 1' },
   { page: GAME, lines: 'set ups to 0\nwhen game is released\n    increase ups by 1', then: 'await page.pointer("pointerup", "game", 3, 4);', holds: 'ups === 1' },
   { page: GAME, lines: 'set at to 0\nwhen the pointer moves over game\n    set at to tap x', then: 'await page.pointer("pointermove", "game", 42, 7);', holds: 'at === 42' },
-  { lines: 'play a note of 440 for 0.2 seconds', holds: 'page.notes.length === 1 && page.notes[0].frequency === 440 && page.notes[0].to - page.notes[0].from === 0.2' },
+  { lines: 'play a note of 440 for 0.2 seconds', holds: 'page.notes.length === 1 && page.notes[0].frequency === 440 && Math.abs(page.notes[0].to - page.notes[0].from - 0.2) < 1e-9' },   // (a browser's sound clock is running, so the start isn't 0)
 ];
 
 // Index entries with no example, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
