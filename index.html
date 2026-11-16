@@ -34,6 +34,7 @@
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnAddFile" title="Add a file: sentences, code in any language, or notes (Markdown)">New file…</button>
           <button type="button" role="menuitem" id="btnAddFolder" title="Add a folder">New folder…</button>
+          <button type="button" role="menuitem" id="btnIntent" title="INTENT.md: what the project must keep doing, in plain sentences. IntuaCode checks every line against the code each time it changes">What it must do (INTENT.md)…</button>
           <button type="button" role="menuitem" id="btnAddImage" title="Add a picture (PNG, JPEG, GIF, WebP or SVG) to the project's images/ folder">Add an image…</button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" role="menuitem" id="btnBlueprints" title="Everything you can start from: project kits and blueprints, on shelves by what you're making">Project Templates…</button>
@@ -72,6 +73,11 @@
           <p class="plan-path" id="planPath"></p>
           <div class="plan-done" id="planDone" hidden><b id="planCount" aria-live="polite"></b><span class="plan-bar" aria-hidden="true"><span id="planBar"></span></span><button type="button" class="btn tiny" id="btnHandAI" title="The map as an OpenSpec change (proposal.md and tasks.md), for your own AI assistant to work from">Hand to my AI</button></div>
           <ol id="plan" class="plan"></ol>
+          <button type="button" class="linklike plan-other" id="planOther" hidden title="Code the plan doesn't account for: see which parts"></button>
+        </div>
+        <div id="intentWrap" hidden>
+          <div class="side-h">Intent <span id="intentCount" class="count"></span><span class="side-acts"><button type="button" class="btn tiny" id="intentOpen" title="INTENT.md: each promise, checked against the code">Open INTENT.md</button></span></div>
+          <p class="intent-sum" id="intentSum"></p>
         </div>
         <div id="probWrap" hidden>
           <div class="side-h">Problems <span id="probCount" class="count"></span></div>
@@ -507,6 +513,7 @@
 <script src="lang/fixes.js"></script>
 <script src="lang/complete.js"></script>
 <script src="lang/parts.js"></script>
+<script src="lang/promises.js"></script>
 <script src="lang/openspec.js"></script>
 <script src="runner.js"></script>
 <script src="app.js"></script>

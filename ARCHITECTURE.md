@@ -27,6 +27,7 @@ the desktop app.
 | `lang/values.js` | Drop down: finds the values in a sentence (numbers, colour codes and names, CSS words), says what each spot is and what's usual there, and nudges them |
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
+| `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
 | `lang/fixes.js` | Fixes that work: for a line with a problem, small changes to the line itself (spelling as the sentences and the project's names spell it, the problem's own suggestion, "when …, …" split into a block, the closest sentence with the line's values), each translated before it's offered; the help strip and Problems show only those with no errors |
@@ -274,6 +275,33 @@ tick a step, never untick one, so a tick made on the map after the export is nev
 Each step's tick (`done`) and check line (`check`, one line, at most 300 characters) are kept in the plan with
 the project, checked by `checkedProject` like the other fields. Kits give a step its check with `check:`; without
 one, the step's depth has a default (`DEPTHS[depth].check` in `lang/builder.js`).
+
+## Decision: what you meant is written down, and its state is worked out, never stored
+
+*Decided 2026-11-16.*
+
+The code says what a project does; `INTENT.md` says what you meant (`lang/promises.js`). The idea is a broadcast
+router's: an operator's intent (a virtual route) keeps no state of its own, but is worked out from what the hardware
+reports each time, and says when reality can't be expressed. So:
+
+- **Every promise is checked again after every compile** (`checkIntent` in `app.js`), against the code as it's written
+  to disk (`codeOf`), not the sentences. Its state is kept, not kept (with where), or can't be told (with why); nothing
+  records it as done. A step's checks are worked out the same way; ticks stay the person's, and checks never tick or
+  untick one: the map only shows where they disagree.
+- **Checks are searches, not readings.** A promise is kept when text is in the code, a name is defined, a `create
+  table` has its `enable row level security`. Nothing infers behaviour, so nothing can be made up. Two parts with one
+  name are refused, never guessed.
+- **Nothing is changed for you.** A promise not kept is shown in Problems; what to do is yours. Like a router's locks,
+  which live in the manager and not in the equipment, "is mine" can't stop another editor or an AI changing a file; it
+  notices. `project.mine` keeps each such part's code. A change made in IntuaCode is the owner's, so the code kept
+  follows it; a change found when the folder is opened (`noteOutsideChanges`, before the new code is read in) marks it
+  changed until the person keeps it or puts theirs back. A promise taken out of INTENT.md outside IntuaCode is said.
+- **Putting code back never rewrites sentences.** Where the file is code, or code lines in Unity, the part's lines are
+  replaced; in a file of sentences the code is copied to paste.
+- **The parts no step covers** (display and mechanics parts outside every `── Step n` note) are counted once a step has
+  a place: code the plan doesn't account for, which is where an AI's own additions show up.
+- **The AI is told.** Hand to my AI puts INTENT.md's promises and the parts that are the owner's in proposal.md, and a
+  step's own checks on its task line. `ticksFrom` still finds steps by the start of a task.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 

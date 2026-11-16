@@ -86,6 +86,32 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] A project with no map (Import → Try the example project): the Project map is only its title and **+ Step**, and
       Hand to my AI isn't offered (it's under the map's count once there are steps).
 
+**INTENT.md: what it must do, checked** (in Unity, then again in Split Mode)
+- [ ] Menu → **What it must do (INTENT.md)…**: INTENT.md opens with `- nothing has problems`, and an **Intent** block
+      shows in the side (**✓ 1 of 1 kept**). The tree shows INTENT.md.
+- [ ] Add `- there is a button called cta` (the Landing page): kept. `- there is a heading called cta`: not kept, and
+      Problems says it's a <button>; **Show where** puts the cursor on its sentence in index.html.
+- [ ] `- no file mentions "eval("`: kept. `- index.html doesn't mention "Sunny"`: not kept, with the lines. `- the sky is
+      green`: Problems says IntuaCode doesn't know it, and lists promises it does. `- every table has row-level security`
+      with no .sql files: **Can't be checked**, with why.
+- [ ] Split Mode, INTENT.md: the right pane lists every promise with ✓, ✗ or ?, and why. The help under a promise says
+      the same; on another line it lists the promises IntuaCode knows.
+- [ ] Put the cursor in a part of script.js (a green part in Unity, or a line in Split Mode): the help offers **This part
+      is mine** (or **This file is mine**). Press it: INTENT.md gets the line, and the help says **Yours**.
+- [ ] Desktop: Save, close, change that part in another editor, open the folder again: the terminal says it was changed
+      outside IntuaCode, and Problems has it with **Keep the change** and **Put mine back**. Put mine back: the code is as
+      it was (in a code file, or a file of code lines in Unity; in a file of sentences it's copied to paste). Do it
+      again with Keep the change: it's yours as it is now.
+- [ ] Desktop: take a promise out of INTENT.md in another editor, open the folder: the terminal says which it no longer
+      says.
+- [ ] A project with a map: each step with sentences shows its checks (`✓ 1/1`). Tick a step whose ‹blank› isn't filled
+      in: the map shows `! 0/2`, and the terminal says which checks don't hold. Its window, **What IntuaCode checks**,
+      lists them with **Show where**; **Add to INTENT.md** puts a promise under `## Step n`.
+- [ ] Parts outside every step: the map says **n parts of the code aren't in any step**; click it for the list, each
+      with **Open**.
+- [ ] **Hand to my AI** with INTENT.md: proposal.md's Impact says to keep INTENT.md true and lists the parts that are
+      yours; a step's task ends with **IntuaCode checks: …**.
+
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
       of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.

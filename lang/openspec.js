@@ -21,7 +21,9 @@
  *   unzip(bytes)                      -> [{ path, method, size, data }]: what a .zip holds, or null
  *
  * plan: { title, path: [answers], steps: [{ n, name, depth, summary, usual, check, done }] }
- * info: { name: the project's name, files: [paths of its code files], date: 'YYYY-MM-DD' }
+ * info: { name: the project's name, files: [paths of its code files], date: 'YYYY-MM-DD',
+ *         intent: { mine: [promises that a part is the owner's], promises: [the rest], steps: { n: [a step's own checks] } } }
+ *         (intent is INTENT.md's: proposal.md asks the AI to keep it true, and each task carries its step's checks)
  * A step's check is used as given: the app fills in its depth's default first. No page here (no DOM).
  */
 (function (root) {
@@ -77,13 +79,22 @@
     if (used.some(d => d !== 'horizon')) impact.push('- A step with code starts at a comment that reads `── Step n · Name`.');
     if (used.length) impact.push('- ' + used.map(d => DEPTH[d].impact).join(' '));
     impact.push('- IntuaCode keeps the sentences behind the code in `.intuicode/`. Change the code files themselves, not that folder.');
+    const intent = info.intent;
+    if (intent && ((intent.mine || []).length || (intent.promises || []).length)) {
+      impact.push('- `INTENT.md` says what the project must keep doing. IntuaCode checks every line of it against the code after each change, so keep it true; don\'t edit `INTENT.md` itself.');
+      if ((intent.mine || []).length) impact.push(`- Leave these as they are (INTENT.md marks them as the owner's own): ${intent.mine.map(m => '`' + line(m) + '`').join(', ')}.`);
+      if ((intent.promises || []).length) impact.push(`- Keep these true: ${intent.promises.map(line).join('; ')}.`);
+    }
     return `# Proposal: ${title}\n\n## Why\n\n${why}\n\n## What Changes\n\n${what.join('\n')}\n\n## Impact\n\n${impact.join('\n')}\n`;
   }
 
   function tasks(plan, info = {}) {
     const steps = plan.steps || [];
     const list = steps.length
-      ? steps.map((s, i) => `- [${s.done ? 'x' : ' '}] 1.${i + 1} ${nameOf(s)} (${depthOf(s).label}).${line(s.check) ? ' Check: ' + sentence(s.check) : ''}`)
+      ? steps.map((s, i) => {
+        const own = ((info.intent && info.intent.steps && info.intent.steps[s.n]) || []).map(line).filter(Boolean);
+        return `- [${s.done ? 'x' : ' '}] 1.${i + 1} ${nameOf(s)} (${depthOf(s).label}).${line(s.check) ? ' Check: ' + sentence(s.check) : ''}${own.length ? ` IntuaCode checks: ${own.join('; ')}.` : ''}`;
+      })
       : ['- [ ] 1.1 Plan the steps.'];
     return `# Tasks\n\nThe steps of ${titleOf(plan, info)}, in build order. Tick a task (\`- [x]\`) once its check passes. proposal.md says what each step is for.\n\n## 1. Build it, step by step\n\n${list.join('\n')}\n`;
   }
