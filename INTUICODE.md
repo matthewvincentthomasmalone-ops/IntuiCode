@@ -2198,7 +2198,7 @@ the rule table, so the rules get evidence of their own.
   and all 39 Styling entries in the Index have one. `--mutate` gives each word for a container ("navigation
   bar", "side panel" …, `CONTAINERS`) another element: all 7 the examples use are caught. The tests do this
   for two on every run. Styling's words are read in place, so they aren't swapped this way.
-- **C++ programs and Arduino sketches** (`lang/cpp_write.js`): 205 examples
+- **C++ programs and Arduino sketches** (`lang/cpp_write.js`): 207 examples
   (`tests/helpers/meaning_cpp_examples.mjs`) are compiled and run for real: g++, or Visual Studio's compiler on
   Windows. Each is put in a namespace of its own and all are built into one program. A program gets `std::cin`
   and `std::cout` of its own; a sketch runs on a stand-in board that records what it's asked to do (pins,

@@ -152,10 +152,14 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   `INTUICODE.md` shows.
 - Unity: each part Translate makes keeps what the check found and shows it on the part (✓ exact, ≠ not exact,
   ✎ edited since) and in the help under it, not only in the terminal.
-- C++ and Arduino: 205 examples compiled and run (g++, or Visual Studio's compiler), sketches on a stand-in
+- C++ and Arduino: 207 examples compiled and run (g++, or Visual Studio's compiler), sketches on a stand-in
   board. Every program and sketch entry in the Index has one; 16 of 16 wrong words are caught. They found and
   fixed four writer bugs: "set b to n is even" made an int, `"42" as number` and `length of "abc"` didn't
   translate or build, and `"42" as number` on a board didn't build.
+- In a sketch, a name `pin` (a field, `self.pin`, "set pin to 9") is a name again, not the pin phrase, when a
+  word for maths or a comparison follows it, or a `.` comes before it. "give back pin times 2" was `return * 2`,
+  and "self.pin is 9" was `this->== 9`. "set pin to 9" at the left edge was refused. "pin 13", "pin LED" and
+  "turn pin pin on" are still pins (2026-11-17).
 - In a real browser (Chrome or Edge, through its DevTools protocol, nothing installed): the 161 JavaScript
   examples again, with Chrome's own input, network and dialogs, and 81 Structure and Styling examples checked
   by what Chrome makes of them. Every Structure and Styling entry in the Index has one.
@@ -171,8 +175,6 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 ## What could come next
 
 - JavaScript's rules in a table, so they're counted (and made wrong on purpose) one by one, not by the Index.
-- In a sketch, a name `pin` is read as the pin phrase: `give back pin times 2` writes `return * 2`, which
-  doesn't build.
 
 - Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
   dependency and a decision for the owner.
