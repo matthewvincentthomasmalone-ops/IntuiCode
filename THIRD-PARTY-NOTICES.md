@@ -1,6 +1,6 @@
 # Third-party notices
 
-IntuaCode is licensed under the Business Source License 1.1 (see LICENSE). It ships with parts made by others,
+IntuaCode is licensed under the IntuaCode Licence (see LICENSE). It ships with parts made by others,
 which keep their own licences. They are listed here, with where each comes from.
 
 ## In the app (web and desktop)

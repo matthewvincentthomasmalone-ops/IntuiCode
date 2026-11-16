@@ -4,7 +4,7 @@ name: Desktop app
 # Run it from the Actions tab ("Run workflow") on main, or push a tag like v0.4.0.
 # The installers are attached to a draft GitHub Release for that version, with SHA256SUMS.txt and a
 # provenance attestation each. A draft is private (only the repository's owner sees it) until it's published
-# by hand. Each installer carries LICENSE (Business Source License 1.1) and THIRD-PARTY-NOTICES.md. (The public website is offline for now, so it isn't rebuilt: see pages.yml.)
+# by hand. Each installer carries LICENSE (the IntuaCode Licence) and THIRD-PARTY-NOTICES.md. (The public website is offline for now, so it isn't rebuilt: see pages.yml.)
 
 on:
   workflow_dispatch:

@@ -661,15 +661,14 @@ every sentence pattern) is described in [INTUICODE.md](INTUICODE.md). Its exampl
 
 ## License
 
-IntuaCode is source-available under the [Business Source License 1.1](LICENSE):
+IntuaCode is paid software under the [IntuaCode Licence](LICENSE):
 
-- **Free** for individuals using it for their own personal, non-commercial purposes: learning, hobby projects, and
-  reading, checking and changing code they own.
-- **A commercial licence** is needed for everything else: use by or for a company, school or other organisation,
-  paid work, building or running a product or business, and offering IntuaCode (or something made from it) to
-  others as a service or bundle. Organisations may evaluate it free for 60 days.
-- **Each version becomes Apache 2.0** four years after it's published. Versions 0.6.0 and earlier were published
-  under Apache 2.0 and stay that way.
+- **Try it free for 14 days.** Each person and each organisation gets one trial. After that, using it for any
+  purpose (personal, educational or commercial) needs a licence.
+- **The source code is public so you can read it**, check its security, and check that a release was built from
+  it. Reading it doesn't give a right to build, run, change or share it.
+- **Earlier versions keep their licences.** Versions 0.6.0 and earlier stay under Apache 2.0, and versions 0.6.1
+  to 0.7.1 stay under the Business Source License 1.1.
 
 Bundled third-party parts (Pyodide, tree-sitter and its grammars, the fonts and, in the desktop app, its Rust
 crates) keep their own licences: they're listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), made by

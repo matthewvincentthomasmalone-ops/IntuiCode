@@ -42,7 +42,7 @@ const HARNESS = String.raw`(() => {
     class Recorded extends AC {
       createOscillator() {
         const o = super.createOscillator(), start = o.start.bind(o), end = o.stop.bind(o);
-        o.start = (at = 0) => { o.__from = at; return start(at); };
+        o.start = (at = 0) => { o.__from = Math.max(at, this.currentTime); return start(at); };   // a time already past means now, and the sound clock is already running
         o.stop = (at) => { page.notes.push({ frequency: o.frequency.value, from: o.__from ?? 0, to: at, type: o.type }); return end(at); };
         return o;
       }
