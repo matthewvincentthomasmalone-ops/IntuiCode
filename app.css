@@ -1572,3 +1572,31 @@ details.pg > summary .count { margin-left: auto; }
 .prob-fix { display: flex; align-items: baseline; gap: 8px; padding: 0 8px 6px 28px; font-size: 12px; color: var(--ink-2); min-width: 0; }
 .prob-fix .btn { flex: none; }
 .prob-fix .fx-line { font-family: var(--f-say); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+
+/* INTENT.md: promises checked against the code. A step's checks on the map (held of told), the parts no step covers,
+   the list in the step window and in Split Mode's right pane, the Intent block in the side, and "Yours". */
+.plan-step:has(.plan-checks) { grid-template-columns: 20px minmax(0, 1fr) auto auto; }
+.plan-checks { padding: 0 5px; border-radius: 8px; font: 600 10.5px/16px var(--f-ui); white-space: nowrap; color: var(--ink-2); background: var(--panel-2); }
+.plan-checks.st-all { color: var(--good); }
+.plan-checks.st-none, .plan-checks.st-some { color: var(--warn); }
+.plan-checks.claim-bad { color: var(--panel); background: var(--bad); }
+.plan-other { display: block; margin: 4px 16px 6px; padding: 0; border: 0; background: none; color: var(--warn); font: 11.5px var(--f-ui); text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.plan-other[hidden] { display: none; }
+.step-checks { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.step-checks li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; align-items: start; }
+.step-checks .sc-mark { font-weight: 700; text-align: center; }
+.step-checks .sc-ok .sc-mark { color: var(--good); }
+.step-checks .sc-bad .sc-mark { color: var(--bad); }
+.step-checks .sc-unk .sc-mark { color: var(--warn); }
+.step-checks .sc-why { display: block; color: var(--ink-2); font-size: 12.5px; margin: 1px 0 3px; }
+.step-checks .btn.small { margin-top: 2px; }
+.step-claim { margin: 2px 0 6px; color: var(--bad); font-weight: 600; }
+.step-add-check { display: flex; gap: 8px; align-items: center; }
+.step-add-check input { flex: 1; min-width: 0; padding: 5px 8px; border: 0; border-radius: 3px; background: var(--field); color: var(--ink); font: 13px var(--f-ui); box-shadow: var(--sunken); }
+.intent-sum { margin: 0; padding: 0 16px 8px; font-size: 12px; color: var(--ink-2); }
+.intent-side .intent-sum { padding: 0 0 6px; }
+.outside-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.outside-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mine-chip { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 8px; font: 600 10.5px/16px var(--f-ui); color: var(--panel); background: var(--good); vertical-align: middle; }
+.problems .prob-intent .prob-fix { flex-wrap: wrap; }
+.ex-foot .btn.tiny, .ex-guide .btn.tiny, .ex-part .btn.tiny { margin: 0 6px; }

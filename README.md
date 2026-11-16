@@ -229,6 +229,33 @@ from its `tasks.md` (the terminal says which), and Hand to my AI offers **Take i
 them. In the browser, **Take ticks from a tasks.md…** reads one you choose. Only ticks come back: a task left
 unticked there never unticks a step, and tasks the AI added of its own are left alone.
 
+**INTENT.md: what it must do, checked.** The code says what a project does; nothing in it says what you meant.
+**Menu → What it must do (INTENT.md)** starts a Markdown file of promises, one per `- ` line, in plain sentences:
+
+```
+- no file mentions "service_role"
+- every table has row-level security
+- there is a button called save
+- handleSave in src/App.tsx is mine
+```
+
+Each one is checked against the real code every time the project changes: **kept**, **not kept** (Problems says where,
+with **Show where**), or **can't be checked** (and why). Nothing is stored as kept, and nothing is changed for you: a
+promise's state is worked out from the code each time, so it can't disagree with it. The checks are searches of the code,
+not readings of it, so they can't make anything up. A promise IntuaCode doesn't know is said, with the ones it does.
+
+- **Yours:** the help under the code offers **This part is mine**. When that part is changed outside IntuaCode (by an AI,
+  another editor, Git), opening the project's folder says so, and Problems offers **Keep the change** or **Put mine
+  back**. A promise taken out of INTENT.md outside IntuaCode is said too.
+- **Steps that check themselves:** each step on the map shows how many of its checks hold: IntuaCode's own (no
+  problems; a hallway step's ‹blanks› filled in) and any under `## Step n` in INTENT.md. A ticked step whose checks
+  don't hold is marked `!` (ticks stay yours). **n parts of the code aren't in any step** lists the code the plan
+  doesn't account for, which is where an AI's own additions show up.
+- **Your AI is told:** Hand to my AI puts the promises and the parts that are yours in proposal.md, and a step's own
+  checks on its task.
+
+The promises it knows, and what each checks, are in [INTUICODE.md](INTUICODE.md#intentmd-what-you-meant-checked).
+
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the explanation under the windows says what kind of thing to write
 (a number, a calculation, a test that's true or false…), how to work it out from the names the program
@@ -599,6 +626,7 @@ npm install && npm run vendor
 | `lang/languages.js` | Every language a project's file can be in: its endings, its tree-sitter grammar, and whether it's written in sentences, as code or as text |
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
 | `lang/library.js`, `lang/library/` | The Library: kinds of project and the parts they're made of, in plain-text packs |
+| `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the code; the names code defines; each step's checks |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
