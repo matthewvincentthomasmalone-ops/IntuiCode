@@ -19,9 +19,10 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
   So each of the Python writer's value words (plus, is at least, length of, contains, is even …) and
   statements (count from … to …, repeat until, take … out of, if it fails …) has an example that runs on real
   values, and the result must be what the words say ([What the words mean](#what-the-words-mean)). So does
-  each of the JavaScript writer's Mechanics sentences and value words in its Index, run on a stand-in page.
-  TypeScript's own words, C++'s and HTML and CSS's aren't tested this way yet: there, the truth of the words
-  rests on the rule table.
+  each of the JavaScript writer's Mechanics sentences and value words in its Index, run on a stand-in page and
+  again in a real browser (Chrome); each Structure (HTML) and Styling (CSS) entry, checked by what Chrome makes of
+  it; and each C++ and Arduino entry, compiled and run. TypeScript's own words (types, React) aren't tested this
+  way yet: there, the truth of the words rests on the rule table.
 - **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
@@ -1844,7 +1845,7 @@ set b to n plus 1 is even
 int main() {
     int n = 2;
     int a = n + 1 * 2;
-    int b = (n + 1) % 2 == 0;
+    bool b = (n + 1) % 2 == 0;
     return 0;
 }
 ```
@@ -2179,14 +2180,46 @@ the rule table, so the rules get evidence of their own.
 - **A wrong JavaScript word is caught:** `--mutate` gives each of the writer's words for comparisons and
   maths (`JS_WORDS`) the next one's code: all 20 are caught. Its other rules are written in place, so they
   can't be swapped this way. The tests do this for four words on every run.
+- **JavaScript in a real browser:** the same 161 examples run again in Chrome (or Edge) without a window,
+  driven through its DevTools protocol (`tests/helpers/browser.mjs`, nothing to install). Each page is the
+  website as built, loaded by Chrome from an address of its own, so it has its own storage, and every request
+  (the page, `style.css`, `script.js`, `fetch`, pictures, sounds) goes through Chrome's network code and is
+  answered by the test. Clicks, typing, keys and the pointer are Chrome's own input, and `alert`, `confirm`
+  and `prompt` are its own dialogs. Not Chrome's own: the clock (timers and frames wait until the test moves
+  it on), `Math.random` (seeded), and the recording of drawing, sound and the clipboard (each call is
+  recorded, then done for real). The clipboard is only there on a secure page (https, or localhost).
+- **HTML and CSS** (Structure and Styling, `lang/web_write.js`): 81 examples (`tests/helpers/meaning_html.mjs`)
+  are built and loaded in Chrome, and each check looks at what Chrome made of them: the elements, and the
+  style it works out for each (`getComputedStyle`), with the pointer over an element for "when … is hovered"
+  and a narrower window for "on screens narrower than …". Edges: "a number box … from 0 to 100" refuses 150,
+  and takes 2.5 only "allowing decimals"; a checkbox's words click it; "with no space before it" leaves none;
+  "50% see-through" fades the whole element, "background #000 40% see-through" only the background; a drawing
+  "sized 200 by 100, drawn on a 100 by 50 grid" draws a 20-wide rectangle 40 wide. All 56 Structure entries
+  and all 39 Styling entries in the Index have one. `--mutate` gives each word for a container ("navigation
+  bar", "side panel" …, `CONTAINERS`) another element: all 7 the examples use are caught. The tests do this
+  for two on every run. Styling's words are read in place, so they aren't swapped this way.
+- **C++ programs and Arduino sketches** (`lang/cpp_write.js`): 205 examples
+  (`tests/helpers/meaning_cpp_examples.mjs`) are compiled and run for real: g++, or Visual Studio's compiler on
+  Windows. Each is put in a namespace of its own and all are built into one program. A program gets `std::cin`
+  and `std::cout` of its own; a sketch runs on a stand-in board that records what it's asked to do (pins,
+  waits, the serial monitor, a screen, a servo, tones) and reads what the example sets its pins to. Waits are
+  recorded, not waited. Edges: "7 divided by 2" is 3 in C++ (with a warning on the line), "7.0 divided by 2" is
+  3.5; "-3 is odd" is true (`% 2 != 0`, not `== 1`); "random number from 1 to 6" gives 1 and 6; "is between 1
+  and 5" counts both ends; on a board, "at least 500 milliseconds have passed since last" turns true at 500.
+  Counted by the Index, programs and sketches apart: all 53 program sentences and 23 value words, all 67
+  sketch sentences and 19 value words have one, as do all the entries the sentences for
+  `tests/corpus_langs/matrix.cpp` and `thermostat.ino` use. `--mutate` gives each word for comparisons and
+  maths (`CPP_VALUE_WORDS`) the next one's code: all 16 are caught. The tests do this for three on every run.
+  With no compiler, these tests are skipped; with no Chrome or Edge, the browser's are.
 
 Not proven yet:
 
-- The TypeScript, C++ and HTML and CSS writers' words have no examples that run. Their meaning rests on the
-  rule table and on review. (TypeScript shares JavaScript's Mechanics words, but its own, for types and
-  React, aren't run.)
-- JavaScript runs on a stand-in page, not in a browser. What the stand-in has, it does as a browser does
-  for the code IntuaCode writes; layout, styles and real network replies aren't there.
+- TypeScript's own words, for types and React, have no examples that run. (TypeScript shares JavaScript's
+  Mechanics words, which are run.) Their meaning rests on the rule table and on review: checking a type needs
+  TypeScript's own checker, and a component needs React, neither of which the tests have yet.
+- The browser is Chrome (or Edge). Firefox and Safari aren't run. The clock is the test's, not the browser's.
+- A sketch runs on a stand-in board, not a real one: what the board does with a pin, a screen or a servo is
+  what the stand-in records, not what the hardware does.
 - A statement's example checks what it does on its own and in the few lines around it, not in every
   block it can sit in.
 - An example checks a rule on the values it's given. A rule can still be wrong on others, and in how it
