@@ -189,6 +189,7 @@ export function makePage(html = '', { replies = {}, answers = [] } = {}) {
   page.dblclick = (id) => fire(page.el(id), page.event('dblclick'));
   page.type = async (id, text) => { const e = page.el(id); e.value = String(text); await fire(e, page.event('input')); await fire(e, page.event('change')); };
   page.send = (id) => fire(page.el(id), page.event('submit'));
+  page.choose = (id, ...names) => { const e = page.el(id); e.files = names.map(name => ({ name })); return fire(e, page.event('change')); };
   page.key = async (key, where) => { const ev = page.event('keydown', { key, code: key }); await fire(where ? page.el(where) : doc, ev); await fire('window', ev); return ev; };
   page.keyUp = async (key) => { const ev = page.event('keyup', { key, code: key }); await fire(doc, ev); await fire('window', ev); };
   page.pointer = (type, id, x, y) => fire(page.el(id), page.event(type, { offsetX: x, offsetY: y, clientX: x, clientY: y }));

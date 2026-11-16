@@ -158,7 +158,7 @@ export const JS_STATEMENTS = [
   { page: SHOP, lines: 'set the groups of total to "card done"', holds: 'page.el("total").className === "card done"' },
   { page: 'add a box called card in group done\n' + SHOP, lines: 'set a to card is in group done\nset b to card is in group late', holds: 'a === true && b === false' },
   { page: 'add a checkbox called box saying "Agree"\n' + SHOP, lines: 'set agreed to no\nwhen save is clicked\n    set agreed to box is ticked', then: 'page.el("box").checked = true; await page.click("save");', holds: 'agreed === true' },
-  { page: 'add a file picker called picker for pictures\n' + SHOP, lines: 'set f to nothing\nwhen save is clicked\n    set f to the file in picker', then: 'page.el("picker").files = [{ name: "a.png" }]; await page.click("save");', holds: 'f && f.name === "a.png"' },
+  { page: 'add a file picker called picker for pictures\n' + SHOP, lines: 'set f to nothing\nwhen save is clicked\n    set f to the file in picker', then: 'await page.choose("picker", "a.png"); await page.click("save");', holds: 'f && f.name === "a.png"' },
   { page: 'add a list called items', lines: 'make a new button saying "Remove" in items and store in b', holds: 'b.tagName === "BUTTON" && b.textContent === "Remove" && b.parentNode === page.el("items")' },
   { page: 'add a list called items', lines: 'constant item is a new "li" element\nput item at the end of items', holds: 'item.tagName === "LI" && page.el("items").lastChild === item' },
   { page: SHOP, lines: 'set the HTML of total to "<b>5</b>"', holds: 'page.el("total").innerHTML === "<b>5</b>" && page.text("total") === "5"' },
