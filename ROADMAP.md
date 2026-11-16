@@ -31,7 +31,8 @@ directions, using rules rather than AI. This file records where it is going and 
 | 11 | Unity first, Split Mode beside it (Read mode folded in: imported code becomes the project's files); parts by type (Interface & Display, Backend & Mechanics, Setup & Settings, Data & Notes) and by language, with two buttons that show one side of the project; Project Link: the code behind what's in use in the preview, in pink; Predictive Mode in Unity and from the Library | done (first version) |
 | 12 | React and TypeScript as sentence languages: `.ts`, `.tsx` (and React in `.jsx`/`.js`) translatable in Unity and editable in Split Mode, checked exact with types counted; components, state, effects and JSX in words; the Lovable stack (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) as phrase packs | done (first version, 2026-11-10) |
 | 13 | Running React: a Vite app's folder opens in place, and Run starts its own dev server in the desktop Preview, with hot reload; other sites it contacts are listed | done (first version, 2026-11-10; desktop app only) |
-| 14 | Words that mean what they say: an example of each Python value word runs on real values and must give what the words say; known wrong translations warn on their line; Unity shows each translated part's check (✓ exact) | done for Python's value words (2026-11-16), Python's statements and JavaScript's Mechanics (2026-11-17); C++ and TypeScript's own words next |
+| 14 | INTENT.md: what you meant, in plain sentences, checked against the code after every change (never stored as kept); parts marked as yours, flagged when changed outside IntuaCode, kept or put back; steps on the map that check themselves, and the parts no step covers; Hand to my AI asks the AI to keep it true | done (first version, 2026-11-16) |
+| 15 | Words that mean what they say: an example of each Python value word runs on real values and must give what the words say; known wrong translations warn on their line; Unity shows each translated part's check (✓ exact) | done for Python's value words (2026-11-16), Python's statements and JavaScript's Mechanics (2026-11-17); C++ and TypeScript's own words next |
 
 The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
@@ -125,7 +126,7 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   on lines under it (one call per line). Byte for byte: 13 of 13 corpus files and 6 of 8 held-out ones (19 of 21);
   left: text and an element sharing a line between tags (Dashboard, Login).
 
-### Step 14 notes
+### Step 15 notes
 
 - Until now the evidence was the round trip: sentences rebuild the same syntax tree. That proves nothing was
   dropped or added, but not that the words are true. A rule pair that said `a - b` as "a plus b" and read it
@@ -221,4 +222,4 @@ statements that differ are kept as `python:` lines automatically and the check r
    React/TypeScript (sentences since step 12); C++ is hardest and is scheduled last.
 6. **Browser limits.** No real servers, packages or file system. Mitigation: the desktop app (step 4).
 7. **Words that are wrong both ways.** A rule pair that says the wrong words and reads them back to the same
-   code passes the round trip. Mitigation: examples that run (step 14), so far for Python's value words and statements and JavaScript's Mechanics.
+   code passes the round trip. Mitigation: examples that run (step 15), so far for Python's value words and statements and JavaScript's Mechanics.

@@ -223,3 +223,19 @@ test('the builder: every depth has a default check, and a kit\'s plan carries ea
     }
   }
 });
+
+test('INTENT.md goes with the map: proposal.md asks the AI to keep it true, each task carries its step\'s checks', () => {
+  const intent = { mine: ['handleSave in src/App.tsx'], promises: ['no file mentions "service_role"'], steps: { 2: ['there is a form called contact', 'contact mentions "formspree"'] } };
+  const impact = section(OS.proposal(PLAN, { ...INFO, intent }), 'Impact');
+  assert.match(impact, /^- `INTENT\.md` says what the project must keep doing\./m);
+  assert.match(impact, /^- Leave these as they are \(INTENT\.md marks them as the owner's own\): `handleSave in src\/App\.tsx`\.$/m);
+  assert.match(impact, /^- Keep these true: no file mentions "service_role"\.$/m);
+  const tasks = OS.tasks(PLAN, { ...INFO, intent }).split('\n').filter(l => /^- \[/.test(l));
+  assert.match(tasks[1], / IntuaCode checks: there is a form called contact; contact mentions "formspree"\.$/);
+  assert.doesNotMatch(tasks[0], /IntuaCode checks/);
+  // ticks still find their steps with the checks on the end
+  assert.deepEqual(plain(OS.ticksFrom(tasks.join('\n').replace('[ ] 1.2', '[x] 1.2'), PLAN.steps).ticked), [2]);
+  // no INTENT.md: proposal.md and tasks.md are as they were
+  assert.equal(OS.proposal(PLAN, INFO), OS.proposal(PLAN, { ...INFO, intent: null }));
+  assert.equal(OS.tasks(PLAN, INFO), OS.tasks(PLAN, { ...INFO, intent: { mine: [], promises: [], steps: {} } }));
+});
