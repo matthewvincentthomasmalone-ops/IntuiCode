@@ -1,6 +1,6 @@
 [package]
 name = "intuicode"
-version = "0.7.1"
+version = "0.8.0"
 description = "Write and read code in plain sentences"
 authors = ["IntuaCode"]
 license-file = "../LICENSE"
