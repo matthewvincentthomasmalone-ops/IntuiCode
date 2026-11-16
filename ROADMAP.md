@@ -32,7 +32,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 12 | React and TypeScript as sentence languages: `.ts`, `.tsx` (and React in `.jsx`/`.js`) translatable in Unity and editable in Split Mode, checked exact with types counted; components, state, effects and JSX in words; the Lovable stack (Tailwind, shadcn/ui, react-router, TanStack Query, Supabase) as phrase packs | done (first version, 2026-11-10) |
 | 13 | Running React: a Vite app's folder opens in place, and Run starts its own dev server in the desktop Preview, with hot reload; other sites it contacts are listed | done (first version, 2026-11-10; desktop app only) |
 | 14 | INTENT.md: what you meant, in plain sentences, checked against the code after every change (never stored as kept); parts marked as yours, flagged when changed outside IntuaCode, kept or put back; steps on the map that check themselves, and the parts no step covers; Hand to my AI asks the AI to keep it true | done (first version, 2026-11-16) |
-| 15 | Words that mean what they say: an example of each Python value word runs on real values and must give what the words say; known wrong translations warn on their line; Unity shows each translated part's check (✓ exact) | done for Python's value words (2026-11-16), Python's statements and JavaScript's Mechanics (2026-11-17), C++ and Arduino (compiled and run), JavaScript in a real browser, and HTML and CSS (in Chrome) (2026-11-16); TypeScript's own words next |
+| 15 | Words that mean what they say: an example of each Python value word runs on real values and must give what the words say; known wrong translations warn on their line; Unity shows each translated part's check (✓ exact) | done for Python's value words (2026-11-16), Python's statements and JavaScript's Mechanics (2026-11-17), C++ and Arduino (compiled and run), JavaScript in a real browser, and HTML and CSS (in Chrome) (2026-11-16), TypeScript's own words (types by its checker, components by React) (2026-11-17) |
 
 The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
@@ -159,16 +159,18 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 - In a real browser (Chrome or Edge, through its DevTools protocol, nothing installed): the 161 JavaScript
   examples again, with Chrome's own input, network and dialogs, and 81 Structure and Styling examples checked
   by what Chrome makes of them. Every Structure and Styling entry in the Index has one.
-- Still not proven: TypeScript's own words (types, React), other browsers, a real board, values beyond the
+- TypeScript's own words: 58 examples. Types are checked by TypeScript's own checker, and components are run by
+  React in Chrome. 34 of 38 Index sentences and 25 of 26 words have one; the 5 without need react-router,
+  TanStack Query or shadcn/ui. 7 of 7 wrong type words are caught. The owner approved five development packages
+  for this (2026-11-17): `typescript`, `react`, `react-dom`, `@types/react`, `@types/react-dom`. They're for the
+  tests only and aren't shipped.
+- Still not proven: other libraries' React sentences, other browsers, a real board, values beyond the
   examples', and rules combined in longer values or blocks. See
   [What the words mean](INTUICODE.md#what-the-words-mean).
 
 ## What could come next
 
-- Examples that run for TypeScript's own words: types checked by TypeScript's own checker, components run by
-  React in the browser. Both need new development packages (`typescript`, `react`, `react-dom`): a decision for
-  the owner. JavaScript's rules in a table, so they're counted (and made wrong on purpose) one by one, not by
-  the Index.
+- JavaScript's rules in a table, so they're counted (and made wrong on purpose) one by one, not by the Index.
 - In a sketch, a name `pin` is read as the pin phrase: `give back pin times 2` writes `return * 2`, which
   doesn't build.
 

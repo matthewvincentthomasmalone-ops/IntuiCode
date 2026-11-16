@@ -5,7 +5,8 @@
 // the words say, worked out by hand. C++ programs and Arduino sketches are compiled and run for real
 // (tests/helpers/meaning_cpp_examples.mjs). In a real browser (Chrome or Edge, without a window), the same
 // JavaScript examples run again, and the website's Structure and Styling are checked by what the browser makes of
-// them (tests/helpers/meaning_html.mjs). `npm run meaning` prints which rules have an example.
+// them (tests/helpers/meaning_html.mjs). TypeScript's own words: types by TypeScript's checker, components by
+// React in the browser (tests/helpers/meaning_ts_examples.mjs). `npm run meaning` prints which rules have an example.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,8 +22,10 @@ import { findChrome } from './helpers/browser.mjs';
 import { runJsInBrowser, runSiteInBrowser, siteCoverage, siteNameOf, mutateContainers } from './helpers/meaning_browser.mjs';
 import { compileExample } from './helpers/meaning_web.mjs';
 import { HTML_STRUCTURE, HTML_STYLING, NOT_RUN_HTML } from './helpers/meaning_html.mjs';
+import { missingPackages, runTsExamples, tsCoverage, tsNameOf, mutateTypeWords } from './helpers/meaning_ts.mjs';
+import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, NOT_RUN_TS } from './helpers/meaning_ts_examples.mjs';
 
-const { L, WEB, CPP } = loadEngine();
+const { L, WEB, CPP, TS } = loadEngine();
 const ALL = [...EXAMPLES, ...STATEMENTS];
 const results = runExamples(L, ALL);
 
@@ -174,6 +177,34 @@ test('meaning, HTML: a wrong word for an element is caught', { skip: noBrowser }
   const { WEB: W } = loadEngine();
   const m = await mutateContainers(W, HTML_ALL, (k) => k === 'navigation bar' || k === 'side panel');
   assert.equal(m.tried, 2);
+  assert.deepEqual(m.missed, []);
+});
+
+/* ------------------------------------------------------------------ TypeScript's own words: types and React */
+
+const noPackages = missingPackages() || false;   // (node:test skips on null too)
+const TS_ALL = [...TS_TYPES, ...TS_FILES, ...TS_REACT, ...TS_PACKS];
+const tsResults = noPackages ? [] : await runTsExamples(TS, TS_ALL, { browser: !noBrowser });
+
+test('meaning, TypeScript: every example\'s types check as its words say, and its components do what they say in React', { skip: noPackages }, () => {
+  const bad = tsResults.filter(r => !r.ok).map(r => `"${tsNameOf(r.ex)}" ${r.why}`);
+  assert.deepEqual(bad, []);
+});
+
+test('meaning, TypeScript: every entry in its Index has an example that runs, or says why not', { skip: noPackages || noBrowser }, () => {
+  const rows = tsCoverage(TS, tsResults, NOT_RUN_TS);
+  assert.deepEqual(rows.filter(r => !r.examples.length && !r.why).map(r => r.label), [], 'these Index entries have no example: add one to tests/helpers/meaning_ts_examples.mjs');
+  for (const [k, why] of Object.entries(NOT_RUN_TS)) {
+    const named = rows.filter(r => r.label.startsWith(k));
+    assert.equal(named.length, 1, `NOT_RUN_TS "${k}" names ${named.length} entries`);
+    assert.equal(named[0].examples.length, 0, `"${k}" has an example now: take it out of NOT_RUN_TS (${why})`);
+  }
+});
+
+test('meaning, TypeScript: a wrong word for a type is caught by the checker', { skip: noPackages }, () => {
+  const { TS: T } = loadEngine();
+  const m = mutateTypeWords(T, TS_ALL, (k) => k === 'a number' || k === 'text');
+  assert.ok(m.tried >= 2);
   assert.deepEqual(m.missed, []);
 });
 
