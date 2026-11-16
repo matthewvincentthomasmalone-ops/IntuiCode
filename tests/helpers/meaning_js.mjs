@@ -158,7 +158,7 @@ export const JS_STATEMENTS = [
   { page: SHOP, lines: 'set the groups of total to "card done"', holds: 'page.el("total").className === "card done"' },
   { page: 'add a box called card in group done\n' + SHOP, lines: 'set a to card is in group done\nset b to card is in group late', holds: 'a === true && b === false' },
   { page: 'add a checkbox called box saying "Agree"\n' + SHOP, lines: 'set agreed to no\nwhen save is clicked\n    set agreed to box is ticked', then: 'page.el("box").checked = true; await page.click("save");', holds: 'agreed === true' },
-  { page: 'add a file picker called picker for pictures\n' + SHOP, lines: 'set f to nothing\nwhen save is clicked\n    set f to the file in picker', then: 'page.el("picker").files = [{ name: "a.png" }]; await page.click("save");', holds: 'f && f.name === "a.png"' },
+  { page: 'add a file picker called picker for pictures\n' + SHOP, lines: 'set f to nothing\nwhen save is clicked\n    set f to the file in picker', then: 'await page.choose("picker", "a.png"); await page.click("save");', holds: 'f && f.name === "a.png"' },
   { page: 'add a list called items', lines: 'make a new button saying "Remove" in items and store in b', holds: 'b.tagName === "BUTTON" && b.textContent === "Remove" && b.parentNode === page.el("items")' },
   { page: 'add a list called items', lines: 'constant item is a new "li" element\nput item at the end of items', holds: 'item.tagName === "LI" && page.el("items").lastChild === item' },
   { page: SHOP, lines: 'set the HTML of total to "<b>5</b>"', holds: 'page.el("total").innerHTML === "<b>5</b>" && page.text("total") === "5"' },
@@ -187,7 +187,7 @@ export const JS_STATEMENTS = [
   { page: GAME, lines: 'set taps to 0\nwhen the screen is tapped\n    increase taps by 1', then: 'await page.pointer("pointerdown", "game", 3, 4);', holds: 'taps === 1' },
   { page: GAME, lines: 'set ups to 0\nwhen game is released\n    increase ups by 1', then: 'await page.pointer("pointerup", "game", 3, 4);', holds: 'ups === 1' },
   { page: GAME, lines: 'set at to 0\nwhen the pointer moves over game\n    set at to tap x', then: 'await page.pointer("pointermove", "game", 42, 7);', holds: 'at === 42' },
-  { lines: 'play a note of 440 for 0.2 seconds', holds: 'page.notes.length === 1 && page.notes[0].frequency === 440 && page.notes[0].to - page.notes[0].from === 0.2' },
+  { lines: 'play a note of 440 for 0.2 seconds', holds: 'page.notes.length === 1 && page.notes[0].frequency === 440 && Math.abs(page.notes[0].to - page.notes[0].from - 0.2) < 1e-9' },   // (a browser's sound clock is running, so the start isn't 0)
 ];
 
 // Index entries with no example, keyed by the start of their name (as tools/meaning.mjs prints it), and why.

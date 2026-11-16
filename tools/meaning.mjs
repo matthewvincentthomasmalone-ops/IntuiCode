@@ -7,9 +7,13 @@
 // Then the JavaScript writer's Mechanics, run on a stand-in page (tests/helpers/page.mjs): its rules are written in
 // place, so what's listed is its Index (the sentences and value words it offers), and the entries the reader's
 // sentences use for tests/corpus_web's scripts.
+// Then C++ programs and Arduino sketches, compiled and run (g++, or Visual Studio's cl on Windows; skipped with
+// neither). Also counted by the Index, and the entries the sentences for tests/corpus_langs' .cpp and .ino use.
+// Then, in a real browser (Chrome or Edge, without a window; skipped with neither): the JavaScript examples again,
+// and the website's Structure and Styling, counted by the Index.
 // --mutate: makes each rule do another's work, one at a time (a value word gets another's code, a statement
-// another's with as many words to fill in; for JavaScript, each word for comparisons and maths), and checks some
-// example fails.
+// another's with as many words to fill in; for JavaScript and C++, each word for comparisons and maths), and
+// checks some example fails.
 import path from 'node:path';
 import { statSync, readFileSync, readdirSync } from 'node:fs';
 import { loadEngine, loadConverter, toSentences, pyFiles, ROOT } from '../tests/helpers/engine.mjs';
@@ -17,6 +21,11 @@ import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from '..
 import { EXAMPLES, STATEMENTS, NOT_RUN } from '../tests/helpers/meaning_python.mjs';
 import { runJsExamples, indexCoverage, entryPattern, mutateWords, jsNameOf } from '../tests/helpers/meaning_web.mjs';
 import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS } from '../tests/helpers/meaning_js.mjs';
+import { findCompiler, runCppExamples, cppIndexCoverage, mutateCppWords, cppNameOf } from '../tests/helpers/meaning_cpp.mjs';
+import { CPP_VALUES, CPP_STATEMENTS, CPP_SKETCHES, NOT_RUN_CPP } from '../tests/helpers/meaning_cpp_examples.mjs';
+import { findChrome } from '../tests/helpers/browser.mjs';
+import { runJsInBrowser, runSiteInBrowser, siteCoverage, siteNameOf, mutateContainers } from '../tests/helpers/meaning_browser.mjs';
+import { HTML_STRUCTURE, HTML_STYLING, NOT_RUN_HTML } from '../tests/helpers/meaning_html.mjs';
 
 const args = process.argv.slice(2);
 const mutate = args.includes('--mutate');
@@ -125,4 +134,67 @@ if (mutate) {
   console.log(`mutations: ${m.tried - m.missed.length}/${m.tried} wrong JavaScript words (comparisons and maths) caught by an example`);
   for (const x of m.missed) console.log(`  missed: ${x}`);
 }
-if (failed.length || jsFailed.length) process.exitCode = 1;
+
+/* ---- C++ programs and Arduino sketches, compiled and run. Counted by the Index too. ---- */
+let cppFailed = [];
+const cc = findCompiler();
+if (!cc) console.log('\nC++: no compiler found (g++, or Visual Studio with C++), so its examples are skipped');
+else {
+  const { CPP } = loadEngine();
+  const CPP_ALL = [...CPP_VALUES, ...CPP_STATEMENTS, ...CPP_SKETCHES];
+  const cppResults = runCppExamples(CPP, CPP_ALL);
+  cppFailed = cppResults.filter(r => !r.ok);
+  const rows = cppIndexCoverage(CPP, cppResults, NOT_RUN_CPP);
+  for (const where of ['program', 'sketch']) for (const [kind, title] of [['statement', 'sentences'], ['value', 'value words']]) {
+    console.log(`\nC++ ${where} ${title} (the Index)`.padEnd(65) + 'examples');
+    for (const e of rows.filter(e => e.where === where && e.kind === kind)) console.log(e.label.slice(where.length + 2, where.length + 64).padEnd(64) + (e.examples.length ? String(e.examples.length) : `none: ${e.why || 'no example yet'}`));
+  }
+  console.log('-'.repeat(72));
+  console.log(`${cppResults.length - cppFailed.length}/${cppResults.length} C++ examples do what their words say (built with ${cc.name})`);
+  for (const f of cppFailed) console.log(`  NO: "${cppNameOf(f.ex)}" ${f.why}`);
+  for (const where of ['program', 'sketch']) for (const [kind, title] of [['statement', 'Index sentences'], ['value', 'Index value words']]) {
+    const all = rows.filter(e => e.where === where && e.kind === kind), tested = all.filter(e => e.examples.length).length;
+    console.log(`${tested}/${all.length} C++ ${where} ${title} have an example that runs (${Math.round(100 * tested / all.length)}%)`);
+  }
+  for (const [file, kind, where] of [['matrix.cpp', 'cpp', 'program'], ['thermostat.ino', 'arduino', 'sketch']]) {
+    const r = convert(kind, readFileSync(path.join(ROOT, 'tests/corpus_langs', file), 'utf8'));
+    const lines = r.ok ? r.text.split('\n') : [];
+    const used = rows.filter(e => e.where === where && lines.some(l => { const re = entryPattern(e); return e.pattern ? re.test(l) : re.test(' ' + l.trim()); }));
+    console.log(`${used.filter(e => e.examples.length).length}/${used.length} Index entries the sentences for tests/corpus_langs/${file} use have an example that runs`);
+    for (const e of used.filter(e => !e.examples.length)) console.log(`  none: ${e.label}`);
+  }
+  if (mutate) {
+    const m = mutateCppWords(CPP, CPP_ALL);
+    console.log(`mutations: ${m.tried - m.missed.length}/${m.tried} wrong C++ words (comparisons and maths) caught by an example`);
+    for (const x of m.missed) console.log(`  missed: ${x}`);
+  }
+}
+
+/* ---- In a real browser: the JavaScript examples again, and Structure and Styling ---- */
+let browserFailed = [];
+if (!findChrome()) console.log('\nIn a browser: no Chrome or Edge found (set CHROME_PATH), so these are skipped');
+else {
+  const { WEB: W } = loadEngine();
+  const js = await runJsInBrowser(W, JS_ALL);
+  const site = await runSiteInBrowser(W, [...HTML_STRUCTURE, ...HTML_STYLING]);
+  const rows = siteCoverage(W, site, NOT_RUN_HTML);
+  for (const sec of ['structure', 'styling']) for (const [kind, title] of [['statement', 'sentences'], ['value', 'words']]) {
+    console.log(`\n${sec === 'structure' ? 'Structure (HTML)' : 'Styling (CSS)'} ${title} (the Index)`.padEnd(65) + 'examples');
+    for (const e of rows.filter(e => e.sec === sec && e.kind === kind)) console.log(e.label.slice(sec.length + 2, sec.length + 64).padEnd(64) + (e.examples.length ? String(e.examples.length) : `none: ${e.why || 'no example yet'}`));
+  }
+  console.log('-'.repeat(72));
+  browserFailed = [...js, ...site].filter(r => !r.ok);
+  console.log(`${js.filter(r => r.ok).length}/${js.length} JavaScript examples do what their words say in a real browser`);
+  console.log(`${site.filter(r => r.ok).length}/${site.length} Structure and Styling examples do what their words say in a real browser`);
+  for (const f of browserFailed) console.log(`  NO: "${f.ex.lines != null || f.ex.say ? jsNameOf(f.ex) : siteNameOf(f.ex)}" ${f.why}`);
+  for (const sec of ['structure', 'styling']) for (const [kind, title] of [['statement', 'Index sentences'], ['value', 'Index words']]) {
+    const all = rows.filter(e => e.sec === sec && e.kind === kind), tested = all.filter(e => e.examples.length).length;
+    console.log(`${tested}/${all.length} ${sec === 'structure' ? 'Structure' : 'Styling'} ${title} have an example that runs (${Math.round(100 * tested / all.length)}%)`);
+  }
+  if (mutate) {
+    const m = await mutateContainers(W, [...HTML_STRUCTURE, ...HTML_STYLING]);
+    console.log(`mutations: ${m.tried - m.missed.length}/${m.tried} wrong words for elements (containers) caught by an example`);
+    for (const x of m.missed) console.log(`  missed: ${x}`);
+  }
+}
+if (failed.length || jsFailed.length || cppFailed.length || browserFailed.length) process.exitCode = 1;
