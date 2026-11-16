@@ -1,87 +1,110 @@
-License text copyright (c) 2020 MariaDB Corporation Ab, All Rights Reserved.
-"Business Source License" is a trademark of MariaDB Corporation Ab.
+IntuaCode Licence
+Version 1.0, 16 November 2026
 
-Parameters
+Copyright (c) 2026 Matthew Vincent Thomas Malone. All rights reserved.
 
-Licensor:             Matthew Vincent Thomas Malone
-Licensed Work:        IntuaCode (also called IntuiCode): every version after 0.6.0,
-                      and the contents of its repository from 10 November 2026 on.
-                      The Licensed Work is (c) 2026 Matthew Vincent Thomas Malone.
-Additional Use Grant: You may make production use of the Licensed Work free of
-                      charge if you are an individual using it for your own
-                      personal, non-commercial purposes: learning, hobby projects,
-                      and reading, checking and changing code that you own for
-                      those purposes.
+Licensor:  Matthew Vincent Thomas Malone
+Software:  IntuaCode (also called IntuiCode): every version after 0.7.1, and
+           the contents of its repository from 16 November 2026 on, including
+           its source code, installers, browser version, documentation and
+           examples.
 
-                      Every other production use requires a commercial licence
-                      from the Licensor. This includes use:
+IntuaCode is paid software. Its source code is public so that anyone can read
+it and check what it does, but reading it does not give you the right to use
+it. Apart from sections 1 and 2, you may use the Software only under a paid
+licence from the Licensor.
 
-                      (a) by or on behalf of a company, school, university,
-                          training provider, government body or other
-                          organisation, including teaching a class or training
-                          staff;
-                      (b) in work you are paid for, or in building, running or
-                          maintaining a product, service or business; and
-                      (c) offering the Licensed Work, or a derivative work of it,
-                          to third parties as a hosted, managed, embedded or
-                          bundled product or service.
 
-                      An organisation may evaluate the Licensed Work free of
-                      charge for up to 60 days before buying a licence.
-Change Date:          Four years from the date each version of the Licensed Work
-                      is first published.
-Change License:       Apache License, Version 2.0
+1. Reading the source code
 
-For a commercial licence or other licensing arrangements, contact the Licensor
-through GitHub: https://github.com/matthewvincentthomasmalone-ops
+   You may view the source code in its public repository, and download it,
+   only to read it, to check its security, and to check that a release was
+   built from it. This does not let you build, run or use it for any other
+   purpose.
 
-Versions 0.6.0 and earlier were published under the Apache License, Version 2.0,
-and remain available under it.
 
-Third-party components bundled with the Licensed Work (such as Pyodide,
-tree-sitter and its grammars, and fonts) keep their own licences.
+2. Free 14-day trial
 
-Notice
+   You may install and use the Software free of charge for 14 days to decide
+   whether to buy a licence. The trial starts when you first install or use
+   the Software. Each person, and each organisation, gets one trial. When the
+   trial ends, you must either buy a licence or stop using the Software and
+   delete your copies of it.
 
-Business Source License 1.1
 
-Terms
+3. Everything else needs a paid licence
 
-The Licensor hereby grants you the right to copy, modify, create derivative
-works, redistribute, and make non-production use of the Licensed Work. The
-Licensor may make an Additional Use Grant, above, permitting limited production use.
+   Any other use needs a paid licence bought from the Licensor, or from a
+   reseller the Licensor authorises, and is governed by that licence's terms.
+   This includes:
 
-Effective on the Change Date, or the fourth anniversary of the first publicly
-available distribution of a specific version of the Licensed Work under this
-License, whichever comes first, the Licensor hereby grants you rights under
-the terms of the Change License, and the rights granted in the paragraph
-above terminate.
+   (a) installing, running or using the Software after the trial ends, for any
+       purpose: personal, educational or commercial;
+   (b) use by or on behalf of a company, school, university, training provider,
+       government body or other organisation, beyond its one trial; and
+   (c) copying, changing, translating or building the Software, or making a
+       work based on it.
 
-If your use of the Licensed Work does not comply with the requirements
-currently in effect as described in this License, you must purchase a
-commercial license from the Licensor, its affiliated entities, or authorized
-resellers, or you must refrain from using the Licensed Work.
 
-All copies of the original and modified Licensed Work, and derivative works
-of the Licensed Work, are subject to this License. This License applies
-separately for each version of the Licensed Work and the Change Date may vary
-for each version of the Licensed Work released by Licensor.
+4. What you may not do
 
-You must conspicuously display this License on each original or modified copy
-of the Licensed Work. If you receive the Licensed Work in original or
-modified form from a third party, the terms and conditions set forth in this
-License apply to your use of that work.
+   Unless the Licensor agrees in writing, you may not:
 
-Any use of the Licensed Work in violation of this License will automatically
-terminate your rights under this License for the current and all other
-versions of the Licensed Work.
+   (a) share, sell, rent, lend or sublicense the Software, or a copy or changed
+       version of it, or give it to anyone else in any other way;
+   (b) offer the Software, or a work based on it, to others as a hosted,
+       managed, embedded or bundled product or service;
+   (c) remove, hide or get around any licence notice, licence key or limit on
+       the trial; or
+   (d) use the source code, or anything copied or adapted from it, to make
+       another product.
 
-This License does not grant you any right in any trademark or logo of
-Licensor or its affiliates (provided that you may use a trademark or logo of
-Licensor as expressly required by this License).
 
-TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
-AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
-EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
-TITLE.
+5. Parts made by others
+
+   The Software ships with parts made by others, listed in
+   THIRD-PARTY-NOTICES.md. They keep their own licences, and nothing in this
+   licence limits the rights those licences give you over those parts.
+
+
+6. Earlier versions
+
+   This licence does not change the licence of anything published before it.
+   Versions 0.6.0 and earlier stay under the Apache License, Version 2.0, and
+   versions 0.6.1 to 0.7.1 stay under the Business Source License 1.1, each on
+   the terms they were published with.
+
+
+7. Contributions
+
+   If you send the Licensor a contribution, such as a pull request, patch or
+   suggested change, you confirm that you have the right to give it, and you
+   give the Licensor a perpetual, worldwide, irrevocable, royalty-free licence
+   to use, change, sublicense and distribute it on any terms, including in
+   paid products.
+
+
+8. Ending
+
+   If you break this licence, your rights under it end automatically, and you
+   must stop using the Software and delete your copies of it.
+
+
+9. Names and logos
+
+   This licence gives you no right to use the names IntuaCode or IntuiCode, or
+   any logo of the Licensor.
+
+
+10. No warranty
+
+   TO THE EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
+   WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION)
+   WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND
+   NON-INFRINGEMENT. TO THE EXTENT PERMITTED BY LAW, THE LICENSOR IS NOT LIABLE
+   FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS
+   USE. A paid licence may give you further terms of its own.
+
+
+To buy a licence, or for other arrangements, contact the Licensor through
+GitHub: https://github.com/matthewvincentthomasmalone-ops

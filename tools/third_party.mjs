@@ -15,7 +15,7 @@ const line = (s = '') => out.push(s);
 
 line('# Third-party notices');
 line();
-line('IntuaCode is licensed under the Business Source License 1.1 (see LICENSE). It ships with parts made by others,');
+line('IntuaCode is licensed under the IntuaCode Licence (see LICENSE). It ships with parts made by others,');
 line('which keep their own licences. They are listed here, with where each comes from.');
 line();
 
