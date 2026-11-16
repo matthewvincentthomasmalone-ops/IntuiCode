@@ -14,6 +14,14 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 
 - **Code to sentences is checked.** The sentences are translated back and compared with the original;
   anything that differs stays as code, and IntuaCode says when the result still isn't exact.
+- **What Python's words mean is tested.** The check above proves nothing was dropped or added, not that
+  the words are true: a rule that said `a - b` as "a plus b", and read that back as `a - b`, would pass it.
+  So each of the Python writer's value words (plus, is at least, length of, contains, is even …) and
+  statements (count from … to …, repeat until, take … out of, if it fails …) has an example that runs on real
+  values, and the result must be what the words say ([What the words mean](#what-the-words-mean)). So does
+  each of the JavaScript writer's Mechanics sentences and value words in its Index, run on a stand-in page.
+  TypeScript's own words, C++'s and HTML and CSS's aren't tested this way yet: there, the truth of the words
+  rests on the rule table.
 - **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
@@ -2089,6 +2097,7 @@ would rewrite.
 | Same input, same output | yes | yes |
 | Checked | yes: the sentences are translated back and the syntax trees compared with the original | no: the code isn't compared with anything, parsed, or run |
 | When it can't | keeps the part as exact code and checks again; reports what still differs | an error on the line |
+| The words mean what they say | Python's value words and statements, and JavaScript's Mechanics (by its Index): an example of each runs (below); the other languages' rest on the rule table | the same |
 
 **Reading, Python** (`lang/python_reader.py`, used by `checkedSentences` in `app.js`): the original and
 the code made from the sentences are parsed with Python's `ast` and their dumps compared. Comments don't
@@ -2115,7 +2124,75 @@ step 6, lists them. TypeScript and JSX add only three, and types always count: s
 
 **So** sentences that came from code are exact, or reported as not exact: a mistake in a writer shows up
 as a difference, and the part stays as code. A sentence written or edited by hand is the writing
-direction, with the limits below.
+direction, with the limits below. In Unity, each green part Translate makes shows what the check found, on
+the part and in the help under it: **✓ exact**, **≠ not exact** (with why), or **✎ edited** (changed since,
+so the check no longer applies). A green part from a project file's sentences wasn't checked there, so it
+shows none.
+
+### What the words mean
+
+The round trip proves the sentences rebuild the same code. It can't prove the words are true: if "plus"
+were written as `-`, and `-` read as "plus", the code would come back exactly. What a sentence says rests on
+the rule table, so the rules get evidence of their own.
+
+- **Python's value words** (`EXPR_RULES` in `lang/python.js`): `tests/meaning.test.mjs` translates an
+  example of each, as `set result to …`, runs it with the local Python on concrete values, and checks the
+  result is the value the words say, worked out by hand (`tests/helpers/meaning_python.mjs`). The type
+  counts too: 3 is not 3.0. Where the words decide an edge, it's tested: "between 1 and 5" counts 5, "is more
+  than 5" doesn't, "random number from 1 to 6" gives 6 too, "x is not nothing" is true for 0, "sorted xs"
+  leaves xs as it was, "n plus 1 is even" is about n plus 1.
+- **Python's statements** (the writer's `RULES`): each example is a few lines of sentences, run as a program.
+  What it must do is written by hand: the values it leaves in names, what it shows (exactly), the error it
+  stops with. "ask" gets the example's answers, "wait" is noted instead of waited, and files go in a folder
+  of their own. Edges again: "count from 1 to 5" counts 5, "repeat 3 times counting with i" starts at 0,
+  "repeat until n is 4" doesn't run when n is already 4, "otherwise if" doesn't run after an "if" that did,
+  "take 2 out of xs" takes only the first 2, "divide n by 2" leaves a decimal, "in any case" runs after an
+  error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
+  the tests.
+- **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
+  passes uses it. Today 87 of 89 value words and 70 of 73 statements have one. The five without need a web
+  framework or a window: `as a JSON reply`, `JSON sent with`, the Flask and FastAPI routes (`when app gets
+  …`, `when app handles …`) and tkinter's `add a tk.Button …`. Of the rules the reader's sentences use for
+  `samples/`, `tests/corpus/` and `tests/heldout/`, 44 of 46 value words and 44 of 47 statements have one.
+  A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
+- **The examples notice a wrong rule:** `npm run meaning -- --mutate` makes each rule do another's work,
+  one at a time: a value word gets another's code, a statement another's with as many words to fill in. It
+  checks some example fails: 80 of 82 value words and 67 of 69 statements do (the misses are the web rules
+  with no example). Two pairs that write the very same code, two ways of saying one thing, aren't counted:
+  `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
+  in z`. The tests do this for nine rules on every run, whatever the reader says.
+- **JavaScript: a website's Mechanics** (`lang/web_write.js`): 161 examples
+  (`tests/helpers/meaning_js.mjs`), each a page (its Structure) and Mechanics, run in Node on a stand-in
+  page (`tests/helpers/page.mjs`). It's not a browser: it has the page's elements, events, the browser's
+  memory, `fetch` with set replies, timers and animation frames that wait until the test moves the clock
+  on, and a canvas pen and sound that note what they're asked to do. Each example checks the values left
+  in names, what the page shows, the requests sent, what was drawn. Edges: "x is nothing" is true for
+  `undefined` too, "x is null" isn't; "x, or y if that is nothing" keeps 0; "n rounded down" takes -2.5 to
+  -3; "sort xs from smallest to biggest" puts 10 after 9; "every 2 seconds" runs 3 times in 6 seconds;
+  "if "left" is held" stops when the key is let go.
+- **JavaScript coverage** is counted by the Index, not by rules: the JavaScript writer's rules are written
+  in place, not in a table, so what's counted is what it offers, its Mechanics sentences and value words
+  (`TEMPLATES` and `WORDS`). An entry counts when a line of an example that passes says it. 74 of 75
+  sentences and all 52 value words have one; the one without, `bring in … from "…"`, needs a second file
+  and a module loader. The 19 entries the reader's sentences use for `tests/corpus_web`'s script all have
+  one. Words the writer knows but the Index doesn't list aren't counted.
+- **A wrong JavaScript word is caught:** `--mutate` gives each of the writer's words for comparisons and
+  maths (`JS_WORDS`) the next one's code: all 20 are caught. Its other rules are written in place, so they
+  can't be swapped this way. The tests do this for four words on every run.
+
+Not proven yet:
+
+- The TypeScript, C++ and HTML and CSS writers' words have no examples that run. Their meaning rests on the
+  rule table and on review. (TypeScript shares JavaScript's Mechanics words, but its own, for types and
+  React, aren't run.)
+- JavaScript runs on a stand-in page, not in a browser. What the stand-in has, it does as a browser does
+  for the code IntuaCode writes; layout, styles and real network replies aren't there.
+- A statement's example checks what it does on its own and in the few lines around it, not in every
+  block it can sit in.
+- An example checks a rule on the values it's given. A rule can still be wrong on others, and in how it
+  combines with other rules in a longer value.
+- Reading: the reader's sentences are as true as the rules they use. One with an example is checked; one
+  without isn't.
 
 **Writing** (`lang/python.js`, `lang/web_write.js`, `lang/ts_write.js`, `lang/cpp_write.js`):
 
@@ -2189,6 +2266,11 @@ These translate with no error today but give the wrong code, or code that doesn'
 examples are pinned by the example after it, which shows the writer's output as it is now: when one is
 fixed, its test fails, and this section is updated. The last table is the reading direction.
 
+Where the writer can tell, the line gets a warning, in the help under it and in Problems: Python's `is`
+written as Python, JavaScript's `fetch` at the left edge of the page's script, and C++'s whole numbers
+divided. `tests/meaning.test.mjs` checks that each row its section's example shows still warns. A C++ name
+used after its block is left to the compiler.
+
 ### Python writer
 
 Most of what was listed here was fixed on 2026-11-04 (see [Two readings](#two-readings-refused-never-guessed-python)
@@ -2196,7 +2278,7 @@ and [Python context](#python-context)). Still wrong:
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `same = a is b`, written as Python | `same = a == b` | in a line read as sentences, `is` compares values; Python's `is` checks for the very same object | `python: same = a is b` |
+| `same = a is b`, written as Python | `same = a == b`, with a warning on the line | in a line read as sentences, `is` compares values; Python's `is` checks for the very same object | `python: same = a is b` |
 
 ```intuicode python
 python: a = [1]
@@ -2221,7 +2303,7 @@ made in (a warning), `if … then …` on one line (an error), tabs. Still wrong
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function: the page's `script.js` (a classic script) doesn't run | only blocks are made `async`; a module script would allow it, and code read from one keeps it | put it under `when the page has loaded` |
+| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function, with a warning on the line: the page's `script.js` (a classic script) doesn't run | only blocks are made `async`; a module script would allow it, and code read from one keeps it | put it under `when the page has loaded` |
 
 ```intuicode js
 set n to 0

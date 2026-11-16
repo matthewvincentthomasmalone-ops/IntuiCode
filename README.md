@@ -558,6 +558,7 @@ built on, or newer, which is why the released one is built on Ubuntu 22.04.
 npm install
 npm test            # reader, translators, blueprints, web reader, exact round-trips
 npm run coverage    # how much real code reads as sentences
+npm run meaning     # which of Python's and JavaScript's words have an example that runs and gives what they say
 ```
 
 The desktop app has its own tests, which open the real app window and drive it (Python with

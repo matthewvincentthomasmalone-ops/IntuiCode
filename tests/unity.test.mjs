@@ -257,3 +257,18 @@ test('Unity: an imported JavaScript or CSS file (all exact lines) is written bac
     assert.equal(WEB.compileWebsite({ sections }).results[role].text, code + '\n', lang);
   }
 });
+
+test('Unity: each part Translate makes keeps what the check found, for the ✓ on it', async () => {
+  const code = ['x = 1', 'y = x + 1', 'print(y)'];
+  const d = await U.deRegex('python', code, [], 1, 1, convert);
+  assert.equal(d.regions.length, 1);
+  assert.deepEqual(plain(d.regions[0].check), { exact: true, reason: null }, 'checked exact');
+  const loose = await U.deRegex('python', code, [], 1, 1, (kind, source) => ({ ...convert(kind, source), exact: false, reason: 'the check found code that comes back different' }));
+  assert.deepEqual(plain(loose.regions[0].check), { exact: false, reason: 'the check found code that comes back different' }, 'and says when not');
+  // it moves with the part as the text around it is edited
+  const moved = U.adjust(d.regions, d.lines, ['# a note', ...d.lines]);
+  assert.equal(moved[0].from, d.regions[0].from + 1);
+  assert.deepEqual(plain(moved[0].check), { exact: true, reason: null });
+  // a project file's sentences weren't checked here, so their parts have none
+  assert.ok(U.fromFile('python', 'python: x = 1\nset y to x plus 1\n').regions.every(r => !r.check));
+});

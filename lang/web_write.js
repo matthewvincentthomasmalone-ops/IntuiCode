@@ -2324,6 +2324,10 @@
       return idx >= 0 && needsAsync(idx, new Set([...seen, name]));
     };
     const insideFn = () => stack.some(b => b.kind === 'fn');
+    // Known wrong translation (INTUICODE.md): `await` at the left edge of the page's script.js, which the page loads
+    // as a classic script (no "bring in": that makes it a module), stops the whole script from running
+    const classic = sec.file === 'mechanics' && !lines.some(l => /^\s*bring in\b/i.test(l));
+    const topAwait = (inf) => { if (classic && !stack.length) inf.warns.push('This waits for the server (`await`) at the left edge, outside any block. The page loads script.js as a classic script, where `await` only works inside a function, so none of the script would run. Put it under "when the page has loaded".'); };
     // a case of "depending on" ends with break, unless its last step leaves anyway or it goes on into the next case
     const closeOf = (b) => [].concat(typeof b.close === 'function' ? b.close() : b.close);
     const caseEnd = (b) => () => { const last = out[out.length - 1]; return b.fall || (last !== b.head && /^\s*(?:return\b|break;|continue;|throw\b)/.test(last.text)) ? [] : ['  break;']; };
@@ -2658,10 +2662,12 @@
       // A reply is kept with const, unless a later line in the same block changes it (then let).
       const replyKeyword = (n) => (known(n) ? keyword(n, inf) : keyword(n, inf, changedLater(i, n, false) ? 'let' : 'const'));      if ((m = M(/^(?:fetch|get|load)\s+(?:data\s+)?from\s+(.+?)\s+and store (?:it )?in\s+([A-Za-z_$][\w$]*)$/i))) {
         const kw = replyKeyword(m[2]);
+        topAwait(inf);
         note(inf, '`fetch` asks the server for data and `await` waits for the reply without freezing the page. `.json()` turns the reply into values JavaScript can use.' + (kw === 'let ' ? ` It is kept with \`let\` because a later line changes ${code(m[2])}.` : kw === 'const ' ? ' `const` keeps the reply under this name for good.' : ''));
         return say(`${kw}${m[2]} = await (await fetch(${E(m[1], inf)})).json();`);
       }
       if ((m = M(/^send\s+(.+?)\s+to\s+(.+?)(?:\s+and store the reply in\s+([A-Za-z_$][\w$]*))?$/i))) {
+        topAwait(inf);
         note(inf, 'Sends the data to the server as JSON with a POST request.');
         const call = `await fetch(${E(m[2], inf)}, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(${E(m[1], inf)}) })`;
         if (m[3]) return say(`${replyKeyword(m[3])}${m[3]} = await (${call}).json();`);
@@ -3180,7 +3186,8 @@
   };
   const OPENS_BLOCK = /^\s*(?:when |every |after |if |otherwise|else|repeat |for each |while |define |depending on |do this|run this now|(?:constant|set) [\w$]+ (?:is|to) a tool(?!.*\sgiving back\s)|try\s*$|in any case|whatever happens|finally|add (?:a |an )?(?:section|header|footer|navigation|nav|main|block|box|area|form|side panel|sidebar|article|card|list|numbered list|table|row|pop-up|dialog|figure|collapsible section|drawing(?! area)|set of shapes|reusable parts|pattern|table head|table body|table foot|definition list|field group|quotation)\b|on screens |in dark mode)/i;
 
-  const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, OPENS_BLOCK, toId, TAG_WORDS,
+  // (JS_WORDS: the words for comparisons and maths, which tests/meaning.test.mjs makes wrong on purpose)
+  const api = { compileWebsite, compileHtml, compileCss, compileJs, previewDocument, TEMPLATES, GUIDES, WORDS, JS_WORDS, OPENS_BLOCK, toId, TAG_WORDS,
     readAttr, sayAttr, elementWord, wordTag: (w, svg) => (svg ? SVG_WORD_TAG : HTML_WORD_TAG).get(String(w).toLowerCase()) || null, splitAnd, splitItems, strOf, quoteText,
     addressFor: (t, kind) => address(t, kind).value,
     cssPropsFor: (text, inf) => cssProps(text, inf), colorFor: (v, inf) => color(v, inf), COLOURS: [...NAMED] };
