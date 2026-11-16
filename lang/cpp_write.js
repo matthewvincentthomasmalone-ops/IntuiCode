@@ -307,6 +307,9 @@
   function exprType(e, x) {
     const t = e.trim();
     const TEXT = x.arduino ? 'String' : 'std::string';
+    const madeNumber = t.match(/^String\((?:[^()]|\([^()]*\))*\)\.to(Int|Float)\(\)$/);   // String("42").toInt() is a number
+    if (madeNumber) return madeNumber[1] === 'Int' ? 'int' : 'double';
+    if (/^std::string\("(?:[^"\\]|\\.)*"\)\.size\(\)$/.test(t)) return 'int';   // the length of quoted text
     if (/^"/.test(t) || /^text\(/.test(t) || /^std::(to_string|string)/.test(t) || /^String\(/.test(t)) return TEXT;
     if (/^'.'$/.test(t)) return 'char';
     // (0x1F, 0b101: whole numbers written in hexadecimal, binary.) One too big for an int is a long: on an Uno an
@@ -328,10 +331,11 @@
     const cc = t.match(/^\((int|long|double|float)\)\s*[A-Za-z_\d][\w.]*$/);
     if (cc) return cc[1];
     if (/^[A-Za-z_]\w*$/.test(t) && x.types[t]) return x.types[t];
-    const ids = t.match(/[A-Za-z_]\w*/g) || [];
-    if (ids.length && /[-+*/%]/.test(t) && ids.every(i => x.types[i] === 'int' || x.types[i] === 'double')) return ids.some(i => x.types[i] === 'double') || /\d\.\d/.test(t) ? 'double' : 'int';
+    // (a comparison is yes/no even with maths in it: n % 2 == 0)
     const noTemplates = t.replace(/([\w:])<[\w:<>,\s*&]*>(?=\s*[({]|::)/g, '$1');   // make_unique<Circle>(…) isn't a comparison
     if (/[<>=!]=|[<>]|&&|\|\|/.test(noTemplates) && !/<</.test(noTemplates)) return 'bool';
+    const ids = t.match(/[A-Za-z_]\w*/g) || [];
+    if (ids.length && /[-+*/%]/.test(t) && ids.every(i => x.types[i] === 'int' || x.types[i] === 'double')) return ids.some(i => x.types[i] === 'double') || /\d\.\d/.test(t) ? 'double' : 'int';
     return 'auto';
   }
 
@@ -458,6 +462,13 @@
     return { s: out, codes };
   }
 
+  /* The words for comparisons and maths, swapped in this order (longer phrases first). */
+  const CPP_VALUE_WORDS = [
+    [/\bis not (?:equal to|the same as)\b|\bisn't\b|\bis not\b/gi, ' != '], [/\bis at least\b|\bis (?:greater|more) than or equal to\b/gi, ' >= '], [/\bis at most\b|\bis (?:less|smaller) than or equal to\b/gi, ' <= '],
+    [/\bis (?:greater|more|bigger|higher) than\b/gi, ' > '], [/\bis (?:less|smaller|lower|fewer) than\b/gi, ' < '], [/\bis (?:equal to|the same as)\b|\bequals\b|\bis\b/gi, ' == '],
+    [/\bplus\b/gi, ' + '], [/\bminus\b/gi, ' - '], [/\btimes\b/gi, ' * '], [/\bdivided by\b/gi, ' / '], [/\bmod\b/gi, ' % '],
+    [/\band\b/gi, ' && '], [/\bor\b/gi, ' || '], [/\bnot\b/gi, ' !'], [/\b(?:yes|true)\b/gi, 'true'], [/\b(?:no|false)\b/gi, 'false'],
+  ];
   function cppExpr(src, x, inf, cond = false) {
     let s = String(src || '').trim();
     if (!s) { inf.errs.push('Something is missing here: a value.'); return '0'; }
@@ -473,7 +484,8 @@
     if (br) s = br.s;
     const strs = [];
     // a .name or […] typed right after the text stays attached to it: "abc".size()
-    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m, off, all) => { strs.push(m); return ` ⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[)/.test(all.slice(off + m.length)) ? '' : ' '); });
+    // (a space each side keeps it apart from the words, but never two in a row: "42" as number)
+    let q = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)'/g, (m, off, all) => { strs.push(m); return (/\s$/.test(all.slice(0, off)) ? '' : ' ') + `⟦${strs.length - 1}⟧` + (/^(?:\.[A-Za-z_]|\[|\s)/.test(all.slice(off + m.length)) ? '' : ' '); });
     // a tool's result in brackets is one value, like a text: ⟦n⟧ holds its code
     if (br) q = q.replace(/⟪(\d+)⟫/g, (m, k) => { strs.push(br.codes[+k]); return `⟦${strs.length - 1}⟧`; });
     if (/'/.test(q.replace(/\w'\w/g, ''))) inf.warns.push("In C++, text goes in double quotes (\"like this\"). Single quotes are for one character.");
@@ -520,7 +532,7 @@
     swap(String.raw`\blast item (?:of|in) (OPD)`, x.arduino ? '$1[(sizeof($1) / sizeof($1[0])) - 1]' : '$1.back()');
     swap(String.raw`\bitem (OPD) (?:of|in) (OPD)`, '$2[$1]');
     swap(String.raw`\b(?:length|size) of (OPD)`, (m, a) => {
-      if (!x.arduino) return `${a}.size()`;
+      if (!x.arduino) return /^⟦\d+⟧$/.test(a) && /^"/.test(strs[+a.slice(1, -1)]) ? `std::string(${a}).size()` : `${a}.size()`;   // ("abc".size() doesn't build)
       if (/^String$/.test(x.types[a] || '')) return `${a}.length()`;
       note(inf, 'Arduino lists are plain arrays: `sizeof(list) / sizeof(list[0])` works out how many items they hold.');
       return `(sizeof(${a}) / sizeof(${a}[0]))`;
@@ -577,10 +589,10 @@
     // (a number on a board is cast the way sketches usually write it: (int)t)
     swap(String.raw`(OPD) as (?:a )?(?:whole )?number\b`, (m, a) => {
       if (numeric(a)) { note(inf, `\`${x.arduino ? '(int)' : 'static_cast<int>'}\` keeps the whole part of ${code(a)} (2.7 becomes 2).`); return x.arduino ? `(int)${a}` : `static_cast<int>(${a})`; }
-      if (x.arduino) return `${a}.toInt()`;
+      if (x.arduino) return /^⟦\d+⟧$/.test(a) ? `String(${a}).toInt()` : `${a}.toInt()`;   // (quoted text is made a String first)
       note(inf, '`std::stoi` turns text into a whole number (it stops with an error if the text isn\'t a number).'); return `std::stoi(${a})`;
     });
-    swap(String.raw`(OPD) as (?:a )?decimal\b`, (m, a) => (numeric(a) ? (x.arduino ? `(double)${a}` : `static_cast<double>(${a})`) : x.arduino ? `${a}.toFloat()` : `std::stod(${a})`));
+    swap(String.raw`(OPD) as (?:a )?decimal\b`, (m, a) => (numeric(a) ? (x.arduino ? `(double)${a}` : `static_cast<double>(${a})`) : x.arduino ? (/^⟦\d+⟧$/.test(a) ? `String(${a}).toFloat()` : `${a}.toFloat()`) : `std::stod(${a})`));
     swap(String.raw`(OPD) as text\b`, x.arduino ? 'String($1)' : 'std::to_string($1)');
     swap(String.raw`(OPD) squared\b`, '($1 * $1)');
     // "is even" / "is odd": the remainder after dividing by 2. A sum before it is checked as a whole: "n plus 1 is even" is (n + 1) % 2 == 0.
@@ -591,13 +603,7 @@
       note(inf, '`% 2` is the remainder after dividing by 2: 0 for even numbers. For odd numbers it is 1, or -1 when the number is negative, so odd is tested with `!= 0`.');
       return `${sum ? `(${a})` : a} % 2 ${even ? '==' : '!='} 0`;
     });
-    const W = [
-      [/\bis not (?:equal to|the same as)\b|\bisn't\b|\bis not\b/gi, ' != '], [/\bis at least\b|\bis (?:greater|more) than or equal to\b/gi, ' >= '], [/\bis at most\b|\bis (?:less|smaller) than or equal to\b/gi, ' <= '],
-      [/\bis (?:greater|more|bigger|higher) than\b/gi, ' > '], [/\bis (?:less|smaller|lower|fewer) than\b/gi, ' < '], [/\bis (?:equal to|the same as)\b|\bequals\b|\bis\b/gi, ' == '],
-      [/\bplus\b/gi, ' + '], [/\bminus\b/gi, ' - '], [/\btimes\b/gi, ' * '], [/\bdivided by\b/gi, ' / '], [/\bmod\b/gi, ' % '],
-      [/\band\b/gi, ' && '], [/\bor\b/gi, ' || '], [/\bnot\b/gi, ' !'], [/\b(?:yes|true)\b/gi, 'true'], [/\b(?:no|false)\b/gi, 'false'],
-    ];
-    for (const [re, to] of W) q = q.replace(re, to);
+    for (const [re, to] of CPP_VALUE_WORDS) q = q.replace(re, to);
     q = cppTwoReadings(q, x, strs, inf, cond);
     // "if button state is high": a sketch's HIGH and LOW are in capitals
     if (x.arduino) q = q.replace(/(?<![\w.:>⟦])(high|low)\b(?!\s*\()/gi, (m) => {
@@ -1728,7 +1734,7 @@
   const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)'], ['a to the power of b', 'pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
   const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board|it is |it's )|over and over|again and again|at the start|depending on |do this)/i;
 
-  const api = { compileCppProject, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };
+  const api = { compileCppProject, CPP_VALUE_WORDS, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiCpp = api;
 })(typeof window !== 'undefined' ? window : globalThis);

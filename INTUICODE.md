@@ -1844,7 +1844,7 @@ set b to n plus 1 is even
 int main() {
     int n = 2;
     int a = n + 1 * 2;
-    int b = (n + 1) % 2 == 0;
+    bool b = (n + 1) % 2 == 0;
     return 0;
 }
 ```
