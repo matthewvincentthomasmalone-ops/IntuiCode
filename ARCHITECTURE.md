@@ -367,6 +367,8 @@ git, though the program is the same. The check compares syntax trees, so layout 
 - `python3 -m unittest discover -s tests`: reader tests
 - `node --test tests/*.test.mjs`: translator, blueprints, and round-trips over the corpus
 - `npm run coverage`: the sentence-coverage number (see ROADMAP.md)
+- `npm run meaning`: which of the Python writer's value words have an example that runs (see INTUICODE.md,
+  What the words mean); `-- --mutate` checks the examples notice each rule made wrong
 - `tests/e2e/run.mjs`: drives the real desktop app (Linux and Windows)
 - `cargo test --manifest-path src-tauri/Cargo.toml`: the desktop layer's own checks
 

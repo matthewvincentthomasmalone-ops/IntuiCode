@@ -163,7 +163,10 @@
   // .names, calls and indexes.
   const OPD = String.raw`(?:⟦\d+⟧|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|${PAREN}|${SQUARE}|${CURLY})(?:\.[A-Za-z_]\w*|${PAREN}|${SQUARE})*`;
   // "\b" can't sit before quoted text (⟦0⟧), so operands use a look-behind instead.
-  const R = (src) => new RegExp(src.replace(/\\b\(OPD\)/g, '(?<![\\w.])(OPD)').replace(/OPD/g, OPD), 'gi');
+  // (each keeps the words it was written with, `said`, so tools/meaning.mjs can name it)
+  const R = (src) => Object.assign(new RegExp(src.replace(/\\b\(OPD\)/g, '(?<![\\w.])(OPD)').replace(/OPD/g, OPD), 'gi'), { said: src });
+  // The rules a translation used, while tests/meaning.test.mjs is watching (see rules.trace below). null otherwise.
+  let ruleTrace = null;
 
   const EXPR_RULES = [
     // Looking things up
@@ -737,6 +740,8 @@
     waiting = false;
     for (const r of EXPR_RULES) {
       let guard = 0, prev;
+      // (a swap that leaves the words as they are, like "and" for and, still counts as used)
+      if (ruleTrace && !r.endsInOperand && q.search(r.re) >= 0) ruleTrace.add(r);
       do {
         prev = q;
         if (r.endsInOperand) for (const m of q.matchAll(r.re)) looseBrackets(m, q, strs, x);
@@ -753,6 +758,7 @@
         if (r.endsInOperand) { const out = innermostFirst(q, r); q = out.q; if (out.waiting) waiting = true; }
         else q = q.replace(r.re, r.to);
         if (q !== prev) {
+          if (ruleTrace) ruleTrace.add(r);
           if (r.note) x.note(r.note);
           if (r.use) x.use(r.use);
         }
@@ -1643,12 +1649,22 @@
   });
 
   // --- Already Python -----------------------------------------------------------
+  // Python's own `is` (or `is not`) between two values: not an English phrase that starts with "is" ("is nothing",
+  // "is even", "is more than" …), which says what it means
+  const PY_IS = /(?<![\w.])(is(?:\s+not)?)\s+(?!(?:not\s+)?(?:none|nothing|even|odd|between|divisible|exactly|in|inside|one\s+of|greater|more|bigger|higher|larger|less|smaller|lower|fewer|at\s+least|at\s+most|over|above|under|below|equal|the\s+same|all)\b)(?=\S)/i;
   rule(/^([A-Za-z_]\w*)\s*([+\-*/]?=)(?!=)\s*(.+)$/, (m, x) => {
     const py = x.syms.has(m[1]) ? x.syms.get(m[1]).py : m[1];
     if (m[2] === '=') declare(x, py, py, kindOf(tExpr(m[3], x), x));
     assigned(x, py, m[2] !== '=');
     x.note('This is already Python, so it is kept almost as written.');
-    return { py: `${py} ${m[2]} ${tExpr(m[3], x)}` };
+    const value = tExpr(m[3], x);
+    // Known wrong translation (INTUICODE.md): a line written as Python reads `is` as English, so it compares values
+    const is = maskQuoted(m[3]).match(PY_IS);
+    if (is) {
+      const was = `${m[1]} ${m[2]} ${m[3].trim()}`;
+      x.warn(`This line is read as words, so \`${is[1].replace(/\s+/g, ' ')}\` compares values: ${code(`${py} ${m[2]} ${value}`)}. Python's own \`is\` checks for the very same object, which is different: two lists with the same items are equal but not the same object. For Python's \`is\`, write ${code('python: ' + was)}.`);
+    }
+    return { py: `${py} ${m[2]} ${value}` };
   });
 
   const STARTERS = ['set', 'show', 'ask', 'if', 'otherwise', 'repeat', 'while', 'count', 'for each', 'define', 'give back', 'run', 'add', 'remove', 'increase', 'decrease', 'create list', 'sort', 'wait', 'note', 'python', 'stop the loop', 'skip to next', 'multiply', 'divide', 'remember', 'use'];
@@ -2191,6 +2207,12 @@
   window.IntuiLang = window.IntuiLang || {};
   window.IntuiLang.python = {
     compileProject, translateOne, TEMPLATES, WORDS, GUIDE, OPENS_BLOCK, sectionTitle,
+    // The value words (tests/meaning.test.mjs runs an example of each): trace(fn) runs fn and gives back the
+    // rules its translations used.
+    rules: {
+      EXPR_RULES,
+      trace(fn) { const was = ruleTrace, used = new Set(); ruleTrace = used; try { fn(); } finally { ruleTrace = was; } return used; },
+    },
     FILLER: { lead: LEAD_FILLER, words: ['please', 'kindly', 'just', 'simply', 'basically', 'really', 'actually', 'quickly'], steps: ['then', 'afterwards'] },
     keywords: { python: PY_KEYWORDS, builtins: BUILTINS },
   };

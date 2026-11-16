@@ -14,6 +14,12 @@ generated from the writers' own data. Every fenced example marked `intuicode` is
 
 - **Code to sentences is checked.** The sentences are translated back and compared with the original;
   anything that differs stays as code, and IntuaCode says when the result still isn't exact.
+- **What Python's value words mean is tested.** The check above proves nothing was dropped or added, not
+  that the words are true: a rule that said `a - b` as "a plus b", and read that back as `a - b`, would pass
+  it. So each of the Python writer's value words (plus, is at least, length of, contains, is even …) has an
+  example that runs on real values, and the result must be what the words say
+  ([What the words mean](#what-the-words-mean)). Statements, and the other languages' words, aren't tested
+  this way yet: there, the truth of the words rests on the rule table.
 - **Sentences to code is not checked against what you meant**, because only you know that. IntuaCode has
   far fewer words than the languages it writes, so it fills the gaps from context: what kind of value a name
   holds, which page element a name means. Missing words fail loudly ("I don't recognise this sentence").
@@ -2085,6 +2091,7 @@ would rewrite.
 | Same input, same output | yes | yes |
 | Checked | yes: the sentences are translated back and the syntax trees compared with the original | no: the code isn't compared with anything, parsed, or run |
 | When it can't | keeps the part as exact code and checks again; reports what still differs | an error on the line |
+| The words mean what they say | Python's value words: an example of each runs (below); the rest rests on the rule table | the same |
 
 **Reading, Python** (`lang/python_reader.py`, used by `checkedSentences` in `app.js`): the original and
 the code made from the sentences are parsed with Python's `ast` and their dumps compared. Comments don't
@@ -2111,7 +2118,40 @@ step 6, lists them. TypeScript and JSX add only three, and types always count: s
 
 **So** sentences that came from code are exact, or reported as not exact: a mistake in a writer shows up
 as a difference, and the part stays as code. A sentence written or edited by hand is the writing
-direction, with the limits below.
+direction, with the limits below. In Unity, each green part Translate makes shows what the check found, on
+the part and in the help under it: **✓ exact**, **≠ not exact** (with why), or **✎ edited** (changed since,
+so the check no longer applies). A green part from a project file's sentences wasn't checked there, so it
+shows none.
+
+### What the words mean
+
+The round trip proves the sentences rebuild the same code. It can't prove the words are true: if "plus"
+were written as `-`, and `-` read as "plus", the code would come back exactly. What a sentence says rests on
+the rule table, so the rules get evidence of their own.
+
+- **Python's value words** (`EXPR_RULES` in `lang/python.js`): `tests/meaning.test.mjs` translates an
+  example of each, as `set result to …`, runs it with the local Python on concrete values, and checks the
+  result is the value the words say, worked out by hand (`tests/helpers/meaning_python.mjs`). The type
+  counts too: 3 is not 3.0. Where the words decide an edge, it's tested: "between 1 and 5" counts 5, "is more
+  than 5" doesn't, "random number from 1 to 6" gives 6 too, "x is not nothing" is true for 0, "sorted xs"
+  leaves xs as it was, "n plus 1 is even" is about n plus 1.
+- **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
+  passes uses it. Today 87 of 89 rules have one; the two without need a Flask app (`as a JSON reply`, `JSON
+  sent with`). Of the 46 rules the reader's sentences use for `samples/`, `tests/corpus/` and
+  `tests/heldout/`, 44 have one. A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
+- **The examples notice a wrong rule:** `npm run meaning -- --mutate` swaps each rule's code for another
+  rule's of the same shape, one at a time, and checks some example fails: 80 of 82 do (not the two Flask
+  rules). The tests do this for four rules on every run, whatever the reader says.
+
+Not proven yet:
+
+- Statements (`set`, `repeat 3 times`, `count from 1 to 10`, `add … to …`) and the JavaScript, TypeScript,
+  C++ and website writers' words have no examples that run. Their meaning rests on the rule table and on
+  review.
+- An example checks a rule on the values it's given. A rule can still be wrong on others, and in how it
+  combines with other rules in a longer value.
+- Reading: the reader's sentences are as true as the rules they use. One with an example is checked; one
+  without isn't.
 
 **Writing** (`lang/python.js`, `lang/web_write.js`, `lang/ts_write.js`, `lang/cpp_write.js`):
 
@@ -2136,6 +2176,11 @@ These translate with no error today but give the wrong code, or code that doesn'
 examples are pinned by the example after it, which shows the writer's output as it is now: when one is
 fixed, its test fails, and this section is updated. The last table is the reading direction.
 
+Where the writer can tell, the line gets a warning, in the help under it and in Problems: Python's `is`
+written as Python, JavaScript's `fetch` at the left edge of the page's script, and C++'s whole numbers
+divided. `tests/meaning.test.mjs` checks that each row its section's example shows still warns. A C++ name
+used after its block is left to the compiler.
+
 ### Python writer
 
 Most of what was listed here was fixed on 2026-11-04 (see [Two readings](#two-readings-refused-never-guessed-python)
@@ -2143,7 +2188,7 @@ and [Python context](#python-context)). Still wrong:
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `same = a is b`, written as Python | `same = a == b` | in a line read as sentences, `is` compares values; Python's `is` checks for the very same object | `python: same = a is b` |
+| `same = a is b`, written as Python | `same = a == b`, with a warning on the line | in a line read as sentences, `is` compares values; Python's `is` checks for the very same object | `python: same = a is b` |
 
 ```intuicode python
 python: a = [1]
@@ -2168,7 +2213,7 @@ made in (a warning), `if … then …` on one line (an error), tabs. Still wrong
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function: the page's `script.js` (a classic script) doesn't run | only blocks are made `async`; a module script would allow it, and code read from one keeps it | put it under `when the page has loaded` |
+| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function, with a warning on the line: the page's `script.js` (a classic script) doesn't run | only blocks are made `async`; a module script would allow it, and code read from one keeps it | put it under `when the page has loaded` |
 
 ```intuicode js
 set n to 0

@@ -24,7 +24,9 @@
  * writer's own wrapping (a C++ main, a page's head) isn't shown, as in Split Mode.
  *
  * A region is { from, to, original: [code lines] or null, words: [the sentences as made], base: indentation,
- * needs?: [lines its code needs at the top] }. original is null while its sentences can't be code yet.
+ * needs?: [lines its code needs at the top], check?: { exact, reason } }. original is null while its sentences
+ * can't be code yet. check is the reader's check on the sentences as Translate made them (exact: they make
+ * exactly the same code); a region from a project file's sentences has none.
  * W: { LANG (IntuiLang.python), WEB, CPP, compile? }, the writers; compile(lang, text), when given, compiles the
  * file's text in its project (so names from the other files are known) and returns its result. No DOM here.
  */
@@ -502,7 +504,8 @@
     for (const p of done.slice().reverse()) {   // from the bottom up, so the lines above stay where they are
       const delta = p.w.words.length - (p.to - p.from + 1);
       rest = rest.filter(r => !p.absorbs.includes(r)).map(r => (r.from > p.to ? { ...r, from: r.from + delta, to: r.to + delta } : r));
-      rest.push({ from: p.from, to: p.from + p.w.words.length - 1, original: p.w.original, words: p.w.words, base: p.w.base });
+      // (check: what the reader's check found for these sentences as made: exact, or why not)
+      rest.push({ from: p.from, to: p.from + p.w.words.length - 1, original: p.w.original, words: p.w.words, base: p.w.base, check: { exact: p.w.exact, reason: p.w.reason } });
       out = out.slice(0, p.from).concat(p.w.words, out.slice(p.to + 1));
     }
     rest = rest.slice().sort((a, b) => a.from - b.from);

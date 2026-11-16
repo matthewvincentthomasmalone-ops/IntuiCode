@@ -4467,7 +4467,7 @@
     let html = '', n = 0;
     for (const r of sorted) {
       while (n < r.from) html += lineHtml(lines[n++], false);
-      html += `<div class="u-region${UNITY.unchanged(r, lines) ? '' : ' changed'}">${lines.slice(r.from, r.to + 1).map(l => lineHtml(l, true)).join('')}</div>`;
+      html += `<div class="u-region${UNITY.unchanged(r, lines) ? '' : ' changed'}">${uCheckBadge(r, lines)}${lines.slice(r.from, r.to + 1).map(l => lineHtml(l, true)).join('')}</div>`;
       n = r.to + 1;
     }
     while (n < lines.length) html += lineHtml(lines[n++], false);
@@ -4477,6 +4477,21 @@
     $('uSub').textContent = unity.lang ? `${langName(sec.lang)}, in one pane. The green parts are sentences.` : `${langName(sec.lang)}, as it is: it has no sentences, so nothing here turns green.`;
     uSync(); uTools();
     if (mode === 'unity') updateChip();
+  }
+  /* What the check found for a green part Translate made, on the part itself: ✓ exact (its sentences make exactly
+     the code they came from), not exact, or edited since (the check was on the sentences as made). A part from a
+     project file's sentences wasn't checked here, so it has none. */
+  const uCheckOf = (r, lines) => (!r.check ? null : !UNITY.unchanged(r, lines) ? 'edited' : r.check.exact ? 'exact' : 'loose');
+  function uCheckBadge(r, lines) {
+    const k = uCheckOf(r, lines);
+    return k ? `<span class="u-check ${k}" aria-hidden="true">${{ exact: '✓ exact', loose: '≠ not exact', edited: '✎ edited' }[k]}</span>` : '';
+  }
+  function uCheckSays(r, lines) {
+    const k = uCheckOf(r, lines);
+    if (k === 'exact') return '✓ Checked exact: these sentences make exactly the same code as the lines they came from.';
+    if (k === 'loose') return `≠ Not exact: ${r.check.reason || 'the check found code that comes back different'}.`;
+    if (k === 'edited') return '✎ Edited since it was checked: Original Code writes new code from these sentences, and that code isn\'t checked against anything.';
+    return '';
   }
   function uSync() {
     $('uHl').scrollTop = uTa.scrollTop; $('uHl').scrollLeft = uTa.scrollLeft;
@@ -4548,6 +4563,7 @@
         ${out && out.problems.some(p => p.line === li && p.errs.some(e => UNKNOWN_LINE.test(e))) ? closeMatchesHtml(sec, text, li, 'unity') : ''}
         ${text.trim() ? shapeHtml(sec, text) : ''}
         ${out && out.needs.length ? `<p class="ex-guide">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</p>` : ''}
+        ${uCheckOf(r, lines) ? `<p class="ex-guide u-check-says ${uCheckOf(r, lines)}">${escHtml(uCheckSays(r, lines))}</p>` : ''}
         <p class="ex-foot"><span>Green part · lines ${r.from + 1}–${r.to + 1}${part ? ` · ${escHtml(PARTS.typeOf(part.type).name)}` : ''}</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> Original Code</span></p>`;
       return;
     }
