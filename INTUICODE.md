@@ -2178,7 +2178,7 @@ the rule table, so the rules get evidence of their own.
   checks some example fails: all 82 value words and all 70 statements do. Two pairs that write the very same code, two ways of saying one thing, aren't counted:
   `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
   in z`. The tests do this for nine rules on every run, whatever the reader says.
-- **JavaScript: a website's Mechanics** (`lang/web_write.js`): 196 examples
+- **JavaScript: a website's Mechanics** (`lang/web_write.js`): 200 examples
   (`tests/helpers/meaning_js.mjs`), each a page (its Structure) and Mechanics, run in Node on a stand-in
   page (`tests/helpers/page.mjs`). It's not a browser: it has the page's elements, events, the browser's
   memory, `fetch` with set replies, timers and animation frames that wait until the test moves the clock
@@ -2190,10 +2190,12 @@ the rule table, so the rules get evidence of their own.
 - **JavaScript coverage** is counted rule by rule, as for Python. The writer's rules are in tables
   (`WEB.rules`): the value words (`JS_VALUE_RULES`, then `JS_WORDS` for comparisons and maths) and the
   statements (`RULES` in `compileJs`). A rule counts when an example that passes uses it. All 48 value words,
-  all 20 words for comparisons and maths, and 84 of 86 statements have one. The two without: `bring in … from …`
-  (it needs a second file and a module loader) and the rule that only says why a name can't be a name (it
-  writes no code). All 28 rules the reader's sentences use for `tests/corpus_web`'s script have one. Counted by
-  the Index, as before: 74 of 75 sentences and all 52 value words. The rule count found what the Index count
+  all 20 words for comparisons and maths, and all 86 statements have one. `bring in … from …` brings in a
+  second file the example gives, so the page loads script.js as a module (on the stand-in page, a module is
+  run as one: strict, its names its own, the file it brings in run once). A rule that refuses words is counted
+  by an example that says what the refusal must say (`refuses`): "set number of lives to 3" is refused because
+  "of" reads as part of a phrase. All 28 rules the reader's sentences use for `tests/corpus_web`'s script have one. Counted by
+  the Index, as before: all 75 sentences and all 52 value words. The rule count found what the Index count
   didn't: 32 rules the Index doesn't list (`otherwise if`, `while`, `repeat … times`, `stop the loop`, `show …`,
   `in any case` …) had no example. Each has one now.
 - **A wrong JavaScript rule is caught:** `--mutate` makes each rule do another's work, one at a time. A value
@@ -2203,7 +2205,7 @@ the rule table, so the rules get evidence of their own.
   edges, since closed: "item (k plus 1) of xs" on a list whose largest item was also that item; "a random number
   below 1" checked only as at least 0 and below 1, which `[]` is too; and "when the window has loaded" checked
   only after loading. The tests do this for six rules and four words on every run.
-- **JavaScript in a real browser:** the same 196 examples run again in Chrome (or Edge) without a window,
+- **JavaScript in a real browser:** the same 200 examples run again in Chrome (or Edge) without a window,
   driven through its DevTools protocol (`tests/helpers/browser.mjs`, nothing to install). Each page is the
   website as built, loaded by Chrome from an address of its own, so it has its own storage, and every request
   (the page, `style.css`, `script.js`, `fetch`, pictures, sounds) goes through Chrome's network code and is
@@ -2341,8 +2343,7 @@ examples are pinned by the example after it, which shows the writer's output as 
 fixed, its test fails, and this section is updated. The last table is the reading direction.
 
 Where the writer can tell, the line gets a warning, in the help under it and in Problems: Python's `is`
-written as Python, JavaScript's `fetch` at the left edge of the page's script, and C++'s whole numbers
-divided. `tests/meaning.test.mjs` checks that each row its section's example shows still warns. A C++ name
+written as Python, and C++'s whole numbers divided. `tests/meaning.test.mjs` checks that each row its section's example shows still warns. A C++ name
 used after its block is left to the compiler.
 
 ### Python writer
@@ -2373,11 +2374,12 @@ same = a == b
 Fixed on 2026-11-04: `add` on a number (`+=`), items and inputs split at "and", `not n is 5`
 (`!(n === 5)`), `1 is less than x is less than 10` (two tests), `is an empty list` (`.length === 0`),
 `answer is "yes" or "y"`, `last item of` a tool's result (runs it once), a name used after the block it was
-made in (a warning), `if … then …` on one line (an error), tabs. Still wrong:
-
-| You write | You get | Why | Write instead |
-|---|---|---|---|
-| `fetch from "/api/items" and store in items` at the left edge | `await` outside a function, with a warning on the line: the page's `script.js` (a classic script) doesn't run | only blocks are made `async`; a module script would allow it, and code read from one keeps it | put it under `when the page has loaded` |
+made in (a warning), `if … then …` on one line (an error), tabs. Fixed on 2026-11-17: a wait for the server
+at the left edge (`fetch from … and store in …`, `send …`) wrote `await` outside a function, which a classic
+script can't run, and `bring in … from …` wrote an `import` the page couldn't load. The page now loads
+script.js as a module (`<script type="module">`) when its code needs one: it brings in another file, or waits at
+the left edge. Otherwise it stays a classic script, because a module doesn't run from a page opened straight
+from the disk (file://), and a classic one does. Nothing is known to be still wrong here.
 
 ```intuicode js
 set n to 0

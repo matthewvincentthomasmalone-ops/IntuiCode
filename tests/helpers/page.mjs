@@ -180,6 +180,26 @@ export function makePage(html = '', { replies = {}, answers = [] } = {}) {
   vm.createContext(ctx);
   page.ctx = ctx; page.document = doc;
   page.run = (code, filename = 'script.js') => vm.runInContext(code, ctx, { filename, timeout: 2000 });
+  /* script.js as a module (<script type="module">), as near as a script can be: strict, its names its own (not the
+     window's), `await` at its left edge, and `import { a } from "./f.js"` from files ({ "./f.js": its code }), each
+     run once, with what it marks `export`. (The browser run checks the same examples as real modules.) */
+  page.runModule = (code, files = {}) => {
+    const loaded = {};
+    const wrap = (text, name) => {
+      const shared = [];
+      const body = text
+        .replace(/^import\s*\{([^}]*)\}\s*from\s*(["'])([^"']+)\2;?/gm, (m, names, q, from) => `const {${names}} = await __module(${JSON.stringify(from)});`)
+        .replace(/^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm, (m, n) => { shared.push(n); return m.replace(/^export\s+/, ''); })
+        .replace(/^export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm, (m, n) => { shared.push(n); return m.replace(/^export\s+/, ''); });
+      return `(async () => {\n'use strict';\n${body}\nreturn { ${shared.join(', ')} };\n})()`;
+    };
+    ctx.__module = (from) => {
+      const key = from.replace(/^\.\//, './');
+      if (!(key in files)) return Promise.reject(new TypeError(`Failed to fetch dynamically imported module: ${from}`));
+      return (loaded[key] ||= vm.runInContext(wrap(files[key], key), ctx, { filename: key, timeout: 2000 }));
+    };
+    return vm.runInContext(wrap(code, 'script.js'), ctx, { filename: 'script.js', timeout: 2000 }).catch((e) => { page.error = e; });
+  };
   // waiting for what's waiting: promises (a fetch, a reply's JSON) settle over a few turns
   page.settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
   const fire = async (target, ev) => { const out = target === 'window' ? Promise.all((page.windowListeners[ev.type] || []).map(fn => fn(ev))) : target.dispatchEvent(ev); await out.catch((e) => { page.error = e; }); await page.settle(); };

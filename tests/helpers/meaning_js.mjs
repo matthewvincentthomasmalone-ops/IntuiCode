@@ -230,15 +230,19 @@ JS_STATEMENTS.push(
   { lines: 'ask "Name?" and store in name', answers: ['Ann'], holds: 'name === "Ann" && page.shown[0] === "Name?"' },
   { lines: 'set colour of square to "red"', given: 'const square = { colour: "" };', holds: 'square.colour === "red"' },
   { lines: 'show "hi"', holds: 'page.logged[0] === "hi"' },
+  // script.js as a module, when its code needs one: it brings in another file's tools, or waits at the left edge.
+  // (A module's names are its own, not the window's, so these check the page.)
+  { page: SHOP, lines: 'bring in double from "./maths.js"\nset the text of total to the result of double with 21',
+    files: { './maths.js': 'export function double(n) {\n  return n * 2;\n}\n' }, holds: 'page.text("total") === "42" && typeof double === "undefined"' },
+  { page: SHOP, lines: 'fetch from "/api/items" and store in items\nset the text of total to length of items', replies: { '/api/items': [1, 2, 3] },
+    holds: 'page.text("total") === "3" && page.requests.length === 1' },
+  // words that can't be a name are refused, saying why
+  { lines: 'set number of lives to 3', refuses: '"number of lives" can\'t be a name' },
+  { lines: 'set 2nd place to 5', refuses: 'A name can\'t start with a number' },
 );
 
 // Rules with no example, by their words (as WEB.rules names them), and why.
-export const JS_RULES_NOT_RUN = {
-  'bring in … from …': 'brings in another file: needs a module loader and a second file',
-  "set … to … (a name that can't be one)": "writes no code: it says why the name can't be a name",
-};
+export const JS_RULES_NOT_RUN = {};
 
 // Index entries with no example, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
-export const NOT_RUN_JS = {
-  'bring in ‹fetchSales› from': 'brings in another file: needs a module loader and a second file',
-};
+export const NOT_RUN_JS = {};

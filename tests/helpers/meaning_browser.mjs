@@ -4,7 +4,7 @@
 // script.js, loaded by Chrome), and `then` clicks, types and presses keys with Chrome's own input.
 import { openBrowser } from './browser.mjs';
 import { makePage } from './page.mjs';
-import { compileExample, jsNameOf } from './meaning_web.mjs';
+import { compileExample, jsNameOf, refusedAsSaid } from './meaning_web.mjs';
 
 /* What runs in each page before its own scripts: the `page` the examples use, a clock the test moves on, a seeded
    Math.random, and the recording of drawing, sound and the clipboard (each call is then done for real). */
@@ -183,7 +183,9 @@ export async function show(tab, k, files, ex) {
 
 /* Runs one JavaScript example in the browser and checks it, as runOne does on the stand-in page. */
 async function runJsOne(tab, k, ex, made) {
-  const { raised } = await show(tab, k, { html: made.html, css: '', js: made.code }, ex);
+  // (the files it brings in, served beside script.js)
+  const more = Object.fromEntries(Object.entries(ex.files || {}).map(([p, body]) => [p.replace(/^\.\//, '/'), { type: 'text/javascript', body }]));
+  const { raised } = await show(tab, k, { html: made.html, css: '', js: made.code, more }, ex);
   if (ex.raises) {
     return raised && (raised.name === ex.raises || String(raised.message).includes(ex.raises)) ? { ok: true } : { ok: false, why: `should stop with ${ex.raises}, but ${raised ? `stopped with ${raised.name}: ${raised.message}` : "didn't stop"}` };
   }
@@ -210,6 +212,8 @@ async function runJsOne(tab, k, ex, made) {
 export function runJsInBrowser(WEB, examples) {
   return inTabs(examples, async (tab, k, ex) => {
     const made = compileExample(WEB, ex);
+    const refused = refusedAsSaid(ex, made);
+    if (refused) return { ex, ...made, ...refused };
     if (made.errs.length) return { ex, ...made, ok: false, why: `doesn't translate: ${made.errs[0]}` };
     let r;
     try { r = await runJsOne(tab, k, ex, made); } catch (e) { r = { ok: false, why: `couldn't run in the browser: ${e.message}` }; }
