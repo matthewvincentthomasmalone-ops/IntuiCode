@@ -189,11 +189,12 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 - In a real browser (Chrome or Edge, through its DevTools protocol, nothing installed): the 161 JavaScript
   examples again, with Chrome's own input, network and dialogs, and 81 Structure and Styling examples checked
   by what Chrome makes of them. Every Structure and Styling entry in the Index has one.
-- TypeScript's own words: 58 examples. Types are checked by TypeScript's own checker, and components are run by
-  React in Chrome. 34 of 38 Index sentences and 25 of 26 words have one; the 5 without need react-router,
-  TanStack Query or shadcn/ui. 7 of 7 wrong type words are caught. The owner approved five development packages
-  for this (2026-11-17): `typescript`, `react`, `react-dom`, `@types/react`, `@types/react-dom`. They're for the
-  tests only and aren't shipped.
+- TypeScript's own words: 61 examples. Types are checked by TypeScript's own checker, and components are run by
+  React in Chrome. 37 of 38 Index sentences and 25 of 26 words have one; the 2 without need react-router or
+  shadcn/ui. 7 of 7 wrong type words are caught. The owner approved five development packages for this
+  (2026-11-17): `typescript`, `react`, `react-dom`, `@types/react`, `@types/react-dom`. They're for the tests
+  only and aren't shipped. A sixth, `@tanstack/react-query`, came with the library packs the same day, so
+  TanStack Query's three sentences run in the library itself.
 - JavaScript's rules are in tables (2026-11-17), as Python's are: 48 value words, 20 words for comparisons and
   maths, and 86 statements, each named. The code they write is the same as before. They're now counted one by one
   (all value words and words, and 84 of 86 statements, have an example), and 128 of 128 rules made to do another's
@@ -261,7 +262,8 @@ statements that differ are kept as `python:` lines automatically and the check r
    clash. So no grammar rewrite; move to one if the check finds rules that clash.
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
    libraries AI tools use most, shared by Write and Read modes. Since 2026-11-17: requests, pathlib and pandas
-   (Python), each with examples that run; React Query and Supabase (TypeScript).
+   (Python), each with examples that run; React Query (TypeScript), run in the library itself; Supabase,
+   checked by the code it writes.
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
    IntuaCode is the verifiable layer. Today nothing in it guesses: every summary comes from a rule, and the
    app calls no AI model (`tests/no-ai.test.mjs` fails if code starts calling one). Any AI feature added later

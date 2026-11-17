@@ -63,9 +63,14 @@ export const nameOf = (ex) => (ex.lines != null ? ex.lines.replace(/\n\s*/g, ' /
 // tkinter (tests/helpers/tk_standin.py), so window parts run without a screen, and requests
 // (tests/helpers/requests_standin.py), so web replies come from the example, not the internet.
 const RUNNER = String.raw`
-import builtins, contextlib, io, json, os, random, sys, tempfile, time
+import atexit, builtins, contextlib, io, json, os, random, shutil, sys, tempfile, time
 sys.stdin.reconfigure(encoding="utf-8")
 home, real_sleep, real_input = os.getcwd(), time.sleep, builtins.input
+# Every folder made here (each run's, and the examples' own) is in one of this run's, which goes when it ends: a
+# sweep makes hundreds of thousands, and left in the computer's temp folder they made each new one slow to make.
+scratch = tempfile.mkdtemp(prefix="intuicode-meaning-")
+tempfile.tempdir = scratch
+atexit.register(lambda: (os.chdir(home), shutil.rmtree(scratch, ignore_errors=True)))
 sys.path.insert(0, sys.argv[1])
 import web_standin   # (Flask and FastAPI, stood in: tests/helpers/web_standin.py)
 web_standin.put_in_place()

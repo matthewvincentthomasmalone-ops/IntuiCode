@@ -5,9 +5,10 @@
 //     check clean, each line it `accepts` must check clean after it, and each line it `refuses` must be an error;
 //   - components, by React itself in a real browser (tests/helpers/browser.mjs): the code is compiled by
 //     TypeScript, React shows the main component, and `then` and `holds` work as for JavaScript's examples.
-// Examples: tests/helpers/meaning_ts_examples.mjs. Needs typescript, react and react-dom (dev packages).
+// Examples: tests/helpers/meaning_ts_examples.mjs. Needs typescript, react and react-dom (dev packages), and
+// @tanstack/react-query for its pack's examples.
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './engine.mjs';
 import { inTabs, show, sitePattern } from './meaning_browser.mjs';
@@ -15,7 +16,7 @@ import { inTabs, show, sitePattern } from './meaning_browser.mjs';
 const need = createRequire(path.join(ROOT, 'package.json'));
 /* Whether the packages are there: null, or why not. */
 export function missingPackages() {
-  const gone = ['typescript', 'react', 'react-dom', '@types/react'].filter(p => !existsSync(path.join(ROOT, 'node_modules', p, 'package.json')));
+  const gone = ['typescript', 'react', 'react-dom', '@types/react', '@tanstack/react-query'].filter(p => !existsSync(path.join(ROOT, 'node_modules', p, 'package.json')));
   return gone.length ? `needs ${gone.join(', ')} (npm install)` : null;
 }
 let tsLib;
@@ -92,12 +93,51 @@ export function checkTypes(TS, examples) {
 
 /* ---- Components: React in a real browser ---- */
 
-const PAGE = '<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="utf-8"><title>React</title></head>\n<body>\n  <div id="root"></div>\n  <script src="/react.js"></script>\n  <script src="/react-dom.js"></script>\n  <script src="/script.js"></script>\n</body>\n</html>\n';
+const PAGE = '<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="utf-8"><title>React</title></head>\n<body>\n  <div id="root"></div>\n  <script src="/react.js"></script>\n  <script src="/react-dom.js"></script>\n  <script src="/libs.js"></script>\n  <script src="/script.js"></script>\n</body>\n</html>\n';
 let umd;
 const reactFiles = () => (umd ||= {
   '/react.js': { type: 'text/javascript', body: readFileSync(path.join(ROOT, 'node_modules/react/umd/react.development.js'), 'utf8') },
   '/react-dom.js': { type: 'text/javascript', body: readFileSync(path.join(ROOT, 'node_modules/react-dom/umd/react-dom.development.js'), 'utf8') },
 });
+
+/* The packs' libraries that have no browser build of their own (TanStack Query), as one script: each of their
+   CommonJS files a module, found by require as Node would, with React the page's. It puts each library on
+   window.IntuiLibs. Only for the examples that bring one in. */
+const LIBS = { '@tanstack/react-query': 'build/modern/index.cjs', '@tanstack/query-core': 'build/modern/index.cjs' };
+let libScript;
+function libsFile() {
+  if (libScript) return libScript;
+  const files = [];
+  for (const pkg of Object.keys(LIBS)) {
+    const dir = path.posix.dirname(`${pkg}/${LIBS[pkg]}`);
+    for (const f of readdirSync(path.join(ROOT, 'node_modules', dir)).filter(f => f.endsWith('.cjs'))) {
+      files.push(`${JSON.stringify(`${dir}/${f}`)}: function (require, module, exports) {\n${readFileSync(path.join(ROOT, 'node_modules', dir, f), 'utf8')}\n}`);
+    }
+  }
+  const mains = Object.fromEntries(Object.entries(LIBS).map(([p, m]) => [p, `${p}/${m}`]));
+  return (libScript = { type: 'text/javascript', body: `(() => {
+  const process = { env: { NODE_ENV: 'development' } };
+  const files = {\n${files.join(',\n')}\n};
+  const mains = ${JSON.stringify(mains)};
+  const jsx = (type, props, key) => React.createElement(type, key === undefined ? props : { ...props, key });
+  const runtime = { jsx, jsxs: jsx, Fragment: React.Fragment };
+  const made = {};
+  const load = (id) => {
+    if (!files[id]) throw new Error('nothing to bring in at ' + id);
+    if (!made[id]) { const module = { exports: {} }; made[id] = module; files[id](from(id), module, module.exports); }
+    return made[id].exports;
+  };
+  const from = (id) => (name) => {
+    if (name === 'react') return window.React;
+    if (name === 'react/jsx-runtime') return runtime;
+    if (mains[name]) return load(mains[name]);
+    if (name.startsWith('./')) return load(id.slice(0, id.lastIndexOf('/') + 1) + name.slice(2));
+    throw new Error('nothing to bring in from ' + name);
+  };
+  window.IntuiLibs = { '@tanstack/react-query': load(mains['@tanstack/react-query']) };
+})();` });
+}
+const usesLibs = (made) => Object.values(made.files).some(code => Object.keys(LIBS).some(p => code.includes(JSON.stringify(p))));
 
 /* The files compiled by TypeScript, as one script: each file a module (require finds react, react-dom and the
    example's other files), then React shows the main file's main component in #root, unless the file does. */
@@ -113,6 +153,7 @@ function scriptOf(made, ex) {
   const require = (name) => {
     if (name === 'react') return window.React;
     if (name === 'react-dom' || name === 'react-dom/client') return window.ReactDOM;
+    if (window.IntuiLibs && window.IntuiLibs[name]) return window.IntuiLibs[name];
     const key = name.replace(/^\\.\\//, '').replace(/\\.(?:tsx?|jsx?)$/, '');
     if (!sources[key]) throw new Error('nothing to bring in from ' + name);
     if (!made[key]) { const module = { exports: {} }; made[key] = module; sources[key](require, module, module.exports); }
@@ -120,7 +161,11 @@ function scriptOf(made, ex) {
   };
   const main = require('main');
   ${ex.rendersItself ? '' : `const App = main.default || main[${JSON.stringify(ex.component || '')}];
-  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, ${ex.props ? JSON.stringify(ex.props) : '{}'}));`}
+  let shown = React.createElement(App, ${ex.props ? JSON.stringify(ex.props) : '{}'});
+  ${ex.queryClient ? `// (TanStack Query: a client for the app, as its own main file would give it; no trying again)
+  const Q = window.IntuiLibs['@tanstack/react-query'];
+  shown = React.createElement(Q.QueryClientProvider, { client: new Q.QueryClient({ defaultOptions: { queries: { retry: false } } }) }, shown);` : ''}
+  ReactDOM.createRoot(document.getElementById('root')).render(shown);`}
 })();`;
 }
 
@@ -131,7 +176,7 @@ export async function runComponents(TS, examples) {
     const made = translateTs(TS, ex);
     if (made.errs.length) return { ok: false, why: `doesn't translate: ${made.errs[0]}` };
     try {
-      const { raised } = await show(tab, 2000 + k, { html: PAGE, css: '', js: scriptOf(made, ex), more: reactFiles() }, ex);
+      const { raised } = await show(tab, 2000 + k, { html: PAGE, css: '', js: scriptOf(made, ex), more: { ...reactFiles(), '/libs.js': usesLibs(made) ? libsFile() : { type: 'text/javascript', body: '' } } }, ex);
       if (raised) return { ok: false, why: `stopped with ${raised.name}: ${raised.message}` };
       // React's own warnings (a list without keys, a state change it can't make) count as failing
       const warned = await tab.run('page.logged.filter(l => /^Warning:/.test(l))');

@@ -29,7 +29,7 @@ import { findChrome } from '../tests/helpers/browser.mjs';
 import { runJsInBrowser, runSiteInBrowser, siteCoverage, siteNameOf, mutateContainers } from '../tests/helpers/meaning_browser.mjs';
 import { HTML_STRUCTURE, HTML_STYLING, NOT_RUN_HTML } from '../tests/helpers/meaning_html.mjs';
 import { missingPackages, runTsExamples, tsCoverage, tsNameOf, mutateTypeWords } from '../tests/helpers/meaning_ts.mjs';
-import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, NOT_RUN_TS } from '../tests/helpers/meaning_ts_examples.mjs';
+import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, TS_QUERY, NOT_RUN_TS } from '../tests/helpers/meaning_ts_examples.mjs';
 
 const args = process.argv.slice(2);
 const mutate = args.includes('--mutate');
@@ -228,7 +228,7 @@ const noPackages = missingPackages();
 if (noPackages) console.log(`\nTypeScript: ${noPackages}, so its examples are skipped`);
 else {
   const { TS } = loadEngine();
-  const TS_ALL = [...TS_TYPES, ...TS_FILES, ...TS_REACT, ...TS_PACKS];
+  const TS_ALL = [...TS_TYPES, ...TS_FILES, ...TS_REACT, ...TS_PACKS, ...TS_QUERY];
   const res = await runTsExamples(TS, TS_ALL, { browser: !!findChrome() });
   tsFailed = res.filter(r => !r.ok);
   const rows = tsCoverage(TS, res, NOT_RUN_TS);
