@@ -3,7 +3,8 @@
 // the English says, worked out by hand (tests/helpers/meaning_python.mjs). Used by tests/meaning.test.mjs and
 // tools/meaning.mjs.
 import { spawnSync } from 'node:child_process';
-import { PYTHON } from './engine.mjs';
+import path from 'node:path';
+import { PYTHON, ROOT } from './engine.mjs';
 
 /* A value word's name, from the words it was written with: "first item of x → x[0]". */
 export function ruleLabel(r) {
@@ -56,10 +57,14 @@ export const nameOf = (ex) => (ex.lines != null ? ex.lines.replace(/\n\s*/g, ' /
 // Runs each job's code (runs times, random seeded 0, 1, 2 …) and checks it. What the words mean is worked out
 // in a namespace of its own, from the given lines only, so it never sees the translated code. Shown text is
 // caught, "ask" gets the job's answers, "wait" is noted instead of waited, and the folder is put back after.
+// Flask and FastAPI are stood in (tests/helpers/web_standin.py), so routes run without either installed.
 const RUNNER = String.raw`
 import builtins, contextlib, io, json, os, random, sys, tempfile, time
 sys.stdin.reconfigure(encoding="utf-8")
 home, real_sleep, real_input = os.getcwd(), time.sleep, builtins.input
+sys.path.insert(0, sys.argv[1])
+import web_standin   # (Flask and FastAPI, stood in: tests/helpers/web_standin.py)
+web_standin.put_in_place()
 def same(a, b):
     return type(a) is type(b) and a == b
 STEPS = 100000   # lines of its own an example may run: one that runs more has a loop that doesn't end
@@ -151,7 +156,7 @@ export function runExamples(L, examples) {
     code: m.code, given: m.ex.given || '', means: m.ex.means ?? null, names: { ...m.ex.after, ...m.ex.names }, prints: m.ex.prints ?? null,
     input: m.ex.input || null, raises: m.ex.raises || null, holds: m.ex.holds || null, runs: m.ex.runs || 1,
   }));
-  const run = spawnSync(PYTHON, ['-c', RUNNER], { input: JSON.stringify(jobs), maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' });
+  const run = spawnSync(PYTHON, ['-c', RUNNER, path.join(ROOT, 'tests/helpers')], { input: JSON.stringify(jobs), maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' });
   if (run.status !== 0) throw new Error(run.stderr);
   const checked = JSON.parse(run.stdout);
   return made.map((m, i) => {

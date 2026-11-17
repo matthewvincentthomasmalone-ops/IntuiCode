@@ -153,6 +153,8 @@ export const EXAMPLES = [
 
 // A folder of its own for the examples that make files (the runner goes back to where it was after each)
 const TEMP = 'import os, tempfile\nos.chdir(tempfile.mkdtemp())';
+// A Flask app in words (its examples ask it through app.test_client(), as Flask's own tests do)
+const FLASK = 'bring in Flask, jsonify and request from flask\nset app to a new Flask with __name__';
 
 export const STATEMENTS = [
   // Exact code, notes and descriptions
@@ -263,13 +265,25 @@ export const STATEMENTS = [
   { lines: 'wait 3 seconds', holds: 'slept == [3]' },
   { lines: 'wait 2 minutes', holds: 'slept == [120]' },
   { lines: 'wait 500 milliseconds', holds: 'slept == [0.5]' },
+  // Web routes, on a stand-in Flask and FastAPI (tests/helpers/web_standin.py): each sends the app requests
+  // through its test client, as Flask's and FastAPI's own do. A route only for GET turns a POST away (405).
+  { lines: `${FLASK}\nwhen app gets GET at "/hi"\ndefine hi\n    give back {"n": 1} as a JSON reply`,
+    holds: 'app.test_client().get("/hi").get_json() == {"n": 1} and app.test_client().get("/hi").is_json and app.test_client().post("/hi").status_code == 405 and app.test_client().get("/").status_code == 404' },
+  { lines: `${FLASK}\nwhen app gets POST at "/add"\ndefine add\n    set data to the JSON sent with request\n    give back (item "n" of data plus 1) as a JSON reply`,
+    holds: 'app.test_client().post("/add", json={"n": 4}).get_json() == 5 and app.test_client().get("/add").status_code == 405' },
+  { lines: `${FLASK}\nwhen app gets GET and POST at "/both"\ndefine both\n    give back request.method`,
+    holds: 'app.test_client().get("/both").text == "GET" and app.test_client().post("/both").text == "POST" and app.test_client().put("/both").status_code == 405' },
+  { lines: `${FLASK}\nwhen app gets GET at "/double/<int:k>"\ndefine double using k\n    give back (k times 2) as text`,
+    holds: 'app.test_client().get("/double/4").text == "8" and app.test_client().get("/double/x").status_code == 404' },
+  // ("a request", with no kinds named: Flask answers GET there, and the note says so)
+  { lines: `${FLASK}\nwhen app gets a request at "/page"\ndefine page\n    give back "hello"`, holds: 'app.test_client().get("/page").text == "hello"' },
+  { lines: `${FLASK}\nwhen app handles GET at "/ping"\ndefine ping\n    give back "pong"`,
+    holds: 'app.test_client().get("/ping").text == "pong" and app.test_client().post("/ping").status_code == 405' },
+  { lines: 'bring in FastAPI from fastapi\nset app to a new FastAPI\nwhen app handles POST at "/items" with status_code=201\ndefine make_item using name\n    give back {"made": name}',
+    given: 'from fastapi.testclient import TestClient', holds: 'TestClient(app).post("/items?name=pen").status_code == 201 and TestClient(app).post("/items?name=pen").json() == {"made": "pen"} and TestClient(app).get("/items").status_code == 405' },
 ];
 
 // Rules with no example yet, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
 export const NOT_RUN = {
-  'x as a JSON reply': 'needs a Flask app to make the reply',
-  'JSON sent with x': 'needs a Flask request to read it from',
-  'when x gets y at z': 'a Flask route: needs a Flask app',
-  'when x handles GET': 'a FastAPI or Flask route: needs the web framework',
   'add a x saying y to z': 'a tkinter window part: needs a window to put it in',
 };

@@ -2155,15 +2155,20 @@ the rule table, so the rules get evidence of their own.
   error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
   the tests.
 - **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
-  passes uses it. Today 87 of 89 value words and 70 of 73 statements have one. The five without need a web
-  framework or a window: `as a JSON reply`, `JSON sent with`, the Flask and FastAPI routes (`when app gets
-  …`, `when app handles …`) and tkinter's `add a tk.Button …`. Of the rules the reader's sentences use for
-  `samples/`, `tests/corpus/` and `tests/heldout/`, 44 of 46 value words and 44 of 47 statements have one.
+  passes uses it. Today all 89 value words and 72 of 73 statements have one. The one without needs a window:
+  tkinter's `add a tk.Button …`. Of the rules the reader's sentences use for `samples/`, `tests/corpus/` and
+  `tests/heldout/`, all 46 value words and 46 of 47 statements have one.
+- **Web routes** run on a stand-in Flask and FastAPI (`tests/helpers/web_standin.py`), so neither needs
+  installing. It isn't a server: an app keeps its routes, and its test client sends each request straight
+  to the route that matches, as Flask's and FastAPI's own test clients do. It does what they do for the parts
+  the words use, and `tests/test_web_standin.py` pins that: a route for GET turns a POST away (405), a path no
+  route has is 404, `<int:k>` takes only a number, `jsonify` and `request` outside a request stop, a Flask
+  route that gives back a number is answered 500, and `status_code=` is FastAPI's (Flask stops on it). What
+  it can't show is anything only a real server does: ports, headers, cookies, several requests at once.
   A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
 - **The examples notice a wrong rule:** `npm run meaning -- --mutate` makes each rule do another's work,
   one at a time: a value word gets another's code, a statement another's with as many words to fill in. It
-  checks some example fails: 80 of 82 value words and 67 of 69 statements do (the misses are the web rules
-  with no example). Two pairs that write the very same code, two ways of saying one thing, aren't counted:
+  checks some example fails: all 82 value words and all 69 statements do. Two pairs that write the very same code, two ways of saying one thing, aren't counted:
   `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
   in z`. The tests do this for nine rules on every run, whatever the reader says.
 - **JavaScript: a website's Mechanics** (`lang/web_write.js`): 196 examples

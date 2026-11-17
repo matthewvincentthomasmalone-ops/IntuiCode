@@ -141,6 +141,10 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   waited). 70 of 73 statements have one; the three without need Flask, FastAPI or a window. A loop that doesn't
   end fails its example instead of hanging the tests. Making statements do each other's work found one gap,
   closed with an example: "otherwise if" written as a plain "if" passed when only one condition was true.
+- Web routes (2026-11-17): 7 examples run on a stand-in Flask and FastAPI (`tests/helpers/web_standin.py`),
+  so every value word and every statement but tkinter's has one, and every wrong rule is caught. It found one
+  gap in the notes: "when app gets a request at …" (no kinds named) is answered for GET only, as Flask does;
+  the note now says so.
 - JavaScript (2026-11-17): 161 examples of a website's Mechanics, run in Node on a stand-in page
   (`tests/helpers/page.mjs`: elements, events, the browser's memory, `fetch` with set replies, timers moved on by
   hand, a canvas pen and sound that note their calls). The JavaScript writer's rules are written in place, so its
@@ -207,6 +211,7 @@ how many of the rules the reader's sentences use for the corpus do).
 |------|---------------------------------|-------------------------|--------------------|
 | 2026-11-16 value words | 87/89 (the two without need Flask) | 44/46 | 80/82 |
 | 2026-11-17 statements too (value words / statements) | 87/89 / 70/73 (the five without need Flask, FastAPI or a window) | 44/46 / 44/47 | 80/82 / 67/69 |
+| 2026-11-17 web routes on a stand-in Flask and FastAPI (value words / statements) | 89/89 / 72/73 (the one without needs a window) | 46/46 / 46/47 | 82/82 / 69/69 |
 | 2026-11-17 JavaScript's Mechanics, by its Index (sentences / value words) | 74/75 / 52/52 (the one without brings in another file) | 19/19 (`tests/corpus_web`) | 20/20 of its words for comparisons and maths |
 
 `tests/heldout/` holds programs written *after* the rules, to measure fairly. Once a
