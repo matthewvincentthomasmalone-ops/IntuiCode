@@ -47,6 +47,9 @@ export const EXAMPLES = [
   { say: 'the absolute value of n', given: 'n = -5', means: '5' },
   { say: 'x rounded to 2 places', given: 'x = 3.14159', means: '3.14' },
   { say: 'x rounded', given: 'x = 2.6', means: '3' },
+  // (an exact half goes to the even neighbour, as Python's round does, and the note says)
+  { say: 'x rounded', given: 'x = 2.5', means: '2' },
+  { say: 'x rounded', given: 'x = 3.5', means: '4' },
   { say: 'xs sorted by len biggest first', given: 'xs = ["bb", "a", "ccc"]', means: '["ccc", "bb", "a"]' },
   { say: 'xs sorted by len', given: 'xs = ["bb", "a", "ccc"]', means: '["a", "bb", "ccc"]' },
   { say: 'xs sorted biggest first', given: 'xs = [3, 1, 2]', means: '[3, 2, 1]' },
@@ -234,6 +237,9 @@ export const STATEMENTS = [
   { lines: 'set name to "Ann"\nshow "Hi {name}"', prints: 'Hi Ann\n' },
   // (what's shown next carries on after a space, as between things joined with "and")
   { lines: 'show "a" on the same line\nshow "b"', prints: 'a b\n' },
+  // (and "without ending the line" carries on straight after, with no space)
+  { lines: 'show "a" without ending the line\nshow "b"', prints: 'ab\n' },
+  { lines: 'show "a" without a new line\nshow "b"', prints: 'ab\n' },
   { lines: 'show a blank line', prints: '\n' },
   { lines: 'ask "Name? " and store in name', input: ['Bob'], names: { name: '"Bob"' }, prints: 'Name? ' },
   { lines: 'ask for a number "Age? " and store in age', input: ['42'], names: { age: '42' }, prints: 'Age? ' },

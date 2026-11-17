@@ -127,6 +127,12 @@ class PlainWords(unittest.TestCase):
         self.assertIn("bring in Flask and request from flask", lines)
         self.assertIn("python: from x import everything", lines)   # "everything" is what * is called
 
+    def test_staying_on_the_line_says_whether_a_space_follows(self):
+        lines = self.said('print("a", end=" ")\nprint("b", end="")\nprint("c", end="-")\n')
+        self.assertIn('show "a" on the same line', lines)
+        self.assertIn('show "b" without ending the line', lines)
+        self.assertIn("python: print('c', end='-')", lines)   # (any other ending stays code)
+
     def test_calls_read_as_values(self):
         lines = self.said("from flask import Flask\napp = Flask(__name__)\ndef f():\n    return 1\nx = f()\ny = list(x)\n")
         self.assertIn("set app to a new Flask with __name__", lines)

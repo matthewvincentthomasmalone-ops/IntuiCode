@@ -382,7 +382,9 @@ exit        = "stop the program" | "end the program" | "quit" | "exit" [ "the pr
 blank-line  = ( "show" | "print" | "say" | "display" ) ( "nothing" | "a blank line" | "an empty line" | "a new line" | "blank" ) ;
                                                                           (* → print() *)
 show        = ( "show" | "print" | "display" | "say" | "write" | "output" ) items
-              [ "on the same line" | "without a new line" | "and stay on this line" ] ;  (* → print(items[, end=" "]) *)
+              [ "on the same line" | "and stay on this line" | "without a new line" | "without ending the line" ] ;
+                                    (* → print(items[, end=" "]): on the same line, after a space;
+                                         print(items, end=""): without ending the line, straight after *)
 ask         = "ask" [ "for" | "the user for" | "them for" ] [ "a" | "an" ]
               [ "whole number" | "number" | "decimal" [ "number" ] | "text" | "word" | "answer" | "name" ] [ value ]
               [ "and" ] ( "store" | "save" | "keep" | "put" | "remember" ) [ "it" | "that" | "the answer" | "the reply" ]
@@ -1667,7 +1669,7 @@ target language's own precedence decides the rest.
 | 4 | `sum of X`, `total of X` | `sum(X)` |
 | 5 | `biggest in X` (`largest`, `highest`, `maximum`, `max`; `of`, `in`) / `smallest in X` (`lowest`, `minimum`, `min`) | `max(X)` / `min(X)` |
 | 6 | `square root of X` / `absolute [value] of X` | `math.sqrt(X)` (imports `math`) / `abs(X)` |
-| 7 | `X rounded to N [decimal] places` / `X rounded` | `round(X, N)` / `round(X)` |
+| 7 | `X rounded to N [decimal] places` / `X rounded` | `round(X, N)` / `round(X)` (an exact half goes to the even neighbour: 2.5 is 2) |
 | 8 | `sorted X`, `X sorted` | `sorted(X)` |
 | 9 | `X as [a] [whole] number` / `X as [a] decimal [number]` / `X as text` | `int(X)` / `float(X)` / `str(X)` |
 | 10 | `X in capitals` (`capital letters`, `uppercase`, `upper case`) / `X in lowercase` (`lower case`, `small letters`) | `X.upper()` / `X.lower()` |
@@ -2141,12 +2143,14 @@ the rule table, so the rules get evidence of their own.
   result is the value the words say, worked out by hand (`tests/helpers/meaning_python.mjs`). The type
   counts too: 3 is not 3.0. Where the words decide an edge, it's tested: "between 1 and 5" counts 5, "is more
   than 5" doesn't, "random number from 1 to 6" gives 6 too, "x is not nothing" is true for 0, "sorted xs"
-  leaves xs as it was, "n plus 1 is even" is about n plus 1.
+  leaves xs as it was, "n plus 1 is even" is about n plus 1, "x rounded" takes 2.5 to 2 and 3.5 to 4 (Python's
+  `round` goes to the even neighbour on an exact half, and the note says so).
 - **Python's statements** (the writer's `RULES`): each example is a few lines of sentences, run as a program.
   What it must do is written by hand: the values it leaves in names, what it shows (exactly), the error it
   stops with. "ask" gets the example's answers, "wait" is noted instead of waited, and files go in a folder
   of their own. Edges again: "count from 1 to 5" counts 5, "repeat 3 times counting with i" starts at 0,
-  "repeat until n is 4" doesn't run when n is already 4, "otherwise if" doesn't run after an "if" that did,
+  "repeat until n is 4" doesn't run when n is already 4, "show a on the same line" leaves a space before
+  what's shown next and "show a without ending the line" doesn't, "otherwise if" doesn't run after an "if" that did,
   "take 2 out of xs" takes only the first 2, "divide n by 2" leaves a decimal, "in any case" runs after an
   error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
   the tests.
