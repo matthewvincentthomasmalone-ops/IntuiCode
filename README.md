@@ -146,8 +146,10 @@ the part stays as code and says why.
 the files you change, keeping their line endings. **Run** starts the project's own `npm run dev` and shows it in
 the Preview; each change is saved a moment later and the dev server shows it, keeping the page's state. Its
 packages are the project's own (`$ npm install` once, with [Node.js](https://nodejs.org)). Other sites the app
-contacts are allowed, and the terminal lists each one. The browser version reads, edits and checks React apps
-but doesn't run them.
+contacts are allowed, and the terminal lists each one. The browser version can't start a dev server, so it
+builds the app in the page with esbuild and loads its packages (React and the rest) from esm.sh, at the versions
+its package.json names: the Preview needs the internet there. It does what Vite does for the usual parts (the
+`@/` alias, .env's `VITE_` settings, Tailwind with the project's config) but not what vite.config's plugins add.
 
 **Files and folders: one project, several languages**
 
