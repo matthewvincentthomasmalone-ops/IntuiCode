@@ -1261,6 +1261,14 @@ element's props (`<A b c>` and `<A c b>` differ); `{" "}` and a space in the tex
 ## Grammar: C++ and Arduino
 
 C++ and Arduino share one writer. Arduino adds the board sentences and changes some outputs (marked).
+
+A program can be several files, each with its own sentences. A header (`maths.h`) says what the others can use:
+tools (`declare add using whole number a, whole number b giving back a whole number`), classes and constants. It
+has no steps; the writer starts it with `#pragma once` (unless it guards itself as code, `#ifndef …`) and includes
+only what it uses. A .cpp file (`maths.cpp`) includes it (`include "maths.h"`) and defines the tools with
+`define …`. Only the file with steps at the left edge gets `main`. The desktop app's Run builds every .cpp file
+of the project together. Read back, a header's `#pragma once` goes without saying, `int add(int a, int b);` reads
+as `declare …`, and a .cpp file with no `main` comes back with none.
 Types are worked out from values unless a sentence names them; see [Context](#c-and-arduino-context).
 
 ```ebnf
@@ -1286,6 +1294,8 @@ made        = "when" ( "made" | "created" | "built" ) [ ( "using" | "with" ) par
 (* Tools: at the left edge or in a class, placed above main *)
 define      = "define" name [ "using" params ] [ "giving back" [ "a" | "an" ] type ] [ [ "," ] "without changing the object" ] ;
                 (* → type name(params) { … }, auto when unsaid;  without changing the object (in a class) → … const { … } *)
+declare     = "declare" name [ "using" params ] "giving back" [ "a" | "an" ] type ;
+                (* → type name(params); a tool other files can use, defined in another: in a header. Every input needs a type *)
 param       = [ type ] name ;
 type        = "whole number" | "number" | "decimal" | "text" | "words" | "yes/no" [ "value" ] | "character" | "nothing"
             | "list of" type | c++-type | class-name
@@ -3181,6 +3191,7 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 |  | `set item ‹0› of ‹list› to ‹value›` | `list[0] = value;` | Positions start at 0. Also "set the last item of ‹list› to ‹value›". |
 | **Tools** | `define ‹name› using ‹inputs›` | `auto name(auto inputs) {` | Tools go above main automatically. |
 |  | `define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›` | `double name(double w, double h) {` | Name the kinds: whole number, decimal, text, yes/no, nothing. |
+|  | `declare ‹add› using ‹whole number a›, ‹whole number b› giving back ‹a whole number›` | `int add(int a, int b);` | In a header (a .h file): says what a tool takes and gives back, so other files can use it. A .cpp file defines it, with "define …". The file with steps at the left edge has main. |
 |  | `define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›` | `double average(const std::vector<int>& values) {` | "read-only" looks at the caller's value without copying it; "the caller's" lets the tool change it. |
 |  | `give back ‹value›` | `return value;` |  |
 |  | `leave the tool now` | `return;` | Leaves a tool that gives nothing back. |

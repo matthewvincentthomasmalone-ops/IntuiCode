@@ -3663,6 +3663,15 @@
         },
         {
           "topic": "Tools",
+          "say": "declare ‹add› using ‹whole number a›, ‹whole number b› giving back ‹a whole number›",
+          "becomes": "int add(int a, int b);",
+          "folders": [
+            "program"
+          ],
+          "tip": "In a header (a .h file): says what a tool takes and gives back, so other files can use it. A .cpp file defines it, with \"define …\". The file with steps at the left edge has main."
+        },
+        {
+          "topic": "Tools",
           "say": "define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›",
           "becomes": "double average(const std::vector<int>& values) {",
           "folders": [

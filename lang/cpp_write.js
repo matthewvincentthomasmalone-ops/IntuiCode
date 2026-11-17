@@ -909,7 +909,7 @@
       let m;
       if ((m = s.match(/^(?:set|let|make|increase|decrease|multiply|divide)\s+([A-Za-z_]\w*)\s+(?:to|be|by)\s+(.+)$/i)) && /\d\.\d|\bdivided by\b|\bas (?:a )?decimal\b|\bsquare root\b/i.test(m[2].replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/\bwhole part of\s+\S+\s+divided by\b/gi, ''))) x.decimal.add(m[1]);
       if ((m = s.match(/^define\s+(?:an?\s+)?(?:class|structure|struct)\s+([A-Za-z_]\w*)/i))) x.classes.add(m[1]);
-      else if ((m = s.match(/^define\s+([A-Za-z_]\w*)/i))) x.fns.add(m[1]);
+      else if ((m = s.match(/^(?:define|declare)\s+([A-Za-z_]\w*)/i))) x.fns.add(m[1]);
       if ((m = s.match(/^let\s+([A-Za-z_]\w*)\s+stand for\s/i))) x.known.add(m[1]);
       if (/^start (?:the serial monitor|talking to the computer)|Serial\.begin/i.test(s)) serialStarted = true;
       // a file included beyond the ones the translator adds itself: tools can come from it
@@ -1139,6 +1139,19 @@
         open(`${ret || 'auto'} ${m[1]}(${ps.map(p => `${p.type || 'auto'} ${p.name}`).join(', ')})${still && inClass ? ' const' : ''}`, 'fn');
         ps.forEach(p => scopes[scopes.length - 1].add(p.name));
         return;
+      }
+      // --- a tool declared here and defined in another file (a header says what its tools are: "declare add using
+      // whole number a, whole number b giving back a whole number" is int add(int a, int b);)
+      if ((m = M(/^declare\s+([A-Za-z_]\w*)(?:\s+using\s+(.+?))?\s+giving back\s+(.+)$/i))) {
+        if (stack.length && !(cur() && cur().kind === 'class')) inf.errs.push('"declare" goes at the left edge (or inside a class), not inside another block.');
+        checkName(m[1], inf);
+        const ps = m[2] && !/^nothing$/i.test(m[2].trim()) ? splitItems(m[2]).map(p => param(p, x)) : [];
+        const ret = typeOf(m[3], x);
+        if (!ret) inf.errs.push(`I don't know the type "${m[3]}". Use whole number, decimal, text, yes/no, nothing, or a C++ type.`);
+        if (ps.some(p => !p.type)) inf.errs.push('A declared tool says the kind of each input ("using whole number a"): the file that defines it has to match it exactly.');
+        note(inf, `Says what ${code(m[1])} takes and gives back, so other files can use it: it is defined (with its steps) in another file.`);
+        if (!(cur() && cur().kind === 'class')) out = topOut;
+        return say(`${ret || 'auto'} ${m[1]}(${ps.map(p => `${p.type || 'auto'} ${p.name}`).join(', ')});`);
       }
       // --- Arduino: the two parts of a sketch
       if (A && (m = M(/^(?:when the board (?:starts|turns on|powers on|wakes up)|at the start|setup)$/i))) {
@@ -1596,12 +1609,28 @@
       if (!hasSetup) topOut.push({ text: '', src: -1 }, { text: 'void setup() {', src: -1, note: 'Every sketch needs setup(), even an empty one.' }, { text: '}', src: -1 });
       if (!hasLoop) topOut.push({ text: '', src: -1 }, { text: 'void loop() {', src: -1, note: 'Every sketch needs loop(), even an empty one.' }, { text: '}', src: -1 });
     }
+    // a header (.h) says what other files can use (tools, classes, constants): it has no steps, and no main
+    const header = !A && (sec.header || /\.(?:h|hh|hpp|hxx)$/i.test(sec.path || ''));
+    // (its constants are the file's own, for every file that includes it: at the left edge, not in a main)
+    if (header) {
+      const shared = (o) => /^\s*(?:const|constexpr)\s|^\s*#define\s/.test(o.text);
+      for (const o of mainOut.filter(shared)) topOut.push({ ...o, text: o.text.replace(/^ {4}/, '') });
+      for (let k = mainOut.length - 1; k >= 0; k--) if (shared(mainOut[k])) mainOut.splice(k, 1);
+    }
+    if (header) for (const o of mainOut) if (o.src >= 0 && o.text.trim() && !info[o.src].errs.length) info[o.src].errs.push('A header (.h) says what other files can use: tools ("declare …"), classes, constants. It has no steps of its own, so put this in a .cpp file.');
+    // main: in a program of one file, always; in one of several, only in the file with steps at the left edge
+    const withMain = !A && !header && (mainOut.some(o => o.text.trim()) || (!x.multi && !sec.noMain));   // (noMain: a .cpp file read back that had none)
     // assemble: includes, helpers, classes and tools, main
     const all = [];
     const hdr = (text, noteText, src = -1) => all.push({ text, src, note: noteText });
+    // (a header brings in only what it uses: every file that includes it gets those too)
+    const body = [...topOut, ...mainOut].map(o => o.text).join('\n');
+    const uses = (re) => !header || re.test(body);
+    // (unless it guards itself already, as code: #ifndef … #define … #endif)
+    if (header && !topOut.some(o => /^\s*#\s*(?:ifndef|pragma\s+once)\b/.test(o.text))) hdr('#pragma once', 'Makes sure this file is read only once, however many files include it.');
     if (!A) {
-      hdr('#include <iostream>', 'Lets the program write to and read from the terminal.');
-      hdr('#include <string>', 'Lets the program use text (std::string).');
+      if (uses(/std::(?:cout|cin|cerr|endl|getline)\b/)) hdr('#include <iostream>', 'Lets the program write to and read from the terminal.');
+      if (uses(/std::(?:string|to_string|sto[idl])\b/)) hdr('#include <string>', 'Lets the program use text (std::string).');
       if (x.needs.has('vector')) hdr('#include <vector>', 'Lets the program use lists (std::vector).');
       if (x.needs.has('random')) hdr('#include <random>', 'Random numbers.');
       if (x.needs.has('text')) hdr('#include <sstream>', 'Builds text from pieces.');
@@ -1617,12 +1646,13 @@
     for (const inc of includes) if (!auto.has(inc.h)) hdr(`#include ${inc.h}`, null, inc.src);
     if (usingStd != null) hdr('using namespace std;', null, usingStd);
     if (all.length) hdr('', null);
-    if (x.needs.has('random')) [...HELPERS.random, ''].forEach(t => hdr(t, 'A helper for "random number from … to …": picks a whole number between low and high, both included.'));
+    // (inline when the program has several files: each file that uses it has its own copy, and the linker keeps one)
+    if (x.needs.has('random')) [...HELPERS.random, ''].forEach((t, k) => hdr(k === 0 && x.multi ? 'inline ' + t : t, 'A helper for "random number from … to …": picks a whole number between low and high, both included.'));
     if (x.needs.has('text')) [...HELPERS.text, ''].forEach(t => hdr(t, 'A helper for text with {…} in it: joins the pieces and values into one std::string.'));
     while (topOut.length && topOut[0].text === '') topOut.shift();
-    if (topOut.length) { topOut.forEach(o => all.push(o)); if (!A) all.push({ text: '', src: -1 }); }
+    if (topOut.length) { topOut.forEach(o => all.push(o)); if (withMain) all.push({ text: '', src: -1 }); }
     while (mainOut.length && mainOut[0].text.trim() === '') mainOut.shift();
-    if (!A) {
+    if (withMain) {
       all.push({ text: 'int main() {', src: -1, note: 'Every C++ program starts in `main`.' });
       mainOut.forEach(o => all.push(o));
       all.push({ text: '    return 0;', src: -1, note: 'Giving back 0 tells the computer the program finished without problems.' });
@@ -1636,9 +1666,12 @@
   function compileCppProject(project) {
     const arduino = project.kind === 'arduino';
     const x = { types: {}, fns: new Set(), classes: new Set(), known: new Set(), needs: new Set(), arduino };
+    const isHeader = (sec) => sec.header || /\.(?:h|hh|hpp|hxx)$/i.test(sec.path || '');
+    x.multi = project.sections.filter(s => !isHeader(s)).length + (project.otherSources || 0) > 1;   // (several .cpp files: only one has main)
     const results = {};
     for (const sec of project.sections) {
       const h = holdBlanks(sec.text);
+      x.needs = new Set();   // (each file brings in what it uses: its includes and the translator's helpers)
       results[sec.id] = compileCpp({ ...sec, text: h.text }, x);
       reportBlanks(results[sec.id].info, h.blanks, h.strays);
     }
@@ -1692,6 +1725,7 @@
     T('Lists', 'set item ‹0› of ‹list› to ‹value›', 'list[0] = value;', 'Positions start at 0. Also "set the last item of ‹list› to ‹value›".', ['program', 'sketch']),
     T('Tools', 'define ‹name› using ‹inputs›', 'auto name(auto inputs) {', 'Tools go above main automatically.', ['program', 'sketch']),
     T('Tools', 'define ‹name› using ‹decimal w›, ‹decimal h› giving back ‹a decimal›', 'double name(double w, double h) {', 'Name the kinds: whole number, decimal, text, yes/no, nothing.', ['program', 'sketch']),
+    T('Tools', 'declare ‹add› using ‹whole number a›, ‹whole number b› giving back ‹a whole number›', 'int add(int a, int b);', 'In a header (a .h file): says what a tool takes and gives back, so other files can use it. A .cpp file defines it, with "define …". The file with steps at the left edge has main.'),
     T('Tools', 'define ‹average› using read-only ‹list of whole numbers› ‹values› giving back ‹a decimal›', 'double average(const std::vector<int>& values) {', '"read-only" looks at the caller\'s value without copying it; "the caller\'s" lets the tool change it.'),
     T('Tools', 'give back ‹value›', 'return value;', '', ['program', 'sketch']),
     T('Tools', 'leave the tool now', 'return;', 'Leaves a tool that gives nothing back.', ['program', 'sketch']),

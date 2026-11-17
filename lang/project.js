@@ -116,7 +116,8 @@
       }
       page = t;
     }
-    if (groups.cpp) take(W.CPP.compileCppProject({ ...p, kind: 'cpp', sections: groups.cpp }));
+    // (.cpp files kept as code count too: in a program of several files, only the one with steps has main)
+    if (groups.cpp) take(W.CPP.compileCppProject({ ...p, kind: 'cpp', sections: groups.cpp, otherSources: p.sections.filter(s => !groups.cpp.includes(s) && /\.(?:cpp|cc|cxx)$/i.test(s.path || '')).length }));
     if (groups.arduino) take(W.CPP.compileCppProject({ ...p, kind: 'arduino', sections: groups.arduino }));
     const TS = W.TS || root.IntuiTs;
     if (groups.typescript && TS) for (const s of groups.typescript) results[s.id] = TS.compileTs(s, null, { lang: s.lang });

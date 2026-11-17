@@ -135,6 +135,13 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   A hidden value, which read as "an input, of type hidden, …", has words of its own: `add a hidden value "home"
   sent as "source"`, checked in Chrome (the form sends it; it isn't shown).
 
+- C++ programs of several files (2026-11-17): a header says what other files can use (`declare add using …
+  giving back …` is `int add(int a, int b);`, plus classes and constants) and starts with `#pragma once`; only
+  the file with steps at the left edge gets `main`; Run builds every .cpp file together (g++, or cl). Read back,
+  prototypes say `declare …` and a .cpp file with no `main` comes back with none: `samples/cpp/inventory` reads
+  exactly. Four projects are built and run as examples. Not yet: a class's tools declared in its header and
+  defined in a .cpp file (`Item::price`), and a .cpp file read alone doesn't know its header's classes.
+
 ### Step 15 notes
 
 - Until now the evidence was the round trip: sentences rebuild the same syntax tree. That proves nothing was
@@ -199,7 +206,6 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 - Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
   dependency and a decision for the owner.
 
-- Multi-file C++ projects with headers.
 - Code signing, so Windows and macOS don't warn when installing.
 - A proper grammar for sentences, if rule collisions keep appearing (see Known risks).
 
