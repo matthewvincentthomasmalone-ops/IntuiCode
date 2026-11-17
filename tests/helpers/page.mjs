@@ -63,6 +63,7 @@ class El {
   removeAttribute(k) { delete this.attrs[k]; }
   appendChild(c) { if (c.parentNode) c.remove(); c.parentNode = this; this.children.push(c); return c; }
   append(...cs) { cs.forEach(c => this.appendChild(typeof c === 'string' ? Object.assign(new El('#text', {}, this.page), { ownText: c }) : c)); }
+  replaceChildren(...cs) { for (const c of [...this.children]) c.remove(); this.ownText = ''; this.append(...cs); }
   prepend(c) { if (c.parentNode) c.remove(); c.parentNode = this; this.children.unshift(c); }
   remove() { if (this.parentNode) { const k = this.parentNode.children.indexOf(this); if (k >= 0) this.parentNode.children.splice(k, 1); this.parentNode = null; } }
   get firstChild() { return this.children[0] || null; }
@@ -84,7 +85,7 @@ class El {
   click() { return this.dispatchEvent(this.page.event('click')); }
   focus() { this.page.focused = this; }
   blur() {}
-  scrollIntoView() {}
+  scrollIntoView() { this.page.scrolled = this; }
   getBoundingClientRect() { return { left: 0, top: 0, width: this.width, height: this.height, right: this.width, bottom: this.height, x: 0, y: 0 }; }
   getContext() { return (this.pen ||= this.page.pen()); }
   showModal() { this.attrs.open = ''; }

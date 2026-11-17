@@ -49,6 +49,9 @@ const HARNESS = String.raw`(() => {
     }
     window.AudioContext = Recorded; window.webkitAudioContext = Recorded;
   }
+  // (what the page scrolls to; the test's own clicks scroll too, so check this only without them)
+  const scroll = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function (...a) { page.scrolled = this; return scroll.apply(this, a); };
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () { page.notes.push({ played: this.getAttribute('src') || this.src }); return play.call(this); };
   const img = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');

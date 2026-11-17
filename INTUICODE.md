@@ -2162,7 +2162,7 @@ the rule table, so the rules get evidence of their own.
   with no example). Two pairs that write the very same code, two ways of saying one thing, aren't counted:
   `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
   in z`. The tests do this for nine rules on every run, whatever the reader says.
-- **JavaScript: a website's Mechanics** (`lang/web_write.js`): 161 examples
+- **JavaScript: a website's Mechanics** (`lang/web_write.js`): 196 examples
   (`tests/helpers/meaning_js.mjs`), each a page (its Structure) and Mechanics, run in Node on a stand-in
   page (`tests/helpers/page.mjs`). It's not a browser: it has the page's elements, events, the browser's
   memory, `fetch` with set replies, timers and animation frames that wait until the test moves the clock
@@ -2171,16 +2171,23 @@ the rule table, so the rules get evidence of their own.
   `undefined` too, "x is null" isn't; "x, or y if that is nothing" keeps 0; "n rounded down" takes -2.5 to
   -3; "sort xs from smallest to biggest" puts 10 after 9; "every 2 seconds" runs 3 times in 6 seconds;
   "if "left" is held" stops when the key is let go.
-- **JavaScript coverage** is counted by the Index, not by rules: the JavaScript writer's rules are written
-  in place, not in a table, so what's counted is what it offers, its Mechanics sentences and value words
-  (`TEMPLATES` and `WORDS`). An entry counts when a line of an example that passes says it. 74 of 75
-  sentences and all 52 value words have one; the one without, `bring in … from "…"`, needs a second file
-  and a module loader. The 19 entries the reader's sentences use for `tests/corpus_web`'s script all have
-  one. Words the writer knows but the Index doesn't list aren't counted.
-- **A wrong JavaScript word is caught:** `--mutate` gives each of the writer's words for comparisons and
-  maths (`JS_WORDS`) the next one's code: all 20 are caught. Its other rules are written in place, so they
-  can't be swapped this way. The tests do this for four words on every run.
-- **JavaScript in a real browser:** the same 161 examples run again in Chrome (or Edge) without a window,
+- **JavaScript coverage** is counted rule by rule, as for Python. The writer's rules are in tables
+  (`WEB.rules`): the value words (`JS_VALUE_RULES`, then `JS_WORDS` for comparisons and maths) and the
+  statements (`RULES` in `compileJs`). A rule counts when an example that passes uses it. All 48 value words,
+  all 20 words for comparisons and maths, and 84 of 86 statements have one. The two without: `bring in … from …`
+  (it needs a second file and a module loader) and the rule that only says why a name can't be a name (it
+  writes no code). All 28 rules the reader's sentences use for `tests/corpus_web`'s script have one. Counted by
+  the Index, as before: 74 of 75 sentences and all 52 value words. The rule count found what the Index count
+  didn't: 32 rules the Index doesn't list (`otherwise if`, `while`, `repeat … times`, `stop the loop`, `show …`,
+  `in any case` …) had no example. Each has one now.
+- **A wrong JavaScript rule is caught:** `--mutate` makes each rule do another's work, one at a time. A value
+  word gets the next value word's code with as many parts, and a statement the next statement's with as many.
+  All 128 are caught, and all 20 words for comparisons and maths given the next one's code. A rule whose wrong
+  code stops the writer, or fails after the example has run, counts as caught. The sweep first missed three
+  edges, since closed: "item (k plus 1) of xs" on a list whose largest item was also that item; "a random number
+  below 1" checked only as at least 0 and below 1, which `[]` is too; and "when the window has loaded" checked
+  only after loading. The tests do this for six rules and four words on every run.
+- **JavaScript in a real browser:** the same 196 examples run again in Chrome (or Edge) without a window,
   driven through its DevTools protocol (`tests/helpers/browser.mjs`, nothing to install). Each page is the
   website as built, loaded by Chrome from an address of its own, so it has its own storage, and every request
   (the page, `style.css`, `script.js`, `fetch`, pictures, sounds) goes through Chrome's network code and is

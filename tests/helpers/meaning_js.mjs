@@ -98,7 +98,7 @@ const DRAWS = 'const tries = Array.from({ length: 300 }, (_, i) => i);\nconst se
 export const JS_STATEMENTS = [
   { lines: 'for each i in tries\n    set k to random number from 1 to 6\n    js: seen.add(k);', given: DRAWS, holds: 'seen.size === 6 && [...seen].every(v => Number.isInteger(v) && v >= 1 && v <= 6)' },
   { lines: 'for each i in tries\n    set k to a random whole number below 6\n    js: seen.add(k);', given: DRAWS, holds: 'seen.size === 6 && [...seen].every(v => Number.isInteger(v) && v >= 0 && v <= 5)' },
-  { lines: 'for each i in tries\n    set k to a random number below 1\n    js: seen.add(k);', given: DRAWS, holds: 'seen.size === 300 && [...seen].every(v => v >= 0 && v < 1)' },
+  { lines: 'for each i in tries\n    set k to a random number below 1\n    js: seen.add(k);', given: DRAWS, holds: 'seen.size === 300 && [...seen].every(v => typeof v === "number" && v >= 0 && v < 1)' },
   // Values and logic
   { lines: 'set n to 5', holds: 'n === 5' },
   { lines: 'set n to 5\nmultiply n by 3', holds: 'n === 15' },
@@ -141,7 +141,7 @@ export const JS_STATEMENTS = [
   { page: SHOP, lines: 'when save is clicked, with the event as e\n    set the text of total to e.type', then: 'await page.click("save");', holds: 'page.text("total") === "click"' },
   { page: 'add a form called signup\n    add a text box called email with hint "Email"\n    add a button called go saying "Go"', lines: 'set sent to 0\nwhen signup is sent\n    increase sent by 1', then: 'await page.send("signup");', holds: 'sent === 1' },
   { page: SHOP, lines: 'set n to 0\nwhen the page has loaded\n    set the text of total to "ready"', holds: 'page.text("total") === "ready"' },
-  { page: SHOP, lines: 'when the window has loaded\n    set the text of total to "ready"', holds: 'page.text("total") === "ready"' },
+  { page: SHOP, lines: 'constant order is an empty list\nwhen the window has loaded\n    set the text of total to "ready"\n    add "loaded" to order\nadd "script" to order', holds: 'page.text("total") === "ready" && order.join() === "script,loaded"' },   // (after the script has run, not as it runs)
   { page: 'add a text box called name with hint "Name"\nadd a paragraph called said saying ""', lines: 'when a key is pressed in name, with the event as e\n    set the text of said to e.key', then: 'await page.key("Enter", "name");', holds: 'page.text("said") === "Enter"' },
   { lines: 'set n to 0\nevery 2 seconds\n    increase n by 1', then: 'await page.tick(6000);', holds: 'n === 3' },
   { lines: 'set n to 0\nevery 1 second as ticker\n    increase n by 1\n    if n is 2\n        js: clearInterval(ticker);', then: 'await page.tick(5000);', holds: 'n === 2' },
@@ -189,6 +189,54 @@ export const JS_STATEMENTS = [
   { page: GAME, lines: 'set at to 0\nwhen the pointer moves over game\n    set at to tap x', then: 'await page.pointer("pointermove", "game", 42, 7);', holds: 'at === 42' },
   { lines: 'play a note of 440 for 0.2 seconds', holds: 'page.notes.length === 1 && page.notes[0].frequency === 440 && Math.abs(page.notes[0].to - page.notes[0].from - 0.2) < 0.01' },   // (a browser's sound clock keeps running between start and stop, so within 10 ms)
 ];
+
+// The rules the Index doesn't list (counted by rule: see JS_RULES_NOT_RUN), and the rest the Index lists that had none.
+const CHECK = 'add a checkbox called box saying "ok"';
+JS_STATEMENTS.push(
+  // value words
+  { lines: 'set result to 0\nwhen the page has loaded\n    set result to wait for answer()', given: 'const answer = () => Promise.resolve(42);', holds: 'result === 42' },
+  { page: GAME, say: 'width of game', means: '480' },
+  { say: 'item (k plus 1) of xs', given: 'const k = 0; const xs = [9, 6, 7];', means: '6' },
+  { say: 'how many items in xs', given: 'const xs = [1, 2, 3];', means: '3' },
+  { lines: 'constant xs is [1, 2, 3]\nconstant seen is an empty list\nrepeat 60 times\n    add random item from xs to seen', holds: '[1, 2, 3].every(v => seen.includes(v)) && seen.every(v => [1, 2, 3].includes(v))' },
+  { page: CHECK, say: 'box is not ticked', means: 'true' },
+  { page: 'add a button called save saying "Save" in group big', say: 'save is not in group big', means: 'false' },
+  { page: 'add a button called save saying "Save"', say: 'save is not in group big', means: 'true' },
+  { say: 'empty text', means: '""' },
+  // statements
+  { page: SHOP, lines: 'set k to ""\nwhen a key is pressed\n    set k to event.key', then: 'await page.key("a");', holds: 'k === "a"' },
+  { lines: 'use strict rules\njs: window.strict = (function () { return this === undefined; })();', holds: 'strict === true' },
+  { page: SHOP, lines: 'set n to 0\nevery 1 second as ticker\n    increase n by 1\nwhen save is clicked\n    stop ticker', then: 'await page.tick(2000); await page.click("save"); await page.tick(3000);', holds: 'n === 2' },
+  { page: CHECK, lines: 'tick box', holds: 'page.el("box").checked === true' },
+  { page: CHECK, lines: 'tick box\nuntick box', holds: 'page.el("box").checked === false' },
+  { page: SHOP, lines: 'clear total', holds: 'page.text("total") === ""' },
+  { page: SHOP, lines: 'hide total\nreveal total', holds: 'page.el("total").hidden === false' },
+  { page: 'add a button called save saying "Save" in group big', lines: 'take save out of group big', holds: '!page.el("save").classList.contains("big")' },
+  { page: 'add a button called save saying "Save" in group big', lines: 'switch group big on save', holds: '!page.el("save").classList.contains("big")' },
+  { page: 'add a button called save saying "Save"', lines: 'switch group big on save', holds: 'page.el("save").classList.contains("big")' },
+  { page: SHOP, lines: 'scroll to total', holds: 'page.scrolled === page.el("total")' },
+  { lines: 'save [1, 2] in the browser as "k"\nload "k" from the browser and store in v', holds: 'Array.isArray(v) && v.join() === "1,2"' },
+  { lines: 'constant log is an empty list\ntry\n    add 1 to log\n    fail with "bad"\nif it fails\n    add 2 to log\nin any case\n    add 3 to log', holds: 'log.join() === "1,2,3"' },
+  { lines: 'constant log is an empty list\ntry\n    add 1 to log\nif it fails\n    add 2 to log\nin any case\n    add 3 to log', holds: 'log.join() === "1,3"' },
+  { lines: 'constant log is an empty list\nset n to 1\ndepending on n\n    when it is 1\n        add "one" to log\n        go on into the next case\n    when it is 2\n        add "two" to log\n    when it is 3\n        add "three" to log', holds: 'log.join() === "one,two"' },
+  { lines: 'set n to 8\nset size to ""\nif n is less than 5\n    set size to "small"\notherwise if n is less than 10\n    set size to "medium"\notherwise\n    set size to "big"', holds: 'size === "medium"' },
+  { lines: 'set n to 20\nset size to ""\nif n is less than 5\n    set size to "small"\notherwise if n is less than 10\n    set size to "medium"\notherwise\n    set size to "big"', holds: 'size === "big"' },
+  { lines: 'set n to 1\nwhile n is less than 10\n    multiply n by 2', holds: 'n === 16' },
+  { lines: 'set n to 0\nwhile yes\n    increase n by 1\n    if n is 4\n        stop the loop', holds: 'n === 4' },
+  { lines: 'set total to 0\nfor each v in [1, 2, 3, 4]\n    if v is 2\n        skip to next\n    increase total by v', holds: 'total === 8' },
+  { lines: 'set count to 0\nrepeat 3 times\n    increase count by 1', holds: 'count === 3' },
+  { lines: 'constant xs is [1, 2, 3]\nreverse xs', holds: 'xs.join() === "3,2,1"' },
+  { lines: 'make a list called xs with 1, 2', holds: 'xs.join() === "1,2"' },
+  { lines: 'ask "Name?" and store in name', answers: ['Ann'], holds: 'name === "Ann" && page.shown[0] === "Name?"' },
+  { lines: 'set colour of square to "red"', given: 'const square = { colour: "" };', holds: 'square.colour === "red"' },
+  { lines: 'show "hi"', holds: 'page.logged[0] === "hi"' },
+);
+
+// Rules with no example, by their words (as WEB.rules names them), and why.
+export const JS_RULES_NOT_RUN = {
+  'bring in … from …': 'brings in another file: needs a module loader and a second file',
+  "set … to … (a name that can't be one)": "writes no code: it says why the name can't be a name",
+};
 
 // Index entries with no example, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
 export const NOT_RUN_JS = {

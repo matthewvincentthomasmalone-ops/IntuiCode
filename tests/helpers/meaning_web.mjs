@@ -128,3 +128,68 @@ export async function mutateWords(WEB, examples) {
   }
   return { tried, missed };
 }
+
+/* ---- The writer's rules, one by one (WEB.rules: its value words, its words for comparisons and maths, its
+   statements), as for Python ---- */
+
+/* Each rule, with the examples (that pass) that use it, or why it has none. */
+export function jsRuleCoverage(WEB, results, notRun) {
+  const used = new Map();
+  for (const r of results.filter(r => r.ok)) for (const said of WEB.rules.trace(() => compileExample(WEB, r.ex))) (used.get(said) || used.set(said, []).get(said)).push(jsNameOf(r.ex));
+  compileExample(WEB, { lines: 'zzz qqq' });   // (a line no rule reads goes past every statement, so each is noted)
+  const rows = [];
+  for (const r of [...WEB.rules.VALUES].filter(r => r.said)) rows.push({ kind: 'value', label: r.said });
+  for (const w of [...WEB.rules.WORDS]) rows.push({ kind: 'word', label: 'word: ' + w[0].source });
+  for (const said of [...WEB.rules.STATEMENTS.keys()]) rows.push({ kind: 'statement', label: said });
+  for (const row of rows) { row.examples = used.get(row.label) || []; row.why = notRun[row.label] || null; }
+  return rows;
+}
+
+/* How many parts a rule's pattern finds (its capture groups). OPD and OPX (one value) find none themselves. */
+const partsOf = (r) => (r.re ? r.re.source : r.p ? r.p.replace(/OPX|OPD/g, 'x') : null);
+const groups = (src) => (src == null ? null : new RegExp(src + '|').exec('').length - 1);
+
+/* Each rule made to do another's work, one at a time: a value word gets the next value word's code with as many
+   parts, a statement the next statement's with as many. Only the examples whose code changes run again; one whose
+   code doesn't change for any example either has none (see jsRuleCoverage) or writes the same code there.
+   pick(words) chooses which rules. -> { tried, missed: [rule (written as other)], same: [rule = other] } */
+export async function mutateJsRules(WEB, examples, pick = () => true) {
+  const before = examples.map(ex => compileExample(WEB, ex).code);
+  // (a rule given another's code can make the writer itself stop: that's noticed too)
+  let crashed = false;
+  const changedBy = (spec) => { WEB.rules.swap(spec); crashed = false; try { return examples.filter((ex, k) => { try { return compileExample(WEB, ex).code !== before[k]; } catch (_) { crashed = true; return false; } }); } finally { WEB.rules.swap(null); } };
+  const used = new Set();
+  for (const ex of examples) for (const s of WEB.rules.trace(() => compileExample(WEB, ex))) used.add(s);
+  compileExample(WEB, { lines: 'zzz qqq' });
+  const out = { tried: 0, missed: [], same: [] };
+  const tryOne = async (said, spec, other) => {
+    const changed = changedBy(spec);
+    if (crashed) { out.tried++; return; }
+    if (!changed.length) { if (used.has(said)) out.same.push(`${said} = ${other}`); return; }
+    out.tried++;
+    // (wrong code can fail later, outside the example's run: that's noticed too)
+    let failedLater = false;
+    const later = () => { failedLater = true; };
+    process.on('uncaughtException', later); process.on('unhandledRejection', later);
+    WEB.rules.swap(spec);
+    try {
+      const ok = (await runJsExamples(WEB, changed)).every(r => r.ok);
+      await new Promise(r => setTimeout(r, 0));
+      if (ok && !failedLater) out.missed.push(`${said} (written as ${other})`);
+    } finally { WEB.rules.swap(null); process.off('uncaughtException', later); process.off('unhandledRejection', later); }
+  };
+  const values = [...WEB.rules.VALUES].filter(r => r.said && r.to !== undefined);
+  for (const [k, r] of values.entries()) {
+    if (!pick(r.said)) continue;
+    const n = groups(partsOf(r));
+    const other = values.slice(k + 1).concat(values.slice(0, k)).find(o => groups(partsOf(o)) === n && o.to !== r.to && String(o.to) !== String(r.to));
+    if (other) await tryOne(r.said, { from: r.said, to: other.to }, other.said);
+  }
+  const statements = [...WEB.rules.STATEMENTS.values()].filter(s => s.groups != null);
+  for (const [k, s] of statements.entries()) {
+    if (!pick(s.said)) continue;
+    const other = statements.slice(k + 1).concat(statements.slice(0, k)).find(o => o.groups === s.groups);
+    if (other) await tryOne(s.said, { from: s.said, statement: other.said }, other.said);
+  }
+  return out;
+}

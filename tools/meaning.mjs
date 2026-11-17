@@ -21,8 +21,8 @@ import { statSync, readFileSync, readdirSync } from 'node:fs';
 import { loadEngine, loadConverter, toSentences, pyFiles, ROOT } from '../tests/helpers/engine.mjs';
 import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from '../tests/helpers/meaning.mjs';
 import { EXAMPLES, STATEMENTS, NOT_RUN } from '../tests/helpers/meaning_python.mjs';
-import { runJsExamples, indexCoverage, entryPattern, mutateWords, jsNameOf } from '../tests/helpers/meaning_web.mjs';
-import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS } from '../tests/helpers/meaning_js.mjs';
+import { runJsExamples, indexCoverage, entryPattern, mutateWords, jsNameOf, jsRuleCoverage, mutateJsRules } from '../tests/helpers/meaning_web.mjs';
+import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS, JS_RULES_NOT_RUN } from '../tests/helpers/meaning_js.mjs';
 import { findCompiler, runCppExamples, cppIndexCoverage, mutateCppWords, cppNameOf } from '../tests/helpers/meaning_cpp.mjs';
 import { CPP_VALUES, CPP_STATEMENTS, CPP_SKETCHES, NOT_RUN_CPP } from '../tests/helpers/meaning_cpp_examples.mjs';
 import { findChrome } from '../tests/helpers/browser.mjs';
@@ -133,10 +133,29 @@ const said = scripts.flatMap(f => { const r = convert('js', readFileSync(f, 'utf
 const usedEntries = entries.filter(e => { const re = entryPattern(e); return said.some(l => (e.pattern ? re.test(l) : re.test(' ' + l.trim()))); });
 console.log(`${usedEntries.filter(e => e.examples.length).length}/${usedEntries.length} Index entries the sentences for ${scripts.length} corpus scripts use have an example that runs`);
 for (const e of usedEntries.filter(e => !e.examples.length)) console.log(`  none: ${e.label}`);
+// ... and rule by rule (WEB.rules): each value word, word for comparisons and maths, and statement
+const jsRules = jsRuleCoverage(WEB, jsResults, JS_RULES_NOT_RUN);
+for (const [kind, title] of [['value', 'JavaScript value words (rules)'], ['word', 'JavaScript words for comparisons and maths'], ['statement', 'JavaScript statements (rules)']]) {
+  console.log(`\n${title}`.padEnd(65) + 'examples');
+  for (const r of jsRules.filter(r => r.kind === kind)) console.log(r.label.slice(0, 62).padEnd(64) + (r.examples.length ? String(r.examples.length) : `none: ${r.why || 'no example yet'}`));
+}
+console.log('-'.repeat(72));
+for (const [kind, title] of [['value', 'value words'], ['word', 'words for comparisons and maths'], ['statement', 'statements']]) {
+  const all = jsRules.filter(r => r.kind === kind), tested = all.filter(r => r.examples.length).length;
+  console.log(`${tested}/${all.length} JavaScript ${title} have an example that runs (${Math.round(100 * tested / all.length)}%)`);
+}
+const corpusRules = WEB.rules.trace(() => WEB.compileWebsite({ sections: [{ id: 'structure', file: 'structure', text: '' }, { id: 'styling', file: 'styling', text: '' }, { id: 'mechanics', file: 'mechanics', text: said.join('\n') + '\n' }] }));
+const usedRules = jsRules.filter(r => corpusRules.has(r.label));
+console.log(`${usedRules.filter(r => r.examples.length).length}/${usedRules.length} rules the sentences for ${scripts.length} corpus scripts use have an example that runs`);
+for (const r of usedRules.filter(r => !r.examples.length)) console.log(`  none: ${r.label}`);
 if (mutate) {
   const m = await mutateWords(WEB, JS_ALL);
   console.log(`mutations: ${m.tried - m.missed.length}/${m.tried} wrong JavaScript words (comparisons and maths) caught by an example`);
   for (const x of m.missed) console.log(`  missed: ${x}`);
+  const r = await mutateJsRules(WEB, JS_ALL);
+  console.log(`mutations: ${r.tried - r.missed.length}/${r.tried} JavaScript rules doing another's work (value words and statements) caught by an example`);
+  for (const x of r.missed) console.log(`  missed: ${x}`);
+  for (const x of r.same) console.log(`  the same code, not counted: ${x}`);
 }
 
 /* ---- C++ programs and Arduino sketches, compiled and run. Counted by the Index too. ---- */
