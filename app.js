@@ -157,6 +157,7 @@
     return checkedProject(store.get(PROJECT_KEY, null)) || normalized(projectFromBlueprint(BP.parse(FIRST_BLUEPRINT), {}));
   }
   let saveTimer = null;
+  const saveDlg = { as: false, parent: null, home: null, named: false, done: null };   // the Save window (below)
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => store.set(PROJECT_KEY, project), 300);
@@ -202,6 +203,7 @@
     planToNext = true;   // its map opens at the first step not done
     intentSeen = null;   // its promises are new to this session: nothing has "stopped" being kept yet
     clearTimeout(changes.timer); changes.base = null; changes.next = null;   // its log goes on from its code as it opens
+    saveDlg.named = false;   // a browser's Save asks its name once
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
     ta.value = activeSec().text;
@@ -5068,7 +5070,8 @@
     const sections = k.layout === 'files'
       ? [{ id: 'readme', path: 'README.md', lang: 'markdown', text: `# ${name}\n\nWhat this project is for, and how its files fit together.\n` }]
       : LAYOUTS[k.layout].map(f => ({ id: f, file: f, text: NEW_START[f] ? NEW_START[f](name) : '' }));
-    const next = { version: 2, lang: 'python', kind: KIND_OF_LAYOUT[k.layout] || 'python', name: slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };
+    const kind = KIND_OF_LAYOUT[k.layout] || 'python';
+    const next = { version: 2, lang: 'python', kind, name: folderNameOf(name, kind) || slug(name), sections, active: k.layout === 'website' ? 'structure' : sections[sections.length - 1].id };   // the name as typed: Save names its folder so
     const askFolder = desk.on && $('newSave').checked;
     closeNewProject();
     replaceProject(next, `New ${k.title} project "${name}".` + (desk.on && !askFolder ? ' Press Save to keep it as files.' : ''));
@@ -6911,23 +6914,115 @@
     $('diskMine').addEventListener('click', () => settleBoth('mine'));
   }
 
-  /* Save (desktop): to the project's folder, chosen the first time. */
+  /* The Save window: the project's name and, in the desktop app, where its folder goes. Save makes a folder with that
+   * name there (only where there isn't one in use already) and saves the project in it; the name is the project's name
+   * too. In a browser the name is the .zip's. Save as: the same, for a project that has a folder already, which is then
+   * left as it is. askToSave resolves once it is saved (true) or the window is closed (false). */
+  const RESERVED_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
+  function folderNameOf(name, kind = project.kind) {
+    let n = String(name).trim().replace(/\s*[\\/:*?"<>|\x00-\x1f]+\s*/g, (m) => (/\s/.test(m) ? ' - ' : '-')).replace(/[. ]+$/, '');
+    if (kind === 'arduino') n = n.replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '');   // an Arduino sketch's folder is named as its .ino
+    return n.slice(0, 80);
+  }
+  const inFolder = (dir, name) => dir.replace(/[\\/]+$/, '') + (dir.includes('\\') ? '\\' : '/') + name;
+  const parentOf = (p) => p.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]*$/, '') || p;
+  const samePath = (a, b) => a.replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase() === b.replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
+  const zipName = (name) => String(name).replace(/[\\/:*?"<>|\s-]+/g, '-').replace(/^-|-$/g, '') || 'my-program';
+  async function mayUse(dir) { try { await invoke('folder_used', { path: dir }); return true; } catch (_) { return false; } }
+  function showSaveTo() {
+    const name = folderNameOf($('saveName').value);
+    $('saveProblem').textContent = '';
+    $('saveWhere').textContent = saveDlg.parent || '';
+    $('saveWhere').title = saveDlg.parent || '';
+    $('saveTo').innerHTML = !name ? 'Type a name for the project.'
+      : desk.on ? (saveDlg.parent ? `Saves to <b>${escHtml(inFolder(saveDlg.parent, name))}</b>` : 'Choose where its folder goes.')
+      : `Downloads <b>${escHtml(zipName(name))}.zip</b>`;
+  }
+  function askToSave(as) {
+    setFileMenu(false);
+    if (saveDlg.done) saveDlg.done(false);
+    saveDlg.as = as;
+    $('saveTitle').textContent = as ? 'Save as' : 'Save project';
+    $('saveLead').textContent = !desk.on
+      ? 'The project downloads as a .zip with this name. Import code → Open a .zip opens it again.'
+      : as && desk.folder ? 'A copy in a new folder: from now on the project is saved there, and its folder now is left as it is.'
+      : 'IntuaCode makes a folder with this name and saves the project in it: its code files, and your sentences in .intuicode/.';
+    $('saveWhereRow').hidden = !desk.on;
+    $('saveName').value = project.name;
+    $('saveGo').textContent = desk.on ? 'Save' : 'Download .zip';
+    $('saveModal').hidden = false;
+    $('saveName').focus(); $('saveName').select();
+    showSaveTo();
+    if (desk.on) placeSave();
+    return new Promise(r => { saveDlg.done = r; });
+  }
+  /* Where the folder goes, unless chosen: where one was saved last, beside the project's folder now, or Documents\IntuaCode. */
+  async function placeSave() {
+    if (!saveDlg.home) saveDlg.home = await invoke('projects_folder', { make: false }).catch(() => null);
+    const near = desk.folder ? parentOf(desk.folder) : null;
+    if (saveDlg.parent && saveDlg.parent !== saveDlg.home && !await mayUse(saveDlg.parent)) saveDlg.parent = null;
+    if (!saveDlg.parent && near && await mayUse(near)) saveDlg.parent = near;
+    if (!saveDlg.parent) saveDlg.parent = saveDlg.home;
+    showSaveTo();
+  }
+  function closeSave(saved = false) {
+    $('saveModal').hidden = true;
+    const done = saveDlg.done;
+    saveDlg.done = null;
+    if (done) done(saved);
+  }
+  async function saveGo() {
+    const name = folderNameOf($('saveName').value);
+    const problem = (t) => { $('saveProblem').textContent = t; $('saveName').focus(); };
+    if (!name) return problem('Type a name for the project.');
+    if (RESERVED_NAME.test(name)) return problem(`"${name}" can't be a folder's name on Windows: choose another name.`);
+    if (!desk.on) {
+      project.name = name; saveDlg.named = true; renderTree(); save();
+      closeSave(true);
+      return downloadProject();
+    }
+    const parent = saveDlg.parent;
+    if (!parent) return problem('Choose where its folder goes.');
+    const folder = inFolder(parent, name);
+    if (desk.folder && samePath(folder, desk.folder)) return problem(`That's where the project is saved now: choose another name, or another place.`);
+    $('saveGo').disabled = true;
+    try {
+      if (parent === saveDlg.home) await invoke('projects_folder', { make: true });
+      let taken;
+      try { taken = await invoke('folder_used', { path: folder }); }
+      catch (_) { return problem(`IntuaCode can only save where you've chosen: press Choose… and pick ${baseName(parent)}, or anywhere else.`); }
+      if (taken) return problem(`There's already a folder called ${name} there, with things in it, and IntuaCode never writes over those. Choose another name, or use Open folder to open that project.`);
+      // the project goes to its new folder: Save as leaves the folder it was in as it is
+      clearTimeout(desk.saveTimer);
+      stopWatching();
+      project.name = name; renderTree(); save();
+      desk.folder = folder; desk.readFolder = null; desk.dirty = true;
+      $('saveModal').hidden = true;
+      await saveProject();
+      closeSave(desk.folder === folder && !desk.dirty);
+    } catch (e) {
+      problem('Could not save: ' + (e.message || e));
+    } finally { $('saveGo').disabled = false; }
+  }
+  $('saveGo').addEventListener('click', saveGo);
+  $('saveClose').addEventListener('click', () => closeSave());
+  $('saveModal').addEventListener('click', (e) => { if (e.target.id === 'saveModal') closeSave(); });
+  $('saveName').addEventListener('input', showSaveTo);
+  $('saveName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveGo(); } });
+  $('saveChoose').addEventListener('click', async () => {
+    const f = await pickFolder('Choose where the project\'s folder goes');
+    if (f) { saveDlg.parent = f; showSaveTo(); }
+    $('saveName').focus();
+  });
+  $('btnSaveAs').addEventListener('click', () => { logNow('you'); askToSave(true); });
+
+  /* Save (desktop): to the project's folder, chosen the first time (the Save window). */
   async function saveProject(pick) {
     if (!desk.on) return;
     clearTimeout(desk.saveTimer);
     if (!desk.folder) {
       if (pick === 'quiet') return;   // autosave only writes to a folder that was chosen
-      const f = await pickFolder('Choose a folder to save this project in');
-      if (!f) return;
-      // never write over another project's files
-      const names = project.sections.map(s => (s.file === 'sketch' && s.path === 'sketch.ino' ? baseName(f) + '.ino' : fileName(s))).concat('.intuicode/project.json');
-      const taken = [];
-      for (const n of names) { try { await invoke('read_text', { path: join(f, n) }); taken.push(n); } catch (_) { /* not there: free */ } }
-      if (taken.length) {
-        tLine(`Nothing was saved: ${baseName(f)} already has ${taken.join(', ')}, and saving would write over ${taken.length > 1 ? 'them' : 'it'}. Choose an empty folder, or use Menu → Open folder to open that project.`, 't-err');
-        return;
-      }
-      desk.folder = f;
+      return askToSave(false);   // the Save window: a name, and where its folder goes
     }
     // everything to write is taken now: another project may be opened while the files are written
     const folder = desk.folder, files = savedFiles(), names = files.slice(0, -1).map(f => f[0]);
@@ -6959,7 +7054,7 @@
   }
 
   /* Save, Ctrl+S: the desktop app writes the project's folder; a browser downloads the project as a .zip. */
-  function manualSave() { logNow('you'); if (desk.on) saveProject(); else downloadProject(); }
+  function manualSave() { logNow('you'); if (desk.on) saveProject(); else if (saveDlg.named) downloadProject(); else askToSave(false); }
 
   /* Changes since the last Save: leaving the page, or closing the desktop app's window, asks first. */
   let unsavedWork = false;
@@ -6982,7 +7077,7 @@
    * .intuicode/, pictures in images/), inside a folder named after the project. Import code → Open a .zip
    * opens it again as it was. */
   function downloadProject() {
-    const top = String(project.name || 'my-program').replace(/[\\/:*?"<>|\s]+/g, '-');
+    const top = zipName(project.name || 'my-program');
     const files = savedFiles().map(([path, content]) => ({ path: `${top}/${path}`, content }));
     for (const im of project.images || []) {
       const url = imageUrls.get(im.key);
@@ -7199,7 +7294,7 @@
   $('closeSave').addEventListener('click', async () => {
     keepOpen();
     await saveProject();
-    if (!unsavedWork) closeWindow();   // (no folder chosen, or it couldn't save: the window stays)
+    if (!unsavedWork) closeWindow();   // (the Save window closed, or it couldn't save: the window stays)
   });
   $('closeDiscard').addEventListener('click', closeWindow);
   $('closeCancel').addEventListener('click', keepOpen);
@@ -7764,7 +7859,7 @@
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.activeElement !== ta) { e.preventDefault(); run(); }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); manualSave(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (e.shiftKey) { logNow('you'); askToSave(true); } else manualSave(); }
     // (a browser keeps Ctrl+N for a new window; the desktop app gets it)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewProject(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && desk.on) { e.preventDefault(); $('btnOpenFolder').click(); }
@@ -7783,6 +7878,7 @@
       else if (!$('fileModal').hidden) closeFileDialog();
       else if (!$('stepAddModal').hidden) closeStepAdd();
       else if (!$('builderModal').hidden) closeBuilder();
+      else if (!$('saveModal').hidden) closeSave();
       else if (!$('newModal').hidden) closeNewProject();
       else if (!$('fileList').hidden) setFileMenu(false);
       else if (!$('bpModal').hidden) closeBlueprints();

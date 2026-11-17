@@ -95,7 +95,7 @@ try {
       document.getElementById('btnNew').click();
       document.querySelector('.new-kind[data-kind="structured"]').click();
       document.getElementById('newName').value = 'e2e new project';
-      document.getElementById('newSave').checked = false;   // (a folder dialog can't be answered from here)
+      document.getElementById('newSave').checked = false;   // (not saved yet: the Save window would open)
       document.getElementById('newGo').click();
       return { files: [...document.querySelectorAll('#tree .ti-file')].map(x => x.textContent), folder: document.getElementById('folderName').hidden ? null : document.getElementById('folderName').textContent, sentences: document.getElementById('ta').value };
     });
@@ -338,6 +338,26 @@ try {
       args: [elsewhere],
     });
     if (r.error || !r.names.includes('main.py') || r.names.some(n => n.includes('node_modules')) || !r.same || !r.moved || r.none !== null || r.refused.includes(false)) throw new Error(JSON.stringify(r));
+  });
+
+  await check('Save makes a named folder only where none is in use, in Documents\\IntuaCode unless chosen', async () => {
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
+    const r = await wd('POST', `/session/${session}/execute/async`, {
+      script: `const [elsewhere, done] = arguments; const I = window.__TAURI__.core.invoke;
+        (async () => {
+          const dir = (await I('scratch_folder')) + '/e2e-save';
+          const before = await I('folder_used', { path: dir + '/my-game' });
+          await I('write_text', { path: dir + '/my-game/src/main.py', content: 'x = 1\\n' });
+          const refused = async (cmd, args) => { try { await I(cmd, args); return false; } catch (e) { return true; } };
+          return {
+            before, after: await I('folder_used', { path: dir + '/my-game' }), byFolder: await I('folder_used', { path: dir }),
+            home: await I('projects_folder', { make: false }),
+            refused: await refused('folder_used', { path: elsewhere }),
+          };
+        })().then(done, (e) => done({ error: String(e) }));`,
+      args: [elsewhere],
+    });
+    if (r.error || r.before !== false || r.after !== true || r.byFolder !== true || !/[\\/]IntuaCode$/.test(r.home) || !r.refused) throw new Error(JSON.stringify(r));
   });
 
   await check('pictures are written and read back as bytes, only in allowed folders', async () => {

@@ -36,6 +36,9 @@
             const dir = args.path.replace(/\/$/, '') + '/';
             return Object.entries(m.files).filter(([p, t]) => p.startsWith(dir) && typeof t === 'string' && !p.slice(dir.length).split('/').slice(0, -1).some(d => d.startsWith('.') || d === 'node_modules')).map(([p, t]) => [p.slice(dir.length), window.mock.stamp(t)]);
           }
+          // a folder has something in it: a file at or below it on the pretend disk
+          case 'folder_used': { const dir = args.path.replace(/[\/]$/, '') + '/'; return Object.keys(m.files).some(p => p.startsWith(dir)); }
+          case 'projects_folder': return '/home/me/Documents/IntuaCode';
           case 'file_stamp': return typeof m.files[args.path] === 'string' ? window.mock.stamp(m.files[args.path]) : null;
           case 'read_text': if (args.path in m.files) return m.files[args.path]; throw new Error('not found: ' + args.path);
           case 'write_text': m.files[args.path] = args.content; return null;

@@ -1211,6 +1211,10 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .ti-start { font-family: var(--f-ui); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--good); border: 1px solid rgba(143, 228, 185, .35); border-radius: 3px; padding: 0 4px; margin-left: 4px; vertical-align: 1px; }
 .modal-card.narrow { width: min(560px, 100%); }
 .file-row label { min-width: 92px; }
+.save-label { font-weight: 600; font-size: 13px; min-width: 92px; }
+.save-where { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--f-py); font-size: 13px; color: var(--ink-2); }
+.save-to { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.save-to b { color: var(--ink); font-family: var(--f-py); font-weight: 600; }
 .file-row input, .file-row select { flex: 1; max-width: none; }
 .file-row select { padding: 6px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink); font: 13px var(--f-ui); }
 .file-how { margin: 4px 0 8px; font-size: 13px; color: var(--ink-2); min-height: 2.6em; }

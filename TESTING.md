@@ -30,17 +30,23 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] The window opens. The terminal says which Python it found ("Desktop app: programs run with Python 3.x…").
 
 **New project**
-- [ ] Menu → New project (or Ctrl+N): pick a kind, type a name, leave "Choose a folder for it now" ticked,
-      Create, and choose an empty folder: the project's files appear there.
-- [ ] Try again choosing a folder that already has a project: nothing is written, and the terminal says why.
+- [ ] Menu → New project (or Ctrl+N): pick a kind, type a name, leave "Save it now (choose where)" ticked, Create.
+      The Save window opens with the name filled in and "In" set to `Documents\IntuaCode`; the line under it says
+      where it saves. Save: a folder with that name appears there, holding the project's files.
+- [ ] Save as (Ctrl+Shift+S) with the same name and place: it says that's where the project is saved now. Type the
+      name of a folder that has things in it: it says so and saves nothing. A name like `My Game: v2` saves as
+      `My Game - v2`; `con` is refused (Windows can't name a folder that).
+- [ ] Save as, Choose… another folder, a new name, Save: the copy is there, the header and the file tree show the new
+      name, and changes now save there. The old folder is left as it was.
 
 **Saving, Backups and closing**
 - [ ] With no folder yet, the header shows no folder name; after Save it shows the folder's name.
-- [ ] Change a sentence and close the window: "Save before closing?". Cancel keeps it open; Save saves (asking for a
-      folder the first time), then closes; Don't save closes. Without changes since the last Save it just closes.
+- [ ] Change a sentence and close the window: "Save before closing?". Cancel keeps it open; Save saves (opening the
+      Save window the first time; Cancel there keeps the window open), then closes; Don't save closes. Without changes since the last Save it just closes.
 - [ ] Work for a few minutes, then **Menu → Backups…**: copies 2 minutes apart, newest first, each with its project's
       name and file count. Restore one: it opens, and a copy of what was open is now at the top (Restore that to undo).
-- [ ] In a browser: Ctrl+S downloads `<project>.zip`; Import → Open a .zip opens it as it was. Change something and
+- [ ] In a browser: Ctrl+S asks the project's name the first time and downloads `<name>.zip`; Ctrl+S again
+      downloads it without asking, and Ctrl+Shift+S asks again; Import → Open a .zip opens it as it was. Change something and
       reload: the browser asks before leaving.
 
 **Planning and Project Templates**
@@ -236,7 +242,7 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Python (Split Mode)**
 - [ ] Project Templates → **Number guessing game** → Build this project → Run. Type guesses in the terminal; the game answers.
 - [ ] Change a sentence (e.g. the top number) and Run again: the change shows.
-- [ ] Press **Save**, choose an empty folder. It now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
+- [ ] Press **Save**, name it and Save. Its folder now holds `main.py` (and `.intuicode/`). Open `main.py` in a text editor (Notepad, TextEdit, gedit, Kate): it is ordinary Python.
 - [ ] Edit `main.py` in that editor (change a message), save it, then **Open folder** on that folder in IntuaCode: the sentence shows your change.
 - [ ] Type `$ python --version` (Windows) or `$ python3 --version` in the terminal: it answers.
 - [ ] Linux: in a saved project, type `$ python3 -m venv .venv`, then `$ pip install requests`. Add the
