@@ -257,4 +257,21 @@ export const CPP_SKETCHES = [
   sketch({ lines: 'set n to 6\nover and over\n    set inside to n is between 1 and 5', names: { inside: 'false' } }),
 ];
 
+// Programs of several files: a header (.h) says what the others can use, a .cpp file defines it, main.cpp uses it.
+// Each file is written from its own sentences, and all are built together and run as they are.
+const MATHS_H = 'declare add using whole number a, whole number b giving back a whole number\ndeclare greet using text name giving back text\n';
+const MATHS_CPP = 'include "maths.h"\ndefine add using whole number a, whole number b giving back a whole number\n    give back a plus b\ndefine greet using text name giving back text\n    give back "Hi " plus name\n';
+export const CPP_PROJECTS = [
+  { files: { 'maths.h': MATHS_H, 'maths.cpp': MATHS_CPP, 'main.cpp': 'include "maths.h"\nshow the result of add with 2, 3\nshow the result of greet with "Ada"\n' }, prints: '5\nHi Ada\n' },
+  // (the files in another order: the one with steps at the left edge has main, wherever it is)
+  { files: { 'main.cpp': 'include "maths.h"\nset total to the result of add with 40, 2\nshow total\n', 'maths.h': MATHS_H, 'maths.cpp': MATHS_CPP }, prints: '42\n' },
+  // a class in a header, used by main.cpp
+  { files: { 'box.h': 'define class Box\n    field side: decimal = 2\n    define area giving back a decimal, without changing the object\n        give back side times side\n',
+             'main.cpp': 'include "box.h"\nmake a Box called b\nshow the result of b.area\n' }, prints: '4\n' },
+  // a constant in a header; two files that both pick random numbers (each has the helper, and they still build)
+  { files: { 'dice.h': 'constant SIDES is 6\ndeclare roll giving back a whole number\n',
+             'dice.cpp': 'include "dice.h"\ndefine roll giving back a whole number\n    give back random number from 1 to SIDES\n',
+             'main.cpp': 'include "dice.h"\nset a to the result of roll\nset b to random number from 1 to SIDES\nshow a is between 1 and 6 and b is between 1 and 6\n' }, prints: '1\n' },
+];
+
 export const NOT_RUN_CPP = {};

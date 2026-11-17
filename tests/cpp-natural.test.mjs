@@ -140,3 +140,30 @@ test('as people type it: a C++ program\'s wait reads back as a sentence', () => 
   assert.equal(r.kept, 0, r.text);
   assert.match(r.text, /^wait 500 milliseconds\nwait pause milliseconds$/m);
 });
+
+test('a program of several files: a header says its tools ("declare …"), a .cpp file defines them with no main, and each reads back exactly', () => {
+  const files = {
+    'maths.h': '#pragma once\n#include <string>\n\nint add(int a, int b);\nstd::string greet(std::string name);\n',
+    'maths.cpp': '#include <string>\n#include "maths.h"\n\nint add(int a, int b) {\n    return a + b;\n}\n',
+    'main.cpp': '#include <iostream>\n#include "maths.h"\n\nint main() {\n    std::cout << add(2, 3) << std::endl;\n    return 0;\n}\n',
+    'guarded.h': '#ifndef GUARDED_H\n#define GUARDED_H\n\nint twice(int n);\n\n#endif\n',   // (guarded as code: no #pragma once added)
+  };
+  const said = {};
+  for (const [p, src] of Object.entries(files)) {
+    const r = convert('cpp', src, { path: p });
+    assert.ok(r.ok && r.exact, `${p}: ${r.reason || r.error}`);
+    said[p] = r.text;
+  }
+  assert.match(said['maths.h'], /^declare add using whole number a, whole number b giving back a whole number$/m);
+  assert.match(said['maths.h'], /^declare greet using text name giving back text$/m);
+  assert.doesNotMatch(said['maths.h'], /pragma/);
+  assert.match(said['maths.cpp'], /^define add using whole number a, whole number b giving back a whole number$/m);
+  // written together: only the file with steps has main; the header has #pragma once and no steps
+  const r = CPP.compileCppProject({ kind: 'cpp', sections: ['maths.h', 'maths.cpp', 'main.cpp'].map(p => ({ id: p, file: 'program', path: p, text: said[p] })) }).results;
+  assert.match(r['maths.h'].text, /^#pragma once\n/);
+  assert.doesNotMatch(r['maths.h'].text + r['maths.cpp'].text, /int main\(\)/);
+  assert.match(r['main.cpp'].text, /int main\(\) \{/);
+  // a step in a header is refused, saying where it goes
+  const h = CPP.compileCppProject({ kind: 'cpp', sections: [{ id: 'h', file: 'program', path: 'x.h', text: 'show "hi"\n' }] }).results.h;
+  assert.match(errs(h).join(' '), /A header \(\.h\) says what other files can use/);
+});

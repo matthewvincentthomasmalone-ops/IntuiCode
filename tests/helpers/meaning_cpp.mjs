@@ -40,6 +40,36 @@ function build(source, dir) {
     : spawnSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc', '/W0', '/bigobj', '/permissive-', src, `/Fe:${exe}`, `/Fo:${path.join(dir, 'examples.obj')}`], { encoding: 'utf8', env: c.env, cwd: dir });
   return { ok: r.status === 0, exe, said: (r.stdout || '') + (r.stderr || '') };
 }
+/* ---- Projects of several files: headers (.h) and .cpp files, each written from its own sentences, built
+   together and run as they are (no stand-ins: the program's own output) ---- */
+
+/* projects: [{ files: { "maths.h": sentences, "main.cpp": sentences, … }, prints, input? }]
+   -> [{ ex, ok, why, code: { path: C++ } }] */
+export function runCppProjects(CPP, projects) {
+  const c = findCompiler();
+  return projects.map((ex) => {
+    const paths = Object.keys(ex.files);
+    const r = CPP.compileCppProject({ kind: 'cpp', sections: paths.map((p, i) => ({ id: 's' + i, file: 'program', path: p, text: ex.files[p] })) });
+    const code = Object.fromEntries(paths.map((p, i) => [p, r.results['s' + i].text]));
+    const errs = paths.flatMap((p, i) => r.results['s' + i].info.flatMap(inf => inf.errs.map(e => `${p}: ${e}`)));
+    if (errs.length) return { ex, code, ok: false, why: `doesn't translate: ${errs[0]}` };
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'intui-cpp-project-'));
+    try {
+      for (const p of paths) writeFileSync(path.join(dir, p), code[p]);
+      const sources = paths.filter(p => /\.(?:cpp|cc|cxx)$/i.test(p));
+      const exe = path.join(dir, process.platform === 'win32' ? 'app.exe' : 'app');
+      const made = c.name === 'g++'
+        ? spawnSync('g++', ['-std=c++20', '-O0', '-w', ...sources, '-o', exe], { encoding: 'utf8', cwd: dir })
+        : spawnSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc', '/W0', '/permissive-', ...sources, `/Fe:${exe}`, `/Fo:${dir}\\`], { encoding: 'utf8', env: c.env, cwd: dir });
+      if (made.status !== 0) return { ex, code, ok: false, why: `doesn't build: ${((made.stdout || '') + (made.stderr || '')).trim().split('\n').slice(0, 4).join(' / ')}` };
+      const run = spawnSync(exe, [], { input: ex.input || '', encoding: 'utf8', timeout: 10000 });
+      if (run.status !== 0) return { ex, code, ok: false, why: `stopped with ${run.status}: ${run.stderr || ''}` };
+      const shown = run.stdout.replace(/\r\n/g, '\n');
+      return shown === ex.prints ? { ex, code, ok: true } : { ex, code, ok: false, why: `showed ${JSON.stringify(shown)}, but the words mean ${JSON.stringify(ex.prints)}` };
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
 /* The lines of the source an error is on (g++: file:12:5: error, cl: file(12): error). */
 const errorLines = (said) => [...said.matchAll(/examples\.cpp(?::(\d+):\d+:\s*error|\((\d+)(?:,\d+)?\)\s*:\s*(?:fatal )?error)/g)].map(m => +(m[1] || m[2]));
 

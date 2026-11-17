@@ -7451,19 +7451,22 @@
   async function runDesktopCpp() {
     const dir = desk.folder || await invoke('scratch_folder');
     const win = /Win/i.test(navigator.userAgent);
-    // every C++ file (headers too), then the start file is compiled
+    // every C++ file (headers too, and files kept as code), then the start file is compiled with the project's
+    // other .cpp files: a program of several files is built as one
     const main = startSec().lang === 'cpp' ? startSec() : project.sections.find(s => s.lang === 'cpp');
-    try { for (const s of project.sections.filter(x => x.lang === 'cpp')) await invoke('write_text', { path: join(dir, s.path), content: codeOf(s) }); }
+    const cppFiles = project.sections.filter(x => x.lang === 'cpp' || (x.lang === 'c' && /\.(?:h|hh|hpp|hxx|cpp|cc|cxx)$/i.test(x.path || '')));
+    try { for (const s of cppFiles) await invoke('write_text', { path: join(dir, s.path), content: s.lang === 'cpp' ? codeOf(s) : s.text }); }
     catch (e) { tLine('Could not write the C++ files: ' + e, 't-err'); return; }
+    const others = cppFiles.filter(s => s !== main && /\.(?:cpp|cc|cxx)$/i.test(s.path || '')).map(s => s.path);
     // the built program goes in .intuicode/build, not among your files
     const exe = '.intuicode/build/intuicode-program' + (win ? '.exe' : '');
     try { await invoke('write_text', { path: join(dir, '.intuicode/build/.gitignore'), content: '*\n' }); } catch (_) { /* compiling says why */ }
     const id = desk.nextId++;
-    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe, source: main.path, sec: main.id };
+    desk.proc = { id, kind: 'compile', err: '', out: '', dir, exe, source: main.path, sec: main.id, others: cppFiles.filter(s => s !== main && s.lang === 'cpp') };
     const msvc = desk.cpp[0] === 'msvc';
-    tLine(`▶ Compiling ${main.path} with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
+    tLine(`▶ Compiling ${[main.path, ...others].join(', ')} with ${msvc ? desk.cpp[1] : desk.cpp[0]}…${msvc ? ' (Visual Studio takes a few seconds to start.)' : ''}`, 't-sys');
     setRunning(true, 'compiling…');
-    try { await invoke('compile_cpp', { id, source: main.path, output: exe, cwd: dir }); }
+    try { await invoke('compile_cpp', { id, source: main.path, sources: others, output: exe, cwd: dir }); }
     catch (e) { tLine(String(e), 't-err'); desk.proc = null; setRunning(false); }
   }
   /* Compiler complaints that need a word about the board, not the code. */
@@ -7689,6 +7692,8 @@
           return;
         }
         compilerErrors(p.err + '\n' + (p.out || ''), p.source, p.sec);
+        // (and the project's other C++ files written from sentences: each error points at its own file's line)
+        for (const s of p.others || []) compilerErrors(p.err + '\n' + (p.out || ''), s.path.split('/').pop(), s.id);
         tLine('■ The program could not be compiled.', 't-sys');
         return;
       }

@@ -695,32 +695,36 @@ fn find_cpp(compiler: State<Compiler>) -> Option<(String, String)> {
     })
 }
 
-/// Compile one C++ file into a program, with live output (events like run_program).
+/// Compile a C++ program into one executable, with live output (events like run_program): the start file, and the
+/// project's other .cpp files (`sources`) when it has several, built and linked together.
 #[tauri::command]
-fn compile_cpp(app: AppHandle, procs: State<Processes>, compiler: State<Compiler>, access: State<Access>, id: u32, source: String, output: String, cwd: String) -> Result<(), String> {
+fn compile_cpp(app: AppHandle, procs: State<Processes>, compiler: State<Compiler>, access: State<Access>, id: u32, source: String, sources: Option<Vec<String>>, output: String, cwd: String) -> Result<(), String> {
     let dir = access.path(&cwd)?;
-    for file in [&source, &output] {
+    let mut all = vec![source];
+    all.extend(sources.unwrap_or_default());
+    for file in all.iter().chain(std::iter::once(&output)) {
         access.path(&dir.join(file).to_string_lossy())?;
     }
     let tool = compiler.0.lock().unwrap().clone().or_else(|| detect_cpp().map(|(t, _)| t)).ok_or("No C++ compiler was found on this computer.")?;
     let cmd = match tool {
         CppTool::Gnu(program) => {
             let mut c = Command::new(program);
-            c.args(["-std=c++20", "-O0", "-o", &output, &source]).current_dir(&dir);
+            c.args(["-std=c++20", "-O0", "-o", &output]).args(&all).current_dir(&dir);
             c
         }
-        CppTool::Msvc { vcvars } => msvc_command(vcvars, &source, &output, &cwd),
+        CppTool::Msvc { vcvars } => msvc_command(vcvars, &all, &output, &cwd),
     };
     start(app, &procs, id, cmd)
 }
 
 #[cfg(windows)]
-fn msvc_command(vcvars: Option<PathBuf>, source: &str, output: &str, cwd: &str) -> Command {
+fn msvc_command(vcvars: Option<PathBuf>, sources: &[String], output: &str, cwd: &str) -> Command {
     use std::os::windows::process::CommandExt;
     // object files go next to the program (in .intuicode\build), not among the project's files
     let output = output.replace('/', "\\");
     let fo = Path::new(&output).parent().map(|p| p.to_string_lossy().to_string()).filter(|p| !p.is_empty()).map(|d| format!(" /Fo{d}\\")).unwrap_or_default();
-    let cl = format!("cl /nologo /std:c++20 /EHsc /utf-8{fo} /Fe:\"{output}\" \"{source}\"");
+    let files = sources.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>().join(" ");
+    let cl = format!("cl /nologo /std:c++20 /EHsc /utf-8{fo} /Fe:\"{output}\" {files}");
     let mut c = Command::new("cmd");
     match vcvars {
         // vcvars sets up the paths cl needs, then cl runs in the same shell
@@ -732,7 +736,7 @@ fn msvc_command(vcvars: Option<PathBuf>, source: &str, output: &str, cwd: &str) 
 }
 
 #[cfg(not(windows))]
-fn msvc_command(_vcvars: Option<PathBuf>, _source: &str, _output: &str, cwd: &str) -> Command {
+fn msvc_command(_vcvars: Option<PathBuf>, _sources: &[String], _output: &str, cwd: &str) -> Command {
     let mut c = Command::new("cl");
     c.current_dir(cwd);
     c

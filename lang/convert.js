@@ -1638,6 +1638,7 @@
     const tree = env.parse('cpp', src);
     const o = Out();
     const CPP = env.CPP;
+    const header = !arduino && !!(env.cppFile && env.cppFile.header);
     const typeWord = (t) => {
       const s = collapse(t).replace(/\s*([&*])/g, '$1');
       if (TYPE_WORD[s] && !(arduino && s === 'std::string')) return TYPE_WORD[s];
@@ -2299,6 +2300,13 @@
       if (Object.values(helpers).includes(n.startIndex)) return true;   // the sentences that use it make it again
       if (n.type === 'preproc_include') { const p = F(n, 'path'); return !!p && say(`include ${p.text}`); }
       if (n.type === 'using_declaration' && collapse(n.text) === 'using namespace std;') return say('use namespace std');
+      // a header's #pragma once: the writer puts it in every header, so the sentences needn't say it
+      if (!arduino && header && n.type === 'preproc_call' && collapse(n.text) === '#pragma once') return true;
+      // int add(int a, int b); a tool declared here, defined in another file: "declare add using … giving back …"
+      if (!arduino && n.type === 'declaration' && F(n, 'declarator') && F(n, 'declarator').type === 'function_declarator') {
+        const s = funcSentence(n);
+        return !!s && !/, without changing the object$/.test(s) && /\bgiving back\b/.test(s) && named(F(F(n, 'declarator'), 'parameters')).every(p => isComment(p) || F(p, 'declarator')) && say(s.replace(/^define /, 'declare '));
+      }
       // #define LED 13: "let LED stand for 13"
       if (n.type === 'preproc_def') {
         const nm = F(n, 'name'), v = F(n, 'value');
@@ -2474,7 +2482,8 @@
     if (kind === 'css') return env.WEB.compileCss(sec, shared());
     if (kind === 'ts' || kind === 'tsx') return env.TS.compileTs(sec, shared(), { lang: kind });
     if (kind === 'js') return env.TS ? env.TS.compileTs(sec, shared(), { lang: 'js' }) : env.WEB.compileJs(sec, shared());
-    return env.CPP.compileCppProject({ kind: kind === 'arduino' ? 'arduino' : 'cpp', sections: [sec] }).results.x;
+    const file = env.cppFile || {};
+    return env.CPP.compileCppProject({ kind: kind === 'arduino' ? 'arduino' : 'cpp', sections: [{ ...sec, header: !!file.header, noMain: !!file.noMain }] }).results.x;
   }
 
   function check(kind, original, generated, env) {
@@ -2511,6 +2520,14 @@
 
   function toSentences(kind, source, env) {
     const src = String(source).replace(/\r\n/g, '\n');
+    // a C++ file of a program of several: a header (env.path ends .h, or it says #pragma once), or a .cpp file with
+    // no main. Its sentences are written back the same way: no main is added to it.
+    if (kind === 'cpp') {
+      const tops = named(env.parse('cpp', src));
+      const header = !!env.header || /\.(?:h|hh|hpp|hxx)$/i.test(env.path || '') || tops.some(n => n.type === 'preproc_call' && collapse(n.text) === '#pragma once');
+      const noMain = !tops.some(n => n.type === 'function_definition' && ((F(F(n, 'declarator'), 'declarator') || {}).text) === 'main');
+      env = { ...env, cppFile: { header, noMain } };
+    }
     const force = new Map();   // key -> 1 (say it the careful way) or 2 (keep it as code)
     let conv, last, gen;
     for (let round = 0; round < 40; round++) {

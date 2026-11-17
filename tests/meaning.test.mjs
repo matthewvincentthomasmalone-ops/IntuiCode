@@ -16,8 +16,8 @@ import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from './
 import { EXAMPLES, STATEMENTS, NOT_RUN } from './helpers/meaning_python.mjs';
 import { runJsExamples, indexCoverage, jsNameOf, jsRuleCoverage, mutateJsRules } from './helpers/meaning_web.mjs';
 import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS, JS_RULES_NOT_RUN } from './helpers/meaning_js.mjs';
-import { findCompiler, runCppExamples, cppIndexCoverage, mutateCppWords, cppNameOf } from './helpers/meaning_cpp.mjs';
-import { CPP_VALUES, CPP_STATEMENTS, CPP_SKETCHES, NOT_RUN_CPP } from './helpers/meaning_cpp_examples.mjs';
+import { findCompiler, runCppExamples, runCppProjects, cppIndexCoverage, mutateCppWords, cppNameOf } from './helpers/meaning_cpp.mjs';
+import { CPP_VALUES, CPP_STATEMENTS, CPP_SKETCHES, CPP_PROJECTS, NOT_RUN_CPP } from './helpers/meaning_cpp_examples.mjs';
 import { findChrome } from './helpers/browser.mjs';
 import { runJsInBrowser, runSiteInBrowser, siteCoverage, siteNameOf, mutateContainers } from './helpers/meaning_browser.mjs';
 import { compileExample } from './helpers/meaning_web.mjs';
@@ -128,6 +128,13 @@ const CPP_ALL = [...CPP_VALUES, ...CPP_STATEMENTS, ...CPP_SKETCHES];
 const cc = findCompiler();
 const noCompiler = cc ? false : 'no C++ compiler (g++, or Visual Studio with C++)';
 const cppResults = cc ? runCppExamples(CPP, CPP_ALL) : [];
+// programs of several files: headers and .cpp files, each from its own sentences, built together and run
+const projectResults = cc ? runCppProjects(CPP, CPP_PROJECTS) : [];
+
+test('meaning, C++: a program of several files (a header, its .cpp, main.cpp) builds and does what its words say', { skip: noCompiler }, () => {
+  const bad = projectResults.filter(r => !r.ok).map(r => `${Object.keys(r.ex.files).join(' + ')}: ${r.why}`);
+  assert.deepEqual(bad, []);
+});
 
 test('meaning, C++: every program and sketch does what its words say, compiled and run', { skip: noCompiler }, () => {
   const bad = cppResults.filter(r => !r.ok).map(r => `"${cppNameOf(r.ex)}" ${r.why}\n    ${(r.code || '').trim().replace(/\n+/g, '\n    ')}`);
@@ -135,7 +142,8 @@ test('meaning, C++: every program and sketch does what its words say, compiled a
 });
 
 test('meaning, C++: every Index entry for programs and sketches has an example that runs, or says why not', { skip: noCompiler }, () => {
-  const rows = cppIndexCoverage(CPP, cppResults, NOT_RUN_CPP);
+  // (a project's sentences count for its Index entries too: "declare …" is said in a header)
+  const rows = cppIndexCoverage(CPP, cppResults.concat(projectResults.map(r => ({ ...r, ex: { lines: Object.values(r.ex.files).join('\n') } }))), NOT_RUN_CPP);
   const missing = rows.filter(r => !r.examples.length && !r.why).map(r => r.label);
   assert.deepEqual(missing, [], 'these Index entries have no example: add one to tests/helpers/meaning_cpp_examples.mjs');
   for (const [k, why] of Object.entries(NOT_RUN_CPP)) {
