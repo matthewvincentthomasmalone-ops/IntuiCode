@@ -57,7 +57,7 @@ export const nameOf = (ex) => (ex.lines != null ? ex.lines.replace(/\n\s*/g, ' /
 // in a namespace of its own, from the given lines only, so it never sees the translated code. Shown text is
 // caught, "ask" gets the job's answers, "wait" is noted instead of waited, and the folder is put back after.
 const RUNNER = String.raw`
-import builtins, contextlib, io, json, os, random, sys, time
+import builtins, contextlib, io, json, os, random, sys, tempfile, time
 sys.stdin.reconfigure(encoding="utf-8")
 home, real_sleep, real_input = os.getcwd(), time.sleep, builtins.input
 def same(a, b):
@@ -88,6 +88,9 @@ def run(job):
             return answers.pop(0)
         time.sleep, builtins.input = slept.append, ask
         ns, raised = {"__name__": "__main__"}, None
+        # (each run in a folder of its own, so a file it writes never lands in the project, even when a wrong rule
+        # skips the example's own move to one)
+        os.chdir(tempfile.mkdtemp())
         try:
             with contextlib.redirect_stdout(out):
                 sys.settrace(limited())
@@ -108,6 +111,7 @@ for job in json.load(sys.stdin):
         ns, results, shown, slept, raised = run(job)
         result = results[0]
         own = {"__name__": "__main__"}
+        os.chdir(tempfile.mkdtemp())
         exec(job["given"], own)
         os.chdir(home)
         bad = None

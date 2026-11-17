@@ -14,8 +14,8 @@ import path from 'node:path';
 import { loadEngine, ROOT } from './helpers/engine.mjs';
 import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from './helpers/meaning.mjs';
 import { EXAMPLES, STATEMENTS, NOT_RUN } from './helpers/meaning_python.mjs';
-import { runJsExamples, indexCoverage, jsNameOf } from './helpers/meaning_web.mjs';
-import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS } from './helpers/meaning_js.mjs';
+import { runJsExamples, indexCoverage, jsNameOf, jsRuleCoverage, mutateJsRules } from './helpers/meaning_web.mjs';
+import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS, JS_RULES_NOT_RUN } from './helpers/meaning_js.mjs';
 import { findCompiler, runCppExamples, cppIndexCoverage, mutateCppWords, cppNameOf } from './helpers/meaning_cpp.mjs';
 import { CPP_VALUES, CPP_STATEMENTS, CPP_SKETCHES, NOT_RUN_CPP } from './helpers/meaning_cpp_examples.mjs';
 import { findChrome } from './helpers/browser.mjs';
@@ -102,6 +102,23 @@ test('meaning, JavaScript: a wrong word is caught', async () => {
       assert.ok((await runJsExamples(W, JS_ALL)).some(r => !r.ok), `"${word}" written as ${to.trim()} passed every example`);
     } finally { e[1] = was; }
   }
+});
+
+test('meaning, JavaScript: every rule (value words, words, statements) has an example that runs, or says why not', () => {
+  const rows = jsRuleCoverage(WEB, jsResults, JS_RULES_NOT_RUN);
+  assert.deepEqual(rows.filter(r => !r.examples.length && !r.why).map(r => r.label), [], 'these rules have no example: add one to tests/helpers/meaning_js.mjs');
+  for (const [k, why] of Object.entries(JS_RULES_NOT_RUN)) {
+    const named = rows.filter(r => r.label === k);
+    assert.equal(named.length, 1, `JS_RULES_NOT_RUN "${k}" names ${named.length} rules`);
+    assert.equal(named[0].examples.length, 0, `"${k}" has an example now: take it out of JS_RULES_NOT_RUN (${why})`);
+  }
+});
+
+test('meaning, JavaScript: a rule doing another\'s work is caught', async () => {
+  const { WEB: W } = loadEngine();
+  const m = await mutateJsRules(W, JS_ALL, (said) => ['length of x', 'x trimmed', 'when … is clicked', 'otherwise if …', 'for each … in …', 'set the … of … to …'].includes(said));
+  assert.equal(m.tried, 6);
+  assert.deepEqual(m.missed, []);
 });
 
 /* ------------------------------------------------------------------ the C++ writer: programs and sketches */

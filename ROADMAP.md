@@ -168,13 +168,15 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   TanStack Query or shadcn/ui. 7 of 7 wrong type words are caught. The owner approved five development packages
   for this (2026-11-17): `typescript`, `react`, `react-dom`, `@types/react`, `@types/react-dom`. They're for the
   tests only and aren't shipped.
+- JavaScript's rules are in tables (2026-11-17), as Python's are: 48 value words, 20 words for comparisons and
+  maths, and 86 statements, each named. The code they write is the same as before. They're now counted one by one
+  (all value words and words, and 84 of 86 statements, have an example), and 128 of 128 rules made to do another's
+  work are caught. Counting by rule found 32 rules the Index doesn't list with no example; each has one now.
 - Still not proven: other libraries' React sentences, other browsers, a real board, values beyond the
   examples', and rules combined in longer values or blocks. See
   [What the words mean](INTUICODE.md#what-the-words-mean).
 
 ## What could come next
-
-- JavaScript's rules in a table, so they're counted (and made wrong on purpose) one by one, not by the Index.
 
 - Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
   dependency and a decision for the owner.
