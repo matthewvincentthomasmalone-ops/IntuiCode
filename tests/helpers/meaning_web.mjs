@@ -23,7 +23,15 @@ export const jsNameOf = (ex) => (ex.lines != null ? ex.lines.replace(/\n\s*/g, '
 
 export function compileExample(WEB, ex) {
   const r = WEB.compileWebsite({ sections: [{ id: 'structure', file: 'structure', text: ex.page || '' }, { id: 'styling', file: 'styling', text: '' }, { id: 'mechanics', file: 'mechanics', text: mechanicsOf(ex) }] });
-  return { html: r.results.structure.text, code: r.results.mechanics.text, errs: [...r.results.structure.info, ...r.results.mechanics.info].flatMap(i => i.errs) };
+  return { html: r.results.structure.text, code: r.results.mechanics.text, module: !!r.results.mechanics.module, errs: [...r.results.structure.info, ...r.results.mechanics.info].flatMap(i => i.errs) };
+}
+
+/* An example whose words should be refused (refuses: what the message must say): it passes when one of the
+   translation's errors says that, and isn't run. -> { ok, why } or null for an example that should translate */
+export function refusedAsSaid(ex, made) {
+  if (!ex.refuses) return null;
+  if (made.errs.some(e => e.includes(ex.refuses))) return { ok: true };
+  return { ok: false, why: made.errs.length ? `refused with "${made.errs[0]}", which doesn't say "${ex.refuses}"` : `should be refused, saying "${ex.refuses}", but translates` };
 }
 
 /* Runs one example's code on a page of its own, then what it does after ("then"), and checks it.
@@ -33,7 +41,8 @@ export async function runOne(ex, made, code = made.code) {
   page.ctx.page = page;
   let raised = null;
   try {
-    page.run(code);
+    if (made.module) await page.runModule(code, ex.files);   // (script.js as a module: it brings in, or waits)
+    else page.run(code);
     await page.settle();
     await page.load();
     if (ex.then) await page.run(`(async () => {\n${ex.then}\n})()`, 'then');
@@ -67,6 +76,8 @@ export async function runJsExamples(WEB, examples) {
   const out = [];
   for (const ex of examples) {
     const made = compileExample(WEB, ex);
+    const refused = refusedAsSaid(ex, made);
+    if (refused) { out.push({ ex, ...made, ...refused }); continue; }
     if (made.errs.length) { out.push({ ex, ...made, ok: false, why: `doesn't translate: ${made.errs[0]}` }); continue; }
     out.push({ ex, ...made, ...(await runOne(ex, made)) });
   }

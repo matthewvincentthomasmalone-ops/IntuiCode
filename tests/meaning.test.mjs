@@ -250,7 +250,7 @@ test('meaning: each known wrong translation in INTUICODE.md that its example sho
       }
     }
   }
-  assert.ok(checked >= 2, `only ${checked} rows were found in their examples`);
+  assert.ok(checked >= 1, `only ${checked} rows were found in their examples`);
 });
 
 test('meaning: Python\'s is, written as Python, warns; is in words doesn\'t', () => {
@@ -261,10 +261,15 @@ test('meaning: Python\'s is, written as Python, warns; is in words doesn\'t', ()
     assert.deepEqual([...warnsOf(line)].filter(w => /very same object/.test(w)), [], line);
 });
 
-test('meaning: a fetch at the left edge of a page\'s script warns; one in a block or a module doesn\'t', () => {
-  const warnsOf = (text, at) => [...WEB.compileWebsite({ sections: [{ id: 'structure', file: 'structure', text: '' }, { id: 'styling', file: 'styling', text: '' }, { id: 'mechanics', file: 'mechanics', text }] }).results.mechanics.info[at].warns].filter(w => /classic script/.test(w));
-  assert.equal(warnsOf('fetch from "/api/items" and store in items\n', 0).length, 1);
-  assert.equal(warnsOf('send 1 to "/api/items"\n', 0).length, 1);
-  assert.deepEqual(warnsOf('when the page has loaded\n    fetch from "/api/items" and store in items\n', 1), []);
-  assert.deepEqual(warnsOf('bring in total from "./maths.js"\nfetch from "/api/items" and store in items\n', 1), []);
+test('meaning: script.js is a module when its code needs one (a wait at the left edge, bring in), and classic otherwise', () => {
+  const site = (text) => WEB.compileWebsite({ sections: [{ id: 'structure', file: 'structure', text: 'add a heading "Hi"' }, { id: 'styling', file: 'styling', text: '' }, { id: 'mechanics', file: 'mechanics', text }] }).results;
+  const tagOf = (text) => site(text).structure.text.match(/<script\b[^>]*>/)[0];
+  for (const needs of ['fetch from "/api/items" and store in items', 'send 1 to "/api/items"', 'bring in total from "./maths.js"']) {
+    assert.equal(tagOf(needs + '\n'), '<script type="module" src="script.js">', needs);
+    assert.equal(site(needs + '\n').mechanics.info[0].warns.length, 0, needs);   // (the engine's array: its own realm)
+    assert.match(WEB.previewDocument({ results: site(needs + '\n') }).html, /<script type="module">/, needs);
+  }
+  // (a classic script runs from a page opened straight from the disk; a module doesn't)
+  for (const plain of ['when the page has loaded\n    fetch from "/api/items" and store in items', 'set n to 1', 'when the heading is clicked\n    show "hi"'])
+    assert.equal(tagOf(plain + '\n'), '<script src="script.js">', plain);
 });

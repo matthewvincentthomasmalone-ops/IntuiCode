@@ -967,7 +967,7 @@
     // it puts Styling and Mechanics there (previewDocument)
     const page = out.map(o => o.text).join('\n');
     const adds = (kind) => shared.mark || addsLink(kind, shared.site, page);
-    if (!raws.some(r => SCRIPT_TAG.test(r)) && adds('js')) push('  <script src="script.js"></script>', -1);
+    if (!raws.some(r => SCRIPT_TAG.test(r)) && adds('js')) push(`  <script${shared.module ? ' type="module"' : ''} src="script.js"></script>`, -1);
     push('</body>', -1);
     push('</html>', -1);
     if (!raws.some(r => STYLE_LINK.test(r)) && adds('css')) out.splice(styleAt, 0, { text: '  <link rel="stylesheet" href="style.css">', src: -1 });
@@ -2384,10 +2384,8 @@
       return idx >= 0 && needsAsync(idx, new Set([...seen, name]));
     };
     const insideFn = () => stack.some(b => b.kind === 'fn');
-    // Known wrong translation (INTUICODE.md): `await` at the left edge of the page's script.js, which the page loads
-    // as a classic script (no "bring in": that makes it a module), stops the whole script from running
-    const classic = sec.file === 'mechanics' && !lines.some(l => /^\s*bring in\b/i.test(l));
-    const topAwait = (inf) => { if (classic && !stack.length) inf.warns.push('This waits for the server (`await`) at the left edge, outside any block. The page loads script.js as a classic script, where `await` only works inside a function, so none of the script would run. Put it under "when the page has loaded".'); };
+    // `await` at the left edge of script.js: the page loads it as a module, where that works (see the end of compileJs)
+    const topAwait = (inf) => { if (sec.file === 'mechanics' && !stack.length) note(inf, 'This waits for the server at the left edge, outside any block, so the page loads script.js as a module (`type="module"`), where that works. A module runs from a web server, not from the page opened straight from the disk.'); };
     // a case of "depending on" ends with break, unless its last step leaves anyway or it goes on into the next case
     const closeOf = (b) => [].concat(typeof b.close === 'function' ? b.close() : b.close);
     const caseEnd = (b) => () => { const last = out[out.length - 1]; return b.fall || (last !== b.head && /^\s*(?:return\b|break;|continue;|throw\b)/.test(last.text)) ? [] : ['  break;']; };
@@ -3129,7 +3127,13 @@
       else if (Array.isArray(runs[runs.length - 1])) runs[runs.length - 1].push(o.text);
       else runs.push([o.text]);
     }
-    return { lines: out, info, text: runs.map(r => (Array.isArray(r) ? r.join('\n').replace(/\n{3,}/g, '\n\n') : r)).join('\n') + '\n' };
+    const text = runs.map(r => (Array.isArray(r) ? r.join('\n').replace(/\n{3,}/g, '\n\n') : r)).join('\n') + '\n';
+    // script.js is a module when its code needs one: it brings in another file (import), shares tools (export), or
+    // waits for the server (await) at the left edge, outside any function. Only then: a module doesn't run from a
+    // page opened straight from the disk (file://), and a classic script does
+    const module = sec.file === 'mechanics' && /^(?:import|export)\b|^(?![\s/])[^\n]*\bawait\b/m.test(text);
+    if (module && shared) shared.module = true;
+    return { lines: out, info, text, module };
   }
 
   /* ================================================================== */
@@ -3204,7 +3208,7 @@
     const main = extra && extra.styling;
     const withCss = html.replace(/<link\b[^>]*\bhref\s*=\s*["']?style\.css["']?[^>]*>/i, () => (main && inlined.has(main) ? '' : styleTag(main || '', css)));
     const helper = helperScript ? `<script>${helperScript}</script>\n` : '';
-    const inline = `${helper}<script>\n${js.replace(/<\/script/gi, '<\\/script')}</script>`;
+    const inline = `${helper}<script${(r.mechanics || {}).module ? ' type="module"' : ''}>\n${js.replace(/<\/script/gi, '<\\/script')}</script>`;
     const tag = withCss.match(/<script\b[^>]*\bsrc\s*=\s*["']?script\.js["']?[^>]*><\/script>/i);
     let doc = withCss;
     if (tag && /\b(?:defer|async)\b/i.test(tag[0].replace(/"[^"]*"|'[^']*'/g, ''))) {   // a deferred script runs once the page is read: at the end of <body>
