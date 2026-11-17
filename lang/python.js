@@ -1091,11 +1091,17 @@
     return { py: 'if __name__ == "__main__":', open: 'if', tag: 'if' };
   });
   rule(/^when\s+([A-Za-z_][\w.]*)\s+(?:gets|receives)\s+(an?y? ?(?:web )?requests?|(?:GET|POST|PUT|DELETE|PATCH)(?:\s*(?:,|and|or)\s*(?:GET|POST|PUT|DELETE|PATCH))*)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')$/i, (m, x) => {
-    const methods = /request/i.test(m[2]) ? [] : m[2].toUpperCase().split(/\s*(?:,|AND|OR)\s*/).filter(Boolean);
-    x.note(methods.length
-      ? `A web route: when the web server gets ${methods.join(' or ')} requests for ${m[3]}, it runs the tool defined on the next line. (Flask writes this as a decorator starting with @.)`
-      : `A web route: when the web server gets a request for ${m[3]}, it runs the tool defined on the next line. With no kinds named, Flask answers only GET (a browser opening the page); others are turned away. To take more, name them: "gets GET and POST at ${m[3]}". (Flask writes this as a decorator starting with @.)`);
-    return { py: `@${m[1]}.route(${m[3].replace(/^'|'$/g, '"')}${methods.length ? `, methods=[${methods.map(v => `"${v}"`).join(', ')}]` : ''})`, tag: 'decorator' };
+    // "a request" is any kind: Flask, told no kinds, answers only GET, so they're all named
+    const any = /request/i.test(m[2]);
+    const methods = any ? ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] : m[2].toUpperCase().split(/\s*(?:,|AND|OR)\s*/).filter(Boolean);
+    x.note(any
+      ? `A web route: whatever kind of request the web server gets for ${m[3]} (GET, POST, PUT, DELETE or PATCH), it runs the tool defined on the next line. For only a browser opening the page, say "when ${m[1]} is opened at ${m[3]}". (Flask writes this as a decorator starting with @.)`
+      : `A web route: when the web server gets ${methods.join(' or ')} requests for ${m[3]}, it runs the tool defined on the next line; other kinds are turned away. (Flask writes this as a decorator starting with @.)`);
+    return { py: `@${m[1]}.route(${m[3].replace(/^'|'$/g, '"')}, methods=[${methods.map(v => `"${v}"`).join(', ')}])`, tag: 'decorator' };
+  });
+  rule(/^when\s+([A-Za-z_][\w.]*)\s+is\s+(?:opened|visited)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')$/i, (m, x) => {
+    x.note(`A web route: when a browser opens ${m[2]} (a GET request), the web server runs the tool defined on the next line. Other kinds of request are turned away; to take them, name them: "when ${m[1]} gets GET and POST at ${m[2]}". (Flask writes this as a decorator starting with @, with no methods: GET is Flask's own choice.)`);
+    return { py: `@${m[1]}.route(${m[2].replace(/^'|'$/g, '"')})`, tag: 'decorator' };
   });
   rule(/^when\s+([A-Za-z_][\w.]*)\s+handles\s+(GET|POST|PUT|DELETE|PATCH)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')(?:\s+with\s+(.+))?$/i, (m, x) => {
     const extra = m[4] ? splitItems(m[4]).map(a => tExpr(a, x)) : [];
@@ -2144,6 +2150,7 @@
     T('Program', 'bring in ‹name› from ‹module›', 'from module import name', '"bring in everything from ‹module›" is import *.'),
     T('Program', 'if this file is run directly', 'if __name__ == "__main__":', 'The starting point of a program made of several files.', ['main']),
     T('Program', 'when ‹app› gets ‹GET› at "‹/path›"', '@app.route("/path", methods=["GET"])', 'A Flask web route. Put "define …" on the next line.', ['tools', 'main']),
+    T('Program', 'when ‹app› is opened at "‹/path›"', '@app.route("/path")', 'A Flask web route for a browser opening the page (GET only). Put "define …" on the next line.', ['tools', 'main']),
     T('Program', 'when ‹app› handles ‹GET› at "‹/path›"', '@app.get("/path")', 'A FastAPI (or Flask 2) web route. Put "define …" on the next line.', ['tools', 'main']),
     T('Program', 'decorate with ‹decorator›', '@decorator', 'Adds behaviour to the next tool or class.', ['tools', 'main']),
     T('Program', 'use the shared ‹name›', 'global name', 'Inside a tool: change a value that lives outside it.', ['tools']),
@@ -2206,7 +2213,7 @@
   };
 
   /* Block openers: used by the editor to auto-indent after Enter. */
-  const OPENS_BLOCK = /^\s*(?:if|when (?!\S+ (?:gets|handles)\b)|otherwise|else|elif|repeat|while|until|as long as|keep (?:going|repeating)|count|for|define|create (?:a )?(?:tool|function)|make (?:a )?(?:tool|function)|forever|loop|do this|try|in any case|finally|either way|open (?:the file )?.+ as \w+$|(?:async )?using|python:.*:\s*$)\b/i;
+  const OPENS_BLOCK = /^\s*(?:if|when (?!\S+ (?:gets|handles|is opened|is visited)\b)|otherwise|else|elif|repeat|while|until|as long as|keep (?:going|repeating)|count|for|define|create (?:a )?(?:tool|function)|make (?:a )?(?:tool|function)|forever|loop|do this|try|in any case|finally|either way|open (?:the file )?.+ as \w+$|(?:async )?using|python:.*:\s*$)\b/i;
 
   window.IntuiLang = window.IntuiLang || {};
   window.IntuiLang.python = {

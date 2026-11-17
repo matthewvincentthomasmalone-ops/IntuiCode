@@ -144,8 +144,9 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   closed with an example: "otherwise if" written as a plain "if" passed when only one condition was true.
 - Web routes (2026-11-17): 7 examples run on a stand-in Flask and FastAPI (`tests/helpers/web_standin.py`),
   so every value word and every statement but tkinter's has one, and every wrong rule is caught. It found one
-  gap in the notes: "when app gets a request at …" (no kinds named) is answered for GET only, as Flask does;
-  the note now says so.
+  gap: "when app gets a request at …" wrote `@app.route(…)` with no methods, which Flask answers for GET only.
+  Now "a request" names every kind (GET, POST, PUT, DELETE, PATCH), and a route with no methods reads as
+  "when app is opened at …": a browser opening the page.
 - JavaScript (2026-11-17): 161 examples of a website's Mechanics, run in Node on a stand-in page
   (`tests/helpers/page.mjs`: elements, events, the browser's memory, `fetch` with set replies, timers moved on by
   hand, a canvas pen and sound that note their calls). The JavaScript writer's rules are written in place, so its

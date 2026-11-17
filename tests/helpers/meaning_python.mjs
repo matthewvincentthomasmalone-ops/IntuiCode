@@ -275,8 +275,11 @@ export const STATEMENTS = [
     holds: 'app.test_client().get("/both").text == "GET" and app.test_client().post("/both").text == "POST" and app.test_client().put("/both").status_code == 405' },
   { lines: `${FLASK}\nwhen app gets GET at "/double/<int:k>"\ndefine double using k\n    give back (k times 2) as text`,
     holds: 'app.test_client().get("/double/4").text == "8" and app.test_client().get("/double/x").status_code == 404' },
-  // ("a request", with no kinds named: Flask answers GET there, and the note says so)
-  { lines: `${FLASK}\nwhen app gets a request at "/page"\ndefine page\n    give back "hello"`, holds: 'app.test_client().get("/page").text == "hello"' },
+  // ("is opened at": a browser opening the page, GET only; "a request" is any kind)
+  { lines: `${FLASK}\nwhen app is opened at "/page"\ndefine page\n    give back "hello"`,
+    holds: 'app.test_client().get("/page").text == "hello" and app.test_client().post("/page").status_code == 405' },
+  { lines: `${FLASK}\nwhen app gets a request at "/any"\ndefine anything\n    give back request.method`,
+    holds: 'all(getattr(app.test_client(), m.lower())("/any").text == m for m in ["GET", "POST", "PUT", "DELETE", "PATCH"])' },
   { lines: `${FLASK}\nwhen app handles GET at "/ping"\ndefine ping\n    give back "pong"`,
     holds: 'app.test_client().get("/ping").text == "pong" and app.test_client().post("/ping").status_code == 405' },
   { lines: 'bring in FastAPI from fastapi\nset app to a new FastAPI\nwhen app handles POST at "/items" with status_code=201\ndefine make_item using name\n    give back {"made": name}',
