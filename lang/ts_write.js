@@ -579,6 +579,11 @@
           let one = '';
           for (const o of inner) one += o.raw ? '\n' + o.text : o.text;
           if (lined) { const ls = (one + close).split('\n'); return [...ending(ls[0]), ...ls.slice(1).map(l => ({ text: l, src: n.k }))]; }
+          // too long for one line (past 80 columns, where Prettier breaks one): the tags on lines of their own, what's
+          // inside on one line between them. (Only when what's inside starts and ends with no space: JSX drops a space
+          // at the end of a line.)
+          const at = (c.pad || '').length + 2 + 2 * level;
+          if (!/\n/.test(one) && !/^\s|\s$/.test(one) && at + (open + one + close).length > 80) return [{ text: open, src: n.k }, { text: one, src: n.k, d: 1 }, { text: close, src: n.k }];
           return (open + one + close).split('\n').map((l, i) => ({ text: l, src: n.k }));
         }
         return [...opening('>'), ...inner.map(ind), { text: close, src: n.k }];

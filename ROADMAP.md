@@ -126,7 +126,9 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   one name per line), `… with:` with a call's inputs or a record's parts (`title: "Saved"`) a line each under it
   (`… and:` for a record after other inputs: `fetch(url, {`), and a Supabase query with its parts after the table
   on lines under it (one call per line). Byte for byte: 13 of 13 corpus files and 6 of 8 held-out ones (19 of 21);
-  left: text and an element sharing a line between tags (Dashboard, Login).
+  left: text and an element sharing a line between tags (Dashboard, Login). Since 2026-11-17, all 21: text with an
+  element in it is on one line with its tags when that fits in 80 columns, and between its tags (on lines of their
+  own) when it wouldn't, as Prettier breaks it. The same sentences say both.
 
 ### Step 15 notes
 
@@ -191,8 +193,6 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 
 - Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
   dependency and a decision for the owner.
-- Translated React keeps its layout: today a multi-line call (`useQuery({ … })`) comes back on one line, and
-  blank lines between components are dropped (the same program, checked exact, laid out differently).
 
 - More of the web into words: forms with names, `hidden` elements, listeners on saved
   elements (`const form = …; form.addEventListener`), multi-file C++ projects with headers.
