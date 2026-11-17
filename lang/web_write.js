@@ -634,6 +634,16 @@
       // a text box is the browser's own default, so it has no type: the page says exactly what the sentence says
       return el('input', { id, attrs: type === 'text' ? { ...attrs } : { type, ...attrs } });
     }
+    // "add a hidden value "home" sent as "source"": sent with the form, never shown
+    if ((m = s.match(/^add\s+(?:a\s+)?hidden value\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(.*)$/i))) {
+      const sent = m[2].match(/,?\s+sent as\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/i);
+      const rest = sent ? m[2].replace(sent[0], '') : m[2];
+      const id = called(rest);
+      if (/\S/.test(cut(rest))) inf.errs.push(`I don't understand "${cut(rest).trim()}" here. Try: add a hidden value "home" sent as "source"`);
+      if (!sent) inf.warns.push('Say the name it\'s sent with, like: sent as "source". A form only sends a value that has a name.');
+      note(inf, '`<input type="hidden">` is sent with the form, but the page never shows it.');
+      return el('input', { id, attrs: { type: 'hidden', ...(sent ? { name: strOf(sent[1]) } : {}), value: strOf(m[1]) } });
+    }
     if ((m = s.match(/^add\s+(?:a\s+)?slider\b(.*)$/i))) {
       const { attrs, rest } = inputSettings(m[1], inf);
       const id = called(rest);
@@ -3237,6 +3247,7 @@
     T('Controls', 'add a number box called ‹name› allowing decimals, from ‹0› to ‹100›', '<input type="number" step="any" min="0" max="100">', 'Also: in steps of 5, at least 1, at most 10, with a number keypad. A time box picks a time.', ['structure']),
     T('Controls', 'add a checkbox called ‹name› saying "‹text›"', '<input type="checkbox">', 'Mechanics: "if ‹name› is ticked", "tick ‹name›", "untick ‹name›".', ['structure']),
     T('Controls', 'add a slider called ‹name› from ‹0› to ‹100›', '<input type="range">', 'Its value is where it is set, as text.', ['structure']),
+    T('Controls', 'add a hidden value "‹home›" sent as "‹source›"', '<input type="hidden" name="source" value="home">', 'Sent with its form, never shown: something the server needs, not the person filling it in.', ['structure']),
     T('Controls', 'add a file picker called ‹name› for ‹pictures›', '<input type="file" accept="image/*">', 'Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›".', ['structure']),
     T('Media', 'add a picture of "‹file.jpg›" described as "‹what it shows›"', '<img src="…" alt="…">', 'The description is read aloud by screen readers.', ['structure']),
     T('Media', 'add a drawing area called ‹game› ‹480› by ‹270›', '<canvas id="game" width="480" height="270">', 'Where a game or a picture is drawn, from Mechanics.', ['structure']),

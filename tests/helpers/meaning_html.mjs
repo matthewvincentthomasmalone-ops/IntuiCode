@@ -27,6 +27,9 @@ export const HTML_STRUCTURE = [
     holds: 'page.el("agree").type === "checkbox" && before === false && page.el("agree").checked === true && page.el("agree").labels[0].textContent.includes("I agree")' },
   { page: 'add a slider called volume from 0 to 11', holds: 'page.el("volume").type === "range" && page.el("volume").min === "0" && page.el("volume").max === "11"' },
   { page: 'add a file picker called pic for pictures', holds: 'page.el("pic").type === "file" && page.el("pic").accept === "image/*"' },
+  // a hidden value is sent with its form, and never shown
+  { page: 'add a form called signup\n    add a hidden value "home" sent as "source"\n    add a text box called who, sent as "who"',
+    holds: 'new FormData(page.el("signup")).get("source") === "home" && page.q("input[type=hidden]").getBoundingClientRect().height === 0 && page.q("input[type=hidden]").checkVisibility() === false' },
   { page: 'add a picture of "cat.png" described as "A cat on a mat"', holds: 'page.q("img").alt === "A cat on a mat" && page.q("img").getAttribute("src") === "cat.png" && page.q("img").complete && page.q("img").naturalWidth === 1' },
   { page: 'add a drawing area called game 480 by 270', holds: 'page.el("game").tagName === "CANVAS" && page.el("game").width === 480 && page.el("game").height === 270' },
   { page: 'add a link to "https://example.com/" saying "Go"', holds: 'page.q("a").href === "https://example.com/" && page.q("a").textContent === "Go"' },

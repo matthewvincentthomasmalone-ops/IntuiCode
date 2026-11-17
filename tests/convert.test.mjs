@@ -461,3 +461,16 @@ test('Arduino: steps at the left edge and asking for input are explained', () =>
   assert.match(errs, /no keyboard/);
   assert.match(r.text, /void loop\(\) \{\n\}/);   // an empty loop is added so the sketch still builds
 });
+
+test('a form with a name, hidden parts and values, and listeners on saved elements are read as sentences, and back exactly', () => {
+  const html = ['<!DOCTYPE html>', '<html lang="en">', '<head>', '  <meta charset="UTF-8">', '  <meta name="viewport" content="width=device-width, initial-scale=1.0">', '  <title>Sign up</title>', '</head>', '<body>',
+    '  <form id="signup" name="signup" action="/join" method="post">', '    <label for="email">Email</label>', '    <input id="email" name="email" type="email" required>',
+    '    <input type="hidden" name="source" value="home">', '    <button type="submit">Join</button>', '  </form>', '  <p id="thanks" hidden>Thanks!</p>', '  <script src="script.js"></script>', '</body>', '</html>', ''].join('\n');
+  const page = convert('html', html, { pulled: ['style.css', 'script.js'] });
+  assert.ok(page.exact, page.reason);
+  for (const said of [/^add a form called signup, with name signup, sending to "\/join", with method post$/m, /^    add a hidden value "home" sent as "source"$/m, /^add a paragraph called thanks "Thanks!", hidden$/m]) assert.match(page.text, said);
+  const js = ['const form = document.getElementById("signup");', 'const thanks = document.getElementById("thanks");', 'form.addEventListener("submit", (event) => {', '  event.preventDefault();', '  thanks.hidden = false;', '  form.hidden = true;', '});', ''].join('\n');
+  const script = convert('js', js);
+  assert.ok(script.exact, script.reason);
+  assert.equal(script.text.trim(), 'constant form is the element called "signup"\nconstant thanks is the element called "thanks"\nwhen form is sent\n    reveal thanks\n    hide form');
+});
