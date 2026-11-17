@@ -2004,7 +2004,7 @@
      whether one wrote it. Each rule's words are noted (rules.statements); the tests trace and swap them as above. */
   const NEXT = Symbol('next'), JS_STATEMENTS = new Map();
   function runStatements(list, M) {
-    for (const r of list) if (r.said && !JS_STATEMENTS.has(r.said)) JS_STATEMENTS.set(r.said, { said: r.said, groups: r.re ? new RegExp(r.re.source + '|').exec('').length - 1 : null });
+    for (const r of list) if (r.said && !JS_STATEMENTS.has(r.said)) JS_STATEMENTS.set(r.said, { said: r.said, re: r.re || null, groups: r.re ? new RegExp(r.re.source + '|').exec('').length - 1 : null });
     for (const r of list) {
       // (a match gives back { m }: m as its test left it, which may be null, as for "otherwise" in "depending on")
       let m;
