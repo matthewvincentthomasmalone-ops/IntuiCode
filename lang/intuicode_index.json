@@ -3889,6 +3889,14 @@
         {
           "say": "x is between 1 and 5",
           "becomes": "x >= 1 && x <= 5"
+        },
+        {
+          "say": "a divided by b",
+          "becomes": "static_cast<double>(a) / b"
+        },
+        {
+          "say": "the whole part of a divided by b",
+          "becomes": "a / b"
         }
       ]
     },
@@ -4585,6 +4593,14 @@
         {
           "say": "x is between 1 and 5",
           "becomes": "x >= 1 && x <= 5"
+        },
+        {
+          "say": "a divided by b",
+          "becomes": "(double)a / b"
+        },
+        {
+          "say": "the whole part of a divided by b",
+          "becomes": "a / b"
         }
       ]
     }

@@ -408,11 +408,22 @@
     if (joined) note(inf, `Text written in quotes is turned into a ${code(TEXT)} before it is joined with \`+\`` + (x.arduino ? '' : ', and a number into text with `std::to_string`') + '. (In C++, `"Score: " + score` would add to the text\'s place in memory, not join them.)');
     // a list's size minus something
     q = q.replace(/([A-Za-z_][\w.]*(?:\([^()]*\))?\.size\(\))(\s*-\s*)/g, (m, sz) => { note(inf, '`size()` is never negative, so on an empty list `size() - 1` would be a huge number: `static_cast<int>` makes it a plain whole number first.'); return `static_cast<int>(${sz}) - `; });
-    // whole numbers divided
-    for (const m of q.matchAll(/(?<![\w.])(\d+)\s*\/\s*(\d+)(?![\w.])/g)) {
-      if (+m[1] % +m[2]) { const w = `In C++, a whole number divided by a whole number is a whole number: ${m[1]} / ${m[2]} is ${Math.trunc(+m[1] / +m[2])}, not ${+m[1] / +m[2]}. For ${+m[1] / +m[2]}, write one as a decimal: ${m[1]}.0 divided by ${m[2]}.`; if (!inf.warns.includes(w)) inf.warns.push(w); }
-    }
+    // "divided by" means what it says: 7 divided by 2 is 3.5. C++ divides two whole numbers to a whole number (3), so
+    // the first is made a decimal (7.0, or a cast). "the whole part of … divided by …" is C++'s own (⁄ here).
+    const GROUP = String.raw`\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)`;
+    q = q.replace(new RegExp(String.raw`(?<![\w.⟧\])>])(${GROUP}|${OPD})(\s*\/\s*)(${OPD})(?![\w.(\[])`, 'g'), (m, a, slash, b) => {
+      if (/^sizeof\b/.test(a) || !wholeValue(/^\(/.test(a) ? a.slice(1, -1) : a, x) || !wholeValue(b, x)) return m;
+      const made = /^-?\d+$/.test(a) ? `${a}.0` : x.arduino ? `(double)${a}` : `static_cast<double>(${/^\(/.test(a) ? a.slice(1, -1) : a})`;
+      note(inf, `In C++ a whole number divided by a whole number keeps only the whole part (7 / 2 is 3), so \`${made}\` makes the first a decimal, and the answer is the one the words say (3.5). For the whole part, say "the whole part of … divided by …".`);
+      return `${made}${slash}${b}`;
+    });
     return q;
+  }
+
+  /* Is e a whole number (int, long …: not a decimal, text or a character), as far as its type is known? */
+  const WHOLE = /^(?:(?:unsigned|signed|const)\s+)*(?:int|long|long long|short|unsigned|unsigned long|size_t|byte|u?int\d+_t)$/;
+  function wholeValue(e, x) {
+    try { return WHOLE.test(String(exprType(e, x) || '').trim()); } catch (_) { return false; }
   }
 
   /* Is p one call of fn, brackets and all ("String(t)", not "String(a) + b")? */
@@ -606,8 +617,11 @@
       note(inf, '`% 2` is the remainder after dividing by 2: 0 for even numbers. For odd numbers it is 1, or -1 when the number is negative, so odd is tested with `!= 0`.');
       return `${sum ? `(${a})` : a} % 2 ${even ? '==' : '!='} 0`;
     });
+    // "the whole part of 7 divided by 2": C++'s own division of whole numbers, which keeps only the whole part (3).
+    // (Written ⁄ until the maths is tidied, so it isn't made a decimal division there.)
+    swap(String.raw`\bwhole part of (OPD) divided by (OPD)`, (m, a, b) => { note(inf, '`/` between two whole numbers keeps only the whole part: 7 / 2 is 3.'); return `${a} ⁄ ${b}`; });
     for (const [re, to] of CPP_VALUE_WORDS) q = q.replace(re, to);
-    q = cppTwoReadings(q, x, strs, inf, cond);
+    q = cppTwoReadings(q, x, strs, inf, cond).replace(/⁄/g, '/');
     // "if button state is high": a sketch's HIGH and LOW are in capitals
     if (x.arduino) q = q.replace(/(?<![\w.:>⟦])(high|low)\b(?!\s*\()/gi, (m) => {
       if (m === m.toUpperCase() || x.types[m] || x.known.has(m)) return m;
@@ -893,7 +907,7 @@
     for (const l of lines) {
       const s = l.trim();
       let m;
-      if ((m = s.match(/^(?:set|let|make|increase|decrease|multiply|divide)\s+([A-Za-z_]\w*)\s+(?:to|be|by)\s+(.+)$/i)) && /\d\.\d|\bdivided by\b|\bas (?:a )?decimal\b|\bsquare root\b/i.test(m[2].replace(/"(?:[^"\\]|\\.)*"/g, '""'))) x.decimal.add(m[1]);
+      if ((m = s.match(/^(?:set|let|make|increase|decrease|multiply|divide)\s+([A-Za-z_]\w*)\s+(?:to|be|by)\s+(.+)$/i)) && /\d\.\d|\bdivided by\b|\bas (?:a )?decimal\b|\bsquare root\b/i.test(m[2].replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/\bwhole part of\s+\S+\s+divided by\b/gi, ''))) x.decimal.add(m[1]);
       if ((m = s.match(/^define\s+(?:an?\s+)?(?:class|structure|struct)\s+([A-Za-z_]\w*)/i))) x.classes.add(m[1]);
       else if ((m = s.match(/^define\s+([A-Za-z_]\w*)/i))) x.fns.add(m[1]);
       if ((m = s.match(/^let\s+([A-Za-z_]\w*)\s+stand for\s/i))) x.known.add(m[1]);
@@ -1733,11 +1747,13 @@
     purpose: 'Arduino is C++ for small boards that switch lights, read buttons and sensors, drive motors and make sounds. A sketch has two parts: setup(), which runs once when the board powers on, and loop(), which runs again and again until the power goes off.',
     rules: [['Two parts', 'setup() runs once; loop() repeats forever. There is no main.'], ['Pins', 'Each pin is set up as an input or an output first, then turned on (HIGH) or off (LOW), or read.'], ['Waiting', 'delay() pauses everything. For doing two things at once, compare millis() instead.'], ['Tiny memory', 'An Uno has 2 KB of memory. Lists have a fixed size, and text is kept short.'], ['Upload, then watch', 'The sketch is compiled and copied onto the board. show sends lines back to the serial monitor.']],
   };
-  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)'], ['the result of f with a, b', 'f(a, b)'], ['(the result of f with a) times 2', 'f(a) * 2'], ['x as a decimal', 'static_cast<double>(x)'], ['"Hi " plus name', '"Hi " + name'], ['square root of x', 'std::sqrt(x)'], ['absolute value of x', 'std::abs(x)'], ['a to the power of b', 'std::pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
-  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)'], ['a to the power of b', 'pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5']];
+  const WORDS = [['a is b', 'a == b'], ['a is not b', 'a != b'], ['a and b', 'a && b'], ['not a', '!a'], ['a is even', 'a % 2 == 0'], ['a is odd', 'a % 2 != 0'], ['length of x', 'x.size()'], ['item 0 of x', 'x[0]'], ['random number from 1 to 6', 'random_number(1, 6)'], ['x as number', 'std::stoi(x)'], ['x as text', 'std::to_string(x)'], ['"Hi {name}"', 'text("Hi ", name)'], ['self.name', 'this->name'], ['a followed by b', 'a << b'], ['x limited to 0–255', 'std::clamp(x, 0, 255)'], ['the result of f with a, b', 'f(a, b)'], ['(the result of f with a) times 2', 'f(a) * 2'], ['x as a decimal', 'static_cast<double>(x)'], ['"Hi " plus name', '"Hi " + name'], ['square root of x', 'std::sqrt(x)'], ['absolute value of x', 'std::abs(x)'], ['a to the power of b', 'std::pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5'], ['a divided by b', 'static_cast<double>(a) / b'], ['the whole part of a divided by b', 'a / b']];
+  const ARDUINO_WORDS = [['pin 2 is on', 'digitalRead(2) == HIGH'], ['reading of pin A0', 'analogRead(A0)'], ['time since start', 'millis()'], ['at least 500 milliseconds have passed since last', 'millis() - last >= 500'], ['x scaled from 0–1023 to 0–255', 'map(x, 0, 1023, 0, 255)'], ['x limited to 0–255', 'constrain(x, 0, 255)'], ['how long pin 7 stays on', 'pulseIn(7, HIGH)'], ['the built-in light', 'LED_BUILTIN'], ['random number from 1 to 6', 'random(1, 7)'], ['x as number', 'x.toInt()'], ['x as text', 'String(x)'], ['"Hi {name}"', 'String("Hi ") + name'], ['"Temp: {t as text}"', '"Temp: " + String(t)'], ['"Ready" kept in flash', 'F("Ready")'], ['the result of f with a, b', 'f(a, b)'], ['t as a whole number', '(int)t'], ['square root of x', 'sqrt(x)'], ['a to the power of b', 'pow(a, b)'], ['x is between 1 and 5', 'x >= 1 && x <= 5'], ['a divided by b', '(double)a / b'], ['the whole part of a divided by b', 'a / b']];
   const OPENS_BLOCK = /^\s*(?:if |otherwise|else|repeat |count |for each |while |define |as long as |forever|keep repeating|when (?:made|created|built|the board|it is |it's )|over and over|again and again|at the start|depending on |do this)/i;
 
-  const api = { compileCppProject, CPP_VALUE_WORDS, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }) };
+  const api = { compileCppProject, CPP_VALUE_WORDS, TEMPLATES, GUIDE, ARDUINO_GUIDE, WORDS, ARDUINO_WORDS, OPENS_BLOCK, HELPERS, typeOf: (w, arduino) => typeOf(w, { classes: new Set(), needs: new Set(), arduino }),
+    // (for the reader: is this C++ a whole number, given the names' types? the same test "divided by" uses)
+    wholeValue: (e, types, arduino) => wholeValue(e, { types: types || {}, arduino, classes: new Set(), needs: new Set(), known: new Set() }) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiCpp = api;
 })(typeof window !== 'undefined' ? window : globalThis);
