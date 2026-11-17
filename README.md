@@ -256,6 +256,20 @@ not readings of it, so they can't make anything up. A promise IntuaCode doesn't 
 
 The promises it knows, and what each checks, are in [INTUICODE.md](INTUICODE.md#intentmd-what-you-meant-checked).
 
+**What changed: each change to the code, and where it came from.** **Menu → What changed** lists the changes, newest
+first. What changed is worked out by comparing the code before and after, never taken from whoever made it: the parts
+it falls in, by name, `+`/`−` counts and the lines themselves, with **Show where**. Each is marked by where it came from:
+
+- **You:** typing, in either mode. A burst is one entry, ended by a pause, opening another file or a Save.
+- **IntuaCode:** code IntuaCode wrote when you asked: a fix you used, a promise added, your part put back, a Library
+  part, a place for a new element in Styling or Mechanics.
+- **Outside IntuaCode:** the code on disk wasn't what IntuaCode last wrote, found when the project's folder is opened.
+  An AI, another editor or Git changed it. IntuaCode can't see who edits a file, so it says how the change came in, and
+  lists what it knows separately (Hand to my AI's files are there; your AI ticked tasks.md).
+
+An entry also says which promises in INTENT.md stopped (or started) being kept with it, and marks the parts that are
+yours. The log is kept in `.intuicode/project.json` (the last 300 entries), so it goes where the project goes.
+
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the explanation under the windows says what kind of thing to write
 (a number, a calculation, a test that's true or false…), how to work it out from the names the program
@@ -628,6 +642,7 @@ npm install && npm run vendor
 | `lang/project.js` | A project as a tree of files: paths checked, each engine compiling its own files, Markdown/CSV/JSON shown as what they are |
 | `lang/library.js`, `lang/library/` | The Library: kinds of project and the parts they're made of, in plain-text packs |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the code; the names code defines; each step's checks |
+| `lang/changelog.js` | What changed: the lines between two versions of the code, the parts they fall in, counts, and each entry checked when read back |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
