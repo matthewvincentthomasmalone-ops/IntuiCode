@@ -214,6 +214,7 @@ how many of the rules the reader's sentences use for the corpus do).
 | 2026-11-16 value words | 87/89 (the two without need Flask) | 44/46 | 80/82 |
 | 2026-11-17 statements too (value words / statements) | 87/89 / 70/73 (the five without need Flask, FastAPI or a window) | 44/46 / 44/47 | 80/82 / 67/69 |
 | 2026-11-17 web routes on a stand-in Flask and FastAPI (value words / statements) | 89/89 / 72/73 (the one without needs a window) | 46/46 / 46/47 | 82/82 / 69/69 |
+| 2026-11-17 window parts on a stand-in tkinter | 89/89 / 74/74 | 46/46 / 47/47 | 82/82 / 70/70 (the window-part rule has none with as many parts to swap with) |
 | 2026-11-17 JavaScript's Mechanics, by its Index (sentences / value words) | 74/75 / 52/52 (the one without brings in another file) | 19/19 (`tests/corpus_web`) | 20/20 of its words for comparisons and maths |
 
 `tests/heldout/` holds programs written *after* the rules, to measure fairly. Once a
