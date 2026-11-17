@@ -239,11 +239,17 @@ statements that differ are kept as `python:` lines automatically and the check r
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
    libraries AI tools use most, shared by Write and Read modes.
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
-   IntuaCode is the verifiable layer. Any AI features must be opt-in and labelled as guesses.
-4. **The "new language" trap.** Sentences can become a dialect of their own. Mitigation:
-   real code always visible; sentences can be faded out as people learn.
+   IntuaCode is the verifiable layer. Today nothing in it guesses: every summary comes from a rule, and the
+   app calls no AI model (`tests/no-ai.test.mjs` fails if code starts calling one). Any AI feature added later
+   must be opt-in and say on screen that what it gives is a guess.
+4. **The "new language" trap.** Sentences can become a dialect of their own. Decided (2026-11-17): this is
+   accepted on purpose. The closer the sentences are to plain spoken English, the easier they are to read and
+   write, which is the point. IntuaCode is English first; other languages are a long way off. What keeps it
+   honest: the real code is always visible, and sentences can be faded out as people learn.
 5. **Language differences.** HTML and CSS fit sentences well; JavaScript in practice means
    React/TypeScript (sentences since step 12); C++ is hardest and is scheduled last.
 6. **Browser limits.** No real servers, packages or file system. Mitigation: the desktop app (step 4).
 7. **Words that are wrong both ways.** A rule pair that says the wrong words and reads them back to the same
-   code passes the round trip. Mitigation: examples that run (step 15), so far for Python's value words and statements and JavaScript's Mechanics.
+   code passes the round trip. Mitigation: examples that run (step 15), for Python's value words and
+   statements, JavaScript's Mechanics (on a stand-in page and in Chrome), C++ and Arduino sketches, HTML and
+   CSS, and TypeScript's types and React.
