@@ -185,6 +185,11 @@
     // Functions written as words, e.g. "length of x"
     { re: R(String.raw`\b(?:length|size) of (OPD)`), to: 'len($1)', repeat: true },
     { re: R(String.raw`\b(?:how many (?:items )?(?:are )?in|number of items in|count of) (OPD)`), to: 'len($1)', repeat: true },
+    // (pandas: a column's average or total, overall or for each group; before "total of x", which is sum(x))
+    { re: R(String.raw`\baverage of column (OPD) for each (OPD) in (OPD)`), to: '$3.groupby($2)[$1].mean()', note: '`.groupby(…)` puts the rows in groups, one for each value of that column; `[column]` picks the column, and `.mean()` is its average in each group.' },
+    { re: R(String.raw`\btotal of column (OPD) for each (OPD) in (OPD)`), to: '$3.groupby($2)[$1].sum()', note: '`.groupby(…)` puts the rows in groups, one for each value of that column; `[column]` picks the column, and `.sum()` is its total in each group.' },
+    { re: R(String.raw`\baverage of column (OPD) in (OPD)`), to: '$2[$1].mean()', note: '`table[column]` is one column; `.mean()` is its average.' },
+    { re: R(String.raw`\btotal of column (OPD) in (OPD)`), to: '$2[$1].sum()', note: '`table[column]` is one column; `.sum()` is its total.' },
     { re: R(String.raw`\b(?:sum|total) of (OPD)`), to: 'sum($1)', repeat: true },
     { re: R(String.raw`\b(?:biggest|largest|highest|maximum|max) (?:of|in) (OPD)`), to: 'max($1)', repeat: true },
     { re: R(String.raw`\b(?:smallest|lowest|minimum|min) (?:of|in) (OPD)`), to: 'min($1)', repeat: true },
@@ -204,6 +209,24 @@
     { re: R(String.raw`\bJSON read from (OPD)`), to: 'json.load($1)', use: 'json', note: '`json.load()` reads the JSON in an open file.' },
     { re: R(String.raw`\b(OPD) as an? JSON (?:reply|response)\b`), to: 'jsonify($1)', note: "`jsonify()` (Flask's) turns the value into a JSON reply for the web browser or app that asked.", postfix: true },
     { re: R(String.raw`\bJSON sent with (OPD)`), to: '$1.get_json()', note: '`.get_json()` reads the JSON data sent with a web request.' },
+    // requests: asking a web address for data, and what comes back
+    { re: R(String.raw`\breply from sending (OPD) to (OPD)`), to: 'requests.post($2, json=$1)', use: 'requests', note: '`requests.post(url, json=data)` sends the data to the address as JSON, and gives back its reply. `requests` is imported for you.' },
+    { re: R(String.raw`\breply from (OPD)`), to: 'requests.get($1)', use: 'requests', note: '`requests.get(url)` asks the address for what it has, and gives back its reply (the page or data, and its status). `requests` is imported for you.' },
+    { re: R(String.raw`\bJSON in (OPD)`), to: '$1.json()', note: '`.json()` reads a reply\'s JSON into lists, dictionaries, numbers and text.' },
+    { re: R(String.raw`\bstatus of (OPD)`), to: '$1.status_code', note: '`.status_code` is the number a web server answers with: 200 means it worked, 404 that there\'s nothing there.' },
+    // pathlib: a file or folder's path, and what's in the file
+    { re: R(String.raw`\bpath (OPD)`), to: 'pathlib.Path($1)', use: 'pathlib', note: '`pathlib.Path` is a file or folder\'s path, with tools for reading and writing it. `pathlib` is imported for you.' },
+    // ("the" is gone by now: "the text in the file p" is said "text in file p" here)
+    { re: R(String.raw`\btext in file (OPD)`), to: '$1.read_text()', note: '`.read_text()` reads the whole file as text.' },
+    { re: R(String.raw`\bname of file (OPD)`), to: '$1.name', note: '`.name` is the last part of the path: the file\'s name, with its ending.' },
+    { re: R(String.raw`\bending of file (OPD)`), to: '$1.suffix', note: '`.suffix` is the ending of the file\'s name, with its dot: ".txt".' },
+    { re: R(String.raw`\bfolder of file (OPD)`), to: '$1.parent', note: '`.parent` is the folder the file is in.' },
+    { re: R(String.raw`\bfile (OPD) in (OPD)`), to: '$2 / $1', note: '`folder / "name"` is the path of something in the folder.' },
+    // pandas: a table of data (a DataFrame), its columns, and sums by group. ("the" is gone by now here too.)
+    { re: R(String.raw`\btable read from (OPD)`), to: 'pandas.read_csv($1)', use: 'pandas', note: '`read_csv` reads a CSV file (values with commas between, a row a line, names in the first row) into a table (a pandas DataFrame).' },
+    { re: R(String.raw`\bfirst (OPD) rows of (OPD)`), to: '$2.head($1)', note: '`.head(n)` is the table\'s first n rows.' },
+    { re: R(String.raw`\b(OPD) ordered by (OPD) from biggest\b`), to: '$1.sort_values($2, ascending=False)', note: '`.sort_values(column, ascending=False)` orders the rows by that column, biggest first.', postfix: true },
+    { re: R(String.raw`\b(OPD) ordered by (OPD)`), to: '$1.sort_values($2)', note: '`.sort_values(column)` orders the rows by that column, smallest first.', postfix: true },
     { re: R(String.raw`\b(OPD) as (?:a )?(?:whole )?number\b`), to: 'int($1)', note: '`int()` turns text like "42" into the whole number 42. It stops with an error if the text is not a number.', postfix: true },
     { re: R(String.raw`\b(OPD) as (?:a )?decimal(?: number)?\b`), to: 'float($1)', note: '`float()` turns text into a decimal number, like 3.5.', postfix: true },
     { re: R(String.raw`\b(OPD) as text\b`), to: 'str($1)', note: '`str()` turns a value into text, so it can be joined to other text.', postfix: true },
@@ -760,7 +783,10 @@
         if (q !== prev) {
           if (ruleTrace) ruleTrace.add(r);
           if (r.note) x.note(r.note);
-          if (r.use) x.use(r.use);
+          // (a module the file brings in under another name, "bring in pandas as pd", is used by that name)
+          const as = r.use && x.env.moduleAs && x.env.moduleAs.get(r.use);
+          if (as) q = q.replace(new RegExp(`(?<![\\w.])${r.use}\\.`, 'g'), as + '.');
+          else if (r.use) x.use(r.use);
         }
       } while (r.repeat && q !== prev && ++guard < 6);
       q = q.replace(/\s+/g, ' ');
@@ -1217,6 +1243,21 @@
   rule(/^write\s+(.+?)\s+into\s+([A-Za-z_][\w.]*)$/i, (m, x) => {
     x.note('`.write()` writes the text into the open file (or anything else that can be written to). It adds no new line by itself.');
     return { py: `${m[2]}.write(${tExpr(m[1], x)})` };
+  });
+  // pathlib: "put "hi" in the file p" writes the whole file at once (replacing what was there)
+  rule(/^put\s+(.+?)\s+in\s+the\s+file\s+(.+)$/i, (m, x) => {
+    x.note('`.write_text()` writes the text as the whole file, replacing what was there (and makes the file if it isn\'t there).');
+    return { py: `${tExpr(m[2], x)}.write_text(${tExpr(m[1], x)})` };
+  });
+  // pandas: a table saved as a CSV file (without pandas' row numbers, so it reads back as it was)
+  rule(/^save\s+(.+?)\s+as\s+(?:a\s+)?CSV\s+(?:file\s+)?(?:in|to|at)\s+(.+)$/i, (m, x) => {
+    x.note('`.to_csv(path, index=False)` writes the table as a CSV file: names in the first row, a row a line. `index=False` leaves out pandas\' own row numbers.');
+    return { py: `${tExpr(m[1], x)}.to_csv(${tExpr(m[2], x)}, index=False)` };
+  });
+  // requests: a reply that says it didn't work (a status of 400 or more) stops with an error
+  rule(/^stop if\s+(.+?)\s+failed$/i, (m, x) => {
+    x.note('`.raise_for_status()` stops with an error (requests.HTTPError) when the reply says it didn\'t work: a status of 400 or more.');
+    return { py: `${tExpr(m[1], x)}.raise_for_status()` };
   });
   rule(/^save the changes (?:to|in) ([A-Za-z_][\w.]*)$/i, (m, x) => {
     x.note('`.commit()` makes the changes since the last commit permanent in the database.');
@@ -1922,6 +1963,9 @@
     const stack = [{ ind: 0, type: 'root' }];
     const lastTag = [];
     env.imports = new Set();
+    // modules brought in under another name ("bring in pandas as pd"): the value words for them use that name
+    env.moduleAs = new Map();
+    for (const l of lines) { const m = l.match(/^\s*bring in\s+([A-Za-z_][\w.]*)\s+as\s+([A-Za-z_]\w*)\s*$/i); if (m) env.moduleAs.set(m[1], m[2]); }
     let pending = null;
     const fnRecords = [];
 
@@ -2155,6 +2199,9 @@
     T('Program', 'decorate with ‹decorator›', '@decorator', 'Adds behaviour to the next tool or class.', ['tools', 'main']),
     T('Program', 'use the shared ‹name›', 'global name', 'Inside a tool: change a value that lives outside it.', ['tools']),
     T('Other', 'add a ‹tk.Button› saying "‹text›" to ‹window› that runs ‹tool›', 'tk.Button(window, text="text", command=tool).pack()', 'A window part (tkinter), made and placed in one line. Add ", packed with pady=5" or ", put in the grid with row=0 and column=1".', ['tools', 'main']),
+    T('Other', 'stop if ‹r› failed', 'r.raise_for_status()', 'A web reply (requests) that says it didn\'t work, a status of 400 or more, stops with an error.', ['tools', 'main']),
+    T('Other', 'put ‹text› in the file ‹p›', 'p.write_text(text)', 'Writes the text as the whole file at a path (pathlib), replacing what was there.', ['tools', 'main']),
+    T('Other', 'save ‹t› as CSV in "‹out.csv›"', 't.to_csv("out.csv", index=False)', 'Writes a pandas table as a CSV file: names in the first row, a row a line. "bring in pandas as pd" first, if the file uses pd.', ['tools', 'main']),
     T('Other', 'wait ‹number› seconds', 'time.sleep(number)', '', ['tools', 'main']),
     T('Other', 'do nothing', 'pass', 'A placeholder for a block you will fill in later.', ['tools', 'main']),
     T('Other', 'stop the program', 'sys.exit()', '', ['tools', 'main']),
@@ -2184,6 +2231,10 @@
     ['xs sorted by len biggest first', 'sorted(xs, key=len, reverse=True)'], ['the last item taken out of xs', 'xs.pop()'],
     ['an empty set', 'set()'], ['the environment variable "HOME"', 'os.getenv("HOME")'], ['there is a file or folder at p', 'os.path.exists(p)'],
     ['the JSON read from f', 'json.load(f)'], ['x as JSON text', 'json.dumps(x)'], ['x as a JSON reply', 'jsonify(x)'], ['the JSON sent with the request', 'request.get_json()'],
+    ['the reply from url', 'requests.get(url)'], ['the reply from sending data to url', 'requests.post(url, json=data)'], ['the JSON in r', 'r.json()'], ['the status of r', 'r.status_code'],
+    ['the path "notes.txt"', 'pathlib.Path("notes.txt")'], ['the text in the file p', 'p.read_text()'], ['the name of the file p', 'p.name'], ['the ending of the file p', 'p.suffix'], ['the folder of the file p', 'p.parent'], ['the file "a.txt" in d', 'd / "a.txt"'],
+    ['the table read from "sales.csv"', 'pandas.read_csv("sales.csv")'], ['the first 5 rows of t', 't.head(5)'], ['the average of column "price" in t', 't["price"].mean()'],
+    ['the total of column "price" for each "city" in t', 't.groupby("city")["price"].sum()'], ['t ordered by "price"', 't.sort_values("price")'], ['t ordered by "price" from the biggest', 't.sort_values("price", ascending=False)'],
   ];
 
   const GUIDE = {

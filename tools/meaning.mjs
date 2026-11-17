@@ -19,8 +19,8 @@
 import path from 'node:path';
 import { statSync, readFileSync, readdirSync } from 'node:fs';
 import { loadEngine, loadConverter, toSentences, pyFiles, ROOT } from '../tests/helpers/engine.mjs';
-import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from '../tests/helpers/meaning.mjs';
-import { EXAMPLES, STATEMENTS, NOT_RUN } from '../tests/helpers/meaning_python.mjs';
+import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf, HAS_PANDAS } from '../tests/helpers/meaning.mjs';
+import { EXAMPLES, STATEMENTS, NOT_RUN as NOT_RUN_ALL, PANDAS_STATEMENTS, PANDAS_RULES } from '../tests/helpers/meaning_python.mjs';
 import { runJsExamples, indexCoverage, entryPattern, mutateWords, jsNameOf, jsRuleCoverage, mutateJsRules } from '../tests/helpers/meaning_web.mjs';
 import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS, JS_RULES_NOT_RUN } from '../tests/helpers/meaning_js.mjs';
 import { findCompiler, runCppExamples, cppIndexCoverage, mutateCppWords, cppNameOf } from '../tests/helpers/meaning_cpp.mjs';
@@ -35,7 +35,8 @@ const args = process.argv.slice(2);
 const mutate = args.includes('--mutate');
 const targets = args.filter(a => !a.startsWith('--'));
 const { L } = loadEngine();
-const ALL = [...EXAMPLES, ...STATEMENTS];
+const ALL = [...EXAMPLES, ...STATEMENTS, ...(HAS_PANDAS ? PANDAS_STATEMENTS : [])];
+const NOT_RUN = HAS_PANDAS ? NOT_RUN_ALL : { ...NOT_RUN_ALL, ...Object.fromEntries(PANDAS_RULES.map(k => [k, "pandas isn't installed here (CI installs it; INTUICODE_PYTHON can name a Python that has it)"])) };
 
 const results = runExamples(L, ALL);
 const failed = results.filter(r => !r.ok);
@@ -95,7 +96,7 @@ if (mutate) {
     const was = r.fn;
     r.fn = other.fn;
     try {
-      const now = runExamples(L, STATEMENTS);
+      const now = runExamples(L, ALL.slice(EXAMPLES.length));   // (the statements, and pandas's when it's here)
       const said = `${statementLabel(r)} (doing "${statementLabel(other)}")`;
       // the other one writes the very same code from the words of this one's examples: two ways of saying it,
       // not a wrong rule (a rule with no example is a miss: nothing looked)

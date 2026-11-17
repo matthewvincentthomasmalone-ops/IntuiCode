@@ -8,8 +8,9 @@ import vm from 'node:vm';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 /* A Python 3 to run the reader with: python3 (Linux, macOS), or python / py (Windows, where
- * `python3` is often only the Microsoft Store's placeholder). */
-export const PYTHON = ['python3', 'python', 'py'].find((p) => {
+ * `python3` is often only the Microsoft Store's placeholder). INTUICODE_PYTHON names another (a virtual
+ * environment's, with pandas, say). */
+export const PYTHON = process.env.INTUICODE_PYTHON || ['python3', 'python', 'py'].find((p) => {
   try { return /Python 3/.test(execFileSync(p, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })); }
   catch (_) { return false; }
 }) || 'python3';

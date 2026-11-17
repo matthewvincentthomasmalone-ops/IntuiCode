@@ -2169,9 +2169,22 @@ the rule table, so the rules get evidence of their own.
   error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
   the tests.
 - **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
-  passes uses it. Today all 89 value words and all 74 statements have one. Of the rules the reader's sentences
+  passes uses it. Today all 107 value words and all 77 statements have one (pandas's with pandas installed). Of the rules the reader's sentences
   use for `samples/`, `tests/corpus/` and `tests/heldout/`, all 46 value words and all 47 statements have one.
   A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
+- **Libraries** (2026-11-17), words both ways, each line read back exactly:
+  - requests: `the reply from "https://…"` (`requests.get`), `the reply from sending data to url`
+    (`requests.post(url, json=data)`), `the JSON in r`, `the status of r`, `stop if r failed`
+    (`r.raise_for_status()`). Run on a stand-in (`tests/helpers/requests_standin.py`): each example says what an
+    address answers, and nothing goes to the internet.
+  - pathlib: `the path "notes.txt"` (`pathlib.Path`), `put "hi" in the file p` (`write_text`), `the text in the
+    file p`, `the name / ending / folder of the file p`, `the file "a.txt" in d` (`d / "a.txt"`). Run as they are.
+  - pandas: `the table read from "sales.csv"`, `the first 5 rows of t`, `the average (or total) of column "price"
+    in t`, `… for each "city" in t` (`groupby`), `t ordered by "price"` (`from the biggest`), `save t as CSV in
+    "out.csv"`. "bring in pandas as pd" makes the words use `pd.`, as real code does. Run with pandas where it's
+    installed: CI installs it; `INTUICODE_PYTHON` can name a Python that has it.
+  The reader says these only where the file shows what a name holds (`r = requests.get(…)`, `p =
+  pathlib.Path(…)`, `t = pd.read_csv(…)`), so `user.name` stays `user.name`.
 - **Window parts** run on a stand-in tkinter (`tests/helpers/tk_standin.py`), because CI has no screen to make
   a window on. It draws nothing: a window keeps its parts, each with what it was made with and how it was
   placed, and a Button's `invoke()` runs its command, as a click does. `tests/test_tk_standin.py` runs the same
@@ -2618,6 +2631,9 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 |  | `decorate with ‹decorator›` | `@decorator` | Tools, Main program | Adds behaviour to the next tool or class. |
 |  | `use the shared ‹name›` | `global name` | Tools | Inside a tool: change a value that lives outside it. |
 | **Other** | `add a ‹tk.Button› saying "‹text›" to ‹window› that runs ‹tool›` | `tk.Button(window, text="text", command=tool).pack()` | Tools, Main program | A window part (tkinter), made and placed in one line. Add ", packed with pady=5" or ", put in the grid with row=0 and column=1". |
+|  | `stop if ‹r› failed` | `r.raise_for_status()` | Tools, Main program | A web reply (requests) that says it didn't work, a status of 400 or more, stops with an error. |
+|  | `put ‹text› in the file ‹p›` | `p.write_text(text)` | Tools, Main program | Writes the text as the whole file at a path (pathlib), replacing what was there. |
+|  | `save ‹t› as CSV in "‹out.csv›"` | `t.to_csv("out.csv", index=False)` | Tools, Main program | Writes a pandas table as a CSV file: names in the first row, a row a line. "bring in pandas as pd" first, if the file uses pd. |
 |  | `wait ‹number› seconds` | `time.sleep(number)` | Tools, Main program |  |
 |  | `do nothing` | `pass` | Tools, Main program | A placeholder for a block you will fill in later. |
 |  | `stop the program` | `sys.exit()` | Tools, Main program |  |
@@ -2690,6 +2706,22 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 | `x as JSON text` | `json.dumps(x)` |
 | `x as a JSON reply` | `jsonify(x)` |
 | `the JSON sent with the request` | `request.get_json()` |
+| `the reply from url` | `requests.get(url)` |
+| `the reply from sending data to url` | `requests.post(url, json=data)` |
+| `the JSON in r` | `r.json()` |
+| `the status of r` | `r.status_code` |
+| `the path "notes.txt"` | `pathlib.Path("notes.txt")` |
+| `the text in the file p` | `p.read_text()` |
+| `the name of the file p` | `p.name` |
+| `the ending of the file p` | `p.suffix` |
+| `the folder of the file p` | `p.parent` |
+| `the file "a.txt" in d` | `d / "a.txt"` |
+| `the table read from "sales.csv"` | `pandas.read_csv("sales.csv")` |
+| `the first 5 rows of t` | `t.head(5)` |
+| `the average of column "price" in t` | `t["price"].mean()` |
+| `the total of column "price" for each "city" in t` | `t.groupby("city")["price"].sum()` |
+| `t ordered by "price"` | `t.sort_values("price")` |
+| `t ordered by "price" from the biggest` | `t.sort_values("price", ascending=False)` |
 
 #### Python examples (the Index's how-tos)
 

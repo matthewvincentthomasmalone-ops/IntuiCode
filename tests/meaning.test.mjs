@@ -12,8 +12,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadEngine, ROOT } from './helpers/engine.mjs';
-import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf } from './helpers/meaning.mjs';
-import { EXAMPLES, STATEMENTS, NOT_RUN } from './helpers/meaning_python.mjs';
+import { runExamples, ruleCoverage, ruleLabel, statementLabel, nameOf, HAS_PANDAS } from './helpers/meaning.mjs';
+import { EXAMPLES, STATEMENTS, NOT_RUN as NOT_RUN_ALL, PANDAS_STATEMENTS, PANDAS_RULES } from './helpers/meaning_python.mjs';
 import { runJsExamples, indexCoverage, jsNameOf, jsRuleCoverage, mutateJsRules } from './helpers/meaning_web.mjs';
 import { JS_VALUES, JS_STATEMENTS, NOT_RUN_JS, JS_RULES_NOT_RUN } from './helpers/meaning_js.mjs';
 import { findCompiler, runCppExamples, runCppProjects, cppIndexCoverage, mutateCppWords, cppNameOf } from './helpers/meaning_cpp.mjs';
@@ -26,7 +26,8 @@ import { missingPackages, runTsExamples, tsCoverage, tsNameOf, mutateTypeWords }
 import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, NOT_RUN_TS } from './helpers/meaning_ts_examples.mjs';
 
 const { L, WEB, CPP, TS } = loadEngine();
-const ALL = [...EXAMPLES, ...STATEMENTS];
+const ALL = [...EXAMPLES, ...STATEMENTS, ...(HAS_PANDAS ? PANDAS_STATEMENTS : [])];
+const NOT_RUN = HAS_PANDAS ? NOT_RUN_ALL : { ...NOT_RUN_ALL, ...Object.fromEntries(PANDAS_RULES.map(k => [k, "pandas isn't installed here (CI installs it; INTUICODE_PYTHON can name a Python that has it)"])) };
 const results = runExamples(L, ALL);
 
 test('meaning: every example gives what its words say', () => {

@@ -286,6 +286,58 @@ class Words:
         self.dicts = set(dicts)           # names (and a.b) set to a dictionary somewhere in the file
         self.texts = set(texts)           # names set to text somewhere in the file (sep = ", ")
         self.imported = set(imported)     # names bound by import: a module's own tools (os.remove) aren't list tools
+        self.replies = set()              # names that hold a web reply (r = requests.get(url)), for "the JSON in r"
+        self.paths = set()                # names that hold a path (p = pathlib.Path("x")), for "the name of the file p"
+        self.tables = set()               # names that hold a pandas table (t = pd.read_csv("x.csv")), for "the first 5 rows of t"
+
+    def is_pandas(self, name):
+        """pandas itself, by its own name (import pandas) or another (import pandas as pd)."""
+        return (name == "pandas" and "pandas" in self.modules) or self.alias.get(name) == "pandas"
+
+    def is_table(self, e):
+        """A pandas table (DataFrame), as far as the file shows: a name set to one, a CSV read, its first rows or rows in order."""
+        if dotted_name(e) and dotted_name(e) in self.tables:
+            return True
+        if not (isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute)):
+            return False
+        if e.func.attr == "read_csv":
+            return dotted_name(e.func.value) is not None and self.is_pandas(dotted_name(e.func.value))
+        return e.func.attr in ("head", "sort_values") and self.is_table(e.func.value)
+
+    def pandas_words(self, e, f, args, kws):
+        if not isinstance(f, ast.Attribute):
+            return None
+        n, m, obj = len(args), f.attr, f.value
+        if m == "read_csv" and n == 1 and not kws and dotted_name(obj) and self.is_pandas(dotted_name(obj)):
+            return f"the table read from {self.opd(args[0])}"
+        if m == "head" and n == 1 and not kws and self.is_table(obj):
+            return f"the first {self.opd(args[0])} rows of {self.opd(obj)}"
+        if m == "sort_values" and n == 1 and self.is_table(obj):
+            asc = kws.get("ascending")
+            if not kws:
+                return f"{self.opd(obj)} ordered by {self.opd(args[0])}"
+            if set(kws) == {"ascending"} and isinstance(asc, ast.Constant) and asc.value is False:
+                return f"{self.opd(obj)} ordered by {self.opd(args[0])} from the biggest"
+        # table["price"].mean(), table.groupby("city")["price"].sum()
+        if m in ("mean", "sum") and n == 0 and not kws and isinstance(obj, ast.Subscript):
+            how = "average" if m == "mean" else "total"
+            col, of = obj.slice, obj.value
+            if self.is_table(of):
+                return f"the {how} of column {self.opd(col)} in {self.opd(of)}"
+            if isinstance(of, ast.Call) and isinstance(of.func, ast.Attribute) and of.func.attr == "groupby" and len(of.args) == 1 \
+                    and not of.keywords and self.is_table(of.func.value):
+                return f"the {how} of column {self.opd(col)} for each {self.opd(of.args[0])} in {self.opd(of.func.value)}"
+        return None
+
+    def is_path(self, e):
+        """A path, as far as the file shows: a name set to one, pathlib.Path(…), a path's folder, or folder / name."""
+        if dotted_name(e) and dotted_name(e) in self.paths:
+            return True
+        if isinstance(e, ast.Attribute) and e.attr == "parent":
+            return self.is_path(e.value)
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div):
+            return self.is_path(e.left)
+        return isinstance(e, ast.Call) and dotted_name(e.func) == "pathlib.Path" and "pathlib" in self.modules
 
     def is_dict(self, e):
         d = dotted_name(e)
@@ -379,6 +431,15 @@ class Words:
             if not name_ok(e.id) and self.strict:
                 raise Unwordable()
             return e.id
+        # a web reply's status, a path's parts (r.status_code, p.name, p.suffix, p.parent)
+        if isinstance(e, ast.Attribute) and self.strict and dotted_name(e.value):
+            if e.attr == "status_code" and dotted_name(e.value) in self.replies:
+                return f"the status of {self.opd(e.value)}"
+            if e.attr in PATH_PARTS and self.is_path(e.value):
+                return f"the {PATH_PARTS[e.attr]} of the file {self.opd(e.value)}"
+        # folder / "name": the path of something in a folder
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div) and self.strict and self.is_path(e.left):
+            return f"the file {self.opd(e.right)} in {self.opd(e.left)}"
         if isinstance(e, ast.BinOp):
             ops = {ast.Add: "plus", ast.Sub: "minus", ast.Mult: "times", ast.Div: "divided by", ast.Mod: "mod"}
             if isinstance(e.op, ast.Pow) and isinstance(e.right, ast.Constant) and e.right.value == 2:
@@ -581,6 +642,15 @@ class Words:
             if "key" in kw:
                 return f"{what} sorted by {self.opd(kw['key'])}" + (" biggest first" if rev is not None else "")
             return f"{what} sorted biggest first" if rev is not None else f"sorted {what}"
+        # pandas: a table read from a CSV file, its first rows, a column's average or total (for each group too), the
+        # rows in order
+        if self.strict:
+            said = self.pandas_words(e, f, args, {k.arg: k.value for k in e.keywords})
+            if said:
+                return said
+        # requests.post(url, json=data): "the reply from sending data to url"
+        if self.strict and fname == "requests.post" and one and kws == ["json"] and "requests" in self.modules:
+            return f"the reply from sending {self.opd(e.keywords[0].value)} to {self.opd(args[0])}"
         if e.keywords:
             return self.raw(e)
         if fname == "len" and one:
@@ -640,6 +710,20 @@ class Words:
             return f"{self.opd(args[0])} as JSON text"
         if fname == "jsonify" and n == 1 and self.alias.get("jsonify") == "flask":
             return f"{self.opd(args[0])} as a JSON reply"
+        # requests (imported as itself): asking a web address, and what comes back
+        kws = {k.arg: k.value for k in e.keywords}
+        if fname == "requests.get" and n == 1 and not kws and "requests" in self.modules:
+            return f"the reply from {self.opd(args[0])}"
+        if fname == "requests.post" and n == 1 and set(kws) == {"json"} and "requests" in self.modules:
+            return f"the reply from sending {self.opd(kws['json'])} to {self.opd(args[0])}"
+        if fname == "pathlib.Path" and n == 1 and not kws and "pathlib" in self.modules:
+            return f"the path {self.opd(args[0])}"
+        if isinstance(f, ast.Attribute) and n == 0 and not kws and dotted_name(f.value):
+            d = dotted_name(f.value)
+            if f.attr == "json" and d in self.replies:
+                return f"the JSON in {self.opd(f.value)}"
+            if f.attr == "read_text" and d in self.paths:
+                return f"the text in the file {self.opd(f.value)}"
         if not isinstance(f, ast.Attribute) or self.of_module(f.value):
             return self.raw(e)
         what, m = f.value, f.attr
@@ -687,6 +771,7 @@ class Words:
 # --------------------------------------------------------------------------
 
 HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
+PATH_PARTS = {"name": "name", "suffix": "ending", "parent": "folder"}   # (a path's parts, in words)
 
 
 class Sentences:
@@ -1065,6 +1150,18 @@ class Sentences:
         S = self.say
         f = ast.unparse(c.func)
         kw = {k.arg: k.value for k in c.keywords}
+        # r.raise_for_status(): "stop if r failed"; p.write_text(t): "put t in the file p"
+        if self.strict and isinstance(c.func, ast.Attribute) and dotted_name(c.func.value) and not c.keywords:
+            obj = c.func.value
+            if c.func.attr == "raise_for_status" and not c.args and dotted_name(obj) in self.words.replies:
+                return S(level, f"stop if {self.E(obj)} failed")
+            if c.func.attr == "write_text" and len(c.args) == 1 and self.words.is_path(obj):
+                return S(level, f"put {self.E(c.args[0])} in the file {self.E(obj)}")
+        # t.to_csv("out.csv", index=False): "save t as CSV in "out.csv""
+        if self.strict and isinstance(c.func, ast.Attribute) and c.func.attr == "to_csv" and len(c.args) == 1 \
+                and [k.arg for k in c.keywords] == ["index"] and isinstance(c.keywords[0].value, ast.Constant) \
+                and c.keywords[0].value.value is False and self.words.is_table(c.func.value):
+            return S(level, f"save {self.E(c.func.value)} as CSV in {self.E(c.args[0])}")
         if f == "print":
             if any(isinstance(a, ast.Starred) for a in c.args):
                 raise Unwordable()
@@ -1997,6 +2094,15 @@ def to_sentences(source, force_raw=()):
     imported = {(a.asname or a.name).split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     sent = Sentences(True, tools, [], known=set(alias) | classes, comments=full_line_comments(source),
                      force_raw=force_raw, classes=classes, alias=alias, modules=modules, sets=sets, dicts=dicts, texts=texts, imported=imported)
+    # names that hold a web reply (requests.get/post) or a path (pathlib.Path, a path's folder, folder / name)
+    if "requests" in modules:
+        sent.words.replies = {t for t, v in assigns if calls(v) in ("requests.get", "requests.post")}
+    if "pathlib" in modules:
+        for _ in range(3):   # (a path made from a path made from a path)
+            sent.words.paths |= {t for t, v in assigns if sent.words.is_path(v)}
+    if "pandas" in modules or "pandas" in alias.values():
+        for _ in range(3):   # (and tables made from tables)
+            sent.words.tables |= {t for t, v in assigns if sent.words.is_table(v)}
     out = []
     for g in group_sections(tree):
         label = {"about": "About", "imports": "Toolkits", "settings": "Settings", "tool": "Tool", "route": "Web route",

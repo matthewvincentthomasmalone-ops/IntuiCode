@@ -252,7 +252,8 @@ statements that differ are kept as `python:` lines automatically and the check r
 1. **Rule collisions.** Regex rules interact as they grow. Mitigation: the test suite and
    round-trip corpus run on every push; move to a proper grammar if collisions keep appearing.
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
-   libraries AI tools use most, shared by Write and Read modes.
+   libraries AI tools use most, shared by Write and Read modes. Since 2026-11-17: requests, pathlib and pandas
+   (Python), each with examples that run; React Query and Supabase (TypeScript).
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
    IntuaCode is the verifiable layer. Today nothing in it guesses: every summary comes from a rule, and the
    app calls no AI model (`tests/no-ai.test.mjs` fails if code starts calling one). Any AI feature added later

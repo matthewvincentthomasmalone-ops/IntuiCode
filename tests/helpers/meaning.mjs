@@ -52,13 +52,16 @@ export function statementLabel(r) {
    "set result to …" for a value. */
 export const programOf = (ex) => (ex.given ? ex.given.split('\n') : []).map(l => 'python: ' + l)
   .concat(ex.lines != null ? ex.lines.split('\n') : [`set result to ${ex.say}`]).join('\n') + '\n';
+// (pandas: the examples of the writer's words for tables run only with a Python that has it)
+export const HAS_PANDAS = spawnSync(PYTHON, ['-c', 'import pandas'], { stdio: 'ignore' }).status === 0;
 export const nameOf = (ex) => (ex.lines != null ? ex.lines.replace(/\n\s*/g, ' / ') : ex.say);
 
 // Runs each job's code (runs times, random seeded 0, 1, 2 …) and checks it. What the words mean is worked out
 // in a namespace of its own, from the given lines only, so it never sees the translated code. Shown text is
 // caught, "ask" gets the job's answers, "wait" is noted instead of waited, and the folder is put back after.
 // Flask and FastAPI are stood in (tests/helpers/web_standin.py), so routes run without either installed, and
-// tkinter (tests/helpers/tk_standin.py), so window parts run without a screen.
+// tkinter (tests/helpers/tk_standin.py), so window parts run without a screen, and requests
+// (tests/helpers/requests_standin.py), so web replies come from the example, not the internet.
 const RUNNER = String.raw`
 import builtins, contextlib, io, json, os, random, sys, tempfile, time
 sys.stdin.reconfigure(encoding="utf-8")
@@ -68,6 +71,8 @@ import web_standin   # (Flask and FastAPI, stood in: tests/helpers/web_standin.p
 web_standin.put_in_place()
 import tk_standin   # (tkinter, stood in: tests/helpers/tk_standin.py)
 tk_standin.put_in_place()
+import requests_standin   # (requests, stood in: tests/helpers/requests_standin.py)
+requests_standin.put_in_place()
 def same(a, b):
     return type(a) is type(b) and a == b
 STEPS = 100000   # lines of its own an example may run: one that runs more has a loop that doesn't end
@@ -87,6 +92,8 @@ def limited():
 def run(job):
     results = []
     for k in range(job["runs"]):
+        requests_standin.REPLIES.clear()
+        del requests_standin.SENT[:]
         random.seed(k)
         slept, answers, out = [], list(job["input"] or []), io.StringIO()
         def ask(prompt=""):
