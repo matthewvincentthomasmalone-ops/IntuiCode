@@ -2157,9 +2157,15 @@ the rule table, so the rules get evidence of their own.
   error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
   the tests.
 - **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
-  passes uses it. Today all 89 value words and 73 of 74 statements have one. The one without needs a window:
-  tkinter's `add a tk.Button …`. Of the rules the reader's sentences use for `samples/`, `tests/corpus/` and
-  `tests/heldout/`, all 46 value words and 46 of 47 statements have one.
+  passes uses it. Today all 89 value words and all 74 statements have one. Of the rules the reader's sentences
+  use for `samples/`, `tests/corpus/` and `tests/heldout/`, all 46 value words and all 47 statements have one.
+  A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
+- **Window parts** run on a stand-in tkinter (`tests/helpers/tk_standin.py`), because CI has no screen to make
+  a window on. It draws nothing: a window keeps its parts, each with what it was made with and how it was
+  placed, and a Button's `invoke()` runs its command, as a click does. `tests/test_tk_standin.py` runs the same
+  checks on it and on the real tkinter wherever there's a screen. That's how it learned two of tkinter's own
+  rules: an option can be shortened ("text" on an Entry is its `textvariable`), and one window's parts can't
+  be both packed and put in a grid. What it can't show is how anything looks.
 - **Web routes** run on a stand-in Flask and FastAPI (`tests/helpers/web_standin.py`), so neither needs
   installing. It isn't a server: an app keeps its routes, and its test client sends each request straight
   to the route that matches, as Flask's and FastAPI's own test clients do. It does what they do for the parts
@@ -2167,7 +2173,6 @@ the rule table, so the rules get evidence of their own.
   route has is 404, `<int:k>` takes only a number, `jsonify` and `request` outside a request stop, a Flask
   route that gives back a number is answered 500, and `status_code=` is FastAPI's (Flask stops on it). What
   it can't show is anything only a real server does: ports, headers, cookies, several requests at once.
-  A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
 - **The examples notice a wrong rule:** `npm run meaning -- --mutate` makes each rule do another's work,
   one at a time: a value word gets another's code, a statement another's with as many words to fill in. It
   checks some example fails: all 82 value words and all 70 statements do. Two pairs that write the very same code, two ways of saying one thing, aren't counted:

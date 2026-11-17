@@ -155,6 +155,8 @@ export const EXAMPLES = [
 const TEMP = 'import os, tempfile\nos.chdir(tempfile.mkdtemp())';
 // A Flask app in words (its examples ask it through app.test_client(), as Flask's own tests do)
 const FLASK = 'bring in Flask, jsonify and request from flask\nset app to a new Flask with __name__';
+// A window in words
+const TK = 'bring in tkinter as tk\nset root to a new tk.Tk';
 
 export const STATEMENTS = [
   // Exact code, notes and descriptions
@@ -284,9 +286,18 @@ export const STATEMENTS = [
     holds: 'app.test_client().get("/ping").text == "pong" and app.test_client().post("/ping").status_code == 405' },
   { lines: 'bring in FastAPI from fastapi\nset app to a new FastAPI\nwhen app handles POST at "/items" with status_code=201\ndefine make_item using name\n    give back {"made": name}',
     given: 'from fastapi.testclient import TestClient', holds: 'TestClient(app).post("/items?name=pen").status_code == 201 and TestClient(app).post("/items?name=pen").json() == {"made": "pen"} and TestClient(app).get("/items").status_code == 405' },
+  // Window parts, on a stand-in tkinter (tests/helpers/tk_standin.py, checked against the real one where there's a
+  // screen): what each part says, where it's placed, and that a click runs what it says
+  { lines: `${TK}\nset clicks to an empty list\ndefine add\n    add "clicked" to clicks\nadd a tk.Button saying "Add" to root that runs add, packed with pady=5`,
+    holds: 'root.winfo_children()[0].cget("text") == "Add" and root.winfo_children()[0].winfo_manager() == "pack" and int(root.winfo_children()[0].pack_info()["pady"]) == 5 and clicks == [] and (root.winfo_children()[0].invoke(), clicks)[1] == ["clicked"]' },
+  { lines: `${TK}\nadd a tk.Label saying "Name" to root, put in the grid with row=0 and column=1`,
+    holds: 'root.winfo_children()[0].cget("text") == "Name" and root.winfo_children()[0].winfo_manager() == "grid" and (int(root.winfo_children()[0].grid_info()["row"]), int(root.winfo_children()[0].grid_info()["column"])) == (0, 1)' },
+  { lines: `${TK}\nadd a tk.Entry to root with width=40, placed with x=10 and y=20`,
+    holds: 'int(root.winfo_children()[0].cget("width")) == 40 and root.winfo_children()[0].winfo_manager() == "place" and int(root.winfo_children()[0].place_info()["y"]) == 20' },
+  // (with no way named, a part is packed: put under the one before)
+  { lines: `${TK}\nadd a tk.Label saying "A" to root\nadd a tk.Label saying "B" to root`,
+    holds: '[(p.cget("text"), p.winfo_manager()) for p in root.winfo_children()] == [("A", "pack"), ("B", "pack")]' },
 ];
 
 // Rules with no example yet, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
-export const NOT_RUN = {
-  'add a x saying y to z': 'a tkinter window part: needs a window to put it in',
-};
+export const NOT_RUN = {};
