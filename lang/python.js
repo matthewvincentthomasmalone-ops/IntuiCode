@@ -192,7 +192,7 @@
     { re: R(String.raw`\babsolute (?:value )?of (OPD)`), to: 'abs($1)' },
     // (postfix: these follow their value, so after a sum they could mean the last value or the whole sum)
     { re: R(String.raw`\b(OPD) rounded to (OPD) (?:decimal )?places?`), to: 'round($1, $2)', postfix: true },
-    { re: R(String.raw`\b(OPD) rounded\b`), to: 'round($1)', postfix: true },
+    { re: R(String.raw`\b(OPD) rounded\b`), to: 'round($1)', note: 'Python\'s `round` takes an exact half to the even neighbour: 2.5 is 2, 3.5 is 4.', postfix: true },
     { re: R(String.raw`\b(OPD) sorted by (OPD) biggest first\b`), to: 'sorted($1, key=$2, reverse=True)', note: '`sorted(…, key=…)` orders the items by what the key tool gives for each; `reverse=True` puts the biggest first.', postfix: true },
     { re: R(String.raw`\b(OPD) sorted by (OPD)`), to: 'sorted($1, key=$2)', note: '`sorted(…, key=…)` orders the items by what the key tool gives for each one.', postfix: true },
     { re: R(String.raw`\b(OPD) sorted biggest first\b`), to: 'sorted($1, reverse=True)', note: '`reverse=True` puts the biggest first.', postfix: true },
@@ -1386,7 +1386,8 @@
     x.note('`print()` with nothing inside prints an empty line.');
     return { py: 'print()' };
   });
-  rule(/^(?:show|print|display|say|write|output)\s+(.+?)(\s+(?:on the same line|without (?:a )?new ?line|and stay on this line))?$/i, (m, x) => {
+  // "on the same line" leaves a space before what comes next; "without ending the line" leaves nothing (as C++ does)
+  rule(/^(?:show|print|display|say|write|output)\s+(.+?)(?:(\s+(?:on the same line|and stay on this line))|(\s+without (?:a new ?line|ending the line)))?$/i, (m, x) => {
     // "then show 1 otherwise show 2" on one line: "otherwise" starts a step of its own
     if (/\botherwise\s+(?:show|print|say|display|set|add|run|ask|give back|stop)\b/i.test(mask(m[1]))) x.err('"otherwise" starts a step of its own here. Put it on its own line, lined up with the "if", and the step under it.');
     // "and" between things to show shows each; between tests ("a is 1 and b is 2") it is one yes/no test
@@ -1394,8 +1395,9 @@
     if (parts.length > 1 && !parts.every(plainValue)) parts = splitItems(m[1], false);
     const items = parts.map(p => tExpr(p, x));
     if (items.length > 1) x.note('Several things separated by "and" or commas are shown on one line, with a space between each.');
-    if (m[2]) x.note('`end=" "` stops `print` moving to a new line, so the next thing shown continues on this line.');
-    return { py: `print(${items.join(', ')}${m[2] ? ', end=" "' : ''})` };
+    if (m[2]) x.note('`end=" "` stops `print` moving to a new line, so the next thing shown continues on this line, after a space.');
+    if (m[3]) x.note('`end=""` stops `print` moving to a new line, so the next thing shown continues straight after, with no space.');
+    return { py: `print(${items.join(', ')}${m[2] ? ', end=" "' : m[3] ? ', end=""' : ''})` };
   });
   rule(/^ask(?:\s+(?:for|the user for|them for))?(?:\s+(?:an?\s+)?(whole number|number|decimal(?: number)?|text|word|answer|name))?(?:\s+(.+?))?\s+(?:and\s+)?(?:store|save|keep|put|remember)(?:\s+(?:it|that|the answer|the reply))?\s+(?:in|as|into)\s+(.+?)(?:\s+as\s+(?:an?\s+)?(whole number|number|decimal(?: number)?|text))?$/i, (m, x) => {
     const kindWord = (m[1] || m[4] || '').toLowerCase();   // "ask for a number …" or "… and store in age as a number"

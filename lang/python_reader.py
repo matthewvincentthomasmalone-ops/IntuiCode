@@ -1067,7 +1067,7 @@ class Sentences:
             if any(isinstance(a, ast.Starred) for a in c.args):
                 raise Unwordable()
             end = kw.pop("end", None)
-            if kw or (end is not None and not (isinstance(end, ast.Constant) and end.value == " ")):
+            if kw or (end is not None and not (isinstance(end, ast.Constant) and end.value in (" ", ""))):
                 raise Unwordable()
             if not c.args:
                 if end is not None:
@@ -1077,7 +1077,8 @@ class Sentences:
             # "and" between tests is read as one yes/no test ("show a is 1 and b"), so tests are separated by commas
             test = re.compile(r"\b(?:is|isn't|are|contains?|equals?|than|not|or|even|odd|divisible|at least|at most)\b|[=<>!]", re.I)
             join = ", " if any(test.search(_STR.sub("''", p)) for p in parts) else " and "
-            return S(level, "show " + join.join(parts) + (" on the same line" if end is not None else ""))
+            ends = "" if end is None else " on the same line" if end.value == " " else " without ending the line"
+            return S(level, "show " + join.join(parts) + ends)
         if not c.keywords:
             if f == "time.sleep" and len(c.args) == 1 and isinstance(c.args[0], ast.Constant) and isinstance(c.args[0].value, (int, float)):
                 return S(level, f"wait {c.args[0].value} second{'' if c.args[0].value == 1 else 's'}")
