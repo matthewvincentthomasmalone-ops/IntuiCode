@@ -130,6 +130,11 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   element in it is on one line with its tags when that fits in 80 columns, and between its tags (on lines of their
   own) when it wouldn't, as Prettier breaks it. The same sentences say both.
 
+- More of the web into words (2026-11-17): forms with names, `hidden` elements and listeners on saved elements
+  (`const form = …; form.addEventListener`) were already read as sentences and back exactly; a test now pins them.
+  A hidden value, which read as "an input, of type hidden, …", has words of its own: `add a hidden value "home"
+  sent as "source"`, checked in Chrome (the form sends it; it isn't shown).
+
 ### Step 15 notes
 
 - Until now the evidence was the round trip: sentences rebuild the same syntax tree. That proves nothing was
@@ -194,8 +199,7 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 - Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
   dependency and a decision for the owner.
 
-- More of the web into words: forms with names, `hidden` elements, listeners on saved
-  elements (`const form = …; form.addEventListener`), multi-file C++ projects with headers.
+- Multi-file C++ projects with headers.
 - Code signing, so Windows and macOS don't warn when installing.
 - A proper grammar for sentences, if rule collisions keep appearing (see Known risks).
 

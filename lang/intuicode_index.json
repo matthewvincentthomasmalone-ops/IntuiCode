@@ -1222,6 +1222,15 @@
         },
         {
           "topic": "Controls",
+          "say": "add a hidden value \"‹home›\" sent as \"‹source›\"",
+          "becomes": "<input type=\"hidden\" name=\"source\" value=\"home\">",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Sent with its form, never shown: something the server needs, not the person filling it in."
+        },
+        {
+          "topic": "Controls",
           "say": "add a file picker called ‹name› for ‹pictures›",
           "becomes": "<input type=\"file\" accept=\"image/*\">",
           "folders": [

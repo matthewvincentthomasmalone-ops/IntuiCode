@@ -1473,6 +1473,8 @@
             const word = type === 'range' ? 'slider' : `${INPUT_WORD[type || 'text']} box`;
             return say(`add ${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}${called}${set}`, others(used));
           }
+          // a hidden value: sent with the form, never shown
+          if (type === 'hidden' && get('value') != null && get('name') != null) return say(`add a hidden value ${quote(get('value'))}${called} sent as ${quote(get('name'))}`, others(['type', 'value', 'name']));
           return say(`add an input${called}`, others([]));
         }
         if (tag === 'textarea' && !textOf(n)) {

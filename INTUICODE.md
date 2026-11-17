@@ -2763,6 +2763,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 |  | `add a number box called ‹name› allowing decimals, from ‹0› to ‹100›` | `<input type="number" step="any" min="0" max="100">` | Also: in steps of 5, at least 1, at most 10, with a number keypad. A time box picks a time. |
 |  | `add a checkbox called ‹name› saying "‹text›"` | `<input type="checkbox">` | Mechanics: "if ‹name› is ticked", "tick ‹name›", "untick ‹name›". |
 |  | `add a slider called ‹name› from ‹0› to ‹100›` | `<input type="range">` | Its value is where it is set, as text. |
+|  | `add a hidden value "‹home›" sent as "‹source›"` | `<input type="hidden" name="source" value="home">` | Sent with its form, never shown: something the server needs, not the person filling it in. |
 |  | `add a file picker called ‹name› for ‹pictures›` | `<input type="file" accept="image/*">` | Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›". |
 | **Media** | `add a picture of "‹file.jpg›" described as "‹what it shows›"` | `<img src="…" alt="…">` | The description is read aloud by screen readers. |
 |  | `add a drawing area called ‹game› ‹480› by ‹270›` | `<canvas id="game" width="480" height="270">` | Where a game or a picture is drawn, from Mechanics. |
