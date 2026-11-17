@@ -100,10 +100,24 @@ export const TS_PACKS = [
   { lines: 'define load giving back a Promise of nothing\n    wait for (the result of fetch with "/x"), and take ok and status from it', accepts: ['load();'] },
 ];
 
+/* TanStack Query, run by the library itself in the browser (queryClient: the app is given a client, as its main
+   file would give it). The notes are a list the example keeps, so what was loaded and changed can be checked. */
+const RQ = `${R}\nbring in useQuery, useMutation and useQueryClient from "@tanstack/react-query"`;
+const NOTES = 'const notes: string[] = ["a"];\nconst fetchNotes = async () => notes.join();\nconst addNote = async () => { notes.push("b"); };';
+const useNotes = 'define useNotes\n    give back the query ["notes"] loaded by fetchNotes';
+export const TS_QUERY = [
+  { tsx: true, queryClient: true, given: NOTES, lines: `${RQ}\n${useNotes}\ndefine main component App\n    take data from the result of useNotes\n    show:\n        a paragraph saying "{data}", with id "p"`,
+    then: 'await page.tick(10);', holds: 'page.text("p") === "a"', accepts: ['const q = useNotes(); const s: string | undefined = q.data;'], refuses: ['const n: number | undefined = useNotes().data;'] },
+  { tsx: true, queryClient: true, given: NOTES, lines: `${RQ}\n${useNotes}\ndefine useAdd\n    constant queryClient is the result of useQueryClient\n    give back a change made by addNote\n        when it works\n            mark the query ["notes"] in queryClient as out of date\n` +
+      'define main component App\n    take data from the result of useNotes\n    take mutate from the result of useAdd\n    constant add is a tool\n        run mutate\n    show:\n        a block\n            a paragraph saying "{data}", with id "p"\n            a button saying "add", with id "add", running add when clicked',
+    then: 'await page.tick(10);\nawait page.click("add");\nawait page.tick(10);', holds: 'page.text("p") === "a,b"' },
+  // (without "mark the query …", the list it shows is the one it loaded first)
+  { tsx: true, queryClient: true, given: NOTES, lines: `${RQ}\n${useNotes}\ndefine useAdd\n    give back a change made by addNote\n        when it works, run console.log with "added"\n` +
+      'define main component App\n    take data from the result of useNotes\n    take mutate from the result of useAdd\n    constant add is a tool\n        run mutate\n    show:\n        a block\n            a paragraph saying "{data}", with id "p"\n            a button saying "add", with id "add", running add when clicked',
+    then: 'await page.tick(10);\nawait page.click("add");\nawait page.tick(10);', holds: ['page.text("p") === "a"', 'page.logged.includes("added")'] },
+];
+
 export const NOT_RUN_TS = {
   'a Route for': 'needs react-router, which the tests don\'t have',
-  'give back the query': 'needs TanStack Query, which the tests don\'t have',
-  'give back a change made by': 'needs TanStack Query, which the tests don\'t have',
-  'mark the query': 'needs TanStack Query, which the tests don\'t have',
   'when open changes → onOpenChange': 'a shadcn/ui dialog\'s event, which needs shadcn/ui',
 };

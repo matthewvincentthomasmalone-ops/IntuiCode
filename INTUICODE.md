@@ -2261,7 +2261,7 @@ the rule table, so the rules get evidence of their own.
   `tests/corpus_langs/matrix.cpp` and `thermostat.ino` use. `--mutate` gives each word for comparisons and
   maths (`CPP_VALUE_WORDS`) the next one's code: all 16 are caught. The tests do this for three on every run.
   With no compiler, these tests are skipped; with no Chrome or Edge, the browser's are.
-- **TypeScript's own words** (`lang/ts_write.js`): 58 examples (`tests/helpers/meaning_ts_examples.mjs`).
+- **TypeScript's own words** (`lang/ts_write.js`): 61 examples (`tests/helpers/meaning_ts_examples.mjs`).
   - Types are checked by TypeScript's own checker (the `typescript` dev package, strict, with React's types).
     Each example's code must check clean, the lines it `accepts` must check after it, and the lines it
     `refuses` must be errors. So "(a number)" takes 5 and refuses "5"; "(text, if any)" can be left out but
@@ -2273,8 +2273,11 @@ the rule table, so the rules get evidence of their own.
     warning fails it. Edges: "change count to count plus 1" twice in one click adds 1 (both from the value
     shown), "change count from c to c plus 1" twice adds 2; "when App first appears" runs once, "whenever count
     changes" on each change; "when Ticker goes away" stops its timer when the Ticker is no longer shown.
-  - 34 of 38 Index sentences and 25 of 26 words have one. The 5 without need a library the tests don't have:
-    react-router's Route, TanStack Query's three, a shadcn/ui dialog's `onOpenChange`. Another library's
+  - TanStack Query's three sentences run in the library itself (`@tanstack/react-query`, loaded into the page
+    from its own files): the notes load; a change that marks the query as out of date shows the new list, and
+    one that doesn't, still shows the old one.
+  - 37 of 38 Index sentences and 25 of 26 words have one. The 2 without need a library the tests don't have:
+    react-router's Route, a shadcn/ui dialog's `onOpenChange`. Another library's
     sentence that the tests can't run (Supabase's query) is checked by the code it writes and by the checker,
     with a stand-in for the library's types.
   - `--mutate` gives each word for a type (`BASIC`, `LIST_OF`: "a number" is `number`) another type: all 7 the
@@ -2283,8 +2286,8 @@ the rule table, so the rules get evidence of their own.
 
 Not proven yet:
 
-- Other libraries' sentences for React (react-router, TanStack Query, shadcn/ui) aren't run: the tests don't
-  have those libraries. Tailwind's classes are checked as written, not as styled.
+- Other libraries' sentences for React (react-router, shadcn/ui) aren't run: the tests don't have those
+  libraries. Tailwind's classes are checked as written, not as styled.
 - The browser is Chrome (or Edge). Firefox and Safari aren't run. The clock is the test's, not the browser's.
 - A sketch runs on a stand-in board, not a real one: what the board does with a pin, a screen or a servo is
   what the stand-in records, not what the hardware does.

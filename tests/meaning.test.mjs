@@ -23,7 +23,7 @@ import { runJsInBrowser, runSiteInBrowser, siteCoverage, siteNameOf, mutateConta
 import { compileExample } from './helpers/meaning_web.mjs';
 import { HTML_STRUCTURE, HTML_STYLING, NOT_RUN_HTML } from './helpers/meaning_html.mjs';
 import { missingPackages, runTsExamples, tsCoverage, tsNameOf, mutateTypeWords } from './helpers/meaning_ts.mjs';
-import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, NOT_RUN_TS } from './helpers/meaning_ts_examples.mjs';
+import { TS_TYPES, TS_FILES, TS_REACT, TS_PACKS, TS_QUERY, NOT_RUN_TS } from './helpers/meaning_ts_examples.mjs';
 
 const { L, WEB, CPP, TS } = loadEngine();
 const ALL = [...EXAMPLES, ...STATEMENTS, ...(HAS_PANDAS ? PANDAS_STATEMENTS : [])];
@@ -209,7 +209,7 @@ test('meaning, HTML: a wrong word for an element is caught', { skip: noBrowser }
 /* ------------------------------------------------------------------ TypeScript's own words: types and React */
 
 const noPackages = missingPackages() || false;   // (node:test skips on null too)
-const TS_ALL = [...TS_TYPES, ...TS_FILES, ...TS_REACT, ...TS_PACKS];
+const TS_ALL = [...TS_TYPES, ...TS_FILES, ...TS_REACT, ...TS_PACKS, ...TS_QUERY];
 const tsResults = noPackages ? [] : await runTsExamples(TS, TS_ALL, { browser: !noBrowser });
 
 test('meaning, TypeScript: every example\'s types check as its words say, and its components do what they say in React', { skip: noPackages }, () => {
