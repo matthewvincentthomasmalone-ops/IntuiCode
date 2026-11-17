@@ -297,7 +297,36 @@ export const STATEMENTS = [
   // (with no way named, a part is packed: put under the one before)
   { lines: `${TK}\nadd a tk.Label saying "A" to root\nadd a tk.Label saying "B" to root`,
     holds: '[(p.cget("text"), p.winfo_manager()) for p in root.winfo_children()] == [("A", "pack"), ("B", "pack")]' },
+  // Web replies (requests), on a stand-in: each example says what an address answers (requests.REPLIES)
+  { lines: 'set r to the reply from "https://x/items"\nstop if r failed\nset items to the JSON in r\nset s to the status of r',
+    given: 'import requests\nrequests.REPLIES["https://x/items"] = [1, 2, 3]', names: { items: '[1, 2, 3]', s: '200' }, holds: 'requests.SENT == [("GET", "https://x/items", None)]' },
+  // (an address with nothing there answers 404, and "stop if … failed" stops)
+  { lines: 'set r to the reply from "https://x/none"\nset s to the status of r\nstop if r failed\nset after to 1',
+    given: 'import requests', raises: 'HTTPError', holds: '"after" not in dir()' },
+  { lines: 'set back to the reply from sending {"n": 1} to "https://x/add"\nset said to the JSON in back',
+    given: 'import requests\nrequests.REPLIES["https://x/add"] = {"ok": True}', names: { said: '{"ok": True}' }, holds: 'requests.SENT == [("POST", "https://x/add", {"n": 1})]' },
+  // Files by their path (pathlib), in a folder of the example's own
+  { lines: 'set p to the path "notes.txt"\nput "hi" in the file p\nput "hello" in the file p\nset t to the text in the file p', names: { t: '"hello"' } },
+  { lines: 'set p to the path "data/notes.txt"\nset n to the name of the file p\nset e to the ending of the file p\nset d to the folder of the file p\nset q to the file "a.txt" in the folder of the file p',
+    names: { n: '"notes.txt"', e: '".txt"' }, holds: 'd.as_posix() == "data" and q.as_posix() == "data/a.txt"' },
 ];
+
+// Tables of data (pandas): run where pandas is installed (CI installs it; INTUICODE_PYTHON can name a Python that
+// has it). Each reads a CSV file the example writes, in a folder of its own (here: that folder, for the checks).
+const SALES = TEMP + '\nhere = os.getcwd()\nopen("sales.csv", "w").write("city,price\\nPerth,10\\nPerth,20\\nHobart,5\\n")';
+export const PANDAS_STATEMENTS = [
+  { lines: 'bring in pandas as pd\nset t to the table read from "sales.csv"\nset n to how many items are in t\nset avg to the average of column "price" in t\nset tot to the total of column "price" in t',
+    given: SALES, holds: 'n == 3 and abs(float(avg) - 35 / 3) < 1e-9 and int(tot) == 35' },
+  { lines: 'bring in pandas as pd\nset t to the table read from "sales.csv"\nset by_city to the total of column "price" for each "city" in t\nset mean_city to the average of column "price" for each "city" in t',
+    given: SALES, holds: 'by_city.to_dict() == {"Hobart": 5, "Perth": 30} and mean_city.to_dict() == {"Hobart": 5.0, "Perth": 15.0}' },
+  { lines: 'bring in pandas as pd\nset t to the table read from "sales.csv"\nset cheap to t ordered by "price"\nset dear to t ordered by "price" from the biggest\nset top to the first 1 rows of dear',
+    given: SALES, holds: 'list(cheap["price"]) == [5, 10, 20] and list(dear["price"]) == [20, 10, 5] and list(top["price"]) == [20]' },
+  // (pandas by its own name, with no "bring in": the words bring it in)
+  { lines: 'set t to the table read from "sales.csv"\nsave the first 2 rows of t as CSV in "out.csv"',
+    given: SALES, holds: 'open(os.path.join(here, "out.csv")).read() == "city,price\\nPerth,10\\nPerth,20\\n"' },
+];
+// (the rules only those examples run, by the start of their name, as tools/meaning.mjs prints it)
+export const PANDAS_RULES = ['average of column x for', 'total of column x for', 'average of column x in', 'total of column x in', 'table read from', 'first x rows of', 'x ordered by y from', 'x ordered by y →', 'save x as a CSV'];
 
 // Rules with no example yet, keyed by the start of their name (as tools/meaning.mjs prints it), and why.
 export const NOT_RUN = {};

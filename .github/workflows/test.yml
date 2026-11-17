@@ -17,6 +17,8 @@ jobs:
           node-version: "22"
       - name: Install tree-sitter (for the web reader tests)
         run: npm ci
+      - name: Install pandas (the Python writer's words for tables run as examples with it)
+        run: python3 -m pip install pandas==2.2.3
       - name: Reader tests (Python)
         run: python3 -m unittest discover -s tests -v
       - name: Translator, blueprint and round-trip tests (Node)

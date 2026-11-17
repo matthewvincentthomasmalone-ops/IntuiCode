@@ -691,6 +691,36 @@
         },
         {
           "topic": "Other",
+          "say": "stop if ‹r› failed",
+          "becomes": "r.raise_for_status()",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "A web reply (requests) that says it didn't work, a status of 400 or more, stops with an error."
+        },
+        {
+          "topic": "Other",
+          "say": "put ‹text› in the file ‹p›",
+          "becomes": "p.write_text(text)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Writes the text as the whole file at a path (pathlib), replacing what was there."
+        },
+        {
+          "topic": "Other",
+          "say": "save ‹t› as CSV in \"‹out.csv›\"",
+          "becomes": "t.to_csv(\"out.csv\", index=False)",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "Writes a pandas table as a CSV file: names in the first row, a row a line. \"bring in pandas as pd\" first, if the file uses pd."
+        },
+        {
+          "topic": "Other",
           "say": "wait ‹number› seconds",
           "becomes": "time.sleep(number)",
           "folders": [
@@ -990,6 +1020,70 @@
         {
           "say": "the JSON sent with the request",
           "becomes": "request.get_json()"
+        },
+        {
+          "say": "the reply from url",
+          "becomes": "requests.get(url)"
+        },
+        {
+          "say": "the reply from sending data to url",
+          "becomes": "requests.post(url, json=data)"
+        },
+        {
+          "say": "the JSON in r",
+          "becomes": "r.json()"
+        },
+        {
+          "say": "the status of r",
+          "becomes": "r.status_code"
+        },
+        {
+          "say": "the path \"notes.txt\"",
+          "becomes": "pathlib.Path(\"notes.txt\")"
+        },
+        {
+          "say": "the text in the file p",
+          "becomes": "p.read_text()"
+        },
+        {
+          "say": "the name of the file p",
+          "becomes": "p.name"
+        },
+        {
+          "say": "the ending of the file p",
+          "becomes": "p.suffix"
+        },
+        {
+          "say": "the folder of the file p",
+          "becomes": "p.parent"
+        },
+        {
+          "say": "the file \"a.txt\" in d",
+          "becomes": "d / \"a.txt\""
+        },
+        {
+          "say": "the table read from \"sales.csv\"",
+          "becomes": "pandas.read_csv(\"sales.csv\")"
+        },
+        {
+          "say": "the first 5 rows of t",
+          "becomes": "t.head(5)"
+        },
+        {
+          "say": "the average of column \"price\" in t",
+          "becomes": "t[\"price\"].mean()"
+        },
+        {
+          "say": "the total of column \"price\" for each \"city\" in t",
+          "becomes": "t.groupby(\"city\")[\"price\"].sum()"
+        },
+        {
+          "say": "t ordered by \"price\"",
+          "becomes": "t.sort_values(\"price\")"
+        },
+        {
+          "say": "t ordered by \"price\" from the biggest",
+          "becomes": "t.sort_values(\"price\", ascending=False)"
         }
       ],
       "examples": [

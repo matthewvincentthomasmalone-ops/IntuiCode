@@ -260,7 +260,8 @@ statements that differ are kept as `python:` lines automatically and the check r
    Today: 24 Python pairs and 20 JavaScript ones, every one a narrower wording tried before a wider one, none a
    clash. So no grammar rewrite; move to one if the check finds rules that clash.
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
-   libraries AI tools use most, shared by Write and Read modes.
+   libraries AI tools use most, shared by Write and Read modes. Since 2026-11-17: requests, pathlib and pandas
+   (Python), each with examples that run; React Query and Supabase (TypeScript).
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
    IntuaCode is the verifiable layer. Today nothing in it guesses: every summary comes from a rule, and the
    app calls no AI model (`tests/no-ai.test.mjs` fails if code starts calling one). Any AI feature added later
