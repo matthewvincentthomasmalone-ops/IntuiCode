@@ -1654,6 +1654,12 @@
       if (n.type === 'declaration' && F(n, 'type')) for (const d of named(n)) { const id = d.type === 'identifier' ? d : d.type === 'init_declarator' && F(d, 'declarator').type === 'identifier' ? F(d, 'declarator') : null; if (id) objType.set(id.text, collapse(F(n, 'type').text)); }
       for (const c of named(n)) scan(c);
     })(tree);
+    // the type of each name made in this file, its tools' inputs too (for "the whole part of … divided by …")
+    const wholeTypes = Object.fromEntries(objType);
+    (function scan(n) {
+      if ((n.type === 'parameter_declaration' || n.type === 'field_declaration') && F(n, 'type') && F(n, 'declarator') && F(n, 'declarator').type.endsWith('identifier')) wholeTypes[F(n, 'declarator').text] = collapse(F(n, 'type').text);
+      for (const c of named(n)) scan(c);
+    })(tree);
     // every class and structure the file defines, said or kept as code (the writer learns them from c++: lines too)
     (function scan(n) {
       if ((n.type === 'class_specifier' || n.type === 'struct_specifier') && F(n, 'name') && F(n, 'body')) classes.add(F(n, 'name').text);
@@ -1709,6 +1715,16 @@
           if (/^random number from /.test(r) && R.type === 'call_expression') r = `(${r})`;
           // "a plus b as text" could be (a plus b) as text: brackets round the value it goes with
           if (/^[-+*/%]$/.test(op) && / as (?:text|a decimal|a whole number)$/.test(r) && (R.type === 'call_expression' || R.type === 'cast_expression') && !(op === '+' && / as text$/.test(r) && plainLit(L))) r = `(${r})`;
+          // two whole numbers divided: C++ keeps the whole part (7 / 2 is 3), and the words say so. ("divided by" alone
+          // is the decimal the words mean: the writer makes one side a decimal.)
+          if (op === '/' && CPP.wholeValue && CPP.wholeValue(L.text, wholeTypes, arduino) && CPP.wholeValue(R.text, wholeTypes, arduino))
+            return opd(l) && opd(r) ? `the whole part of ${l} divided by ${r}` : null;
+          // static_cast<double>(total) / count, (double)total / count, 7.0 / 2: the decimal division the words mean
+          if (op === '/' && CPP.wholeValue && CPP.wholeValue(R.text, wholeTypes, arduino)) {
+            const cast = L.text.match(/^(?:static_cast<double>\(([A-Za-z_]\w*)\)|\(double\)\s*([A-Za-z_]\w*))$/);
+            const w = cast && (cast[1] || cast[2]);
+            if (w && CPP.wholeValue(w, wholeTypes, arduino) && opd(r)) return `${w} divided by ${r}`;
+          }
           return `${l} ${CPP_OPS[op] || op} ${r}`;
         }
         case 'unary_expression': { const op = F(n, 'operator').type, a = ex(F(n, 'argument')); return a == null ? null : op === '!' ? `not ${a}` : `${op}${a}`; }

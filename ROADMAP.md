@@ -159,7 +159,7 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   `INTUICODE.md` shows.
 - Unity: each part Translate makes keeps what the check found and shows it on the part (✓ exact, ≠ not exact,
   ✎ edited since) and in the help under it, not only in the terminal.
-- C++ and Arduino: 207 examples compiled and run (g++, or Visual Studio's compiler), sketches on a stand-in
+- C++ and Arduino: 213 examples compiled and run (g++, or Visual Studio's compiler), sketches on a stand-in
   board. Every program and sketch entry in the Index has one; 16 of 16 wrong words are caught. They found and
   fixed four writer bugs: "set b to n is even" made an int, `"42" as number` and `length of "abc"` didn't
   translate or build, and `"42" as number` on a board didn't build.

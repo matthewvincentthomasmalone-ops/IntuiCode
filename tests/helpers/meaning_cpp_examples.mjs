@@ -25,8 +25,15 @@ export const CPP_VALUES = [
   { say: 'n equals 5', given: 'int n = 5;', means: 'true' },
   { say: '7 minus 2 times 3', means: '1' },
   { say: '7 plus 2', means: '9' },
-  { say: '7 divided by 2', means: '3' },         // whole numbers: C++'s meaning, with a warning on the line
+  // "divided by" is a decimal, as in English, though C++ divides two whole numbers to a whole number (7 / 2 is 3):
+  // one is made a decimal first. "the whole part of" is C++'s own.
+  { say: '7 divided by 2', means: '3.5' },
   { say: '7.0 divided by 2', means: '3.5' },
+  { say: 'the whole part of 7 divided by 2', means: '3' },
+  { say: 'n divided by m', given: 'int n = 7;\nint m = 2;', means: '3.5' },
+  { say: 'the whole part of n divided by m', given: 'int n = 7;\nint m = 2;', means: '3' },
+  { say: '(n plus 2) divided by m', given: 'int n = 7;\nint m = 2;', means: '4.5' },
+  { say: 'n divided by m', given: 'double n = 7;\nint m = 2;', means: '3.5' },
   { say: '7 mod 3', means: '1' },
   { say: 'n is at least 5', given: 'int n = 5;', means: 'true' },
   { say: 'n is at least 5', given: 'int n = 6;', means: 'true' },
@@ -185,6 +192,7 @@ export const CPP_SKETCHES = [
   sketch({ lines: 'over and over\n    set the brightness of pin 9 to 128', does: 'analogWrite 9 128' }),
   sketch({ lines: 'over and over\n    read pin A0 and call it level (a whole number)', inputs: { A0: 512 }, names: { level: '512' } }),
   sketch({ lines: 'over and over\n    read pin 2 and call it pressed (a whole number)', inputs: { 2: 'HIGH' }, names: { pressed: '1' } }),
+  sketch({ lines: 'set total to 7\nset half to 0.0\nset whole to 0\nover and over\n    set half to total divided by 2\n    set whole to the whole part of total divided by 2', names: { half: '3.5', whole: '3' } }),
   sketch({ lines: 'set level to 0\nover and over\n    scale 1023 from 0–1023 to 0–255 and store it in level', names: { level: '255' } }),
   sketch({ lines: 'set level to 0\nover and over\n    scale 512 from 0–1023 to 0–255 and store it in level', names: { level: '127' } }),
   sketch({ lines: 'set duration to 0\nover and over\n    set duration to how long pin 7 stays on', pulses: { 7: 580 }, names: { duration: '580' }, does: 'pulseIn 7 HIGH' }),

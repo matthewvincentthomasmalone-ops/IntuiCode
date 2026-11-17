@@ -189,7 +189,6 @@ for (const [sentences, re, warn] of [
   ['set colour to "red"\nif colour is not "red" or "blue"\n    show "x"', /could mean two things/],
   ['set x to nothing', /can't be set to nothing/],
   ['define stats using a, b\n    give back a and b', /could mean two values/],
-  ['set half to 7 divided by 2', /7 \/ 2 is 3, not 3\.5/, true],
 ]) {
   test(`C++: explains a problem: ${sentences.split('\n').pop()}`, () => {
     const r = cpp(sentences);

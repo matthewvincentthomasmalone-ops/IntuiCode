@@ -2223,13 +2223,13 @@ the rule table, so the rules get evidence of their own.
   and all 39 Styling entries in the Index have one. `--mutate` gives each word for a container ("navigation
   bar", "side panel" …, `CONTAINERS`) another element: all 7 the examples use are caught. The tests do this
   for two on every run. Styling's words are read in place, so they aren't swapped this way.
-- **C++ programs and Arduino sketches** (`lang/cpp_write.js`): 207 examples
+- **C++ programs and Arduino sketches** (`lang/cpp_write.js`): 213 examples
   (`tests/helpers/meaning_cpp_examples.mjs`) are compiled and run for real: g++, or Visual Studio's compiler on
   Windows. Each is put in a namespace of its own and all are built into one program. A program gets `std::cin`
   and `std::cout` of its own; a sketch runs on a stand-in board that records what it's asked to do (pins,
   waits, the serial monitor, a screen, a servo, tones) and reads what the example sets its pins to. Waits are
-  recorded, not waited. Edges: "7 divided by 2" is 3 in C++ (with a warning on the line), "7.0 divided by 2" is
-  3.5; "-3 is odd" is true (`% 2 != 0`, not `== 1`); "random number from 1 to 6" gives 1 and 6; "is between 1
+  recorded, not waited. Edges: "7 divided by 2" is 3.5, as the words say, and so is "n divided by m" with two
+  whole numbers; "the whole part of 7 divided by 2" is 3; "-3 is odd" is true (`% 2 != 0`, not `== 1`); "random number from 1 to 6" gives 1 and 6; "is between 1
   and 5" counts both ends; on a board, "at least 500 milliseconds have passed since last" turns true at 500.
   Counted by the Index, programs and sketches apart: all 53 program sentences and 23 value words, all 67
   sketch sentences and 19 value words have one, as do all the entries the sentences for
@@ -2343,7 +2343,7 @@ examples are pinned by the example after it, which shows the writer's output as 
 fixed, its test fails, and this section is updated. The last table is the reading direction.
 
 Where the writer can tell, the line gets a warning, in the help under it and in Problems: Python's `is`
-written as Python, and C++'s whole numbers divided. `tests/meaning.test.mjs` checks that each row its section's example shows still warns. A C++ name
+written as Python. `tests/meaning.test.mjs` checks that each row its section's example shows still warns. A C++ name
 used after its block is left to the compiler.
 
 ### Python writer
@@ -2448,11 +2448,14 @@ header {
 
 ### C++ and Arduino writer
 
-Fixed on 2026-11-04: text joined with `plus` (it was pointer arithmetic: `"Score: " + n` printed part of the text), `not n is 5`, a comparison shown, `count down` with no name and `in steps of`, a name given a decimal later (now a `double` from the start), `if n = 5`, text asked for after a number, two comparisons in a row, `is "yes" or "y"`, and `size()` minus 1 on an empty list. Still to watch:
+Fixed on 2026-11-04: text joined with `plus` (it was pointer arithmetic: `"Score: " + n` printed part of the text), `not n is 5`, a comparison shown, `count down` with no name and `in steps of`, a name given a decimal later (now a `double` from the start), `if n = 5`, text asked for after a number, two comparisons in a row, `is "yes" or "y"`, and `size()` minus 1 on an empty list. Fixed on 2026-11-17: `7 divided by 2` wrote `7 / 2`, which C++ makes 3
+(two whole numbers divide to a whole number), with a warning. "divided by" now means what it says in English:
+the first whole number is made a decimal (`7.0 / 2`, `static_cast<double>(total) / count`, `(double)total / 2`
+in a sketch), so it's 3.5. C++'s own whole-number division has its own words: `the whole part of total divided
+by count` is `total / count`, and C++ read back says so. Still to watch:
 
 | You write | You get | Why | Write instead |
 |---|---|---|---|
-| `set half to 7 divided by 2` | `7 / 2`, which is 3, with a warning | whole numbers divide to a whole number in C++ | `7.0 divided by 2` |
 | a name first set inside a block, used after it | doesn't build (the compiler says so) | C++ scoping | set it before the block |
 
 ```intuicode cpp
@@ -3219,6 +3222,8 @@ Program → `main.cpp`. Writer: `lang/cpp_write.js`.
 | `absolute value of x` | `std::abs(x)` |
 | `a to the power of b` | `std::pow(a, b)` |
 | `x is between 1 and 5` | `x >= 1 && x <= 5` |
+| `a divided by b` | `static_cast<double>(a) / b` |
+| `the whole part of a divided by b` | `a / b` |
 
 ### Arduino
 
@@ -3321,5 +3326,7 @@ Sketch → `‹folder›.ino`. Writer: `lang/cpp_write.js`.
 | `square root of x` | `sqrt(x)` |
 | `a to the power of b` | `pow(a, b)` |
 | `x is between 1 and 5` | `x >= 1 && x <= 5` |
+| `a divided by b` | `(double)a / b` |
+| `the whole part of a divided by b` | `a / b` |
 
 <!-- index:end -->
