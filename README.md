@@ -426,8 +426,8 @@ their text, with the reason shown.
 
 **Saving and Backups**
 
-The open project is kept in the browser as you work. **Menu → Save** (Ctrl+S) in a browser downloads it as a
-`.zip`, laid out as the desktop app saves a folder (the code files, your sentences in `.intuicode/`, pictures
+The open project is kept in the browser as you work. **Menu → Save** (Ctrl+S) in a browser asks the project's
+name the first time, then downloads it as `<name>.zip` (**Save as…**, Ctrl+Shift+S, asks again), laid out as the desktop app saves a folder (the code files, your sentences in `.intuicode/`, pictures
 in `images/`); Import → Open a `.zip` opens it again exactly as it was. Leaving the page with changes since the
 last Save asks first. **Menu → Backups…** lists a copy of the project from every 2 minutes it changed, the last
 15 (half an hour), kept in this browser (or the desktop app) for whichever project was open; Restore brings one
@@ -501,9 +501,12 @@ desktop app, and the Preview says what didn't load.
 
 The desktop app (built with [Tauri](https://tauri.app)) adds what a browser can't do:
 
-- **Real folders.** Menu → New project (Ctrl+N), Open folder (Ctrl+O) and Save (Ctrl+S). A new
-  project can go straight into a folder you choose; IntuaCode won't save over another project's
-  files. Your code files are the project;
+- **Real folders.** Menu → New project (Ctrl+N), Open folder (Ctrl+O), Save (Ctrl+S) and Save as
+  (Ctrl+Shift+S). The first Save asks the project's name and where it goes (`Documents\IntuaCode`
+  unless you choose somewhere else), then makes a folder with that name there; the name is the
+  project's name too. It only makes one where no folder of that name has anything in it, so it never
+  saves over another project. Save as saves a copy under a new name or in a new place, and the
+  project is saved there from then on. Your code files are the project;
   the sentences are kept in `.intuicode/` beside them. If the code on disk is changed in
   another editor, its sentences are rebuilt from it. A folder of Python, a web page, a C++
   program or an Arduino sketch that wasn't made with IntuaCode opens as sentences; any other

@@ -280,6 +280,30 @@ fn list_files(access: State<Access>, path: String) -> Result<Vec<String>, String
     Ok(names)
 }
 
+/// Whether a folder has anything in it, files or folders (false if there's no such folder): Save only
+/// makes a project's folder where there isn't one in use already.
+#[tauri::command]
+fn folder_used(access: State<Access>, path: String) -> Result<bool, String> {
+    let p = access.path(&path)?;
+    Ok(used(&p))
+}
+
+fn used(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map(|mut e| e.next().is_some()).unwrap_or(false)
+}
+
+/// Where new projects go unless the person chooses somewhere else: an IntuaCode folder in their
+/// Documents. With `make` it is made, and the window may use it.
+#[tauri::command]
+fn projects_folder(app: AppHandle, access: State<Access>, make: bool) -> Result<String, String> {
+    let dir = app.path().document_dir().or_else(|_| app.path().home_dir()).map_err(|e| e.to_string())?.join("IntuaCode");
+    if make {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+        access.allow_folder(&dir);
+    }
+    Ok(dir.to_string_lossy().to_string())
+}
+
 /// A folder IntuaCode can use when a project hasn't been saved anywhere yet.
 #[tauri::command]
 fn scratch_folder(app: AppHandle, access: State<Access>) -> Result<String, String> {
@@ -1452,7 +1476,7 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
-            read_folder, folder_stamps, file_stamp, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
+            read_folder, folder_stamps, file_stamp, read_text, write_text, read_bytes, write_bytes, list_files, folder_used, projects_folder, scratch_folder, pick_folder, set_preview,
             preview_site, open_preview, free_port, preview_relay, run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
             compile_cpp, find_arduino, run_capture, find_venv, guard_close, close_window
         ])
@@ -1485,6 +1509,18 @@ mod tests {
         // a WebSocket keeps its own Connection and Upgrade headers
         let ws = relay_head("GET /?token=1 HTTP/1.1\r\nHost: 127.0.0.1:5000\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: k\r\n\r\n", 5173, true);
         assert!(ws.contains("Connection: Upgrade\r\n") && ws.contains("Upgrade: websocket\r\n") && ws.contains("Sec-WebSocket-Key: k\r\n") && ws.contains("Host: 127.0.0.1:5173\r\n"));
+    }
+
+    #[test]
+    fn a_folder_is_used_once_anything_is_in_it() {
+        let dir = std::env::temp_dir().join(format!("intuicode-used-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!used(&dir)); // no such folder
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!used(&dir)); // empty
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        assert!(used(&dir)); // a folder in it counts
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
