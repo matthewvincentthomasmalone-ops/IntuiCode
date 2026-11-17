@@ -3375,6 +3375,7 @@
     if (devOn() && site.mode === 'dev') return;   // (the dev server shows the app, and each saved change)
     // a Vite app isn't a page IntuaCode writes: its own dev server shows it, once Run starts that
     if (PRJ.devServerOf(project)) {
+      if (!desk.on && window.IntuiBundle) return viteInBrowser(!!announce);
       const say = desk.on ? 'Press Run to start its own dev server, and the app shows here.' : 'It runs on its own dev server, which the IntuaCode desktop app starts with Run (or npm run dev on your computer).';
       showPreviewPage(`<!doctype html><meta charset="utf-8"><body style="font:15px/1.5 system-ui,sans-serif;color:#666;padding:24px;max-width:36em">This is a Vite app (React, say). ${say}</body>`, !!announce);
       return;
@@ -7583,13 +7584,44 @@
    * helper in each page and reports each other site the app reaches (listed in the terminal, never blocked). The
    * project's own packages build it (node_modules, from npm install), exactly as outside IntuaCode; each change is
    * saved a moment after it's made (autosave), and the dev server shows it. The browser version doesn't run these. */
+  /* The browser version: a Vite app built in the page by esbuild (WebAssembly, vendor/esbuild, loaded the first
+   * time it's needed), with its packages from esm.sh, and shown in the Preview (lang/bundle.js). Each change
+   * builds it again; a build that a newer one overtakes is dropped. */
+  let esbuildReady = null, viteSeq = 0;
+  function loadEsbuild() {
+    esbuildReady ||= new Promise((ok, no) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/esbuild/esbuild.js';
+      s.onload = ok;
+      s.onerror = () => no(new Error('The builder (vendor/esbuild) isn\'t here: npm run vendor makes it.'));
+      document.head.appendChild(s);
+    }).then(() => window.esbuild.initialize({ wasmURL: 'vendor/esbuild/esbuild.wasm' })).then(() => window.esbuild)
+      .catch((e) => { esbuildReady = null; throw e; });
+    return esbuildReady;
+  }
+  async function viteInBrowser(announce) {
+    const seq = ++viteSeq;
+    if (announce) tLine('▶ Building the app here in the page (with esbuild). Its packages (React and the rest) load from esm.sh, so the Preview needs the internet. The desktop app runs it on its own dev server instead.', 't-sys');
+    let esbuild;
+    try { esbuild = await loadEsbuild(); } catch (e) { tLine(String(e.message || e), 't-err'); return; }
+    const files = {};
+    for (const s of project.sections) if (s.path) files[s.path] = codeOf(s);
+    let r;
+    try { r = await window.IntuiBundle.viteApp(files, esbuild); } catch (e) { r = { html: null, errors: [String(e.message || e)], warnings: [] }; }
+    if (seq !== viteSeq) return;
+    if (announce) for (const w of r.warnings) tLine(w, 't-sys');
+    if (!r.html) {
+      for (const e of r.errors.slice(0, 5)) tLine('✕ ' + e, 't-err');
+      showPreviewPage(`<!doctype html><meta charset="utf-8"><body style="font:15px/1.5 system-ui,sans-serif;color:#666;padding:24px;max-width:36em">The app couldn't be built: ${r.errors[0].replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</body>`, !!announce);
+      return;
+    }
+    showPreviewPage(r.html, !!announce);
+  }
   const dev = { folder: null, port: 0, relay: 0, hosts: new Set() };
   const devOn = () => !!(desk.proc && desk.proc.kind === 'dev' && dev.folder === desk.folder);
   async function runDev(how) {
-    if (!desk.on) {
-      tLine('This is a Vite app (React, say): it runs on its own dev server, which the IntuaCode desktop app starts and shows in the Preview. Here in the browser, read, change and check its code; to run it, use the desktop app, or npm run dev on your computer.', 't-sys');
-      return;
-    }
+    // the browser version can't start a dev server: it builds the app in the page instead (see viteInBrowser)
+    if (!desk.on) { showBottom('preview'); return viteInBrowser(true); }
     if (!desk.folder) { tLine('A Vite app runs from its own folder, where its packages are: open that folder with Menu → Open folder, then press Run. (A copy saved elsewhere needs $ npm install there first.)', 't-sys'); return; }
     const folder = desk.folder;
     await saveProject('quiet');

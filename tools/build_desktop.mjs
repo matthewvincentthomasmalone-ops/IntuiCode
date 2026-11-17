@@ -32,7 +32,8 @@ const optional = [
 ];
 let missing = false;
 for (const [dir, what, how] of optional) {
-  if (existsSync(path.join(ROOT, dir))) { cpSync(path.join(ROOT, dir), path.join(DIST, dir), { recursive: true }); continue; }
+  // (not vendor/esbuild: the desktop app runs a React app on its own dev server, so it never builds one in the page)
+  if (existsSync(path.join(ROOT, dir))) { cpSync(path.join(ROOT, dir), path.join(DIST, dir), { recursive: true, filter: (src) => !/[\\/]vendor[\\/]esbuild(?:[\\/]|$)/.test(src) }); continue; }
   console[release ? 'error' : 'warn'](`${release ? 'error' : 'warning'}: ${dir}/ is missing, so the app will have no ${what}. Run: ${how}`);
   missing = true;
 }

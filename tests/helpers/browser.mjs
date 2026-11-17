@@ -101,6 +101,7 @@ async function openTab(cdp) {
     if (m.sessionId !== sessionId) return;
     if (m.method === 'Fetch.requestPaused') {
       const p = m.params, r = (serve && serve(p.request, p.resourceType)) || { status: 404, body: '' };
+      if (r.pass) { s('Fetch.continueRequest', { requestId: p.requestId }).catch(() => {}); return; }   // (to the internet, as it is)
       const body = Buffer.isBuffer(r.body) ? r.body : Buffer.from(String(r.body ?? ''));
       const headers = Object.entries({ 'Content-Type': r.type || 'text/plain', 'Access-Control-Allow-Origin': '*', ...(r.headers || {}) }).map(([name, value]) => ({ name, value }));
       s('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: r.status || 200, responseHeaders: headers, body: body.toString('base64') }).catch(() => {});

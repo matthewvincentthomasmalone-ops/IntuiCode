@@ -23,3 +23,8 @@ for (const g of grammars) {
   copyFileSync(path.join(ROOT, 'node_modules/tree-sitter-wasms/out', f), path.join(out, f));
 }
 console.log('Copied tree-sitter into', path.relative(ROOT, out));
+// esbuild, as WebAssembly: the browser version builds a React app (a Vite app) with it, to run it in the Preview
+const esb = path.join(ROOT, 'vendor/esbuild');
+mkdirSync(esb, { recursive: true });
+for (const [from, to] of [['lib/browser.min.js', 'esbuild.js'], ['esbuild.wasm', 'esbuild.wasm'], ['LICENSE.md', 'LICENSE.md']]) copyFileSync(path.join(ROOT, 'node_modules/esbuild-wasm', from), path.join(esb, to));
+console.log('Copied esbuild into', path.relative(ROOT, esb));

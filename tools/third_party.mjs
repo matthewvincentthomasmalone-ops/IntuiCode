@@ -24,12 +24,14 @@ line();
 const py = existsSync(path.join(ROOT, 'pyodide/pyodide-lock.json')) ? json('pyodide/pyodide-lock.json').info.version : '(not fetched)';
 const wts = json('node_modules/web-tree-sitter/package.json');
 const tsw = json('node_modules/tree-sitter-wasms/package.json');
+const esb = json('node_modules/esbuild-wasm/package.json');
 line('| Part | Version | Licence | Source |');
 line('|---|---|---|---|');
 line(`| Pyodide (Python in the page) | ${py} | MPL-2.0; includes CPython, under the Python Software Foundation License | https://github.com/pyodide/pyodide |`);
 line(`| web-tree-sitter (the code reader's parser) | ${wts.version} | ${wts.license} | https://github.com/tree-sitter/tree-sitter |`);
 line(`| tree-sitter-wasms (the parsers, built) | ${tsw.version} | ${tsw.license}; the grammars in it are MIT | https://github.com/Gregoor/tree-sitter-wasms |`);
 line('| tree-sitter grammars: C++, CSS, HTML, JavaScript, TypeScript, TSX | as bundled | MIT | https://github.com/tree-sitter |');
+line(`| esbuild-wasm (runs a React app in the browser version) | ${esb.version} | ${esb.license} (copyright (c) 2020 Evan Wallace) | https://github.com/evanw/esbuild |`);
 for (const f of readdirSync(path.join(ROOT, 'fonts')).filter(f => /^OFL-.*\.txt$/.test(f))) {
   const name = f.replace(/^OFL-|\.txt$/g, '').replace(/-/g, ' ');
   line(`| ${name} (font) | as bundled | SIL Open Font License 1.1 (full text: fonts/${f}) | fonts/${f} |`);

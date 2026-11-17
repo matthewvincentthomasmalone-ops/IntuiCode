@@ -11,6 +11,7 @@ which keep their own licences. They are listed here, with where each comes from.
 | web-tree-sitter (the code reader's parser) | 0.20.8 | MIT | https://github.com/tree-sitter/tree-sitter |
 | tree-sitter-wasms (the parsers, built) | 0.1.13 | Unlicense; the grammars in it are MIT | https://github.com/Gregoor/tree-sitter-wasms |
 | tree-sitter grammars: C++, CSS, HTML, JavaScript, TypeScript, TSX | as bundled | MIT | https://github.com/tree-sitter |
+| esbuild-wasm (runs a React app in the browser version) | 0.28.2 | MIT (copyright (c) 2020 Evan Wallace) | https://github.com/evanw/esbuild |
 | Atkinson Hyperlegible Mono (font) | as bundled | SIL Open Font License 1.1 (full text: fonts/OFL-Atkinson-Hyperlegible-Mono.txt) | fonts/OFL-Atkinson-Hyperlegible-Mono.txt |
 | Atkinson Hyperlegible Next (font) | as bundled | SIL Open Font License 1.1 (full text: fonts/OFL-Atkinson-Hyperlegible-Next.txt) | fonts/OFL-Atkinson-Hyperlegible-Next.txt |
 | IBM Plex Mono (font) | as bundled | SIL Open Font License 1.1 (full text: fonts/OFL-IBM-Plex-Mono.txt) | fonts/OFL-IBM-Plex-Mono.txt |

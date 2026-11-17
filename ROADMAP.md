@@ -141,6 +141,11 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   prototypes say `declare …` and a .cpp file with no `main` comes back with none: `samples/cpp/inventory` reads
   exactly. Four projects are built and run as examples. Not yet: a class's tools declared in its header and
   defined in a .cpp file (`Item::price`), and a .cpp file read alone doesn't know its header's classes.
+- React in the browser version (2026-11-17): it can't start a dev server, so a Vite app is built in the page by
+  esbuild (esbuild-wasm, in vendor/esbuild; not in the desktop app, which runs the project's own Vite) and its
+  packages load from esm.sh through an import map, one React for all (lang/bundle.js). `tests/bundle.test.mjs`
+  builds a small Lovable-style app and runs it in Chrome: React draws it, a click counts, Tailwind uses the
+  project's own colours and `@apply`. Not there: vite.config plugins, files that aren't text, and running offline.
 
 ### Step 15 notes
 
@@ -203,8 +208,6 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
 
 ## What could come next
 
-- Running a React app in the browser version (it can't start a dev server): a bundler in the page, a new
-  dependency and a decision for the owner.
 
 - Code signing, so Windows and macOS don't warn when installing.
 - A proper grammar for sentences, if rule collisions keep appearing (see Known risks).
