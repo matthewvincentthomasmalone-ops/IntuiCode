@@ -1641,3 +1641,5 @@ details.pg > summary .count { margin-left: auto; }
 .lg-lines pre span { display: block; }
 .lg-lines pre i { display: inline-block; min-width: 3.2em; font-style: normal; color: var(--ink-3); }
 .lg-lines .lg-at { color: var(--ink-3); margin-top: 4px; }
+.disk-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; color: var(--ink); }
+.disk-list li { margin: 2px 0; }

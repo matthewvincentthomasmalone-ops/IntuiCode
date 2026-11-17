@@ -124,6 +124,17 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] The filter chips show only one origin. Close and reopen the project (or open its folder on another computer):
       the log is still there.
 
+**The folder is watched** (desktop, a saved project open)
+- [ ] Change a file of the project in another editor and save it: within a few seconds IntuaCode shows the new code
+      (sentences rebuilt, or code lines in Unity), the terminal says so, and What changed has an Outside IntuaCode entry.
+- [ ] Type in a file here and, before 2 seconds pass, change the same file in another editor: **Changed in two places**
+      opens and nothing is written. **Keep mine**: the other editor's file now has yours, and the log has the lines
+      that were there. Again with **Use the file on disk**: IntuaCode shows that file, and your lines are in the log.
+- [ ] Add a new .py file to the folder: the terminal says it isn't in the project. Delete a file of the project there:
+      the terminal says so, and it isn't written back until you change it here.
+- [ ] With a map handed to your AI: tick a task in openspec/changes/…/tasks.md: the map ticks that step within seconds.
+- [ ] `git pull` (or checkout) in the project's folder while it's open: the changed files come in, one log entry.
+
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
       of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.

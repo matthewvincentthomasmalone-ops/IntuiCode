@@ -193,6 +193,7 @@
       clearTimeout(desk.saveTimer);
       desk.folder = folder;
       desk.dirty = !folder;
+      stopWatching();   // its folder is watched afresh, from its files as they are
     }
     store.set(PREVIOUS_KEY, project);
     project = normalized(next);
@@ -6161,12 +6162,13 @@
     } finally { changes.hold = false; }
   }
 
-  /* A saved project's folder opened with files that aren't what IntuaCode last wrote ([[sec, the code on disk]]): one
-     entry, from the code IntuaCode wrote to the code on disk, before either is read in. -> the entry, or null. */
+  /* A saved project's folder opened (or watched) with files that aren't what IntuaCode last wrote ([[sec, the code on
+     disk, or null where it was deleted]]; a file that isn't in the project is { path }): one entry, from the code
+     IntuaCode wrote to the code on disk, before either is read in. -> the entry, or null. */
   function logOutside(changed, evidence, what = 'Found when the project\'s folder was opened: the code on disk wasn\'t what IntuaCode last wrote.') {
     if (!CHANGES || !changes.base || !changed.length) return null;
     const after = new Map(changes.base);
-    for (const [s, onDisk] of changed) after.set(s.path, onDisk);
+    for (const [s, onDisk] of changed) { if (onDisk == null) after.delete(s.path); else after.set(s.path, onDisk); }   // null: deleted there
     const e = CHANGES.entry({ before: changes.base, after, langs: langMap(), definitions: PROMISES && PROMISES.definitions });
     if (!e) return null;
     Object.assign(e, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), origin: 'outside', what });
@@ -6778,14 +6780,134 @@
    * IntuaCode is left alone unless it's changed here too; a file opened in place keeps its own line endings (\r\n)
    * and the blank lines it ends with. */
   const written = new Map();
+  /* -> 'held' when it isn't written: the file changed on disk since IntuaCode last read or wrote it (the watcher then
+     reads it in, or asks), or it's waiting for you to choose between the two. */
   async function writeKept(folder, name, content) {
     const key = folder + '|' + name, was = written.get(key);
     if (was && was.text === content) return;
+    const watched = desk.on && watch.folder === folder;
+    if (watched && watch.held.has(name)) return 'held';
+    // never write over a change made outside IntuaCode: a file whose stamp moved is read first
+    if (watched && watch.stamps.has(name)) {
+      let st = null;
+      try { st = await invoke('file_stamp', { path: join(folder, name) }); } catch (_) { st = null; }
+      if (st && st !== watch.stamps.get(name)) {
+        const disk = await readIn(folder)(name);
+        if (disk != null && !(was && was.text != null && sameText(disk, was.text))) { setTimeout(watchTick, 0); return 'held'; }
+      }
+    }
     let text = content;
     if (was && was.end != null) text = text.replace(/\n*$/, was.end);
     if (was && was.crlf) text = text.replace(/\n/g, '\r\n');
     await invoke('write_text', { path: join(folder, name), content: text });
     written.set(key, { ...was, text: content });
+    watch.told.delete(name);
+    if (watched) { try { const st = await invoke('file_stamp', { path: join(folder, name) }); if (st) watch.stamps.set(name, st); } catch (_) { /* seen next look */ } }
+  }
+
+  /* ---------- Watching the project's folder (desktop) ----------
+   * While a saved project is open, its folder is looked at every few seconds, and when the window comes back: each code
+   * file's stamp (when it last changed, and its size: folder_stamps), so a file is only read when it changed. A file
+   * that isn't what IntuaCode last wrote or read was changed outside it (an AI, another editor, Git): it's read in, goes
+   * in the change log as Outside IntuaCode, and INTENT.md is checked against it. If it was changed here too and that
+   * isn't saved yet, neither is written over until you choose. Saving never writes over a file that changed on disk
+   * since IntuaCode last read it (writeKept). New ticks in Hand to my AI's tasks.md come to the map as they're made. */
+  const WATCH_EVERY = 2500;
+  // stamps: path in the folder -> stamp, as last seen; held: files not written until you choose; told: said not written
+  const watch = { folder: null, stamps: new Map(), busy: false, held: new Set(), told: new Set(), conflicts: [] };
+  const readIn = (folder) => async (name) => { try { return await invoke('read_text', { path: join(folder, name) }); } catch (_) { return null; } };
+  const sameText = (a, b) => String(a).replace(/\r\n/g, '\n').replace(/\n+$/, '') === String(b).replace(/\r\n/g, '\n').replace(/\n+$/, '');
+  function stopWatching() { watch.folder = null; watch.stamps = new Map(); watch.held.clear(); watch.told.clear(); watch.conflicts = []; $('diskModal').hidden = true; }
+
+  async function watchTick() {
+    if (!desk.on || !desk.folder || watch.busy || watch.conflicts.length) return;
+    const folder = desk.folder;
+    watch.busy = true;
+    try {
+      let list;
+      try { list = await invoke('folder_stamps', { path: folder }); } catch (_) { return; }
+      if (desk.folder !== folder) return;   // another project opened meanwhile
+      const now = new Map(list);
+      if (watch.folder !== folder) { watch.folder = folder; watch.stamps = now; return; }   // its files as they are now: what changes from here is news
+      const read = readIn(folder), byName = new Map(project.sections.map(s => [fileName(s), s]));
+      const tasks = project.plan && project.plan.steps.length ? `openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md` : null;
+      const changed = [], both = [], other = [];
+      let flushed = false;
+      for (const [name, st] of now) {
+        if (watch.stamps.get(name) === st) continue;
+        const known = watch.stamps.has(name), s = byName.get(name);
+        const text = await read(name);
+        if (desk.folder !== folder) return;
+        if (text == null) continue;   // gone again, or can't be read: looked at next time
+        watch.stamps.set(name, st);
+        const lf = text.replace(/\r\n/g, '\n');
+        if (!s) {
+          if (name === tasks) takeTicks(lf, name, true);   // your AI ticked a task: the map takes it now
+          else if (!known && !/^(?:openspec|images|\.intuicode)\//.test(name)) other.push([{ path: name }, lf]);   // a new file
+          continue;
+        }
+        const key = folder + '|' + name, w = written.get(key);
+        if (!flushed) { logNow('you'); flushed = true; }   // what you typed so far is yours, and the code here is current
+        const last = w && w.text != null ? w.text : codeOf(s);   // what IntuaCode last wrote or read there
+        if (sameText(lf, last)) continue;   // IntuaCode's own save
+        if (sameText(lf, codeOf(s))) { written.set(key, { ...w, text: lf }); continue; }   // it's what's here already
+        (sameText(codeOf(s), last) ? changed : both).push([s, lf]);   // changed here too, and not saved yet: you choose
+      }
+      for (const name of [...watch.stamps.keys()]) {
+        if (now.has(name)) continue;
+        watch.stamps.delete(name);
+        if (byName.has(name)) other.push([byName.get(name), null]);   // a file of the project, deleted there
+      }
+      if (changed.length || other.length) await takeOutside(folder, changed, other);
+      if (both.length) askBoth(both);
+    } finally { watch.busy = false; }
+  }
+
+  /* Files changed outside IntuaCode, read in; files added or deleted there, said (and logged): one change log entry. */
+  async function takeOutside(folder, changed, other = [], what = 'Changed on disk while the project was open: the code there wasn\'t what IntuaCode last wrote.') {
+    if (!flushNow()) return;
+    if (changed.length) noteOutsideChanges(changed);   // a part INTENT.md says is yours, changed there
+    const found = logOutside([...changed, ...other], [], what);
+    if (changed.length) await readInOutside(folder, changed, readIn(folder), found);
+    else logOutsideDone(found);
+    for (const [s, lf] of other) {
+      if (lf == null) tLine(`${fileName(s)} was deleted outside IntuaCode. It's still in the project here: delete it here too, or it's written back the next time it changes.`, 't-err');
+      else tLine(`${s.path} was added to the folder outside IntuaCode. It isn't in the project: Import (above the files) brings it in.`, 't-sys');
+    }
+  }
+  const flushNow = () => { try { logNow('you'); return true; } catch (e) { console.error(e); return false; } };
+
+  /* Changed on disk and here too (not saved yet): neither is written over until you choose. */
+  function askBoth(both) {
+    watch.conflicts = both;
+    for (const [s] of both) watch.held.add(fileName(s));
+    $('diskList').innerHTML = both.map(([s]) => `<li><code>${escHtml(fileName(s))}</code></li>`).join('');
+    $('diskModal').hidden = false;
+    $('diskTheirs').focus();
+    tLine(`${both.map(([s]) => fileName(s)).join(', ')} ${both.length > 1 ? 'were' : 'was'} changed on disk outside IntuaCode while ${both.length > 1 ? 'they were' : 'it was'} changed here too. Neither is written over until you choose.`, 't-err');
+  }
+  async function settleBoth(take) {
+    const both = watch.conflicts, folder = watch.folder;
+    $('diskModal').hidden = true;
+    if (!both.length || folder !== desk.folder) { watch.conflicts = []; return; }
+    for (const [s] of both) { watch.held.delete(fileName(s)); watch.told.delete(fileName(s)); }
+    watch.conflicts = [];
+    if (take === 'disk') {
+      await takeOutside(folder, both, [], 'Changed on disk while it was changed here too, and you chose the file on disk. What you had is the entry before this one (yours).');
+    } else {
+      // the file on disk goes in the log as it was, then yours is written over it
+      flushNow();
+      logOutsideDone(logOutside(both, [], 'Changed on disk while it was changed here too, and you kept yours: these are the lines that were on disk, now written over.'));
+      for (const [s] of both) { const k = folder + '|' + fileName(s); written.set(k, { ...(written.get(k) || {}), text: null }); watch.stamps.delete(fileName(s)); }
+      await saveProject('quiet');
+      tLine(`Kept yours: ${both.map(([s]) => fileName(s)).join(', ')} ${both.length > 1 ? 'are' : 'is'} written as ${both.length > 1 ? 'they are' : 'it is'} here. What was on disk is in Menu → What changed.`, 't-sys');
+    }
+  }
+  if (desk.on) {
+    setInterval(() => { watchTick().catch(e => console.error(e)); }, WATCH_EVERY);
+    window.addEventListener('focus', () => { watchTick().catch(e => console.error(e)); });
+    $('diskTheirs').addEventListener('click', () => settleBoth('disk'));
+    $('diskMine').addEventListener('click', () => settleBoth('mine'));
   }
 
   /* Save (desktop): to the project's folder, chosen the first time. */
@@ -6809,8 +6931,15 @@
     // everything to write is taken now: another project may be opened while the files are written
     const folder = desk.folder, files = savedFiles(), names = files.slice(0, -1).map(f => f[0]);
     try {
-      for (const [name, content] of files) await writeKept(folder, name, content);
+      const held = [];
+      for (const [name, content] of files) if (await writeKept(folder, name, content) === 'held') held.push(name);
       await writeImages(folder);
+      if (held.length) {
+        const fresh = held.filter(n => !watch.told.has(n));
+        fresh.forEach(n => watch.told.add(n));
+        if (pick !== 'quiet' || fresh.length) tLine(`Not written: ${held.join(', ')} ${held.length > 1 ? 'were' : 'was'} changed on disk outside IntuaCode, and IntuaCode never writes over that: the change is read in, or, where it was changed here too, you choose which to keep.`, 't-err');
+        return;   // still not saved
+      }
       if (desk.folder === folder) { desk.dirty = false; showFolder(); if (pick !== 'quiet') setUnsaved(false); }
       if (pick !== 'quiet') tLine(`Saved to ${folder}: ${names.join(', ')}${images().length ? `, ${images().length} picture${images().length > 1 ? 's' : ''} in images/` : ''} (and your sentences, in .intuicode/).`, 't-sys');
     } catch (e) { tLine('Could not save: ' + e, 't-err'); }
@@ -7084,6 +7213,34 @@
   if (!desk.on) $('btnSave').title = 'Download the project as a .zip (Import code opens it again)';
   $('btnSave').addEventListener('click', manualSave);
 
+  /* Code changed outside IntuaCode ([[sec, the code on disk]]), read in: a file of code (or code lines) as it is now, a
+     file of sentences rebuilt from the code; then the change log goes on from there (logOutsideDone, with `found`, the
+     entry logOutside made). Each file is then as it is on disk, as far as IntuaCode knows. */
+  async function readInOutside(folder, changed, read, found) {
+    try {
+      // a Vite app's files, and TypeScript, come back as their exact lines, as when the folder was first opened
+      const asCode = (s) => s.lang === 'ts' || s.lang === 'tsx' || (PRJ.devServerOf(project) && UNITY && UNITY.LANGS.includes(s.lang) && s.lang !== 'python');
+      for (const [s, onDisk] of changed) {
+        if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuaCode: it's shown as it is now.`, 't-sys'); continue; }
+        if (asCode(s)) { s.text = UNITY.toFile(s.lang, onDisk.replace(/\n+$/, '').split('\n'), []) + '\n'; tLine(`${fileName(s)} was changed outside IntuaCode, so it's shown as its code is now, line for line (Translate turns any part into sentences).`, 't-sys'); continue; }
+        if (secLang(s) !== 'python') {
+          const res = await rebuildSection(folder, s, read);
+          if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
+          else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date: Unity shows its code as it was.`, 't-err');
+          continue;
+        }
+        const res = await sentencesFor(onDisk);
+        if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
+      }
+      if (changed.length) {
+        ta.value = activeSec().text; refreshAll();
+        if (mode === 'write') splitPlain();
+        else if (changed.some(([s]) => s.id === project.active)) unityShow();   // Unity shows the open file as it is now
+      }
+    } finally { if (changed.length) logOutsideDone(found); }
+    for (const [s, lf] of changed) { const k = folder + '|' + fileName(s); written.set(k, { ...(written.get(k) || {}), text: lf }); }
+  }
+
   /* Open a folder in Split Mode. Code on disk wins over saved sentences if they disagree. */
   async function openFolderWrite() {
     const folder = await pickFolder('Open a project folder');
@@ -7116,23 +7273,7 @@
         if (tasksMd != null) evidence.push(`This project was handed to an AI: Hand to my AI's files are in openspec/changes/${OPENSPEC.changeName(project.name)}/.`);
         if (/^Took /.test(ticks)) evidence.push(ticks.split('. ')[0].replace(/\.$/, '') + ': your AI ticked them.');
         const found = logOutside(changed, evidence);
-        try {
-          // a Vite app's files, and TypeScript, come back as their exact lines, as when the folder was first opened
-          const asCode = (s) => s.lang === 'ts' || s.lang === 'tsx' || (PRJ.devServerOf(project) && UNITY && UNITY.LANGS.includes(s.lang) && s.lang !== 'python');
-          for (const [s, onDisk] of changed) {
-            if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuaCode: it's shown as it is now.`, 't-sys'); continue; }
-            if (asCode(s)) { s.text = UNITY.toFile(s.lang, onDisk.replace(/\n+$/, '').split('\n'), []) + '\n'; tLine(`${fileName(s)} was changed outside IntuaCode, so it's shown as its code is now, line for line (Translate turns any part into sentences).`, 't-sys'); continue; }
-            if (secLang(s) !== 'python') {
-              const res = await rebuildSection(folder, s, read);
-              if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
-              else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date: Unity shows its code as it was.`, 't-err');
-              continue;
-            }
-            const res = await sentencesFor(onDisk);
-            if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
-          }
-          if (changed.length) { ta.value = activeSec().text; refreshAll(); if (mode === 'write') splitPlain(); }
-        } finally { if (changed.length) logOutsideDone(found); }
+        await readInOutside(folder, changed, read, found);
         sayIntentOnOpen();
         showFolder();
         return;

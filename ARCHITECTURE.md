@@ -320,7 +320,8 @@ see who edits files outside it, so it never guesses. So:
   file, Save or opening the log). `intuacode`: `logAs` around each place IntuaCode writes code when asked (a fix used,
   a promise added, a part put back, a Library part, a place for a new element); typing before it is logged as yours
   first. `outside`: `logOutside`, when a saved project's folder (or a Save's .zip) is opened and the code there isn't
-  what IntuaCode wrote, before the new code is read in. "Outside" names the way in, not a person; what's known of who
+  what IntuaCode wrote, before the new code is read in, or while it's open (the folder is watched, below). "Outside"
+  names the way in, not a person; what's known of who
   (Hand to my AI's files are there; tasks.md has new ticks) is kept apart, as evidence.
 - **An entry carries what it did to the intent.** The promises that stopped or started being kept with it, and whether
   it touched a part INTENT.md says is the owner's.
@@ -328,9 +329,31 @@ see who edits files outside it, so it never guesses. So:
   `.intuicode/project.json`, the last 300 entries, each file's lines up to 160 (the counts always whole), checked for
   its shape when read back. An outside entry is written to `project.json` at once, alone: the code files are left as
   they were found.
-- **Limits.** There's no file watcher: a change made outside while the project is open is found the next time its
-  folder is opened. Restoring a backup brings back that backup's log. Sentences that change without changing the code
+- **Limits.** Restoring a backup brings back that backup's log. Sentences that change without changing the code
   (Translate) aren't changes to the code, so they aren't logged.
+
+## Decision: the open project's folder is watched, and a change made outside IntuaCode is never written over
+
+*Decided 2026-11-17.*
+
+An AI works in the project's folder while IntuaCode is open. Before this, a change it made was only found when the
+folder was next opened, and an edit to the same file in IntuaCode in the meantime would have saved over it unseen.
+
+- **Looked at, not subscribed to.** Every 2.5 seconds, and when the window comes back, `folder_stamps` (the desktop
+  layer) walks the folder as `read_folder` does but reads only each code file's stamp: when it last changed, and its
+  size. Only a file whose stamp moved is read. No new dependency, and the same on every system; the cost is a
+  directory walk.
+- **Whose change it was is decided by content, not time.** A file whose text is what IntuaCode last wrote or read
+  (`written`) was IntuaCode's own save. Anything else came from outside: `takeOutside` logs it (`logOutside`), marks
+  parts INTENT.md says are the owner's (`noteOutsideChanges`), and reads it in (`readInOutside`, the same as opening
+  the folder).
+- **Never written over.** `writeKept` checks a file's stamp before writing it; one that moved and isn't what IntuaCode
+  last wrote is held (`'held'`), and the watcher looks at once. A file changed there and here (not yet saved) is held
+  until the owner chooses (**Changed in two places**): the file on disk (read in), or theirs (the disk's lines logged,
+  then written over). Either way both versions are in the change log.
+- **Not everything is the project.** A new file there is said, not imported; a deleted one is said and left in the
+  project, not written back until it changes; Hand to my AI's tasks.md is read for new ticks as they're made;
+  `openspec/`, `images/` and `.intuicode/` aren't news.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 

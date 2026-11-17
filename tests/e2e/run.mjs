@@ -316,6 +316,30 @@ try {
     if (r.error || r.back !== '<h1 id="t">Hi</h1>' || !r.names.includes('site/index.html') || r.refused.includes(false)) throw new Error(JSON.stringify(r));
   });
 
+  await check('a project folder is watched by its files\' stamps, which change when a file does', async () => {
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
+    const r = await wd('POST', `/session/${session}/execute/async`, {
+      script: `const [elsewhere, done] = arguments; const I = window.__TAURI__.core.invoke;
+        (async () => {
+          const dir = (await I('scratch_folder')) + '/e2e-watch';
+          await I('write_text', { path: dir + '/main.py', content: 'x = 1\\n' });
+          await I('write_text', { path: dir + '/node_modules/skip.js', content: 'x\\n' });
+          const first = await I('folder_stamps', { path: dir });
+          const one = await I('file_stamp', { path: dir + '/main.py' });
+          await I('write_text', { path: dir + '/main.py', content: 'x = 22\\n' });   // a different size: the stamp changes even where times are coarse
+          const after = await I('file_stamp', { path: dir + '/main.py' });
+          const refused = async (cmd, args) => { try { await I(cmd, args); return false; } catch (e) { return true; } };
+          return {
+            names: first.map(([n]) => n), same: first.find(([n]) => n === 'main.py')?.[1] === one, moved: after !== one,
+            none: await I('file_stamp', { path: dir + '/not-there.py' }),
+            refused: [await refused('folder_stamps', { path: elsewhere }), await refused('file_stamp', { path: elsewhere + '/x.py' })],
+          };
+        })().then(done, (e) => done({ error: String(e) }));`,
+      args: [elsewhere],
+    });
+    if (r.error || !r.names.includes('main.py') || r.names.some(n => n.includes('node_modules')) || !r.same || !r.moved || r.none !== null || r.refused.includes(false)) throw new Error(JSON.stringify(r));
+  });
+
   await check('pictures are written and read back as bytes, only in allowed folders', async () => {
     const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'intuicode-e2e-'));
     const r = await wd('POST', `/session/${session}/execute/async`, {

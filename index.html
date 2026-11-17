@@ -382,6 +382,21 @@
     </div>
   </div>
 
+  <div class="modal" id="diskModal" hidden>
+    <div class="modal-card narrow" role="alertdialog" aria-modal="true" aria-labelledby="diskTitle" aria-describedby="diskSays">
+      <div class="modal-h">
+        <div>
+          <h2 id="diskTitle">Changed in two places</h2>
+          <p id="diskSays">Changed on disk outside IntuaCode (an AI, another editor, Git) while you were changing it here, before it was saved. Neither is written over until you choose. Either way, both versions are in Menu → What changed.</p>
+        </div>
+      </div>
+      <ul class="disk-list" id="diskList"></ul>
+      <div class="bp-actions">
+        <button type="button" class="btn primary" id="diskTheirs">Use the file on disk</button>
+        <button type="button" class="btn" id="diskMine">Keep mine (write over it)</button>
+      </div>
+    </div>
+  </div>
   <div class="modal" id="logModal" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="logTitle">
       <div class="modal-h">
