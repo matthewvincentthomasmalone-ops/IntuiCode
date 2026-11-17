@@ -207,7 +207,7 @@ builder is a horizon to aim for, and for the hardest parts, a hallway.
   dependency and a decision for the owner.
 
 - Code signing, so Windows and macOS don't warn when installing.
-- A proper grammar for sentences, if rule collisions keep appearing (see Known risks).
+- A proper grammar for sentences, if the collision check (Known risks 1) finds rules that clash.
 
 ## The number we track
 
@@ -250,7 +250,12 @@ statements that differ are kept as `python:` lines automatically and the check r
 ## Known risks (from the design audit)
 
 1. **Rule collisions.** Regex rules interact as they grow. Mitigation: the test suite and
-   round-trip corpus run on every push; move to a proper grammar if collisions keep appearing.
+   round-trip corpus run on every push, and since 2026-11-17 a collision check (`tests/collisions.test.mjs`): it
+   tries every Python and JavaScript statement rule on every example's lines and the corpora's sentences, and
+   lists each pair of rules that read the same sentence (the first wins). Each known pair has a reason in
+   `tests/helpers/collisions_known.mjs`; a new pair fails the test until someone says why the first is right.
+   Today: 24 Python pairs and 20 JavaScript ones, every one a narrower wording tried before a wider one, none a
+   clash. So no grammar rewrite; move to one if the check finds rules that clash.
 2. **Library long tail.** Real code is mostly library calls. Mitigation: phrase packs for the
    libraries AI tools use most, shared by Write and Read modes.
 3. **Summaries say what, not why.** Rules can't infer business intent. Positioning:
