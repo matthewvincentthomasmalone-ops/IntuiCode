@@ -186,6 +186,53 @@ fn read_folder(access: State<Access>, path: String) -> Result<Vec<FileEntry>, St
     Ok(out)
 }
 
+/// When a file was last changed, and its size, as one string: two stamps differ when the file changed.
+fn stamp_of(meta: &std::fs::Metadata) -> String {
+    let at = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+    format!("{at}:{}", meta.len())
+}
+
+fn walk_stamps(dir: &Path, rel: &str, out: &mut Vec<(String, String)>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        if out.len() >= MAX_FILES * 2 {
+            return;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let rel_name = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_dir() {
+            if !SKIP_DIRS.contains(&name.as_str()) && !name.ends_with(".egg-info") && !name.starts_with('.') {
+                walk_stamps(&entry.path(), &rel_name, out);
+            }
+        } else if kind.is_file() && matches!(wanted(&name), Some("code") | Some("extra")) {
+            if let Ok(meta) = entry.metadata() {
+                out.push((rel_name, stamp_of(&meta)));
+            }
+        }
+    }
+}
+
+/// Every code file in a project's folder (the ones read_folder reads), by its path in the folder, with its stamp: how
+/// IntuaCode notices a file changed outside it while the project is open, without reading every file each time.
+#[tauri::command]
+fn folder_stamps(access: State<Access>, path: String) -> Result<Vec<(String, String)>, String> {
+    let root = access.path(&path)?;
+    if !root.is_dir() {
+        return Err(format!("{path} is not a folder"));
+    }
+    let mut out = Vec::new();
+    walk_stamps(&root, "", &mut out);
+    Ok(out)
+}
+
+/// One file's stamp, or None if it isn't there.
+#[tauri::command]
+fn file_stamp(access: State<Access>, path: String) -> Result<Option<String>, String> {
+    let p = access.path(&path)?;
+    Ok(std::fs::metadata(&p).ok().filter(|m| m.is_file()).map(|m| stamp_of(&m)))
+}
+
 #[tauri::command]
 fn read_text(access: State<Access>, path: String) -> Result<String, String> {
     let p = access.path(&path)?;
@@ -1401,7 +1448,7 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
-            read_folder, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
+            read_folder, folder_stamps, file_stamp, read_text, write_text, read_bytes, write_bytes, list_files, scratch_folder, pick_folder, set_preview,
             preview_site, open_preview, free_port, preview_relay, run_program, run_shell, write_stdin, stop_program, find_python, find_git, find_cpp,
             compile_cpp, find_arduino, run_capture, find_venv, guard_close, close_window
         ])
@@ -1434,6 +1481,26 @@ mod tests {
         // a WebSocket keeps its own Connection and Upgrade headers
         let ws = relay_head("GET /?token=1 HTTP/1.1\r\nHost: 127.0.0.1:5000\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: k\r\n\r\n", 5173, true);
         assert!(ws.contains("Connection: Upgrade\r\n") && ws.contains("Upgrade: websocket\r\n") && ws.contains("Sec-WebSocket-Key: k\r\n") && ws.contains("Host: 127.0.0.1:5173\r\n"));
+    }
+
+    #[test]
+    fn a_folder_is_watched_by_its_code_files_stamps() {
+        let dir = std::env::temp_dir().join(format!("intuicode-stamps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (p, t) in [("main.py", "x = 1\n"), ("src/app.ts", "let a = 1;\n"), ("node_modules/x.js", "x\n"), (".git/HEAD", "ref\n"), ("photo.png", "png"), (".env", "SECRET=1\n")] {
+            let f = dir.join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(&f, t).unwrap();
+        }
+        let mut out = Vec::new();
+        walk_stamps(&dir, "", &mut out);
+        let mut names: Vec<_> = out.iter().map(|(n, _)| n.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["main.py", "src/app.ts"]); // not node_modules, .git, pictures or secrets
+        let before = out.iter().find(|(n, _)| n == "main.py").unwrap().1.clone();
+        std::fs::write(dir.join("main.py"), "x = 22\n").unwrap(); // a different size: a different stamp, even with coarse times
+        assert_ne!(stamp_of(&std::fs::metadata(dir.join("main.py")).unwrap()), before);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

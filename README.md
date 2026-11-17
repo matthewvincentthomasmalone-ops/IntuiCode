@@ -263,12 +263,19 @@ it falls in, by name, `+`/`−` counts and the lines themselves, with **Show whe
 - **You:** typing, in either mode. A burst is one entry, ended by a pause, opening another file or a Save.
 - **IntuaCode:** code IntuaCode wrote when you asked: a fix you used, a promise added, your part put back, a Library
   part, a place for a new element in Styling or Mechanics.
-- **Outside IntuaCode:** the code on disk wasn't what IntuaCode last wrote, found when the project's folder is opened.
-  An AI, another editor or Git changed it. IntuaCode can't see who edits a file, so it says how the change came in, and
+- **Outside IntuaCode:** the code on disk wasn't what IntuaCode last wrote. An AI, another editor or Git changed it.
+  The desktop app watches the open project's folder, so a change comes in as it's made (and is found when the folder
+  is opened, if it was made while IntuaCode was closed). IntuaCode can't see who edits a file, so it says how the change came in, and
   lists what it knows separately (Hand to my AI's files are there; your AI ticked tasks.md).
 
 An entry also says which promises in INTENT.md stopped (or started) being kept with it, and marks the parts that are
 yours. The log is kept in `.intuicode/project.json` (the last 300 entries), so it goes where the project goes.
+
+**IntuaCode never writes over a change made outside it.** While a saved project is open, the desktop app looks at its
+folder every few seconds. A file changed there is read in (sentences rebuilt from the new code) and logged; new ticks
+in Hand to my AI's tasks.md come to the map as your AI makes them; a file added or deleted there is said. If a file
+was changed there *and* here before IntuaCode saved it, neither is written over: **Changed in two places** asks
+whether to use the file on disk or keep yours, and both versions are in the log either way.
 
 **Filling in a ‹blank›:** each one says what goes there in a few words (`set march wait to ‹ticks to wait
 before the next step›`). With the cursor on it, the explanation under the windows says what kind of thing to write

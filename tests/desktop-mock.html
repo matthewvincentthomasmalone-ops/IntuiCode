@@ -9,6 +9,7 @@
 <title>IntuaCode (desktop test)</title>
 <script>
   window.mock = {
+    stamp: (t) => { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return t.length + ':' + h; },
     files: {},        // path -> text (a pretend disk)
     pick: '/home/me/projects/demo',
     python: ['python3', '3.12.9'],
@@ -30,6 +31,12 @@
         m.calls.push([cmd, args]);
         switch (cmd) {
           case 'pick_folder': return m.pick;
+          // a file's stamp: its size and a hash of its text (the pretend disk has no times)
+          case 'folder_stamps': {
+            const dir = args.path.replace(/\/$/, '') + '/';
+            return Object.entries(m.files).filter(([p, t]) => p.startsWith(dir) && typeof t === 'string' && !p.slice(dir.length).split('/').slice(0, -1).some(d => d.startsWith('.') || d === 'node_modules')).map(([p, t]) => [p.slice(dir.length), window.mock.stamp(t)]);
+          }
+          case 'file_stamp': return typeof m.files[args.path] === 'string' ? window.mock.stamp(m.files[args.path]) : null;
           case 'read_text': if (args.path in m.files) return m.files[args.path]; throw new Error('not found: ' + args.path);
           case 'write_text': m.files[args.path] = args.content; return null;
           case 'write_bytes': m.files[args.path] = { bytes: args.data }; return null;
