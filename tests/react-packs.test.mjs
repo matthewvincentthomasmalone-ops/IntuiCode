@@ -184,7 +184,19 @@ test('Layout: a Lovable-style file comes back byte for byte from its sentences',
       else assert.notEqual(got.code, text, `${f}: says its layout differs, and it does`);
     }
   }
-  assert.ok(same >= 19, `only ${same} of ${all} files come back byte for byte`);
+  assert.equal(same, all, `only ${same} of ${all} files come back byte for byte`);
+});
+
+test('Layout: text with an element in it stays on one line, and is put between its tags when that would pass 80 columns', () => {
+  const page = (inner) => ['import { Link } from "react-router-dom";', '', 'export default function A() {', '  return (', '    <div>', ...inner, '    </div>', '  );', '}', ''].join('\n');
+  for (const src of [
+    page(['      <p className="text-sm">Hi <b>there</b></p>']),   // (fits: one line)
+    page(['      <p className="text-sm text-muted-foreground">', '        No account yet? <Link to="/signup">Sign up</Link>', '      </p>']),   // (it wouldn't)
+  ]) {
+    const { r, code } = back('tsx', src);
+    assert.equal(code, src, r.text);
+    assert.deepEqual(plain(r.layout), []);
+  }
 });
 
 test('Layout: names brought in, a call\'s inputs, a record\'s parts and a query\'s parts, a line each', () => {

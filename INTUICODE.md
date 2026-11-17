@@ -1236,10 +1236,12 @@ export async function fetchNotes() {
 ```
 
 TypeScript is written the way Prettier writes it where the sentences can't say: `(n) => …` for a little function's
-input, no brackets a value doesn't need (`notes.filter(…).length`), two spaces a step in. Where the code is laid out
+input, no brackets a value doesn't need (`notes.filter(…).length`), two spaces a step in, and text with an element in
+it (`No account yet? <Link …>Sign up</Link>`) on one line with its tags when that fits in 80 columns, or between its
+tags when it wouldn't. Where the code is laid out
 some other way (a query split over lines with no part after its table, a call's inputs one per line with a comma
 after the last, a record over lines that isn't the last thing its sentence says, as in `wait for … with { email,
-password }, and take error from it`, text and an element sharing a line between tags), the program still comes back
+password }, and take error from it`), the program still comes back
 exactly, and Translate says which lines will be laid out differently and why.
 
 ### What counts as the same (TypeScript and JSX)
