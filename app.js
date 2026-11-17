@@ -140,6 +140,8 @@
       out.mine = p.mine.slice(0, 40).filter(e => e && typeof e.key === 'string' && e.key.length <= 400 && typeof e.path === 'string' && !pathProblem(e.path) && typeof e.code === 'string' && e.code.length <= 200000)
         .map(e => ({ key: e.key, path: e.path, name: typeof e.name === 'string' ? e.name.slice(0, 120) : '', code: e.code, ...(e.changed && typeof e.changed.at === 'string' ? { changed: { at: e.changed.at.slice(0, 10) } } : {}) }));
     }
+    // the change log: each entry checked for its shape (lang/changelog.js)
+    if (window.IntuiLog && Array.isArray(p.log)) { const log = window.IntuiLog.checked(p.log); if (log.length) out.log = log; }
     return out;
   }
 
@@ -167,6 +169,10 @@
   const PROMISES = window.IntuiPromises;
   let intent = { results: [], steps: new Map(), outside: [], sec: null };
   let intentSeen = null;   // each promise's state the last time, so a promise that stops being kept is said once
+  // The change log (lang/changelog.js): each change to the code, and where it came from (you, IntuaCode, outside).
+  // base: the code (path -> code) as of the last entry; what an entry says changed is that against the code now.
+  const CHANGES = window.IntuiLog;
+  const changes = { base: null, promises: null, hold: false, next: null, timer: null };
   let runtimeMark = null;  // {sec, line, msg}
   let typingLine = -1;     // errors on the line being typed wait until the cursor leaves it
   let mode = store.get('intuicode.mode.v1', 'unity') === 'write' ? 'write' : 'unity';   // Unity, unless Split Mode was used last
@@ -180,6 +186,7 @@
    * yet), so autosave can never write one project's files into another project's folder. */
   function replaceProject(next, message, folder = null) {
     activeSec().text = ta.value;
+    logNow('you');   // the last typing in the project going out goes in its log
     takeBackup();   // the project going out, if it changed since its last backup
     if (desk.on) {
       if (desk.folder && desk.dirty) saveProject('quiet');   // finish saving the old project to its own folder
@@ -193,6 +200,7 @@
     setUnsaved(!(desk.on && folder));   // only a project opened from its folder is saved as it is
     planToNext = true;   // its map opens at the first step not done
     intentSeen = null;   // its promises are new to this session: nothing has "stopped" being kept yet
+    clearTimeout(changes.timer); changes.base = null; changes.next = null;   // its log goes on from its code as it opens
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
     ta.value = activeSec().text;
@@ -249,6 +257,7 @@
     catch (e) { console.error(e); return; }
     checkDrift();
     try { checkIntent(); } catch (e) { console.error(e); }
+    try { logAfterCompile(); } catch (e) { console.error(e); }
     try { webStubs(); } catch (e) { console.error(e); }
   }
 
@@ -746,22 +755,28 @@
   function uApplyFix(li, text) {
     const start = uPosOf(li), line = uLines()[li];
     if (line == null) return;
-    uTa.focus();
-    uTa.setSelectionRange(start, start + line.length);
-    document.execCommand('insertText', false, text);
-    uTa.setSelectionRange(start + text.length, start + text.length);
-    uTools();
+    const sec = uSec();
+    logAs('intuacode', `Used IntuaCode's fix for line ${li + 1}${sec ? ` of ${sec.path}` : ''}: ${String(text).trim()}`, () => {
+      uTa.focus();
+      uTa.setSelectionRange(start, start + line.length);
+      document.execCommand('insertText', false, text);
+      uTa.setSelectionRange(start + text.length, start + text.length);
+      uTools();
+    });
   }
   /* Use a fix: it replaces the line (two lines for a block), as one edit that Undo takes back. */
   function applyFix(secId, li, text) {
-    if (secId && secId !== project.active) openSection(secId, li);
-    const lines = ta.value.split('\n');
-    if (li < 0 || li >= lines.length) return;
-    const start = lineStartOf(li);
-    insertText(text, start, start + lines[li].length);
-    ta.setSelectionRange(start + text.length, start + text.length);
-    typingLine = -1;
-    refreshAll();
+    const sec = project.sections.find(s => s.id === (secId || project.active));
+    logAs('intuacode', `Used IntuaCode's fix for line ${li + 1}${sec ? ` of ${sec.path}` : ''}: ${String(text).trim()}`, () => {
+      if (secId && secId !== project.active) openSection(secId, li);
+      const lines = ta.value.split('\n');
+      if (li < 0 || li >= lines.length) return;
+      const start = lineStartOf(li);
+      insertText(text, start, start + lines[li].length);
+      ta.setSelectionRange(start + text.length, start + text.length);
+      typingLine = -1;
+      refreshAll();
+    });
   }
   /* In Problems: the fixes for lines that have problems, worked out once typing stops: one line at a time with a
      pause between (so typing never waits), up to 8, and given up as soon as anything is typed. */
@@ -1477,6 +1492,7 @@
 
   function openSection(id, line) {
     activeSec().text = ta.value;
+    if (id !== project.active) logNow('you');   // typing in one file is one entry: another file opened ends it
     hideTip();
     setPane('say');
     typingLine = -1;
@@ -1683,9 +1699,13 @@
     }
     const changed = Object.keys(edits).filter(f => page[f] && edits[f] !== page[f].text);
     if (!changed.length) return;
+    const own = !changes.hold;   // (inside a change IntuaCode is making, the places go in that change's entry)
+    if (own) logNow('you', '', false);   // the typing that made the new element is yours; the places added for it are IntuaCode's
     for (const f of changed) page[f].text = edits[f];
-    if (added.length) tLine(`Added a place for ${added.map(([n]) => n).join(', ')} in ${[...new Set(added.flatMap(([, fs]) => fs))].map(f => ({ styling: 'Styling', mechanics: 'Mechanics' }[f])).join(' and ')}, ready to fill in.`, 't-sys');
-    else if (gone.length) tLine(`Took out the empty place${gone.length === 1 ? '' : 's'} for ${gone.join(', ')} (no longer in Structure).`, 't-sys');
+    const said = added.length ? `Added a place for ${added.map(([n]) => n).join(', ')} in ${[...new Set(added.flatMap(([, fs]) => fs))].map(f => ({ styling: 'Styling', mechanics: 'Mechanics' }[f])).join(' and ')}, ready to fill in.`
+      : gone.length ? `Took out the empty place${gone.length === 1 ? '' : 's'} for ${gone.join(', ')} (no longer in Structure).` : '';
+    if (said) tLine(said, 't-sys');
+    if (own) changes.next = { origin: 'intuacode', what: said || 'Places for the page\'s elements, in Styling and Mechanics.' };   // logged at the next compile
     save(); autosave(); scheduleCompile();
   }
 
@@ -4128,7 +4148,7 @@
     }
     const made = done.some(d => /\(new\)$/.test(d)) && vs.some(v => v.lang === 'python');
     codeBase.clear();   // a part added on purpose: the code it changes elsewhere (imports, ids) is meant
-    const err = changeProject(copy, open, `Added ${part.title} from the Library: ${done.join(', ')}.` + (made ? ' The start file can use its tools (it imports every other Python file).' : ''));
+    const err = logAs('intuacode', `Added ${part.title} from the Library.`, () => changeProject(copy, open, `Added ${part.title} from the Library: ${done.join(', ')}.` + (made ? ' The start file can use its tools (it imports every other Python file).' : '')));
     if (err) { tLine(err, 't-err'); return; }
     closeLibrary();
   }
@@ -5898,8 +5918,12 @@
   }
 
   /* A promise added to INTENT.md (made if there isn't one): under "## Step n" when it's a step's, otherwise above
-     the steps. -> INTENT.md's file, or null. */
+     the steps. -> INTENT.md's file, or null. In the change log, it's IntuaCode's (added from a button, when you asked). */
   function addPromise(promise, step) {
+    const said = String(promise || '').replace(/\s+/g, ' ').trim().replace(/^[-*+]\s+/, '');
+    return logAs('intuacode', `Added a promise to INTENT.md${step ? ` (step ${step.n})` : ''}: ${said}`, () => addPromiseNow(promise, step));
+  }
+  function addPromiseNow(promise, step) {
     promise = String(promise || '').replace(/\s+/g, ' ').trim().replace(/^[-*+]\s+/, '');
     if (!promise || !PROMISES) return null;
     let sec = intentSec();
@@ -5966,8 +5990,9 @@
     lines.splice(r.mine.from, r.mine.to - r.mine.from + 1, ...e.code.replace(/\n$/, '').split('\n'));
     const code = lines.join('\n'), raw = UNITY && UNITY.RAW[sec.lang];
     const what = `${r.ref.name ? r.ref.name + ' in ' : ''}${sec.path}`;
-    if (!isSentences(sec)) setSecText(sec, code);
-    else if (raw && sec.text.split('\n').every(l => !l.trim() || l.trimStart().startsWith(raw))) setSecText(sec, UNITY.toFile(sec.lang, code.replace(/\n+$/, '').split('\n'), []) + '\n');
+    const back = (text) => logAs('intuacode', `Put your ${what} back, as you left it (INTENT.md says it's yours).`, () => setSecText(sec, text));
+    if (!isSentences(sec)) back(code);
+    else if (raw && sec.text.split('\n').every(l => !l.trim() || l.trimStart().startsWith(raw))) back(UNITY.toFile(sec.lang, code.replace(/\n+$/, '').split('\n'), []) + '\n');
     else {
       // sentences are written around it: putting code back in place would rewrite them, so it's yours to paste
       try { await navigator.clipboard.writeText(e.code); } catch (_) { /* no clipboard: the terminal has it */ }
@@ -6068,11 +6093,165 @@
     const t = e.target.closest && e.target.closest('[data-intent-go], [data-mine-keep], [data-mine-back], [data-mine-line]');
     if (!t) return;
     e.preventDefault(); e.stopPropagation();
-    if (t.dataset.intentGo) { try { closeStep(); goToPlace(JSON.parse(t.dataset.intentGo)); } catch (_) { /* not a place */ } }
+    if (t.dataset.intentGo) { try { closeStep(); closeLog(); goToPlace(JSON.parse(t.dataset.intentGo)); } catch (_) { /* not a place */ } }
     else if (t.dataset.mineKeep) keepMineChange(t.dataset.mineKeep);
     else if (t.dataset.mineBack) putMineBack(t.dataset.mineBack);
     else if (t.dataset.mineLine) { activeSec().text = mode === 'write' ? ta.value : activeSec().text; markMine(activeSec(), +t.dataset.mineLine); }
   }, true);
+
+  /* ---------- The change log (lang/changelog.js): what changed in the code, and where it came from ----------
+   * After every compile the code (as it's written to disk) is compared with the code as of the last entry. A
+   * difference is a change; where it came from is the way it came in:
+   *   you        typing, in either mode: a burst is one entry, ended by a pause, another file or a Save
+   *   intuacode  IntuaCode changing code when you asked (logAs): a fix used, a promise added, your part put back, a
+   *              Library part, a place for a new element
+   *   outside    a saved project's folder opened with code that isn't what IntuaCode last wrote (logOutside)
+   * What changed is worked out from the code, never said by whoever changed it. The log is kept in the project
+   * (project.log, in .intuicode/project.json), so it goes where the project goes. */
+  const LOG_QUIET = 45000;   // a pause this long ends a burst of typing
+  const codeMap = () => new Map(project.sections.map(s => [s.path, codeOf(s)]));
+  const langMap = () => new Map(project.sections.map(s => [s.path, s.lang]));
+  const promiseMap = () => new Map(intent.results.filter(r => !r.error).map(r => [r.text, r.ok]));
+  const sameMaps = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
+  const syncText = () => { if (mode === 'write') activeSec().text = ta.value; };
+
+  function logAfterCompile() {
+    if (!CHANGES || !compiled) return;
+    if (!changes.base) { changes.base = codeMap(); changes.promises = promiseMap(); return; }   // a project just opened: its code as it is
+    if (changes.hold) return;
+    if (changes.next) { const n = changes.next; changes.next = null; logNow(n.origin, n.what, false); return; }
+    if (!sameMaps(changes.base, codeMap())) { clearTimeout(changes.timer); changes.timer = setTimeout(() => logNow('you'), LOG_QUIET); }
+  }
+
+  /* An entry for what changed since the last one, said to be from `origin`. fresh: compile first (not from inside a
+     compile). -> the entry, or null when no code changed. */
+  function logNow(origin, what = '', fresh = true, extra = null) {
+    if (!CHANGES || !changes.base) return null;
+    clearTimeout(changes.timer);
+    if (fresh) { const h = changes.hold; changes.hold = true; try { syncText(); compile(); } finally { changes.hold = h; } }
+    if (!compiled) return null;
+    const now = codeMap(), was = changes.promises;
+    const e = CHANGES.entry({ before: changes.base, after: now, langs: langMap(), definitions: PROMISES && PROMISES.definitions });
+    changes.base = now;
+    changes.promises = promiseMap();
+    if (!e) return null;
+    Object.assign(e, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), origin, what: what || '' }, extra || {});
+    const broke = [], mended = [];
+    if (was) for (const [t, ok] of changes.promises) { const b = was.get(t); if (b === true && ok === false) broke.push(t); else if (b === false && ok === true) mended.push(t); }
+    if (broke.length || mended.length) e.promises = { broke, mended };
+    for (const f of e.files) if ((project.mine || []).some(m => m.path.toLowerCase() === f.path.toLowerCase() && (!m.name || f.parts.includes(m.name)))) f.mine = true;
+    project.log = CHANGES.capped([...(project.log || []), e]);
+    save();
+    // the folder's project.json takes it too (only project.json: the code was written when it changed)
+    if (origin !== 'outside' && desk.on && desk.folder) { clearTimeout(desk.saveTimer); desk.saveTimer = setTimeout(() => saveProject('quiet'), 1500); }
+    if (!$('logModal').hidden) renderLog();
+    return e;
+  }
+
+  /* Run fn, a change IntuaCode makes when you asked, as one entry of its own: typing before it is logged as yours first. */
+  function logAs(origin, what, fn) {
+    if (!CHANGES || changes.hold || !changes.base) return fn();   // inside another (its entry has this too), or nothing to log against yet
+    logNow('you');
+    changes.hold = true;
+    try {
+      const out = fn();
+      syncText(); compile();
+      logNow(origin, what, false);
+      return out;
+    } finally { changes.hold = false; }
+  }
+
+  /* A saved project's folder opened with files that aren't what IntuaCode last wrote ([[sec, the code on disk]]): one
+     entry, from the code IntuaCode wrote to the code on disk, before either is read in. -> the entry, or null. */
+  function logOutside(changed, evidence, what = 'Found when the project\'s folder was opened: the code on disk wasn\'t what IntuaCode last wrote.') {
+    if (!CHANGES || !changes.base || !changed.length) return null;
+    const after = new Map(changes.base);
+    for (const [s, onDisk] of changed) after.set(s.path, onDisk);
+    const e = CHANGES.entry({ before: changes.base, after, langs: langMap(), definitions: PROMISES && PROMISES.definitions });
+    if (!e) return null;
+    Object.assign(e, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), origin: 'outside', what });
+    if (evidence && evidence.length) e.evidence = evidence;
+    for (const f of e.files) if ((project.mine || []).some(m => m.path.toLowerCase() === f.path.toLowerCase() && (!m.name || f.parts.includes(m.name)))) f.mine = true;
+    project.log = CHANGES.capped([...(project.log || []), e]);
+    changes.hold = true;   // reading the new code in isn't a change of yours
+    return e;
+  }
+  /* After the outside code is read in: the log goes on from the code as it is now, and the entry gets the promises
+     that stopped (or started) being kept with it. */
+  function logOutsideDone(e) {
+    changes.hold = false;
+    clearTimeout(changes.timer);
+    const was = changes.promises;
+    changes.base = codeMap();
+    changes.promises = promiseMap();
+    if (!e) return;
+    const broke = [], mended = [];
+    if (was) for (const [t, ok] of changes.promises) { const b = was.get(t); if (b === true && ok === false) broke.push(t); else if (b === false && ok === true) mended.push(t); }
+    if (broke.length || mended.length) e.promises = { broke, mended };
+    save();
+    // the folder's project.json takes the entry now, and nothing else is written: the code there is as it was found
+    if (desk.on && desk.folder) writeKept(desk.folder, '.intuicode/project.json', JSON.stringify({ ...project, folder: undefined }, null, 2)).catch(() => { /* it goes with the next save */ });
+    const fs = e.files.length, mine = e.files.filter(f => f.mine).length;
+    tLine(`Change log: ${CHANGES.summary(e).replace(/^Outside IntuaCode, someone/, 'Outside IntuaCode, something')}${mine ? ` ${mine > 1 ? `${mine} of the files hold` : 'It holds'} parts INTENT.md says are yours.` : ''}${broke.length ? ` ${broke.length} promise${broke.length > 1 ? 's' : ''} stopped being kept.` : ''} Menu → What changed shows ${fs > 1 ? 'each file\'s' : 'its'} lines.`, broke.length || mine ? 't-err' : 't-sys');
+  }
+
+  /* What changed: the log, newest first, each entry's origin, files, parts, promises and lines. */
+  let logFilter = 'all';
+  const logGo = (path, line) => escHtml(JSON.stringify({ path, line, space: 'code' }));
+  function logFileHtml(f) {
+    const live = f.status !== 'removed' && project.sections.some(s => s.path.toLowerCase() === f.path.toLowerCase());
+    const first = f.blocks[0];
+    return `<li><code>${escHtml(f.path)}</code>${f.status !== 'changed' ? ` <span class="lg-status">${f.status}</span>` : ''}${f.parts.length ? ` · ${f.parts.map(p => `<b>${escHtml(p)}</b>`).join(', ')}` : ''}`
+      + ` <span class="lg-n"><span class="lg-add">+${f.added}</span> <span class="lg-del">−${f.removed}</span></span>${f.mine ? '<span class="mine-chip" title="INTENT.md says this is yours">Yours</span>' : ''}`
+      + `${live && first ? ` <button type="button" class="btn tiny" data-intent-go="${logGo(f.path, first.to)}">Show where</button>` : ''}</li>`;
+  }
+  function logLinesHtml(f) {
+    const rows = [];
+    for (const k of f.blocks) {
+      rows.push(`<span class="lg-at">${escHtml(f.path)} · line ${k.to + 1}</span>`);
+      k.del.forEach((l, i) => rows.push(`<span class="lg-del"><i>${k.at + i + 1}</i>− ${escHtml(l)}</span>`));
+      k.add.forEach((l, i) => rows.push(`<span class="lg-add"><i>${k.to + i + 1}</i>+ ${escHtml(l)}</span>`));
+    }
+    if (f.more) rows.push(`<span class="lg-at">…and ${f.more} more line${f.more > 1 ? 's' : ''} (the counts are whole)</span>`);
+    return rows.join('');
+  }
+  function renderLog() {
+    const all = (project.log || []).slice().reverse();
+    const n = (o) => all.filter(e => e.origin === o).length;
+    $('logFilter').innerHTML = [['all', 'All', all.length], ...Object.entries(CHANGES.ORIGINS).map(([k, o]) => [k, o.name, n(k)])]
+      .map(([k, name, c]) => `<button type="button" class="lg-chip lg-${k}" data-log-filter="${k}" aria-pressed="${logFilter === k}" title="${escHtml(k === 'all' ? 'Every entry' : CHANGES.ORIGINS[k].says)}">${escHtml(name)} <small>${c}</small></button>`).join('');
+    const shown = all.filter(e => logFilter === 'all' || e.origin === logFilter);
+    $('logList').innerHTML = !all.length ? '<li class="bk-none">No changes yet. Each change to the code goes here, with where it came from.</li>'
+      : !shown.length ? '<li class="bk-none">None from there.</li>'
+      : shown.slice(0, 120).map(e => {
+        const p = e.promises || { broke: [], mended: [] };
+        return `<li class="lg-item lg-${e.origin}">
+          <div class="lg-head"><span class="lg-origin">${escHtml(CHANGES.ORIGINS[e.origin].name)}</span><span class="lg-when" title="${escHtml(new Date(e.at).toLocaleString())}">${escHtml(ago(Date.parse(e.at)))}</span></div>
+          <p class="lg-what">${escHtml(e.what || CHANGES.summary(e))}</p>
+          <ul class="lg-files">${e.files.map(logFileHtml).join('')}</ul>
+          ${p.broke.map(t => `<p class="lg-prom bad">✗ No longer kept: ${escHtml(t)}</p>`).join('')}${p.mended.map(t => `<p class="lg-prom good">✓ Kept again: ${escHtml(t)}</p>`).join('')}
+          ${(e.evidence || []).map(t => `<p class="lg-ev">${escHtml(t)}</p>`).join('')}
+          <details class="lg-lines"><summary>The lines</summary><pre>${e.files.map(logLinesHtml).join('')}</pre></details>
+        </li>`;
+      }).join('') + (shown.length > 120 ? `<li class="bk-none">…and ${shown.length - 120} older.</li>` : '');
+  }
+  function openLog() {
+    logNow('you');   // what you've typed so far is in it
+    renderLog();
+    $('logModal').hidden = false;
+    $('logClose').focus();
+  }
+  const closeLog = () => { $('logModal').hidden = true; };
+  $('btnLog').addEventListener('click', () => { setFileMenu(false); openLog(); });
+  $('logClose').addEventListener('click', closeLog);
+  $('logModal').addEventListener('click', (e) => {
+    if (e.target.id === 'logModal') return closeLog();
+    const f = e.target.closest('[data-log-filter]');
+    if (f) { logFilter = f.dataset.logFilter; renderLog(); return; }
+    if (e.target.closest('[data-intent-go]')) closeLog();   // Show where (handled with INTENT.md's): the file opens behind
+  });
+  $('logModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeLog(); } });
+  window.addEventListener('pagehide', () => { try { if (logNow('you')) store.set(PROJECT_KEY, project); } catch (_) { /* leaving anyway */ } });
 
   /* Hand to my AI: the map as an OpenSpec change (lang/openspec.js), for an AI assistant of your own to work
    * from. The desktop app writes it into the saved project's folder, at openspec/changes/<name>/; the browser
@@ -6650,7 +6829,7 @@
   }
 
   /* Save, Ctrl+S: the desktop app writes the project's folder; a browser downloads the project as a .zip. */
-  function manualSave() { if (desk.on) saveProject(); else downloadProject(); }
+  function manualSave() { logNow('you'); if (desk.on) saveProject(); else downloadProject(); }
 
   /* Changes since the last Save: leaving the page, or closing the desktop app's window, asks first. */
   let unsavedWork = false;
@@ -6706,14 +6885,19 @@
     if (pictures) { renderImages(); if (webOn()) runWebsite(false); }
     // code changed since it was saved: a file kept as code takes it; sentences stay as they were saved
     compile();
-    const stale = [];
-    let took = false;
+    const stale = [], took = [];
     for (const s of project.sections) {
       const there = await text(fileName(s));
       if (there == null || there.trim() === codeOf(s).trim()) continue;
-      if (isSentences(s)) stale.push(fileName(s)); else { s.text = there; took = true; }
+      if (isSentences(s)) stale.push(fileName(s)); else took.push([s, there]);
     }
-    if (took) { ta.value = activeSec().text; refreshAll(); if (mode === 'unity') unityShow(); else splitPlain(); save(); }
+    if (took.length) {
+      const found = logOutside(took, [], `Found when ${label} was opened: files kept as code weren't what IntuaCode saved.`);
+      try {
+        for (const [s, there] of took) s.text = there;
+        ta.value = activeSec().text; refreshAll(); if (mode === 'unity') unityShow(); else splitPlain(); save();
+      } finally { logOutsideDone(found); }
+    }
     if (stale.length) tLine(`${stale.join(', ')} ${stale.length > 1 ? 'were' : 'was'} changed after this was saved. The sentences are as they were saved, and make the code as it was then.`, 't-err');
     if (!desk.on) setUnsaved(false);   // the same as the .zip it came from
     return true;
@@ -6914,7 +7098,7 @@
         if (images().length) await readImages(folder);
         // ticks your AI made in Hand to my AI's tasks.md come back to the map
         const tasksMd = project.plan && project.plan.steps.length ? await read(`openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`) : null;
-        if (tasksMd) takeTicks(tasksMd, `openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`, true);
+        const ticks = tasksMd ? takeTicks(tasksMd, `openspec/changes/${OPENSPEC.changeName(project.name)}/tasks.md`, true) : '';
         // did anyone change the code outside IntuaCode?
         compile();
         const changed = [];
@@ -6927,21 +7111,28 @@
           if (!same) changed.push([s, lf]);
         }
         noteOutsideChanges(changed);   // before the new code is read in: was anything INTENT.md says is yours changed?
-        // a Vite app's files, and TypeScript, come back as their exact lines, as when the folder was first opened
-        const asCode = (s) => s.lang === 'ts' || s.lang === 'tsx' || (PRJ.devServerOf(project) && UNITY && UNITY.LANGS.includes(s.lang) && s.lang !== 'python');
-        for (const [s, onDisk] of changed) {
-          if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuaCode: it's shown as it is now.`, 't-sys'); continue; }
-          if (asCode(s)) { s.text = UNITY.toFile(s.lang, onDisk.replace(/\n+$/, '').split('\n'), []) + '\n'; tLine(`${fileName(s)} was changed outside IntuaCode, so it's shown as its code is now, line for line (Translate turns any part into sentences).`, 't-sys'); continue; }
-          if (secLang(s) !== 'python') {
-            const res = await rebuildSection(folder, s, read);
-            if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
-            else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date: Unity shows its code as it was.`, 't-err');
-            continue;
+        // the change log: what's on disk against what IntuaCode wrote, with what's known of who changed it
+        const evidence = [];
+        if (tasksMd != null) evidence.push(`This project was handed to an AI: Hand to my AI's files are in openspec/changes/${OPENSPEC.changeName(project.name)}/.`);
+        if (/^Took /.test(ticks)) evidence.push(ticks.split('. ')[0].replace(/\.$/, '') + ': your AI ticked them.');
+        const found = logOutside(changed, evidence);
+        try {
+          // a Vite app's files, and TypeScript, come back as their exact lines, as when the folder was first opened
+          const asCode = (s) => s.lang === 'ts' || s.lang === 'tsx' || (PRJ.devServerOf(project) && UNITY && UNITY.LANGS.includes(s.lang) && s.lang !== 'python');
+          for (const [s, onDisk] of changed) {
+            if (!isSentences(s)) { s.text = onDisk; tLine(`${fileName(s)} was changed outside IntuaCode: it's shown as it is now.`, 't-sys'); continue; }
+            if (asCode(s)) { s.text = UNITY.toFile(s.lang, onDisk.replace(/\n+$/, '').split('\n'), []) + '\n'; tLine(`${fileName(s)} was changed outside IntuaCode, so it's shown as its code is now, line for line (Translate turns any part into sentences).`, 't-sys'); continue; }
+            if (secLang(s) !== 'python') {
+              const res = await rebuildSection(folder, s, read);
+              if (res && res.ok) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ' ' + res.reason}`, res.exact ? 't-sys' : 't-err'); }
+              else tLine(`${fileName(s)} was changed outside IntuaCode and couldn't be turned back into sentences${res && res.error ? ': ' + res.error : ''}. The sentences may be out of date: Unity shows its code as it was.`, 't-err');
+              continue;
+            }
+            const res = await sentencesFor(onDisk);
+            if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
           }
-          const res = await sentencesFor(onDisk);
-          if (res) { s.text = res.text; tLine(`${fileName(s)} was changed outside IntuaCode, so its sentences were rebuilt from the code.${res.exact ? ' ✓ Checked exact.' : ''}`, 't-sys'); }
-        }
-        if (changed.length) { ta.value = activeSec().text; refreshAll(); if (mode === 'write') splitPlain(); }
+          if (changed.length) { ta.value = activeSec().text; refreshAll(); if (mode === 'write') splitPlain(); }
+        } finally { if (changed.length) logOutsideDone(found); }
         sayIntentOnOpen();
         showFolder();
         return;

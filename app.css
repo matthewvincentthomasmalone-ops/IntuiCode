@@ -1607,3 +1607,37 @@ details.pg > summary .count { margin-left: auto; }
 .mine-chip { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 8px; font: 600 10.5px/16px var(--f-ui); color: var(--panel); background: var(--good); vertical-align: middle; }
 .problems .prob-intent .prob-fix { flex-wrap: wrap; }
 .ex-foot .btn.tiny, .ex-guide .btn.tiny, .ex-part .btn.tiny { margin: 0 6px; }
+
+/* What changed: the change log, each entry's origin as a coloured edge (you: rose, IntuaCode: cyan, outside: amber) */
+.lg-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.lg-chip { border: 1px solid var(--rule); background: none; color: var(--ink-2); font: 600 12.5px var(--f-ui); padding: 3px 10px; border-radius: 12px; cursor: pointer; }
+.lg-chip small { color: var(--ink-3); font-weight: 500; margin-left: 3px; }
+.lg-chip:hover { color: var(--ink); }
+.lg-chip[aria-pressed="true"] { border-color: var(--oc, var(--accent)); color: var(--oc, var(--accent)); background: var(--panel-2); }
+.lg-you { --oc: var(--accent); }
+.lg-intuacode { --oc: var(--var); }
+.lg-outside { --oc: var(--warn); }
+.lg-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }
+.lg-item { border-left: 3px solid var(--oc); background: rgba(255, 255, 255, .025); border-radius: 3px; padding: 7px 10px 8px; min-width: 0; }
+.lg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.lg-origin { font: 700 11px var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--oc); }
+.lg-when { font: 12px var(--f-py); color: var(--ink-3); white-space: nowrap; }
+.lg-what { margin: 3px 0 4px; font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
+.lg-files { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 2px; }
+.lg-files li { overflow-wrap: anywhere; }
+.lg-files b { color: var(--fn); font-weight: 600; font-family: var(--f-py); font-size: .95em; }
+.lg-status { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.lg-n { font: 12px var(--f-py); margin-left: 4px; }
+.lg-add { color: var(--good); }
+.lg-del { color: var(--bad); }
+.lg-files .btn.tiny { margin-left: 6px; }
+.lg-prom { margin: 3px 0 0; font-size: 12.5px; }
+.lg-prom.bad { color: var(--bad); }
+.lg-prom.good { color: var(--good); }
+.lg-ev { margin: 3px 0 0; font-size: 12.5px; color: var(--ink-3); font-style: italic; overflow-wrap: anywhere; }
+.lg-lines { margin-top: 4px; }
+.lg-lines summary { cursor: pointer; font-size: 12px; color: var(--ink-3); }
+.lg-lines pre { margin: 4px 0 0; padding: 6px 8px; background: var(--field); border-radius: 3px; font: 12px/1.5 var(--f-py); max-height: 260px; overflow: auto; white-space: pre; }
+.lg-lines pre span { display: block; }
+.lg-lines pre i { display: inline-block; min-width: 3.2em; font-style: normal; color: var(--ink-3); }
+.lg-lines .lg-at { color: var(--ink-3); margin-top: 4px; }

@@ -112,6 +112,18 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Hand to my AI** with INTENT.md: proposal.md's Impact says to keep INTENT.md true and lists the parts that are
       yours; a step's task ends with **IntuaCode checks: …**.
 
+**What changed: the change log**
+- [ ] Type a line in a part, then Menu → **What changed…**: one **You** entry names the part, with `+1 −0`; **The lines**
+      shows the line, and **Show where** puts the cursor on it. Type in another file: a second entry starts.
+- [ ] Use a fix from Problems, and press **This part is mine**: each is an **IntuaCode** entry of its own, saying what it
+      did. Add a part from the Library: one IntuaCode entry for all its files.
+- [ ] Desktop: Save, close, change the code in another editor (or have your AI do a Hand to my AI task), open the folder:
+      the terminal says what changed outside IntuaCode, and the log has an **Outside IntuaCode** entry with the parts,
+      **Yours** on a part INTENT.md says is yours, any promise that stopped being kept, and (after Hand to my AI) that
+      your AI ticked tasks.md. The other editor's code is left as it was.
+- [ ] The filter chips show only one origin. Close and reopen the project (or open its folder on another computer):
+      the log is still there.
+
 - [ ] Plan → Learning modules → 2 · Invaders → Python window, with "Your turn: faster as fewer remain" ticked. Click
       the problem "Fill in ‹ticks to wait before the next step›": the ‹blank› is selected and the help says what kind
       of thing goes there and how to work it out. **Show an example**, then **Put it in**: no problems left.

@@ -28,6 +28,7 @@ the desktop app.
 | `lang/builder.js` | Project builder: the question/kit/component library (plain text) and building a project with its step map |
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
+| `lang/changelog.js` | The change log: what changed between two versions of the code (each file's lines, counts and the named parts they fall in), a sentence for an entry, and a log read back from a project file checked for its shape |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
 | `lang/fixes.js` | Fixes that work: for a line with a problem, small changes to the line itself (spelling as the sentences and the project's names spell it, the problem's own suggestion, "when …, …" split into a block, the closest sentence with the line's values), each translated before it's offered; the help strip and Problems show only those with no errors |
@@ -302,6 +303,34 @@ reports each time, and says when reality can't be expressed. So:
   a place: code the plan doesn't account for, which is where an AI's own additions show up.
 - **The AI is told.** Hand to my AI puts INTENT.md's promises and the parts that are the owner's in proposal.md, and a
   step's own checks on its task line. `ticksFrom` still finds steps by the start of a task.
+
+## Decision: the change log works out what changed, and says where it came from by how it came in
+
+*Decided 2026-11-17.*
+
+A broadcast router's log says what changed and who changed it: the operator, an automation, or the equipment itself.
+IntuaCode's (`lang/changelog.js`, Menu → What changed) does the same for the code, with one difference: the person can't
+see who edits files outside it, so it never guesses. So:
+
+- **What changed is worked out, never told.** After every compile the code as it's written to disk (`codeOf`) is
+  compared with the code as of the last entry (`changes.base`); an entry is that difference, with the named parts it
+  falls in (`promises.js` `definitions`). Nobody's description of a change is used, so a rewrite can't be logged as a
+  small fix.
+- **The origin is the way the change came in.** `you`: typing, a burst one entry (ended by a 45-second pause, another
+  file, Save or opening the log). `intuacode`: `logAs` around each place IntuaCode writes code when asked (a fix used,
+  a promise added, a part put back, a Library part, a place for a new element); typing before it is logged as yours
+  first. `outside`: `logOutside`, when a saved project's folder (or a Save's .zip) is opened and the code there isn't
+  what IntuaCode wrote, before the new code is read in. "Outside" names the way in, not a person; what's known of who
+  (Hand to my AI's files are there; tasks.md has new ticks) is kept apart, as evidence.
+- **An entry carries what it did to the intent.** The promises that stopped or started being kept with it, and whether
+  it touched a part INTENT.md says is the owner's.
+- **The log is history, so it's kept** (a promise's state is not: that's worked out each time). `project.log`, in
+  `.intuicode/project.json`, the last 300 entries, each file's lines up to 160 (the counts always whole), checked for
+  its shape when read back. An outside entry is written to `project.json` at once, alone: the code files are left as
+  they were found.
+- **Limits.** There's no file watcher: a change made outside while the project is open is found the next time its
+  folder is opened. Restoring a backup brings back that backup's log. Sentences that change without changing the code
+  (Translate) aren't changes to the code, so they aren't logged.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 
