@@ -319,6 +319,8 @@ use         = ( "use" | "import" ) [ "the" ] module [ "module" | "library" | "to
 main-guard  = ( "if" | "when" ) "this file is" ( "run" | "started" ) "directly" ;    (* → if __name__ == "__main__": *)
 route       = "when" app ( "gets" | "receives" ) ( [ "a" | "an" | "any" ] [ "web" ] ( "request" | "requests" ) | methods )
               ( "at" | "on" | "for" ) text ;                                     (* → @app.route(text, methods=[…]) *)
+                (* "a request" is any kind: methods=["GET", "POST", "PUT", "DELETE", "PATCH"] *)
+opened      = "when" app "is" ( "opened" | "visited" ) ( "at" | "on" | "for" ) text ;  (* → @app.route(text): GET only *)
 route2      = "when" app "handles" method ( "at" | "on" | "for" ) text [ "with" items ] ; (* → @app.get(text, …) *)
 decorate    = "decorate" [ "it" ] "with" value ;                                    (* → @value *)
 class       = "define" [ "a" ] "class" Name [ "based on" items ] ;                  (* → class Name(items): *)
@@ -2155,7 +2157,7 @@ the rule table, so the rules get evidence of their own.
   error. An example that runs more than 100,000 of its own lines fails, so a loop that doesn't end can't hang
   the tests.
 - **Coverage:** `npm run meaning` lists each rule and its examples. A rule counts when an example that
-  passes uses it. Today all 89 value words and 72 of 73 statements have one. The one without needs a window:
+  passes uses it. Today all 89 value words and 73 of 74 statements have one. The one without needs a window:
   tkinter's `add a tk.Button …`. Of the rules the reader's sentences use for `samples/`, `tests/corpus/` and
   `tests/heldout/`, all 46 value words and 46 of 47 statements have one.
 - **Web routes** run on a stand-in Flask and FastAPI (`tests/helpers/web_standin.py`), so neither needs
@@ -2168,7 +2170,7 @@ the rule table, so the rules get evidence of their own.
   A new rule with no example, and no reason in `NOT_RUN`, fails the tests.
 - **The examples notice a wrong rule:** `npm run meaning -- --mutate` makes each rule do another's work,
   one at a time: a value word gets another's code, a statement another's with as many words to fill in. It
-  checks some example fails: all 82 value words and all 69 statements do. Two pairs that write the very same code, two ways of saying one thing, aren't counted:
+  checks some example fails: all 82 value words and all 70 statements do. Two pairs that write the very same code, two ways of saying one thing, aren't counted:
   `take x out of` and `remove x from`; `make a new x with y and store it in z` and `run x with y and store it
   in z`. The tests do this for nine rules on every run, whatever the reader says.
 - **JavaScript: a website's Mechanics** (`lang/web_write.js`): 196 examples
@@ -2589,6 +2591,7 @@ Settings → `settings.py`, Tools → `tools.py`, Main program → `main.py`. Wr
 |  | `bring in ‹name› from ‹module›` | `from module import name` | Settings, Tools, Main program | "bring in everything from ‹module›" is import *. |
 |  | `if this file is run directly` | `if __name__ == "__main__":` | Main program | The starting point of a program made of several files. |
 |  | `when ‹app› gets ‹GET› at "‹/path›"` | `@app.route("/path", methods=["GET"])` | Tools, Main program | A Flask web route. Put "define …" on the next line. |
+|  | `when ‹app› is opened at "‹/path›"` | `@app.route("/path")` | Tools, Main program | A Flask web route for a browser opening the page (GET only). Put "define …" on the next line. |
 |  | `when ‹app› handles ‹GET› at "‹/path›"` | `@app.get("/path")` | Tools, Main program | A FastAPI (or Flask 2) web route. Put "define …" on the next line. |
 |  | `decorate with ‹decorator›` | `@decorator` | Tools, Main program | Adds behaviour to the next tool or class. |
 |  | `use the shared ‹name›` | `global name` | Tools | Inside a tool: change a value that lives outside it. |

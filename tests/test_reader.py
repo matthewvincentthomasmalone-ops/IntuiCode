@@ -127,6 +127,12 @@ class PlainWords(unittest.TestCase):
         self.assertIn("bring in Flask and request from flask", lines)
         self.assertIn("python: from x import everything", lines)   # "everything" is what * is called
 
+    def test_a_route_says_which_requests_it_takes(self):
+        lines = self.said('from flask import Flask\napp = Flask(__name__)\n@app.route("/")\ndef home():\n    return "hi"\n'
+                          '@app.route("/x", methods=["GET", "POST"])\ndef x():\n    return "x"\n')
+        self.assertIn('when app is opened at "/"', lines)   # (no methods: Flask answers only GET)
+        self.assertIn('when app gets GET and POST at "/x"', lines)
+
     def test_staying_on_the_line_says_whether_a_space_follows(self):
         lines = self.said('print("a", end=" ")\nprint("b", end="")\nprint("c", end="-")\n')
         self.assertIn('show "a" on the same line', lines)

@@ -642,6 +642,16 @@
         },
         {
           "topic": "Program",
+          "say": "when ‹app› is opened at \"‹/path›\"",
+          "becomes": "@app.route(\"/path\")",
+          "folders": [
+            "tools",
+            "main"
+          ],
+          "tip": "A Flask web route for a browser opening the page (GET only). Put \"define …\" on the next line."
+        },
+        {
+          "topic": "Program",
           "say": "when ‹app› handles ‹GET› at \"‹/path›\"",
           "becomes": "@app.get(\"/path\")",
           "folders": [

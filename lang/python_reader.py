@@ -839,8 +839,10 @@ class Sentences:
                         methods = [x.value for x in m.elts]
                     else:
                         raise Unwordable()
-                what = " and ".join(methods) if methods else "a request"
-                return self.say(level, f'when {dotted_name(d.func.value)} gets {what} at "{d.args[0].value}"')
+                # (with no methods, Flask answers only GET: a browser opening the page)
+                if not methods:
+                    return self.say(level, f'when {dotted_name(d.func.value)} is opened at "{d.args[0].value}"')
+                return self.say(level, f'when {dotted_name(d.func.value)} gets {" and ".join(methods)} at "{d.args[0].value}"')
         return self.say(level, f"decorate with {self.E(d)}")
 
     # -- statements -----------------------------------------------------------
