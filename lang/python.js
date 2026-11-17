@@ -1092,7 +1092,9 @@
   });
   rule(/^when\s+([A-Za-z_][\w.]*)\s+(?:gets|receives)\s+(an?y? ?(?:web )?requests?|(?:GET|POST|PUT|DELETE|PATCH)(?:\s*(?:,|and|or)\s*(?:GET|POST|PUT|DELETE|PATCH))*)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')$/i, (m, x) => {
     const methods = /request/i.test(m[2]) ? [] : m[2].toUpperCase().split(/\s*(?:,|AND|OR)\s*/).filter(Boolean);
-    x.note(`A web route: when the web server gets ${methods.length ? methods.join(' or ') + ' requests' : 'a request'} for ${m[3]}, it runs the tool defined on the next line. (Flask writes this as a decorator starting with @.)`);
+    x.note(methods.length
+      ? `A web route: when the web server gets ${methods.join(' or ')} requests for ${m[3]}, it runs the tool defined on the next line. (Flask writes this as a decorator starting with @.)`
+      : `A web route: when the web server gets a request for ${m[3]}, it runs the tool defined on the next line. With no kinds named, Flask answers only GET (a browser opening the page); others are turned away. To take more, name them: "gets GET and POST at ${m[3]}". (Flask writes this as a decorator starting with @.)`);
     return { py: `@${m[1]}.route(${m[3].replace(/^'|'$/g, '"')}${methods.length ? `, methods=[${methods.map(v => `"${v}"`).join(', ')}]` : ''})`, tag: 'decorator' };
   });
   rule(/^when\s+([A-Za-z_][\w.]*)\s+handles\s+(GET|POST|PUT|DELETE|PATCH)\s+(?:at|on|for)\s+("[^"]*"|'[^']*')(?:\s+with\s+(.+))?$/i, (m, x) => {
