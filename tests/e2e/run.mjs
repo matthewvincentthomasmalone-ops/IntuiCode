@@ -609,13 +609,15 @@ try {
       const m = document.getElementById('lookModal'), root = () => getComputedStyle(document.documentElement);
       const set = (k, v) => { const i = m.querySelector(`[data-look="${k}"]`); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); };
       const problems = () => [...m.querySelectorAll('.lk-err')].map(e => e.textContent.trim());
+      // the editor on screen: Unity's, or Split Mode's (WebKitGTK doesn't bring a hidden element's style up to date)
+      const editor = () => getComputedStyle(document.getElementById(document.getElementById('unityView').hidden ? 'ta' : 'uTa'));
       document.getElementById('btnFile').click();
       document.getElementById('btnLook').click();
       const shown = { open: !m.hidden, values: m.querySelectorAll('.lk-v').length, fixed: m.querySelectorAll('.lk-fixed').length, seafoam: getComputedStyle(m.querySelector('.lk-v')).color, pink: getComputedStyle(m.querySelector('.lk-fixed')).color };
       set('accent', 'skyblue');
       const accent = root().getPropertyValue('--accent').trim();
       set('editorSize', '40');
-      const tooBig = { problems: problems(), size: getComputedStyle(document.getElementById('ta')).fontSize };
+      const tooBig = { problems: problems(), size: editor().fontSize };
       set('editorSize', '16');
       set('codeFont', 'Atkinson Hyperlegible Next');   // (IntuaCode's own menu font: not fixed-width)
       const notFixed = problems();
@@ -625,8 +627,8 @@ try {
       set('sideOn', 'right');
       const side = document.querySelector('.side').getBoundingClientRect().left > document.getElementById('work').getBoundingClientRect().left;
       const kept = JSON.parse(localStorage.getItem('intuicode.look.v1'));
-      const ta = getComputedStyle(document.getElementById('ta'));
-      const size = { font: ta.fontSize, line: ta.lineHeight, sayVar: root().getPropertyValue('--say-size').trim() };
+      const ed = editor();
+      const size = { font: ed.fontSize, line: ed.lineHeight, sayVar: root().getPropertyValue('--say-size').trim() };
       document.getElementById('lookReset').click();
       const reset = { kept: localStorage.getItem('intuicode.look.v1'), accent: root().getPropertyValue('--accent').trim(), side: document.documentElement.classList.contains('look-side-right') };
       document.getElementById('lookClose').click();

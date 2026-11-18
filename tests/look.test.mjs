@@ -214,12 +214,12 @@ test('look: the window in the page: a value is used as soon as it\'s right, a wr
     assert.equal(await cssVar('--accent'), '#87ceeb');
     await set('editorSize', '40');
     assert.equal(await tab.run('document.querySelector("#lookCode .lk-err").textContent.trim()'), '-- ✗ Text size goes from 12 to 20. Still using 14.5.');
-    assert.equal(await tab.run('getComputedStyle(document.getElementById("ta")).fontSize'), '14.5px');
+    assert.equal(await tab.run('getComputedStyle(document.querySelector(".u-view:not([hidden]) .u-ta, .panes:not([hidden]) #ta")).fontSize'), '14.5px');
     assert.equal(await tab.run('document.querySelector(\'#lookCode [data-look="editorSize"]\').getAttribute("aria-invalid")'), 'true');
     await set('editorSize', '17');
     assert.equal(await tab.run('document.querySelectorAll("#lookCode .lk-err").length'), 0, 'put right: the note goes');
-    assert.equal(await tab.run('getComputedStyle(document.getElementById("ta")).fontSize'), '17px');
-    assert.equal(await tab.run('getComputedStyle(document.getElementById("ta")).lineHeight'), '26px');
+    assert.equal(await tab.run('getComputedStyle(document.querySelector(".u-view:not([hidden]) .u-ta, .panes:not([hidden]) #ta")).fontSize'), '17px');
+    assert.equal(await tab.run('getComputedStyle(document.querySelector(".u-view:not([hidden]) .u-ta, .panes:not([hidden]) #ta")).lineHeight'), '26px');
     await set('background', 'white');
     assert.match(await tab.run('document.querySelector("#lookCode .lk-err").textContent'), /Too light: the notes/);
     assert.equal(await cssVar('--field'), '#0A0B0D');
@@ -240,7 +240,7 @@ test('look: the window in the page: a value is used as soon as it\'s right, a wr
     assert.equal(await cssVar('--accent'), '#87ceeb');
     assert.equal(await cssVar('--field'), '#101828');
     assert.equal(await tab.run('document.documentElement.classList.contains("look-side-right") && document.documentElement.classList.contains("look-bar-bottom")'), true);
-    assert.equal(await tab.run('getComputedStyle(document.getElementById("ta")).fontSize'), '17px');
+    assert.equal(await tab.run('getComputedStyle(document.querySelector(".u-view:not([hidden]) .u-ta, .panes:not([hidden]) #ta")).fontSize'), '17px');
 
     // back to the defaults: nothing of it left, not even a value still being typed
     await tab.run(`(() => {
