@@ -304,6 +304,25 @@ make it taller or shorter (double-click it for the usual size). Run, and a progr
 the terminal back; while it's folded, a dot on its tab says there's something new. IntuaCode remembers how
 you left them.
 
+**Customise: the look, as code.** **Menu → Customise** lays IntuaCode's look out as very simple code: a block for each
+part of the window (IntuaCode, Menu bar, Project side, Help, Editor, Code, Terminal), each line a plain name and its
+value, like `Text size = 14.5`. The values in seafoam are yours to change; the pink ones are fixed, there so it reads as
+the whole of the look. A value is used as soon as it's right, and kept for next time; one that can't be used says why on
+a line of its own under it (`-- ✗ Text size goes from 12 to 20. Still using 14.5.`) and the look keeps what it had.
+**Back to the defaults** puts IntuaCode's own look back. What can change is a short list:
+- **Colours:** the accent (links and outlines), the text, the editor's background and what you select, the words, quoted
+  text and numbers in the sentences and code, and the terminal's glow (green phosphor; `amber` works too). A colour is
+  a code (`#87CEEB`) or a name (`skyblue`), and is checked against the dark look it goes on: one too dark to read, or a
+  background too light for the grey notes, is refused.
+- **Fonts and sizes:** the font of the menus and help, and the fonts and text sizes of the editor (Unity and the
+  sentences) and the code. The editor's fonts must be fixed-width (every letter as wide as the others, or the marks
+  under the text drift), and must be on the computer.
+- **Where things sit:** the Menu bar at the top or bottom, the Project side on the left or right, Help on the right or
+  left. In a narrow window everything stacks, as before.
+
+Nothing else changes: not the layout's sizes, the green of the sentence parts or the pink of Project Link (the help
+names them), and not the look itself, which is dark.
+
 **Predictive Mode:** the black **Predictive Mode** button on the sentences turns predictions on and off. While
 it's on, the sentence you're typing is predicted the way a terminal predicts a command: the rest of it shows
 after the cursor in dim text, and a list under the line shows other guesses. Guesses come from sentences
@@ -656,6 +675,7 @@ npm install && npm run vendor
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the code; the names code defines; each step's checks |
 | `lang/changelog.js` | What changed: the lines between two versions of the code, the parts they fall in, counts, and each entry checked when read back |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
+| `lang/look.js` | Customise: the look as very simple code, the settings that can change, each value checked (in words), and what it sets on the page |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
 | `samples/` | Example code to import, including a small multi-file project (`samples/taskboard`) |

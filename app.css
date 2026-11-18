@@ -248,7 +248,7 @@ code { font-family: var(--f-py); font-size: .92em; }
 .codewrap { position: relative; overflow: hidden; min-width: 0; }
 .hl, #ta, .u-ta {
   position: absolute; inset: 0; margin: 0; padding: 12px 16px 40px 14px;
-  font: 14.5px/var(--lh) var(--f-say); letter-spacing: 0; tab-size: 4;
+  font: var(--say-size, 14.5px)/var(--lh) var(--f-say); letter-spacing: 0; tab-size: 4;
   white-space: pre; overflow-wrap: normal; word-break: normal; border: 0;
 }
 .hl { overflow: hidden; color: var(--ink); pointer-events: none; z-index: 1; }
@@ -286,7 +286,7 @@ code { font-family: var(--f-py); font-size: .92em; }
 kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; background: var(--panel-2); color: var(--ink-2); }
 
 /* Python view */
-.pycode { flex: 1; overflow: auto; padding: 12px 0 40px; font: 13.5px/var(--lh) var(--f-py); min-height: 0; }
+.pycode { flex: 1; overflow: auto; padding: 12px 0 40px; font: var(--code-size, 13.5px)/var(--lh) var(--f-py); min-height: 0; }
 .pl { display: grid; grid-template-columns: 46px minmax(0, 1fr); min-width: max-content; cursor: pointer; }
 .pl:hover { background: var(--band); }
 .pl.linked { background: var(--link); }
@@ -347,7 +347,7 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .py-status.bad { color: var(--term-bad); }
 .term-btn { background: transparent; color: var(--term-dim); border-color: rgba(255, 255, 255, .14); }
 .term-btn:hover { background: rgba(255, 255, 255, .06); }
-.term-body { flex: 1; overflow: auto; padding: 8px 16px 10px; font: 13px/1.55 var(--f-py); min-height: 0; }
+.term-body { flex: 1; overflow: auto; padding: 8px 16px 10px; font: calc(var(--code-size, 13.5px) - .5px)/1.55 var(--f-py); min-height: 0; }
 .term-log { white-space: pre-wrap; overflow-wrap: anywhere; }
 .t-sys { color: var(--term-dim); }
 .t-ok { color: var(--term-good); }
@@ -361,7 +361,7 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .term-form { display: flex; align-items: baseline; gap: 8px; }
 .term-prompt { color: var(--term-dim); flex: none; }
 .term-prompt.asking { color: var(--term-accent); font-weight: 500; }
-.term-in { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--term-ink); font: 13px/1.55 var(--f-py); padding: 0; caret-color: var(--term-accent); }
+.term-in { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--term-ink); font: calc(var(--code-size, 13.5px) - .5px)/1.55 var(--f-py); padding: 0; caret-color: var(--term-accent); }
 .term-in::placeholder { color: var(--term-dim); opacity: .7; }
 .term-in.asking { color: var(--term-accent); }
 
@@ -687,11 +687,11 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .pane-h .btn { box-shadow: var(--raised), 0 1px 0 var(--metal-edge); }
 .editor, .pycode, .rcode {
   margin: 0 7px 7px; border: 0; border-radius: 3px;
-  background: radial-gradient(130% 100% at 50% 0%, #121316 0%, var(--field) 70%);
+  background: radial-gradient(130% 100% at 50% 0%, color-mix(in srgb, var(--field), #fff 3%) 0%, var(--field) 70%);
   box-shadow: inset 0 0 0 1px #000, inset 0 3px 10px rgba(0, 0, 0, .75), 0 1px 0 var(--metal-edge), 0 -1px 0 rgba(94, 43, 58, .5);
 }
 .rcode { margin: 7px; }
-.gutter { background: linear-gradient(90deg, #0D0E10, #111215); border-right: 1px solid #000; box-shadow: 1px 0 0 rgba(255, 255, 255, .03); }
+.gutter { background: linear-gradient(90deg, color-mix(in srgb, var(--field), #fff 1.2%), color-mix(in srgb, var(--field), #fff 2.8%)); border-right: 1px solid #000; box-shadow: 1px 0 0 rgba(255, 255, 255, .03); }
 .read { background: var(--metal-flat); }
 .read-h { background: var(--metal); box-shadow: var(--machined); border-bottom: 0; }
 .read-title h2 { color: var(--metal-ink); text-shadow: var(--engrave); }
@@ -750,12 +750,12 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .term-h { padding: 5px 8px 5px 12px; background: linear-gradient(180deg, #141518, #0E0F11); border-bottom: 0; box-shadow: inset 0 -1px 0 #000; }
 .term-tab { color: var(--ink-3); border-radius: 3px; letter-spacing: .12em; }
 .term-tab:hover { color: var(--ink); }
-.term-tab[aria-selected="true"] { background: #000; color: var(--phosphor); text-shadow: 0 0 6px rgba(127, 240, 178, .45); box-shadow: inset 0 0 0 1px #1F3A2C, inset 0 1px 4px rgba(0, 0, 0, .8); }
+.term-tab[aria-selected="true"] { background: #000; color: var(--phosphor); text-shadow: 0 0 6px color-mix(in srgb, var(--phosphor) 45%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--phosphor) 18%, #000), inset 0 1px 4px rgba(0, 0, 0, .8); }
 .term-tab:focus-visible { outline: 1px solid var(--phosphor); }
 .py-status { color: var(--ink-3); position: relative; padding-left: 12px; }
 .py-status::before { content: ""; position: absolute; left: 0; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: #2B2F2C; }
 .py-status.ready { color: var(--term-dim); }
-.py-status.ready::before { background: #8FF7BE; box-shadow: 0 0 6px 1px rgba(127, 240, 178, .6); }
+.py-status.ready::before { background: var(--phosphor); box-shadow: 0 0 6px 1px color-mix(in srgb, var(--phosphor) 60%, transparent); }
 .py-status.bad { color: var(--term-bad); }
 .py-status.bad::before { background: var(--term-bad); box-shadow: 0 0 6px rgba(255, 138, 152, .6); }
 .term-btn { background: var(--face); color: var(--ink-2); border: 0; box-shadow: var(--raised); }
@@ -944,7 +944,7 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .btn.predict-btn[aria-pressed="true"] { background: #000; color: var(--seafoam); text-shadow: 0 0 6px rgba(159, 226, 191, .45); box-shadow: inset 0 0 0 1px var(--seafoam), 0 1px 0 var(--metal-edge); }
 .pm-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px currentColor; }
 .btn.predict-btn[aria-pressed="true"] .pm-dot { background: var(--seafoam); box-shadow: 0 0 6px rgba(159, 226, 191, .85); }
-.pm-ghost { position: absolute; z-index: 1; margin: 0; font: 14.5px/var(--lh) var(--f-say); letter-spacing: 0; white-space: pre; color: var(--ink-3); opacity: .7; pointer-events: none; }
+.pm-ghost { position: absolute; z-index: 1; margin: 0; font: var(--say-size, 14.5px)/var(--lh) var(--f-say); letter-spacing: 0; white-space: pre; color: var(--ink-3); opacity: .7; pointer-events: none; }
 .pm-ghost .s-slot { background: transparent; color: inherit; box-shadow: inset 0 0 0 1px var(--rule); }
 .dd-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
 .dd-val { position: absolute; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(232, 170, 186, .42); }
@@ -1647,3 +1647,46 @@ details.pg > summary .count { margin-left: auto; }
 .lg-lines .lg-at { color: var(--ink-3); margin-top: 4px; }
 .disk-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; color: var(--ink); }
 .disk-list li { margin: 2px 0; }
+
+/* ======================================================================
+   Customise (Menu → Customise, lang/look.js): IntuaCode's look as very simple code. The values that are yours
+   are seafoam, the fixed ones pink, on the editor's own dark well (its background is checked to stay dark, so
+   both stay readable). Where three parts sit is a class on <html>; in a narrow window everything stacks anyway.
+   ====================================================================== */
+@media (min-width: 901px) {
+  .look-bar-bottom .app { grid-template-rows: minmax(0, 1fr) auto; }
+  .look-bar-bottom .bar { order: 2; box-shadow: inset 0 1px 0 #000; }
+  .look-bar-bottom .bar::after { bottom: auto; top: -2px; box-shadow: 0 -1px 0 #000, 0 -4px 14px rgba(0, 0, 0, .7); }
+  .look-bar-bottom .menu-list { top: auto; bottom: calc(100% + 4px); }
+  .look-side-right .workspace:not(.max-say):not(.max-code):not(.max-term):not(.max-unity) { grid-template-columns: minmax(0, 1fr) 256px; }
+  .look-side-right .side { order: 2; box-shadow: inset 1px 0 0 #000, inset 2px 0 0 rgba(255, 255, 255, .03); }
+}
+.look-help-left .index { right: auto; left: 0; box-shadow: 1px 0 0 #000, inset -1px 0 0 rgba(255, 255, 255, .04), var(--shadow); }
+
+.look-card { --seafoam: #9FE2BF; --fixed-pink: #FF9FC6; --look-bad: #FF6E6E; width: min(760px, 100%); }
+.lk-seafoam { color: var(--seafoam); font-weight: 600; }
+.lk-pink { color: var(--fixed-pink); font-weight: 600; }
+.look-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.look-key { font-size: 12px; color: var(--ink-3); }
+.look-code {
+  margin: 0; padding: 10px 0 12px; border-radius: 3px; max-height: min(60vh, 640px); overflow: auto;
+  background: var(--field); box-shadow: var(--sunken); font: 13px/22px var(--f-py); color: var(--ink-2);
+}
+.lk-l { display: grid; grid-template-columns: 44px minmax(0, 1fr); white-space: pre; min-width: max-content; }
+.lk-n { color: var(--ink-3); text-align: right; padding-right: 14px; font-size: 11.5px; font-variant-numeric: tabular-nums; user-select: none; }
+.lk-t { padding-right: 16px; }
+.lk-block { color: var(--ink); font-weight: 600; }
+.lk-p { color: var(--ink-3); }
+.lk-c { color: var(--com); font-style: italic; }
+.lk-fixed { color: var(--fixed-pink); cursor: help; }
+.lk-v {
+  font: inherit; color: var(--seafoam); background: transparent; border: 0; border-radius: 2px; padding: 0 1px; margin: 0 -1px;
+  min-width: 2ch; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--seafoam) 45%, transparent); caret-color: var(--seafoam);
+}
+.lk-v:hover { background: color-mix(in srgb, var(--seafoam) 7%, transparent); }
+.lk-v:focus { outline: none; background: color-mix(in srgb, var(--seafoam) 12%, transparent); box-shadow: inset 0 -1px 0 var(--seafoam); }
+.lk-v[aria-invalid="true"] { color: var(--look-bad); box-shadow: inset 0 -1px 0 var(--look-bad); text-decoration: wavy underline var(--look-bad); text-underline-offset: 3px; }
+.lk-sw { display: inline-block; width: 10px; height: 10px; margin: 0 0 0 6px; border-radius: 2px; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
+.lk-err .lk-t { color: var(--look-bad); white-space: pre-wrap; padding-left: 5ch; text-indent: -3ch; }
+.look-actions { margin-top: 10px; }
+.lk-l.lk-err { min-width: 0; }
