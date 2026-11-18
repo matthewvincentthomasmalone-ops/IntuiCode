@@ -625,14 +625,15 @@ try {
       set('sideOn', 'right');
       const side = document.querySelector('.side').getBoundingClientRect().left > document.getElementById('work').getBoundingClientRect().left;
       const kept = JSON.parse(localStorage.getItem('intuicode.look.v1'));
-      const size = getComputedStyle(document.getElementById('ta')).fontSize;
+      const ta = getComputedStyle(document.getElementById('ta'));
+      const size = { font: ta.fontSize, line: ta.lineHeight, sayVar: root().getPropertyValue('--say-size').trim() };
       document.getElementById('lookReset').click();
       const reset = { kept: localStorage.getItem('intuicode.look.v1'), accent: root().getPropertyValue('--accent').trim(), side: document.documentElement.classList.contains('look-side-right') };
       document.getElementById('lookClose').click();
       return { shown, accent, tooBig, notFixed, consolas, side, kept, size, reset };
     });
     const want = { shown: { open: true, values: 16, fixed: 7, seafoam: 'rgb(159, 226, 191)', pink: 'rgb(255, 159, 198)' }, accent: '#87ceeb',
-      tooBig: { problems: ['-- ✗ Text size goes from 12 to 20. Still using 14.5.'], size: '14.5px' }, side: true, kept: { accent: 'skyblue', sideOn: 'right', editorSize: '16' }, size: '16px',
+      tooBig: { problems: ['-- ✗ Text size goes from 12 to 20. Still using 14.5.'], size: '14.5px' }, side: true, kept: { accent: 'skyblue', sideOn: 'right', editorSize: '16' }, size: { font: '16px', line: '24px', sayVar: '16px' },
       reset: { kept: null, accent: '#E8AABA', side: false } };
     const bad = Object.keys(want).filter(k => !isDeepStrictEqual(r[k], want[k]));
     if (r.notFixed.length !== 1 || !/isn't fixed-width/.test(r.notFixed[0])) bad.push('notFixed');

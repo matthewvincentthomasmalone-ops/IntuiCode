@@ -248,7 +248,7 @@ code { font-family: var(--f-py); font-size: .92em; }
 .codewrap { position: relative; overflow: hidden; min-width: 0; }
 .hl, #ta, .u-ta {
   position: absolute; inset: 0; margin: 0; padding: 12px 16px 40px 14px;
-  font: var(--say-size, 14.5px)/var(--lh) var(--f-say); letter-spacing: 0; tab-size: 4;
+  font: 14.5px/var(--lh) var(--f-say); font-size: var(--say-size, 14.5px); line-height: var(--lh); letter-spacing: 0; tab-size: 4;
   white-space: pre; overflow-wrap: normal; word-break: normal; border: 0;
 }
 .hl { overflow: hidden; color: var(--ink); pointer-events: none; z-index: 1; }
@@ -286,7 +286,7 @@ code { font-family: var(--f-py); font-size: .92em; }
 kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; background: var(--panel-2); color: var(--ink-2); }
 
 /* Python view */
-.pycode { flex: 1; overflow: auto; padding: 12px 0 40px; font: var(--code-size, 13.5px)/var(--lh) var(--f-py); min-height: 0; }
+.pycode { flex: 1; overflow: auto; padding: 12px 0 40px; font: 13.5px/var(--lh) var(--f-py); font-size: var(--code-size, 13.5px); line-height: var(--lh); min-height: 0; }
 .pl { display: grid; grid-template-columns: 46px minmax(0, 1fr); min-width: max-content; cursor: pointer; }
 .pl:hover { background: var(--band); }
 .pl.linked { background: var(--link); }
@@ -347,7 +347,7 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .py-status.bad { color: var(--term-bad); }
 .term-btn { background: transparent; color: var(--term-dim); border-color: rgba(255, 255, 255, .14); }
 .term-btn:hover { background: rgba(255, 255, 255, .06); }
-.term-body { flex: 1; overflow: auto; padding: 8px 16px 10px; font: calc(var(--code-size, 13.5px) - .5px)/1.55 var(--f-py); min-height: 0; }
+.term-body { flex: 1; overflow: auto; padding: 8px 16px 10px; font: 13px/1.55 var(--f-py); font-size: calc(var(--code-size, 13.5px) - .5px); min-height: 0; }
 .term-log { white-space: pre-wrap; overflow-wrap: anywhere; }
 .t-sys { color: var(--term-dim); }
 .t-ok { color: var(--term-good); }
@@ -361,7 +361,7 @@ kbd { font: 600 10.5px/1 var(--f-py); padding: 2px 4px; border: 1px solid var(--
 .term-form { display: flex; align-items: baseline; gap: 8px; }
 .term-prompt { color: var(--term-dim); flex: none; }
 .term-prompt.asking { color: var(--term-accent); font-weight: 500; }
-.term-in { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--term-ink); font: calc(var(--code-size, 13.5px) - .5px)/1.55 var(--f-py); padding: 0; caret-color: var(--term-accent); }
+.term-in { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--term-ink); font: 13px/1.55 var(--f-py); font-size: calc(var(--code-size, 13.5px) - .5px); padding: 0; caret-color: var(--term-accent); }
 .term-in::placeholder { color: var(--term-dim); opacity: .7; }
 .term-in.asking { color: var(--term-accent); }
 
@@ -944,7 +944,7 @@ kbd { border: 0; border-radius: 3px; background: var(--face); color: var(--face-
 .btn.predict-btn[aria-pressed="true"] { background: #000; color: var(--seafoam); text-shadow: 0 0 6px rgba(159, 226, 191, .45); box-shadow: inset 0 0 0 1px var(--seafoam), 0 1px 0 var(--metal-edge); }
 .pm-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px currentColor; }
 .btn.predict-btn[aria-pressed="true"] .pm-dot { background: var(--seafoam); box-shadow: 0 0 6px rgba(159, 226, 191, .85); }
-.pm-ghost { position: absolute; z-index: 1; margin: 0; font: var(--say-size, 14.5px)/var(--lh) var(--f-say); letter-spacing: 0; white-space: pre; color: var(--ink-3); opacity: .7; pointer-events: none; }
+.pm-ghost { position: absolute; z-index: 1; margin: 0; font: 14.5px/var(--lh) var(--f-say); font-size: var(--say-size, 14.5px); line-height: var(--lh); letter-spacing: 0; white-space: pre; color: var(--ink-3); opacity: .7; pointer-events: none; }
 .pm-ghost .s-slot { background: transparent; color: inherit; box-shadow: inset 0 0 0 1px var(--rule); }
 .dd-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
 .dd-val { position: absolute; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(232, 170, 186, .42); }
