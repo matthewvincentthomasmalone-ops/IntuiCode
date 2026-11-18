@@ -226,6 +226,21 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] A game in Mechanics: `load the picture "images/….png" as ship`, then `draw ship at 20, 20 on game` inside
       `every frame`: it's drawn in the preview.
 
+**Customise**
+- [ ] **Menu → Customise…**: IntuaCode's look as very simple code, in blocks (IntuaCode, Menu bar, Project side, Help, Editor,
+      Code, Terminal), each line `Name = value`. The values you can change are seafoam; Version, Look, Width and the others
+      are pink, and hovering one says why it's fixed.
+- [ ] Change **Accent colour** to `skyblue`: links and outlines turn sky blue at once. **Glow colour** to `amber`: the
+      terminal and the word Run turn amber.
+- [ ] **Text size** (Editor) to `40`: a red note under it says it goes from 12 to 20, still using 14.5, and nothing
+      changes. `17`: the note goes, and the sentences (and Unity) are bigger, their line numbers still lined up.
+- [ ] **Background** to `white`: refused, saying the grey notes wouldn't be readable. A dark blue (`#101828`) is used.
+- [ ] **Font style** (Code) to `Arial`: refused, not fixed-width. `Consolas` (Windows) or `DejaVu Sans Mono` (Linux) is
+      used. A name that isn't a font on the computer says so.
+- [ ] **Sits on** (Project side) `right`, **Sits at** (Menu bar) `bottom`, **Sits on** (Help) `left`: each moves at
+      once; the Menu opens upward. Close and reopen the app: the same look. **Back to the defaults**: IntuaCode's own again.
+- [ ] Browser version: the same, and a reload keeps it.
+
 **Tutor**
 - [ ] Build **Number guessing game**, open **Help** and press **Tutor** (Help gets a dot), and click a sentence: the strip shows how it's said, and a balloon
       explains a way of talking to the program. **✎ Say it yourself** covers the sentence: another way of saying it

@@ -29,6 +29,7 @@ the desktop app.
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
 | `lang/changelog.js` | The change log: what changed between two versions of the code (each file's lines, counts and the named parts they fall in), a sentence for an entry, and a log read back from a project file checked for its shape |
+| `lang/look.js` | Customise: IntuaCode's look laid out as very simple code (blocks of `Name = value` lines), the settings that can change, each value checked in plain words against the dark look it goes on, and the CSS variables and classes it sets |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
 | `lang/fixes.js` | Fixes that work: for a line with a problem, small changes to the line itself (spelling as the sentences and the project's names spell it, the problem's own suggestion, "when …, …" split into a block, the closest sentence with the line's values), each translated before it's offered; the help strip and Problems show only those with no errors |
@@ -354,6 +355,28 @@ folder was next opened, and an edit to the same file in IntuaCode in the meantim
 - **Not everything is the project.** A new file there is said, not imported; a deleted one is said and left in the
   project, not written back until it changes; Hand to my AI's tasks.md is read for new ticks as they're made;
   `openspec/`, `images/` and `.intuicode/` aren't news.
+
+## Decision: the look can be changed a little, and it's shown as code
+
+*Decided 2026-11-18.*
+
+**Menu → Customise** shows IntuaCode's look as very simple code (`lang/look.js`): a block per part of the window, a plain
+`Name = value` per line. It's a gimmick that should still be honest, so:
+
+- **Only values change, and only some.** Sixteen seafoam values (colours, fonts and sizes, where the Menu bar, the Project
+  side and Help sit); the pink ones are fixed. Not the layout's sizes (a narrower side and the names don't fit), not the
+  green of sentence parts or the pink of Project Link (the help names them), and not the look itself: it's dark.
+- **Checked, never guessed.** A colour is a code or a name, and must be readable where it goes (WCAG contrast against
+  the dark panels, the editor's background or the terminal's screen); the background is checked against everything shown
+  on it. Editor fonts must be fixed-width, since the marks and the cursor are placed by character. A font must be on the
+  computer: the page measures text in it against three fallbacks (a font that isn't there is as wide as the fallback).
+  A value that fails says why under its line and isn't used; the look keeps what it had.
+- **Only what changed is set.** `styleOf` gives the CSS variables (and classes on `<html>` for where things sit) for the
+  values that aren't the defaults, so `app.css` stays the look's source. It's stored in `intuicode.look.v1`, only the
+  changed values, each checked again when read back (a font gone from the computer goes back to IntuaCode's own), and put
+  on at the top of `app.js`, before anything is drawn. The same in the browser and the desktop app.
+- **The window's own colours stay readable.** Seafoam (the Predictive Mode button's) and pink are shown on the editor's
+  background, which can only be dark; `tests/look.test.mjs` checks both on the lightest one it lets through.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 

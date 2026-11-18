@@ -14,6 +14,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const WIN = process.platform === 'win32';
@@ -601,6 +602,45 @@ try {
     await drop([elsewhere]);
     await waitFor('the refusal', logHas('Nothing to import there'));
     if (await listed('private.py')) throw new Error('a pretend drop read a folder the page may not');
+  });
+
+  await check('Menu → Customise: the look as code; a value is used as soon as it\'s right, a wrong one is said and not used, and it\'s kept', async () => {
+    const r = await js(() => {
+      const m = document.getElementById('lookModal'), root = () => getComputedStyle(document.documentElement);
+      const set = (k, v) => { const i = m.querySelector(`[data-look="${k}"]`); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); };
+      const problems = () => [...m.querySelectorAll('.lk-err')].map(e => e.textContent.trim());
+      // the editor on screen: Unity's, or Split Mode's (WebKitGTK doesn't bring a hidden element's style up to date)
+      const editor = () => getComputedStyle(document.getElementById(document.getElementById('unityView').hidden ? 'ta' : 'uTa'));
+      document.getElementById('btnFile').click();
+      document.getElementById('btnLook').click();
+      const shown = { open: !m.hidden, values: m.querySelectorAll('.lk-v').length, fixed: m.querySelectorAll('.lk-fixed').length, seafoam: getComputedStyle(m.querySelector('.lk-v')).color, pink: getComputedStyle(m.querySelector('.lk-fixed')).color };
+      set('accent', 'skyblue');
+      const accent = root().getPropertyValue('--accent').trim();
+      set('editorSize', '40');
+      const tooBig = { problems: problems(), size: editor().fontSize };
+      set('editorSize', '16');
+      set('codeFont', 'Atkinson Hyperlegible Next');   // (IntuaCode's own menu font: not fixed-width)
+      const notFixed = problems();
+      set('codeFont', 'Consolas');   // the computer's own fonts are found by name (Windows has Consolas)
+      const consolas = { problems: problems(), font: root().getPropertyValue('--f-py').trim() };
+      set('codeFont', 'IBM Plex Mono');
+      set('sideOn', 'right');
+      const side = document.querySelector('.side').getBoundingClientRect().left > document.getElementById('work').getBoundingClientRect().left;
+      const kept = JSON.parse(localStorage.getItem('intuicode.look.v1'));
+      const ed = editor();
+      const size = { font: ed.fontSize, line: ed.lineHeight, sayVar: root().getPropertyValue('--say-size').trim() };
+      document.getElementById('lookReset').click();
+      const reset = { kept: localStorage.getItem('intuicode.look.v1'), accent: root().getPropertyValue('--accent').trim(), side: document.documentElement.classList.contains('look-side-right') };
+      document.getElementById('lookClose').click();
+      return { shown, accent, tooBig, notFixed, consolas, side, kept, size, reset };
+    });
+    const want = { shown: { open: true, values: 16, fixed: 7, seafoam: 'rgb(159, 226, 191)', pink: 'rgb(255, 159, 198)' }, accent: '#87ceeb',
+      tooBig: { problems: ['-- ✗ Text size goes from 12 to 20. Still using 14.5.'], size: '14.5px' }, side: true, kept: { accent: 'skyblue', sideOn: 'right', editorSize: '16' }, size: { font: '16px', line: '24px', sayVar: '16px' },
+      reset: { kept: null, accent: '#E8AABA', side: false } };
+    const bad = Object.keys(want).filter(k => !isDeepStrictEqual(r[k], want[k]));
+    if (r.notFixed.length !== 1 || !/isn't fixed-width/.test(r.notFixed[0])) bad.push('notFixed');
+    if (WIN && !isDeepStrictEqual(r.consolas, { problems: [], font: '"Consolas", ui-monospace, Menlo, Consolas, monospace' })) bad.push('consolas');
+    if (bad.length) throw new Error(`${bad.join(', ')}: ${JSON.stringify(r)}`);
   });
 
   // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the

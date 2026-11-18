@@ -25,6 +25,12 @@
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* storage unavailable */ } },
   };
 
+  // Customise (lang/look.js, Menu → Customise): the look chosen last time, put on before anything is drawn
+  const LOOK = window.IntuiLook;
+  const LOOK_KEY = 'intuicode.look.v1';
+  let look = LOOK ? LOOK.checked(store.get(LOOK_KEY, {}), lookEnv()) : null;
+  if (LOOK) putLook(false);
+
   /* ------------------------------------------------------------------ */
   /* Project folders                                                     */
   /* ------------------------------------------------------------------ */
@@ -7242,13 +7248,20 @@
     $('aboutText').textContent = t || `${file} isn't in this copy of IntuaCode. It's in the project's repository.`;
     $('aboutText').scrollTop = 0;
   }
+  let versionOnce = null;
+  function appVersion() {
+    if (!versionOnce) versionOnce = (async () => {
+      for (const f of ['about.json', 'package.json']) {   // the built app has about.json; the repository, package.json
+        try { const r = await fetch(f, { cache: 'no-store' }); if (r.ok) return (await r.json()).version || null; } catch (_) { /* not there */ }
+      }
+      return null;
+    })();
+    return versionOnce;
+  }
   async function openAbout() {
     $('aboutModal').hidden = false;
     $('aboutClose').focus();
-    let version = null;
-    for (const f of ['about.json', 'package.json']) {   // the built app has about.json; the repository, package.json
-      try { const r = await fetch(f, { cache: 'no-store' }); if (r.ok) { version = (await r.json()).version; break; } } catch (_) { /* not there */ }
-    }
+    const version = await appVersion();
     $('aboutVersion').textContent = `IntuaCode${version ? ' ' + version : ''}${desk.on ? ', desktop app' : ''}. Code you can read is code you control.`;
     showAboutTab('licence');
   }
@@ -7259,6 +7272,163 @@
   $('aboutModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeAbout(); } });
   $('aboutTabLicence').addEventListener('click', () => showAboutTab('licence'));
   $('aboutTabNotices').addEventListener('click', () => showAboutTab('notices'));
+
+  /* ------------------------------------------------------------------ */
+  /* Customise: IntuaCode's look, laid out as very simple code           */
+  /* (lang/look.js). Only the values change: the seafoam ones are yours, */
+  /* each checked, used as soon as it's right and kept for next time;    */
+  /* the pink ones are fixed. A wrong value says why under its line.     */
+  /* ------------------------------------------------------------------ */
+
+  // (a property, not a variable: the look is checked at the top of the file, before this part has run)
+  function textWidth(font, text) {
+    const c = textWidth.canvas || (textWidth.canvas = document.createElement('canvas').getContext('2d'));
+    c.font = font;
+    return c.measureText(text).width;
+  }
+  // A font is on this computer when text in it isn't as wide as in the fallback, for one of three fallbacks; it's
+  // fixed-width when ten i's are as wide as ten W's.
+  function lookEnv() {
+    const SAMPLE = 'mmmmmmmmmmlli1WW@#&';
+    return {
+      fontInstalled: (name) => ['monospace', 'serif', 'sans-serif'].some(g => textWidth(`40px "${name}", ${g}`, SAMPLE) !== textWidth(`40px ${g}`, SAMPLE)),
+      fixedWidth: (name) => Math.abs(textWidth(`40px "${name}", monospace`, 'iiiiiiiiii') - textWidth(`40px "${name}", monospace`, 'WWWWWWWWWW')) < 0.5,
+    };
+  }
+  // The look on the page: its variables and classes on <html> (only those that aren't IntuaCode's own), then, once
+  // the editors are there, everything measured again (a new size or font moves every line).
+  function putLook(redraw) {
+    const html = document.documentElement, s = LOOK.styleOf(look);
+    for (const v of LOOK.VARS) html.style.removeProperty(v);
+    for (const [k, v] of Object.entries(s.vars)) html.style.setProperty(k, v);
+    for (const c of LOOK.CLASSES) html.classList.toggle(c, s.classes.includes(c));
+    if (redraw) { measure(); syncScroll(); placeTip(); if (mode === 'unity') uSync(); }
+  }
+  function saveLook() {
+    const s = LOOK.stored(look);
+    if (Object.keys(s).length) store.set(LOOK_KEY, s);
+    else try { localStorage.removeItem(LOOK_KEY); } catch (_) { /* storage unavailable */ }
+    const n = Object.keys(s).length;
+    $('lookNote').textContent = n ? `${n} value${n === 1 ? '' : 's'} changed from IntuaCode's own, kept for next time.` : 'IntuaCode\'s own look.';
+  }
+
+  let lookVersion = '';
+  const lookTok = (cls, text) => { const s = document.createElement('span'); if (cls) s.className = cls; s.textContent = text; return s; };
+  function lookRow(n, cls) {
+    const row = document.createElement('div'), num = lookTok('lk-n', n ? String(n) : ''), t = lookTok('lk-t', '');
+    row.className = 'lk-l' + (cls ? ' ' + cls : '');
+    num.setAttribute('aria-hidden', 'true');
+    row.append(num, t);
+    return [row, t];
+  }
+  const sizeLookInput = (i) => { i.style.width = `calc(${Math.max(2, i.value.length)}ch + 3px)`; };
+  const lookShown = (key) => { const s = LOOK.SETTINGS.find(x => x.key === key); return s.kind === 'font' || s.kind === 'mono' ? `"${look[key]}"` : look[key]; };
+  function paintSwatches() {
+    for (const sw of $('lookCode').querySelectorAll('[data-sw]')) sw.style.background = LOOK.toHex(look[sw.dataset.sw]) || 'transparent';
+  }
+  let lookDrawing = false;
+  function renderLook() {
+    const box = $('lookCode');
+    // (taking out a value being typed in fires its change: what's drawn now wins, as after Back to the defaults)
+    lookDrawing = true;
+    try { box.textContent = ''; } finally { lookDrawing = false; }
+    let n = 0;
+    for (const l of LOOK.lines(look, { version: lookVersion })) {
+      const [row, t] = lookRow(++n);
+      if (l.t === 'note') t.append(lookTok('lk-c', '-- ' + l.text));
+      else if (l.t === 'open') { t.append(lookTok('lk-block', l.block), lookTok('lk-p', ' {')); if (l.note) t.append('  ', lookTok('lk-c', '-- ' + l.note)); }
+      else if (l.t === 'close') t.append(lookTok('lk-p', '}'));
+      else if (l.t === 'fixed') {
+        const f = lookTok('lk-fixed', l.value);
+        f.title = 'Fixed. ' + l.why;
+        f.dataset.fixed = l.name;
+        t.append(`  ${l.name} `, lookTok('lk-p', '='), ' ', f);
+      } else if (l.t === 'set') {
+        const quoted = l.kind === 'font' || l.kind === 'mono', i = document.createElement('input');
+        i.className = 'lk-v';
+        i.dataset.look = l.key;
+        i.value = l.value;
+        i.spellcheck = false;
+        i.autocomplete = 'off';
+        i.setAttribute('autocapitalize', 'off');
+        i.setAttribute('aria-label', `${l.block}, ${l.name.toLowerCase()}`);
+        sizeLookInput(i);
+        t.append(`  ${l.name} `, lookTok('lk-p', '='), ' ');
+        if (quoted) t.append(lookTok('lk-p', '"'));
+        t.append(i);
+        if (quoted) t.append(lookTok('lk-p', '"'));
+        if (l.kind === 'colour') { const sw = lookTok('lk-sw', ''); sw.dataset.sw = l.key; sw.setAttribute('aria-hidden', 'true'); t.append(sw); }
+        if (l.note) t.append('  ', lookTok('lk-c', '-- ' + l.note));
+      }
+      box.append(row);
+    }
+    paintSwatches();
+  }
+  // A value's problem goes on a line of its own under it, as a note; the look keeps the value it had.
+  function lookProblem(i, problem) {
+    const key = i.dataset.look, row = i.closest('.lk-l'), next = row.nextElementSibling;
+    let err = next && next.classList.contains('lk-err') ? next : null;
+    i.setAttribute('aria-invalid', String(!!problem));
+    if (!problem) { if (err) err.remove(); i.removeAttribute('aria-describedby'); return; }
+    if (!err) { [err] = lookRow(0, 'lk-err'); err.id = 'lookErr-' + key; row.after(err); }
+    err.querySelector('.lk-t').textContent = `-- ✗ ${problem} Still using ${lookShown(key)}.`;
+    i.setAttribute('aria-describedby', err.id);
+  }
+  let lookWait = null;
+  // now: say a problem at once (Enter, leaving the value); otherwise after a pause, so half a word isn't told off
+  function tryLook(i, now) {
+    if (lookDrawing || !i.isConnected) return false;
+    clearTimeout(lookWait);
+    const key = i.dataset.look, r = LOOK.check(key, i.value, look, lookEnv());
+    if (!r.ok) {
+      if (now) lookProblem(i, r.problem); else lookWait = setTimeout(() => lookProblem(i, r.problem), 700);
+      return false;
+    }
+    lookProblem(i, null);
+    if (look[key] !== r.value) {
+      look[key] = r.value;
+      saveLook();
+      putLook(true);
+      paintSwatches();
+    }
+    return true;
+  }
+  async function openLook() {
+    setFileMenu(false);
+    renderLook();
+    saveLook();
+    $('lookModal').hidden = false;
+    const first = $('lookCode').querySelector('.lk-v');
+    $('lookCode').scrollTop = 0;
+    if (first) first.focus({ preventScroll: true });
+    const v = await appVersion();
+    const f = $('lookCode').querySelector('[data-fixed="Version"]');
+    if (v) { lookVersion = v; if (f) f.textContent = v; }
+  }
+  const closeLook = () => { clearTimeout(lookWait); $('lookModal').hidden = true; };
+  if (LOOK) {
+    $('btnLook').addEventListener('click', openLook);
+    $('lookClose').addEventListener('click', closeLook);
+    $('lookModal').addEventListener('click', (e) => { if (e.target.id === 'lookModal') closeLook(); });
+    $('lookModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeLook(); } });
+    $('lookCode').addEventListener('input', (e) => { const i = e.target.closest('.lk-v'); if (i) { sizeLookInput(i); tryLook(i, false); } });
+    $('lookCode').addEventListener('change', (e) => { const i = e.target.closest('.lk-v'); if (i) tryLook(i, true); });
+    $('lookCode').addEventListener('keydown', (e) => {
+      const i = e.target.closest('.lk-v');
+      if (!i || e.key !== 'Enter') return;
+      e.preventDefault();
+      if (!tryLook(i, true)) return;
+      const all = [...$('lookCode').querySelectorAll('.lk-v')], next = all[all.indexOf(i) + (e.shiftKey ? -1 : 1)];
+      if (next) { next.focus(); next.select(); }
+    });
+    $('lookReset').addEventListener('click', () => {
+      look = Object.assign({}, LOOK.DEFAULTS);
+      putLook(true);
+      renderLook();
+      saveLook();
+      $('lookNote').textContent = 'Back to IntuaCode\'s own look.';
+    });
+  } else $('btnLook').hidden = true;
 
   $('btnBackups').addEventListener('click', openBackups);
   $('bkClose').addEventListener('click', closeBackups);
