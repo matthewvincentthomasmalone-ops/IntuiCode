@@ -3082,7 +3082,10 @@
   const PAGE_STORE_KEY = 'intuicode.pagestorage.v1';
   const previewHelper = () => `(() => {
     if (window.parent === window) return;
-    const send = (m) => parent.postMessage(Object.assign({ intuicode: true, page: location.pathname }, m), '*');
+    // (each page the Preview loads is a page of its own, and says so with every word: the editor tells a rebuilt page
+    // from the one before by it, not by clocks, which two processes don't share exactly)
+    const pageId = Math.random().toString(36).slice(2) + '.' + Date.now().toString(36);
+    const send = (m) => parent.postMessage(Object.assign({ intuicode: true, page: location.pathname, pid: pageId }, m), '*');
     const saved = ${JSON.stringify(store.get(PAGE_STORE_KEY, {})[project.name] || {}).replace(/</g, '\\u003c')};
     const storage = (data, changed) => {
       const has = (k) => Object.prototype.hasOwnProperty.call(data, k);
@@ -4008,6 +4011,7 @@
     // second meanwhile (its load, or its word that it's loaded, can go missing), and only the rebuilt one's answer counts
     const c = editCheck;
     c.since = since;
+    c.pid = d.pid || null;   // (the page the move was made on: its answers aren't the rebuilt page's)
     c.timer = setTimeout(() => {
       if (editCheck !== c) return;
       editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the ${sizing ? 'size' : 'move'} isn't checked yet.`, true);
@@ -4022,7 +4026,9 @@
   function editChecked(d) {
     const c = editCheck;
     if (!c || d.line !== c.line) return;
-    if (d.born && c.since && d.born < c.since - 20) return;   // (the page from before the move, still showing the drag; 20 ms for two processes' clocks)
+    // (the page the move was made on, still showing the drag: only a page rebuilt since counts. By its own id; a page
+    // with none, by when it started, against a time taken before the rebuild, 20 ms for two processes' clocks)
+    if (c.pid ? d.pid === c.pid : (d.born && c.since && d.born < c.since - 20)) return;
     editCheck = null;
     clearTimeout(c.timer); clearInterval(c.poll);
     const sty = project.sections.find(s => s.id === c.sec), at = sty ? editGo(sty, c.at) : 'Styling';
