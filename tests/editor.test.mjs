@@ -186,7 +186,7 @@ function driving(tab) {
     for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dx * i / 8, y + dy * i / 8, true, alt);
     await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
     await mouse('mouseReleased', x + dx, y + dy, false, alt);
-    await until('!/Checking the page|^Drag anything/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move to be checked');
+    await until('!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move to be checked');
     return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
   };
   // Ctrl+Z, as pressed (where the keys are: the code, after a move)
