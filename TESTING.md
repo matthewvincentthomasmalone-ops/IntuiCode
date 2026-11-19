@@ -181,6 +181,9 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Predictive Mode** in Unity: in a green part, start a sentence the file already has: its rest shows dim; → takes it.
 - [ ] The code reaches about three quarters of the way down, with the terminal under it. Fold the terminal away (its
       chevron): the code fills the room. The corner button: full screen, no side panel or terminal; Esc comes back.
+- [ ] **Import** → a folder of many C++ files (FEC 16's `src`): it's in at once, every file as its code; the status line
+      counts them turning into sentences, the open one first, and the window stays free meanwhile. Edit a file still
+      waiting: it says it stays as code. At the end: "✓ Turned … imported files into sentences".
 - [ ] **Import** → a `.cpp` program: it comes in as sentences, one green part per statement. Original Code on the loop:
       its code, inside `main` in Split Mode's code. Original Code on `include <iostream>`: it stays green and says why.
 - [ ] The Arduino sample: Original Code (all), then Split Mode: one `setup()` and one `loop()`. Select all, Translate: the
@@ -266,6 +269,11 @@ Tick each one. If something is off, note what you did and what the terminal said
       hold other things.
 
 **An app's windows, estimated**
+- [ ] A PySide6 app (a QVBoxLayout with a row of a QLineEdit and a QPushButton, a QListWidget, a QLabel `move()`d): the
+      Preview draws it as Qt lays it out. Desktop app, Measure: it runs out of sight, and draws over a picture of it.
+      A wxPython app (sizers): the same. A Qt C++ or ImGui app: Measure copies its header and says the steps.
+- [ ] Editor mode on them: a `move()`d label moves (`move(22, 275)`); its corner makes it `setGeometry(…)`; a wx
+      label's corner adds `size=(…)`; an ImGui item after `SetCursorPos` moves; the window's corner is its size.
 - [ ] Import a Python file with a tkinter window (frames packed, an Entry and a Button in a grid, a Label placed with
       `place(x=12, y=270)`): the Preview opens on its estimate, at the window's `geometry`, the label solid, the rest
       dashed. A widget made but never packed is said under the window.

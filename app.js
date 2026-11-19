@@ -4084,7 +4084,7 @@
     const wins = est.windows.map((w, wi) => {
       const pic = extra.pictures && extra.pictures[wi];
       const r = w.root, bottom = Math.max(w.h, ...GUI.flat(w).map(x => x.node.y + x.node.h)), right = Math.max(w.w, ...GUI.flat(w).map(x => x.node.x + x.node.w));
-      return `<section class="win t-${w.toolkit === 'JUCE' ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? (est.measured ? ' · parts run past the window' : ' · the sketch runs past the window') : ''}</span></header>`
+      return `<section class="win t-${/JUCE|ImGui/.test(w.toolkit) ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? (est.measured ? ' · parts run past the window' : ' · the sketch runs past the window') : ''}</span></header>`
         + `<div class="client${pic ? ' pic' : ''}" data-ic-line="${at.get(r)}" id="${escAttr(r.id)}" title="${escAttr(r.why || '')}" style="width:${right}px;height:${bottom}px${pic ? `;background-image:url(${pic});background-size:${w.w}px ${w.h}px` : ''}">${r.children.map(c => box(c, 0, 0)).join('')}`
         + `${bottom > w.h ? `<div class="edge" style="top:${w.h}px;width:${right}px"></div>` : ''}${right > w.w ? `<div class="edge v" style="left:${w.w}px;height:${bottom}px"></div>` : ''}</div></section>`;
     }).join('');
@@ -4144,36 +4144,44 @@ ${key}</div>${wins}${notes}</body></html>`;
     const g = guiEstimate();
     if (!g || !GUI) return;
     if (!desk.on) return measureSay('Measuring runs the app, which the desktop app does. Here, the Preview shows the estimate read from its code.', true);
-    const tk = g.est.toolkits.includes('tkinter'), opened = guiOpened;
+    // the probe for its toolkit: a Python one IntuaCode runs, or a header the app carries (its report read from the folder)
+    const PY = { tkinter: { file: 'probe_tk.py', text: GUI.TK_PROBE, uses: /\btkinter\b/, lib: 'tkinter', inside: /[\\/]tkinter[\\/]/ },
+      'PySide/PyQt': { file: 'probe_qt.py', text: GUI.QT_PY_PROBE, uses: /\b(?:PySide[26]|PyQt[56])\b/, lib: 'Qt', inside: /[\\/](?:PySide[26]|PyQt[56])[\\/]/ },
+      wxPython: { file: 'probe_wx.py', text: GUI.WX_PROBE, uses: /\bimport\s+wx\b|\bfrom\s+wx\b/, lib: 'wx', inside: /[\\/]wx[\\/]/ } };
+    const kit = g.est.toolkits.map(t => PY[t]).find(Boolean), opened = guiOpened;
     const btn = $('btnMeasure');
     btn.disabled = true;
     try {
-      if (tk) {
-        if (!desk.python) return measureSay('Measuring a tkinter app runs it with Python, and no Python was found on this computer.', true);
-        const py = startSec().lang === 'python' && /\btkinter\b/.test(codeOf(startSec())) ? startSec() : project.sections.find(s => s.lang === 'python' && /\btkinter\b/.test(codeOf(s)));
-        if (!py) return measureSay('No Python file here opens a tkinter window to measure.', true);
+      if (kit) {
+        if (!desk.python) return measureSay(`Measuring a ${kit.lib} app runs it with Python, and no Python was found on this computer.`, true);
+        const py = startSec().lang === 'python' && kit.uses.test(codeOf(startSec())) ? startSec() : project.sections.find(s => s.lang === 'python' && kit.uses.test(codeOf(s)));
+        if (!py) return measureSay(`No Python file here opens a ${kit.lib} window to measure.`, true);
         measureSay(`Running ${escHtml(fileName(py))} for a moment, its window out of sight, to measure it…`);
         const dir = desk.folder || await invoke('scratch_folder');
         for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: codeOf(s) });
-        await invoke('write_text', { path: join(dir, '.intuicode/probe_tk.py'), content: GUI.TK_PROBE });
-        const [code, out, err] = await invoke('run_capture', { program: desk.python[0], args: ['-u', join(dir, '.intuicode/probe_tk.py'), fileName(py)], cwd: dir });
+        await invoke('write_text', { path: join(dir, '.intuicode/' + kit.file), content: kit.text });
+        const [code, out, err] = await invoke('run_capture', { program: desk.python[0], args: ['-u', join(dir, '.intuicode/' + kit.file), fileName(py)], cwd: dir });
         const report = GUI.reportIn(out);
         // (ended by the probe, which says where it was: the innermost line of the program's own code)
         const timedOut = /^Timeout \(/m.test(err || ''), at = timedOut && String(err).split('\n').map(l => /^\s*File "(.+?)", line (\d+)/.exec(l))
-          .find(m => m && !/(^|[\\/])probe_tk\.py$|^<frozen |[\\/]tkinter[\\/]/.test(m[1]));
+          .find(m => m && !/(^|[\\/])probe_\w+\.py$|^<frozen /.test(m[1]) && !kit.inside.test(m[1]));
         if (!report) return measureSay(timedOut ? `The app didn't open its window within 25 seconds, so it was ended${at ? `; it was at ${escHtml(at[1].split(/[\\/]/).pop())} line ${at[2]}` : ''}.`
           : `The app didn't say where its parts are${err ? `: ${escHtml(String(err).trim().split('\n').pop())}` : '.'}`, true);
         if (!report.windows.length) return measureSay(escHtml(report.note || 'The app ran without opening a window.'), true);
-        return measured(report, g, null, opened);
+        // (a probe that can, Qt's, sends each window's picture with it)
+        return measured(report, g, report.windows.map(w => (w && typeof w.pictureData === 'string' && w.pictureData ? 'data:image/png;base64,' + w.pictureData : null)), opened);
       }
-      // JUCE (and any app with its own probe): its report in the project's folder
+      // a C++ app with its own probe (JUCE, Qt, Dear ImGui): its report in the project's folder
+      const HEADER = { Qt: { file: 'IntuaCodeQtProbe.h', text: GUI.QT_PROBE, how: 'add it to the app, call <code>intuacode::probeQtLayoutSoon();</code> after its window is shown' },
+        'Dear ImGui': { file: 'IntuaCodeImGuiProbe.h', text: GUI.IMGUI_PROBE, how: 'define <code>IMGUI_ENABLE_TEST_ENGINE</code> in imconfig.h, include it in one .cpp with <code>INTUACODE_IMGUI_PROBE_IMPLEMENTATION</code> defined, call <code>intuacode::imguiProbeFrame();</code> after each <code>ImGui::Render()</code>' } };
+      const head = g.est.toolkits.map(t => HEADER[t]).find(Boolean) || { file: 'IntuaCodeProbe.h', text: GUI.JUCE_PROBE, how: 'add it to the app, call <code>intuacode::probeLayoutSoon();</code> after its window is shown' };
       let text = null;
       if (desk.folder) { try { text = await invoke('read_text', { path: join(desk.folder, 'intuacode-layout.json') }); } catch (_) { text = null; } }
       let report = null;
       try { report = text ? JSON.parse(text) : null; } catch (_) { report = null; }
       if (!report || report.intuacode !== 'layout') {
-        await copyText(GUI.JUCE_PROBE, btn, 'Measure');
-        return measureSay(`No measurement yet${desk.folder ? '' : ' (save the project to a folder first: the app writes it there)'}. <b>IntuaCodeProbe.h</b> is copied: add it to the app, call <code>intuacode::probeLayoutSoon();</code> after its window is shown, run it with <code>INTUACODE_LAYOUT=${escHtml(desk.folder ? join(desk.folder, 'intuacode-layout.json') : '…/intuacode-layout.json')}</code>, then press Measure again.`);
+        await copyText(head.text, btn, 'Measure');
+        return measureSay(`No measurement yet${desk.folder ? '' : ' (save the project to a folder first: the app writes it there)'}. <b>${head.file}</b> is copied: ${head.how}, run it with <code>INTUACODE_LAYOUT=${escHtml(desk.folder ? join(desk.folder, 'intuacode-layout.json') : '…/intuacode-layout.json')}</code>, then press Measure again.`);
       }
       // each window's picture, beside the report
       const pictures = [];
@@ -7243,33 +7251,103 @@ ${key}</div>${wins}${notes}</body></html>`;
   }
   /* One imported file as a project file: { section, note }. exact: every file as its exact lines, HTML too (a
    * Vite app's, whose dev server fills in its page). */
-  async function importSection(f, path, lang, exact) {
+  // (what's turned into sentences as it comes in, the reader checking each: the rest comes in as its code, line for line)
+  const readsIn = (lang, exact) => !!UNITY && UNITY.LANGS.includes(lang) && !exact && !/^(?:python|css|js|ts|tsx)$/.test(lang);
+  async function importSection(f, path, lang, exact, later) {
     const code = f.source.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
     const id = newId();
     if (!UNITY || !UNITY.LANGS.includes(lang)) return { section: { id, path, lang, text: code + '\n' } };
-    if (exact || lang === 'python' || lang === 'css' || lang === 'js' || lang === 'ts' || lang === 'tsx') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    if (!readsIn(lang, exact)) return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    // a big import: its code now, line for line, and its sentences later (in the background)
+    if (later) { const text = UNITY.toFile(lang, code.split('\n'), []) + '\n'; return { section: { id, path, lang, text }, later: { id, kind: lang, source: code + '\n', text } }; }
     let r;
     try { r = await uConvert(lang, code + '\n'); } catch (e) { r = { ok: false, reason: e.message }; }
     if (r.ok) return { section: { id, path, lang, text: r.text.replace(/\n+$/, '') + '\n' }, note: r.exact === false ? `${path} may not come back exactly: ${r.reason || 'check it'}.` : '' };
     // can't be said in sentences (a header file, say): kept exactly as it is, as code IntuaCode reads to you
     return { section: { id, path, lang: lang === 'html' ? 'text' : 'c', text: code + '\n' }, note: `${path} couldn't be read into sentences (${r.reason}), so it's kept exactly as it is.` };
   }
+  /* A big import (more than two files to read into sentences, or more than 40 KB of them) comes in as its code at once,
+     and each of those files is turned into sentences in the background (sentencesLater). */
+  const LATER_FILES = 2, LATER_BYTES = 40000;
   async function importSections(files, taken, exact = false) {
-    const out = [], notes = [];
+    const out = [], notes = [], later = [];
+    const toRead = files.filter(f => readsIn(importLang(f), exact));
+    const big = toRead.length > LATER_FILES || toRead.reduce((n, f) => n + String(f.source || '').length, 0) > LATER_BYTES;
     let left = 0, secrets = 0;
     for (const f of files) {
       if (/(^|\/)\.env(\.|$)/.test(f.name)) { secrets++; continue; }   // never bring secrets into a project
       if (taken.size >= IMPORT_MAX) { left++; continue; }
       const lang = importLang(f), path = importPath(shortPath(f.name), lang, taken);
       if (!path) { left++; continue; }
-      const got = await importSection(f, path, lang, exact);
+      const got = await importSection(f, path, lang, exact, big);
       taken.add(path.toLowerCase());
       out.push(got.section);
+      if (got.later) later.push(got.later);
       if (got.note) notes.push(got.note);
     }
     if (secrets) notes.push(`Left out ${secrets} secrets file${secrets > 1 ? 's' : ''} (.env): passwords and keys stay out of projects.`);
     if (left) notes.push(`${left} file${left > 1 ? 's' : ''} didn't fit (a project holds ${IMPORT_MAX} files, with names IntuaCode can write).`);
-    return { sections: out, notes };
+    return { sections: out, notes, later };
+  }
+
+  /* Sentences, later: each file a big import brought in as its code is turned into sentences in a worker
+     (lang/convert_worker.js: the same reader and check, away from the page, so the window isn't held up), the open
+     file first (opened while waiting, it's next). A file changed while it waited stays as code. Without a worker, the
+     page does it, a file at a time. */
+  const later = { queue: [], running: false, done: 0, total: 0, project: null, worker: null, waits: new Map(), seq: 0 };
+  function sentencesLater(items) {
+    if (!items.length) return;
+    if (later.project !== project) { later.queue = []; later.done = later.total = 0; }
+    later.project = project;
+    later.queue.push(...items); later.total += items.length;
+    tLine(`${items.length} file${items.length > 1 ? 's are' : ' is'} here as code, and turning into sentences in the background, the open one first: you can work meanwhile.`, 't-sys');
+    if (!later.running) runLater();
+  }
+  function laterWorker() {
+    if (later.worker === false || typeof Worker === 'undefined') return null;
+    if (!later.worker) {
+      try {
+        later.worker = new Worker(new URL('lang/convert_worker.js', document.baseURI).href);
+        later.worker.onmessage = (e) => { const w = later.waits.get(e.data && e.data.id); if (w) { later.waits.delete(e.data.id); w(e.data); } };
+        later.worker.onerror = (e) => { e.preventDefault(); for (const w of later.waits.values()) w({ ok: false, fatal: true, reason: e.message }); later.waits.clear(); later.worker = false; };
+      } catch (_) { later.worker = false; return null; }
+    }
+    return later.worker;
+  }
+  async function sentencesAway(kind, source) {
+    const w = laterWorker();
+    if (w) {
+      const res = await new Promise((done) => { const id = ++later.seq; later.waits.set(id, done); w.postMessage({ id, kind, source, base: new URL('.', document.baseURI).href }); });
+      if (res.ok) return res.r;
+      if (!res.fatal) return { ok: false, reason: res.reason };
+      try { later.worker.terminate(); } catch (_) { /* gone */ }
+      later.worker = false;   // (it couldn't start: the page does the rest, and says so)
+      tLine(`The background reader couldn't start (${res.reason}), so the files are turned into sentences here, one at a time: the window may pause between them.`, 't-sys');
+    }
+    await new Promise(r => setTimeout(r, 30));   // (a moment for the window between files)
+    try { return await uConvert(kind, source); } catch (e) { return { ok: false, reason: e.message }; }
+  }
+  async function runLater() {
+    later.running = true;
+    const st = $('pyStatus'), was = [st.textContent, st.className.replace(/^py-status\s*/, '')];   // (put back after)
+    while (later.queue.length && later.project === project) {
+      const k = later.queue.findIndex(q => q.id === project.active), item = later.queue.splice(k >= 0 ? k : 0, 1)[0];
+      setStatus(`Turning files into sentences: ${later.done + 1} of ${later.total}…`);
+      const r = await sentencesAway(item.kind, item.source);
+      later.done++;
+      if (later.project !== project) break;   // (another project opened meanwhile)
+      const sec = project.sections.find(x => x.id === item.id);
+      if (!sec) continue;
+      if (sec.text !== item.text) { tLine(`${sec.path} was changed while it waited, so it stays as code: Translate turns it into sentences.`, 't-sys'); continue; }
+      if (!r || !r.ok) { tLine(`${sec.path} couldn't be read into sentences (${(r && r.reason) || 'the reader stopped'}), so it's kept exactly as it is.`, 't-sys'); continue; }
+      sec.text = r.text.replace(/\n+$/, '') + '\n';
+      if (r.exact === false) tLine(`Note: ${sec.path} may not come back exactly: ${r.reason || 'check it'}.`, 't-sys');
+      if (sec.id === project.active) { ta.value = sec.text; if (mode === 'unity') unityShow(); }
+      refreshAll(); save();
+    }
+    if (later.project === project && later.total) tLine(`✓ Turned ${later.done} imported file${later.done === 1 ? '' : 's'} into sentences.`, 't-ok');
+    if (/^Turning files into sentences/.test($('pyStatus').textContent)) setStatus(was[0], was[1]);
+    later.running = false; later.queue = []; later.done = later.total = 0;
   }
   function countLangs(sections) {
     const counts = {};
@@ -7284,7 +7362,7 @@ ${key}</div>${wins}${notes}</body></html>`;
     const tops = new Set(files.map(f => (f.name.includes('/') ? f.name.split('/')[0] : '')));
     importTop = tops.size === 1 && !tops.has('') ? [...tops][0] : '';
     tLine(`Importing ${files.length} file${files.length > 1 ? 's' : ''}…`, 't-sys');
-    const { sections, notes } = await importSections(files, new Set());
+    const { sections, notes, later: toRead } = await importSections(files, new Set());
     if (!sections.length) { tLine('No code files were found there.', 't-err'); return; }
     const name = slug(importTop || baseName(files[0].name).replace(/\.\w+$/, '')) || 'imported';
     const pick = (re) => sections.find(s => re.test(s.path));
@@ -7292,18 +7370,20 @@ ${key}</div>${wins}${notes}</body></html>`;
       || pick(/^(src\/)?(main|index|app)\.\w+$/i) || sections.find(isSentences) || sections[0];
     replaceProject({ version: 2, lang: 'python', name, sections, active: first.id, start: first.id }, `Imported ${name}: ${countLangs(sections)}.${note ? ' ' + note : ''}`);
     for (const n of notes) tLine('Note: ' + n, 't-sys');
+    sentencesLater(toRead);
   }
   /* Single files: added to the open project, the first one opened. */
   async function addFiles(files) {
     closeImport();
     importTop = '';
-    const { sections, notes } = await importSections(files, new Set(project.sections.map(s => s.path.toLowerCase())));
+    const { sections, notes, later: toRead } = await importSections(files, new Set(project.sections.map(s => s.path.toLowerCase())));
     if (!sections.length) { tLine(notes[0] || 'Nothing was added.', 't-err'); return; }
     const copy = JSON.parse(JSON.stringify(project));
     copy.sections.push(...sections);
     const err = changeProject(copy, sections[0].id, `Added ${sections.map(s => s.path).join(', ')} to the project.`);
     if (err) { tLine(err, 't-err'); return; }
     for (const n of notes) tLine('Note: ' + n, 't-sys');
+    sentencesLater(toRead);
   }
 
   /* ------------------------------------------------------------------ */

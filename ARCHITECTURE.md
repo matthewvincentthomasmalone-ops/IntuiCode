@@ -29,6 +29,7 @@ the desktop app.
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
 | `lang/changelog.js` | The change log: what changed between two versions of the code (each file's lines, counts and the named parts they fall in), a sentence for an entry, and a log read back from a project file checked for its shape |
+| `lang/gui_kits.js` | The GUI estimate's other toolkits, after `lang/gui.js` (which looks them up): Qt in Python and C++ (widgets, parents, box/grid/form layouts with Qt's margins, spacing and growth, setGeometry/move/resize), wxPython (frames, panels, sizers by proportion/EXPAND/border, pos=/size=), Dear ImGui (Begin/End windows, items in its flow, SameLine, SetCursorPos, SetNextWindowPos/Size); each part's lines; moves and corners as new numbers; the Qt and wx probes (Python) and the Qt and ImGui headers |
 | `lang/gui.js` | The GUI estimate: an app's windows read from its code (tkinter: widgets, pack, grid and place followed with Tk's default sizes; JUCE: Component classes across .h and .cpp, what each adds, setSize, setBounds, resized()'s rectangle steps, constexpr numbers), each part marked exact, rules or sketch with the lines that make, place and wire it, and a drag as the line that places it with new numbers; the layout report (version 1) a probe makes of the running app, the two probes (tkinter, run by IntuaCode; JUCE, a header the app carries), and a report drawn as windows the same shape, each part matched to the code's |
 | `lang/arrange.js` | Editor mode: a drag in the Preview as offsets (from where the page says the element is), written as a style sentence in Styling (in the element's own, or one straight after its look), and a name for an element that has none, said each way it could go in its sentence |
 | `lang/look.js` | Customise: IntuaCode's look laid out as very simple code (blocks of `Name = value` lines), the settings that can change, each value checked in plain words against the dark look it goes on, and the CSS variables and classes it sets |
@@ -185,7 +186,16 @@ Run, Problems, Parts and the Library work on imported code as on any other. Pyth
 exact lines (Unity shows them as code, ready to translate); HTML, C++ and Arduino are converted to sentences,
 because their writers wrap the file (a page's head, `main`, `setup` and `loop`); other languages, notes and data
 come in as they are, and the code reader (`lang/code_read.js`) explains them in the help. Paths are made safe
-(`pathProblem`), at most 200 files come in, and `.env` files never do. Both modes share the help under the pane,
+(`pathProblem`), at most 200 files come in, and `.env` files never do.
+
+A big import (more than two files to read into sentences, or more than 40 KB of them: FEC 16's 1.2 MB of C++ took a
+quarter of an hour, each file read and checked as it came in) comes in at once as exact lines (`UNITY.toFile`, which
+compiles to the very same code), and `sentencesLater` reads each into sentences in a Web Worker
+(`lang/convert_worker.js`: the same writers, tree-sitter grammars and `lang/convert.js`, the check included), the open
+file first, one at a time. A result goes in only if the file is still as it came in (changed meanwhile, it stays code,
+and says so); a file that can't be read stays exact lines, as before. If the worker can't start, the page reads them
+itself, a file at a time, and says the window may pause. (The worker gives the lang files a `window` while they load,
+and takes it away before tree-sitter's loader runs, which would take it for a page.) Both modes share the help under the pane,
 the side (the tree, Parts, Problems), Predictive Mode and the Preview.
 
 ## Decision: parts, and the two sides of a project
@@ -467,6 +477,33 @@ the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, n
 The same moves could be written for other GUIs (a Tkinter `place`, a JUCE `setBounds`) where positions are plain numbers in
 the code; that isn't built. A layout that works positions out (`pack`, `grid`, a flex box) would have to say it can't take
 a free position, never guess one.
+
+## Decision: more toolkits are read the same way, each with its probe
+
+*Decided 2026-11-19.*
+
+Qt (PySide, PyQt, C++ Widgets), wxPython and Dear ImGui are read by `lang/gui_kits.js` into the same windows of parts as
+tkinter and JUCE (exact, rules or sketch; made, placed, wired), so the Preview, Editor mode, Project Link and Measure work
+on them unchanged; `lang/gui.js` asks each kit for its windows and hands a move or a corner to the kit whose place it is.
+
+- **Each toolkit's own rules, from a measurement.** Qt's layouts: margins 11 round a window's (0 for a layout inside
+  another), 6 between, the extra room to what grows (stretch, then Expanding: a line edit across, a list down; then
+  Preferred; with none, each its share, centred), and its sizes as PySide6 measured them in Windows 11's style (a button
+  at least 81 by 26, a line edit 26 tall, a widget in no layout 100 by 30). wx's sizers: proportion, EXPAND, borders on
+  the sides their flags say; a frame's one panel fills it, inside its title bar and borders (its `size=` counts them).
+  ImGui: its default style's metrics (a 7-wide font, 8 round a window, 8 by 4 between items, a 19-tall frame), each
+  item below the one before, `SameLine` beside. Tests check the PySide and wx estimates against those measurements.
+- **Only numbers written as numbers move.** Qt `setGeometry`/`move`/`resize`/`setFixedSize`, wx `pos=`/`size=`
+  (`SetPosition`, `SetSize`), ImGui `SetCursorPos`, `SetNextWindowSize`, a button's `ImVec2`. A corner on a part that
+  has a place but no size makes one in the same line (Qt: `move` → `setGeometry`; wx: `size=` added). What a layout, a
+  sizer or ImGui's flow places says so.
+- **Probes.** PySide/PyQt and wxPython apps are run by IntuaCode with a probe (`probe_qt.py`, `probe_wx.py`), as tkinter
+  apps are: the program's `QApplication` or `wx.App` is a subclass that, when its loop starts, puts the windows out of
+  sight and reports a moment later (Qt's with each window's picture, `grab()`; with no screen, Qt's offscreen platform).
+  Qt's own insides (a scroll area's viewport, its scroll bars' holders) aren't parts. Qt Widgets and ImGui apps carry a
+  header, as JUCE ones do: Qt's walks the top-level widgets; ImGui's sees each item through ImGui's test engine hooks
+  (`IMGUI_ENABLE_TEST_ENGINE`, `TestEngineHookItems` on), so only items with an id (not plain Text) are measured. The C++
+  headers can't be built here; their calls were checked against Qt's and ImGui's own headers.
 
 ## Decision: an app's windows are estimated from its code, and the estimate says how sure it is
 
