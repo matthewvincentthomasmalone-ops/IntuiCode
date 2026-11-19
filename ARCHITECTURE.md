@@ -399,10 +399,13 @@ the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, n
   (`position: relative, left: 40px, top: 16px`). The project is compiled with it first: no problems, and the sentence
   makes the rule `#name`. A sentence inside "on screens narrower than …" isn't the one changed: a move is for every screen.
 - **Typed, so Undo takes it back.** Styling is opened (if it isn't already) and the sentence is typed into the editor on
-  screen (`execCommand('insertText')`, as a fix is used): its line replaced, or a new line after the one before it. So the
-  editor's own Undo (Ctrl+Z) takes back each move, last first, in Unity and Split Mode. In Unity a new line typed after a
-  green part joins it; one after code is made a green part of its own (Undo takes the line, and the part goes with it). A
-  name given in Structure stays: it changes nothing on the page. When opening Styling would change which page the Preview
+  screen (`execCommand('insertText')`, as a fix is used): its line replaced, or a new line after the one before it. In
+  Unity a new line typed after a green part joins it; one after code is made a green part of its own. Ctrl+Z straight
+  after a move puts the file back as it was before it, move by move, last first, in Unity and Split Mode: IntuaCode's own
+  (`movesBack`), because an engine's Undo can't be relied on for it. WebKit (Linux, macOS) keeps one Undo for the whole
+  page, frames and all, and with the Preview rebuilt after a move it had nothing to take back (the desktop tests on Linux
+  showed it; Chromium's Undo, per frame, did). Anything typed since a move, and Ctrl+Z is the editor's own again. A name
+  given in Structure stays: it changes nothing on the page. When opening Styling would change which page the Preview
   shows (another page of a site is open), the move is written into the file as it is, without Undo.
 - **A name only when the page stays the same.** Something with no name gets one in its sentence (from its text, or what it
   is: `footer`, `frame`), never one Styling or Mechanics already says. Each way of saying it (`called …` after the words

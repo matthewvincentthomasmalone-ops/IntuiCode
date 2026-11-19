@@ -3757,6 +3757,27 @@
     if (mode === 'unity') uSync();
   }
   $('btnEditor').addEventListener('click', () => setEditor(!editing));
+
+  /* Ctrl+Z straight after a move puts the file back, move by move. The move is typed (as a fix is), but an engine's own
+     Undo can't be relied on for it: WebKit (Linux, macOS) keeps one Undo for the whole page, frames and all, and the
+     Preview rebuilt after a move left it with nothing to take back. Anything typed since, and it's the editor's Undo. */
+  let movesBack = [];   // [{ sec, before, after }]: the file before and after each move, the last one last
+  function moveMade(sec, before) {
+    movesBack.push({ sec: sec.id, before, after: sec.text });
+    if (movesBack.length > 50) movesBack.shift();
+  }
+  function moveBack(e) {
+    if (!movesBack.length || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || String(e.key).toLowerCase() !== 'z') return;
+    const m = movesBack[movesBack.length - 1], sec = activeSec();
+    if (m.sec !== sec.id) return;
+    syncText();
+    if (sec.text !== m.after) { movesBack = []; return; }   // (typed since: the editor's own Undo)
+    e.preventDefault(); e.stopPropagation();
+    movesBack.pop();
+    logAs('you', `Took back a move made in the Preview (Editor mode), in ${fileName(sec)}.`, () => setSecText(sec, m.before));
+  }
+  ta.addEventListener('keydown', moveBack, true);
+  $('uTa').addEventListener('keydown', moveBack, true);
   // each page the Preview loads is told it's in Editor mode, and a move waiting to be checked asks the rebuilt page
   // (the frame's load, and the page's own word that it's loaded: either one will do, and a second asks again harmlessly)
   function editPageLoaded() {
@@ -3859,7 +3880,7 @@
     const dirs = ARR.moved(d.dx, d.dy);
     // typed into Styling, as a fix is, so the editor's own Undo (Ctrl+Z) takes the move back; unless opening Styling
     // would change which page the Preview shows (another page of the site is open), when it's written in place
-    const typed = !pg.html || pg.html === (compiled.page && compiled.page.structure);
+    const typed = !pg.html || pg.html === (compiled.page && compiled.page.structure), was = sty.text;
     logAs('you', `Moved ${name} ${dirs} in the Preview (Editor mode)${structure != null ? `, naming it in ${fileName(page)}` : ''}.`, () => {
       if (structure != null) {
         page.text = structure;
@@ -3872,6 +3893,7 @@
     editCheck = { line: d.line, x: d.x + d.dx, y: d.y + d.dy, name, sec: sty.id, at: w.line, dirs, typed };
     typingLine = -1;
     refreshAll(); save(); autosave();
+    if (typed) moveMade(sty, was);
     editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
     clearTimeout(previewTimer);
     runWebsite(false);
