@@ -217,9 +217,9 @@
     setMode(mode === 'unity' ? 'unity' : 'write');
     openSection(project.active);
     $('work').classList.toggle('web', webOn());
-    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
+    showBottom(project.kind === 'website' || guiOn() ? 'preview' : 'terminal');   // (an app with windows: their estimate)
     updateChip();
-    if (webOn()) runWebsite(false);
+    if (webOn()) runWebsite(false); else if (guiOn()) runGui(false);
     if (desk.on) showFolder();
     loadImages();
     if (message) tLine(message + ' (Your previous project is kept: type "restore" in the terminal to swap back.)', 't-sys');
@@ -1367,8 +1367,9 @@
     refreshAll();
     updateChip();
     $('work').classList.toggle('web', webOn());
-    $('tabPreview').hidden = !webOn();
-    if (!webOn()) showBottom('terminal');
+    const shows = webOn() || guiOn();
+    $('tabPreview').hidden = !shows;
+    if (!shows) showBottom('terminal');
     save(); autosave();
     if (mode === 'unity') unityShow(); else splitPlain();
     if (message) tLine(message, 't-sys');
@@ -3009,6 +3010,7 @@
     // only problems in the files that run stop a run (a half-written note or page doesn't stop the Python)
     const blocking = (langs) => { typingLine = -1; activeSec().text = ta.value; refreshAll(); closeAc(); renderProblems(); return project.sections.filter(s => langs.includes(s.lang)).reduce((n, s) => n + issues(s, 'errs'), 0); };
     if (WEB_ROLE[st.lang]) return runWebsite(true);
+    showBottom('terminal');   // (a program runs in the terminal, even when the Preview shows its window's estimate)
     if (!isSentences(st)) {
       tLine(`This project starts at ${st.path} (${langName(st.lang)}), which IntuaCode doesn't run. To run another file, open its ⋯ menu in the Project list and choose "Start here".` + (writeOf(st) === 'code' && desk.on ? ' Its own tools can run it from the terminal, after $.' : ''), 't-sys');
       return;
@@ -3476,17 +3478,17 @@
     chip.textContent = mode === 'unity' ? langName(activeSec().lang) : engines.length ? engines.join(' + ') : 'Files';
   }
   function showBottom(which) {
-    const web = webOn();
-    $('tabPreview').hidden = !web;
-    const showPreview = web && which === 'preview';
+    const web = webOn(), gui = !web && guiOn(), shows = web || gui;   // (an app's windows: their estimate)
+    $('tabPreview').hidden = !shows;
+    const showPreview = shows && which === 'preview';
     $('previewWrap').hidden = !showPreview;
     $('termBody').hidden = showPreview;
     $('tabPreview').setAttribute('aria-selected', String(showPreview));
     $('tabTerm').setAttribute('aria-selected', String(!showPreview));
-    $('btnPick').hidden = !showPreview;
+    $('btnPick').hidden = !showPreview || gui;
     $('btnLink').hidden = !showPreview;
-    $('btnEditor').hidden = !web;
-    if (!web && editing) setEditor(false);
+    $('btnEditor').hidden = !shows;
+    if (!shows && editing) setEditor(false);
     $('btnClear').hidden = showPreview;
     if (!showPreview) clearLink();
   }
@@ -3500,6 +3502,7 @@
       return;
     }
     if (!compiled) compile();
+    guiShown = null;
     const pg = previewPage(), res = (s) => (s ? secResult(s.id) : null);
     // one page: every style sheet it links is inlined; its main script too, unless that's a module (its imports
     // can't load in one page, so it isn't run there)
@@ -3688,6 +3691,9 @@
         return;
       } catch (_) { /* no preview address: use srcdoc */ }
     }
+    // (the frame laid out first: a Preview shown a moment ago is known to be shown before its page loads, so the page
+    // isn't laid out as in a hidden frame)
+    void frame.offsetWidth;
     if (seq === previewSeq) frame.srcdoc = html;
   }
   $('pvAddr').addEventListener('click', async (e) => {
@@ -3698,9 +3704,10 @@
   /* The live preview follows the sentences, but not a line still being typed that doesn't work yet
    * (half a condition, a ‹blank› not filled in): it waits until the line works, or the cursor leaves it. */
   function schedulePreview() {
-    if (!webOn() || $('previewWrap').hidden) return;
+    if ((!webOn() && !guiShown) || $('previewWrap').hidden) return;
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
+      if (!webOn()) return runGui(false);   // (an app's estimate, read again)
       const r = secResult(project.active), inf = r && typingLine >= 0 && r.info[typingLine];
       if (inf && (inf.errs.length || (activeSec().file === 'mechanics' && !parses(r.text)))) return;
       runWebsite(false);
@@ -3718,7 +3725,7 @@
     if (w) w.postMessage({ intuicodePick: on }, '*');
   }
   $('tabTerm').addEventListener('click', () => { setDock('term', true); showBottom('terminal'); });
-  $('tabPreview').addEventListener('click', () => { setDock('term', true); showBottom('preview'); runWebsite(false); });
+  $('tabPreview').addEventListener('click', () => { setDock('term', true); showBottom('preview'); runPreview(false); });
   $('btnPick').addEventListener('click', () => setPicking(!picking));
 
   /* ------------------------------------------------------------------ */
@@ -3735,7 +3742,7 @@
   const EDIT_HINT = 'Drag anything on the page to move it roughly into place. <kbd>Alt</kbd> moves the box it\'s in. The code behind what you point at lights up pink; each move is written in Styling, where you fine-tune it.';
   let editCheck = null, editTermWas = null;   // the move waiting for the rebuilt page to say where it is; the terminal, folded or not, before
   function setEditor(on) {
-    on = !!on && webOn() && !!ARR;
+    on = !!on && (webOn() || guiOn()) && !!ARR;
     if (on === editing) return;
     editing = on;
     if (on) {
@@ -3744,7 +3751,7 @@
       setPicking(false);
       editTermWas = layout.term;
       setDock('term', true);
-      if ($('previewWrap').hidden) { showBottom('preview'); runWebsite(false); }
+      if ($('previewWrap').hidden) { showBottom('preview'); runPreview(false); }
     } else {
       if (editCheck) { clearTimeout(editCheck.timer); clearInterval(editCheck.poll); }
       editCheck = null;
@@ -3758,7 +3765,8 @@
     b.title = on ? 'Leave Editor mode: the side, the help and the explanation come back' : EDIT_TITLE;
     const w = $('preview').contentWindow;
     if (w) w.postMessage({ intuicodeEdit: on }, '*');
-    editSay(on ? EDIT_HINT : '');
+    // (an app's estimate: its parts move in the code, where their numbers are)
+    editSay(on ? (webOn() ? EDIT_HINT : 'Drag a part of the window to move it. <kbd>Alt</kbd> moves the group it\'s in, and the code behind what you point at lights up pink. A part whose numbers are in the code (solid outline) moves there, ready to fine-tune; the rest say how they\'re placed.') : '');
     measure(); syncScroll(); placeTip();
     if (mode === 'unity') uSync();
   }
@@ -3832,8 +3840,8 @@
      one after code is made a green part of its own (Undo takes the line, and the part with it). */
   function typeMove(sty, w) {
     const before = sty.text.split('\n'), after = w.text.split('\n'), line = after[w.line], fresh = after.length > before.length;
-    if (mode === 'unity' && unity.lang && unity.id === sty.id) {
-      const lines = uLines();
+    if (mode === 'unity' && unity.id === sty.id) {
+      const lines = uLines(), ex = unity.lang && UNITY.EXACT[unity.lang] ? line.match(UNITY.EXACT[unity.lang]) : null, shown = ex ? ex[1] + ex[2] : line;
       if (lines.length !== before.length) { uSetText(w.text); return; }   // (not line for line: written as it is)
       const at = fresh ? Math.max(w.line - 1, 0) : w.line, start = uPosOf(at), end = start + lines[at].length;
       uCaret = uRegionAt(at);
@@ -3842,8 +3850,8 @@
       if (!fresh) uTa.setSelectionRange(start, end);
       else if (w.line === 0) uTa.setSelectionRange(0, 0);
       else uTa.setSelectionRange(end, end);
-      document.execCommand('insertText', false, !fresh ? line : w.line === 0 ? line + '\n' : '\n' + line);
-      if (lone) { unity.regions.push({ from: w.line, to: w.line, original: null, words: [line], base: '' }); uCommit(); renderUnity(); }
+      document.execCommand('insertText', false, !fresh ? shown : w.line === 0 ? shown + '\n' : '\n' + shown);
+      if (lone && !ex && unity.lang) { unity.regions.push({ from: w.line, to: w.line, original: null, words: [line], base: '' }); uCommit(); renderUnity(); }
       uTools();
       return;
     }
@@ -3930,6 +3938,153 @@
     editSay(`The page puts <code>${escHtml(c.name)}</code> at ${d.x}, ${d.y}, not where it was dropped (${c.x}, ${c.y}): another style wins over the one written in ${at}. With Project Link on, pointing at it lights up the rules that style it.`, true);
   }
 
+
+  /* ------------------------------------------------------------------ */
+  /* The GUI estimate: an app's windows (tkinter, JUCE) drawn in the     */
+  /* Preview from its code (lang/gui.js), each part marked exact, laid   */
+  /* out by rules, or a sketch. Editor mode works on it as on a page: a  */
+  /* drag of a part whose numbers are in the code is typed into the code */
+  /* (Undo takes it back), and the estimate is read again to check it.   */
+  /* ------------------------------------------------------------------ */
+
+  const GUI = window.IntuiGui;
+  const GUI_FILE = /\.(?:pyw?|cpp|cc|cxx|h|hpp|hh)$/i;
+  let guiCache = { key: null, est: null, files: null }, guiShown = null;   // guiShown: what the Preview shows, { est, files, list: [{ node, parent, win }] }
+  /* The estimate of the project's windows, read from its code as it's written to disk (again only when that changes);
+     null for a website (it shows itself) or code with no windows IntuaCode can read. */
+  function guiEstimate() {
+    if (!GUI || webOn()) return null;
+    const files = project.sections.filter(s => GUI_FILE.test(s.path || '')).map(s => ({ path: s.path, code: isSentences(s) ? codeOf(s) : s.text }));
+    if (!files.length) return null;
+    const key = files.map(f => f.path + '\u0001' + f.code).join('\u0002');
+    if (guiCache.key !== key) { try { guiCache = { key, est: GUI.estimate(files), files }; } catch (e) { console.error(e); guiCache = { key, est: { windows: [], notes: [] }, files }; } }
+    return guiCache.est.windows.length ? guiCache : null;
+  }
+  const guiOn = () => !!guiEstimate();
+  const guiList = (est) => { const list = []; for (const w of est.windows) for (const { node, parent } of GUI.flat(w)) list.push({ node, parent, win: w }); return list; };
+  const escAttr = (s) => escHtml(s).replace(/'/g, '&#39;');
+
+  /* The page the Preview shows: each window with its parts as boxes, nested as the code nests them (so Alt moves the
+     group a part is in), with IntuaCode's helper (pointing, dragging, Project Link). */
+  function guiPage(est, list) {
+    const at = new Map(list.map((it, i) => [it.node, i]));
+    const HOW = { exact: 'exact: the code says these numbers', rules: 'laid out by rules: the arrangement is right, the sizes are estimated', sketch: 'a sketch: the program works this out when it runs', window: '' };
+    const box = (n, px, py) => {
+      const round = n.kind === 'slider' && Math.abs(n.w - n.h) < 6 ? ' round' : '';
+      const tip = [n.type && n.name ? `${n.type} ${n.name}` : n.type || n.name, HOW[n.how], n.why].filter(Boolean).join(' · ');
+      return `<div class="n k-${n.kind} h-${n.how}${n.many ? ' many' : ''}${round}" data-ic-line="${at.get(n)}" id="${escAttr(n.id)}" title="${escAttr(tip)}" style="left:${n.x - px}px;top:${n.y - py}px;width:${Math.max(n.w, 2)}px;height:${Math.max(n.h, 2)}px">`
+        + `<span class="t">${escHtml(n.label || n.name || n.kind)}${n.many ? ` <b>×${typeof n.many === 'number' ? n.many : 'n'}</b>` : ''}</span>${n.children.map(c => box(c, n.x, n.y)).join('')}</div>`;
+    };
+    const wins = est.windows.map(w => {
+      const r = w.root, bottom = Math.max(w.h, ...GUI.flat(w).map(x => x.node.y + x.node.h)), right = Math.max(w.w, ...GUI.flat(w).map(x => x.node.x + x.node.w));
+      return `<section class="win t-${w.toolkit === 'JUCE' ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? ' · the sketch runs past the window' : ''}</span></header>`
+        + `<div class="client" data-ic-line="${at.get(r)}" id="${escAttr(r.id)}" title="${escAttr(r.why || '')}" style="width:${right}px;height:${bottom}px">${r.children.map(c => box(c, 0, 0)).join('')}`
+        + `${bottom > w.h ? `<div class="edge" style="top:${w.h}px;width:${right}px"></div>` : ''}${right > w.w ? `<div class="edge v" style="left:${w.w}px;height:${bottom}px"></div>` : ''}</div></section>`;
+    }).join('');
+    const notes = est.notes.length ? `<ul class="notes">${est.notes.map(n => `<li>${escHtml(n)}</li>`).join('')}</ul>` : '';
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><script>${previewHelper()}</script><title>Estimate</title><style>
+html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Segoe UI",sans-serif}
+.top{padding:10px 16px 4px;color:#9aa3ad}.top b{color:#e8eaed}.key{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:4px}
+.key i{display:inline-block;width:18px;height:10px;margin-right:6px;vertical-align:-1px;border:1.5px solid #8ab4f8;border-radius:2px}
+.win{margin:8px 16px 22px;display:inline-block;vertical-align:top}.win header{background:#33363d;color:#e8eaed;padding:6px 10px;border-radius:7px 7px 0 0;font-weight:600}
+.win header span{font-weight:400;color:#9aa3ad;margin-left:10px}.client{position:relative;overflow:visible}
+.t-tk .client{background:#ececec;color:#111}.t-juce .client{background:#2a2c31;color:#e6e6e6}
+.n{position:absolute;box-sizing:border-box;border:1px solid rgba(0,0,0,.4);border-radius:3px;overflow:visible}.t-juce .n{border-color:rgba(255,255,255,.3)}
+.n>.t{position:absolute;left:4px;right:4px;top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;pointer-events:none}
+.n>.t b{font-weight:600;opacity:.7}.h-rules{border-style:dashed}.h-sketch{border-style:dotted;border-width:1.5px}
+.k-frame{background:rgba(127,127,127,.07)}.k-button{background:linear-gradient(#fdfdfd,#dadada)}.t-juce .k-button{background:linear-gradient(#545862,#41444c)}
+.k-button>.t,.k-check>.t,.k-label>.t{top:50%;transform:translateY(-50%)}.k-button>.t{text-align:center}
+.k-label{border-color:rgba(127,127,127,.35);background:transparent}
+.k-entry,.k-text,.k-list,.k-canvas,.k-choice{background:#fff}.t-juce .k-entry,.t-juce .k-text,.t-juce .k-list,.t-juce .k-choice{background:#1a1b1f}
+.k-slider{background:linear-gradient(transparent 44%,rgba(127,127,127,.55) 44%,rgba(127,127,127,.55) 56%,transparent 56%)}.k-slider.round{border-radius:50%;background:radial-gradient(circle,rgba(127,127,127,.35) 55%,transparent 56%)}
+.many{box-shadow:4px 4px 0 -1px rgba(127,127,127,.4),8px 8px 0 -2px rgba(127,127,127,.25)}
+.edge{position:absolute;left:0;border-top:2px dashed rgba(240,120,120,.8);pointer-events:none}.edge.v{top:0;border-top:0;border-left:2px dashed rgba(240,120,120,.8)}
+.notes{margin:0 16px 20px;padding-left:18px;color:#d9b38c}.notes li{margin:3px 0}
+</style></head><body><div class="top"><b>An estimate of the app's ${est.windows.length > 1 ? 'windows' : 'window'}, read from its code</b> (${escHtml(est.toolkits.join(' and '))}). Fonts and native controls differ when it runs.
+<div class="key"><span><i></i>exact: the code says the numbers</span><span><i style="border-style:dashed"></i>laid out by rules (sizes estimated)</span><span><i style="border-style:dotted"></i>a sketch: worked out when it runs</span></div></div>${wins}${notes}</body></html>`;
+  }
+  function runGui(announce) {
+    const g = guiEstimate();
+    if (!g) return;
+    guiShown = { ...g, list: guiList(g.est) };
+    previewInfo = null;
+    setFrame('one');
+    showPreviewPage(guiPage(g.est, guiShown.list), announce);
+    if (announce) showBottom('preview');
+  }
+  function runPreview(announce) { if (webOn()) runWebsite(announce); else runGui(announce); }
+
+  /* Project Link and Editor mode on the estimate: a part lights up its code, where it's placed first (where a move
+     goes), then where it's made, added and what it does. A press in Editor mode opens the line that places it. */
+  function guiLink(d) {
+    if (!(layout.link || editing) || !guiShown || d.type !== 'link') return;
+    const it = d.none ? null : guiShown.list[d.line];
+    link.el = it ? { tag: it.node.type || it.node.kind, id: it.node.name || '', classes: [], line: d.line, ev: d.ev, page: d.page } : null;
+    link.run = null;
+    const lines = new Map(), ORDER = { placed: 0, made: 1, shown: 2, does: 3 };
+    if (it) for (const s of [...it.node.src].sort((a, b) => (ORDER[a.role] ?? 9) - (ORDER[b.role] ?? 9))) {
+      const sec = project.sections.find(x => x.path === s.path);
+      if (!sec) continue;
+      const li = isSentences(sec) ? textLineOf(sec, s.line) : s.line;
+      (lines.get(sec.id) || lines.set(sec.id, new Set()).get(sec.id)).add(li);
+    }
+    link.lines = lines;
+    if (it && editing && d.ev === 'click') {
+      const p = it.node.src.find(s => s.role === 'placed') || it.node.src[0], sec = p && project.sections.find(x => x.path === p.path);
+      if (sec && sec.id !== project.active) openSection(sec.id, isSentences(sec) ? textLineOf(sec, p.line) : p.line);
+    }
+    showLink(!!(d.ev && d.ev !== 'hover'));
+  }
+
+  /* A code line changed in a project file: the file's text with it (in a file of sentences, only an exact line, as
+     python: … or c++: …, can take new code). -> { text, line } or { why } */
+  function codeEdit(sec, codeLine, was, code) {
+    const lines = sec.text.split('\n');
+    if (!isSentences(sec)) {
+      if (lines[codeLine] == null || lines[codeLine].trim() !== String(was).trim()) return { why: `${fileName(sec)} has changed since the estimate was read: try again.` };
+      lines[codeLine] = code;
+      return { text: lines.join('\n'), line: codeLine };
+    }
+    const li = textLineOf(sec, codeLine), L = lines[li], lang = sec.lang === 'arduino' ? 'arduino' : sec.lang;
+    const ex = UNITY && UNITY.EXACT[lang] && L != null ? L.match(UNITY.EXACT[lang]) : null;
+    if (!ex) return { why: `It's placed by a line said in sentences (${fileName(sec)}, line ${li + 1}): change its numbers there.` };
+    if (ex[2].trim() !== String(was).trim()) return { why: `${fileName(sec)}, line ${li + 1} doesn't line up with its code: change its numbers there.` };
+    lines[li] = L.slice(0, L.length - ex[2].length) + String(code).trim();
+    return { text: lines.join('\n'), line: li };
+  }
+
+  /* A drop on the estimate: the part's numbers in the code change (typed, so Undo takes it back), and the estimate is
+     read again from the code to check it's where it was dropped (or, in a grid, in the cell). */
+  function moveInGui(d) {
+    if (!editing || !guiShown || !GUI) return;
+    const it = guiShown.list[d.line], fail = (html) => { editUndo(); editSay(html, true); };
+    if (!it) return fail('That isn\'t a part of the estimate.');
+    syncText();
+    const name = it.node.name || it.node.kind, r = GUI.move(guiShown.files, it.node, d.dx, d.dy, it.parent);
+    if (r.why) return fail(`<code>${escHtml(name)}</code>: ${escHtml(r.why)}`);
+    const sec = project.sections.find(s => s.path === r.path), file = guiShown.files.find(f => f.path === r.path);
+    if (!sec || !file) return fail(`<code>${escHtml(name)}</code>: its code isn't in the project.`);
+    const e = codeEdit(sec, r.line, String(file.code).replace(/\r\n?/g, '\n').split('\n')[r.line], r.text);
+    if (e.why) return fail(`<code>${escHtml(name)}</code>: ${escHtml(e.why)}`);
+    const dirs = r.row != null ? `to row ${r.row}, column ${r.column}` : ARR.moved(d.dx, d.dy);
+    const was = sec.text;
+    logAs('you', `Moved ${name} ${dirs} in the Preview's estimate (Editor mode).`, () => {
+      if (project.active !== sec.id) openSection(sec.id, e.line);
+      typeMove(sec, e);
+    });
+    typingLine = -1;
+    refreshAll(); save(); autosave();
+    moveMade(sec, was);   // (Ctrl+Z straight after puts it back)
+    // read again from the code: is it where it was dropped (or in the cell it was dropped in)?
+    const g = guiEstimate(), now = g && guiList(g.est).find(x => x.node.id === it.node.id), at = `${editGo(sec, e.line)}`;
+    const there = now && (r.row != null ? now.node.cell && now.node.cell.r === r.row && now.node.cell.c === r.column
+      : Math.abs(now.node.x - (it.node.x + Math.round(d.dx))) <= 1 && Math.abs(now.node.y - (it.node.y + Math.round(d.dy))) <= 1);
+    if (there) editSay(`Moved <code>${escHtml(name)}</code> ${dirs}, and the code puts it there. Written in ${at}, ready to fine-tune (<kbd>Ctrl+Z</kbd> there takes it back).`);
+    else editSay(`Written in ${at}, but read again, the code puts <code>${escHtml(name)}</code> ${now ? `at ${now.node.x}, ${now.node.y}` : 'nowhere it can show'}, not where it was dropped.`, true);
+    clearTimeout(previewTimer);
+    runGui(false);
+  }
+
   // the line between the code and the page: drag it to change how wide the page is (remembered)
   const editGrip = $('editGrip');
   function setEditCol(px) {
@@ -3966,8 +4121,9 @@
       if (d.data && typeof d.data === 'object' && JSON.stringify(d.data).length < 1_000_000) { all[project.name] = d.data; store.set(PAGE_STORE_KEY, all); }
       return;
     }
-    if (d.type === 'link' || d.type === 'link-run') { onLink(d); return; }
-    if (d.type === 'move') { moveFromPreview(d); return; }
+    const est = guiShown && !webOn();   // (the Preview shows an app's estimate)
+    if (d.type === 'link' || d.type === 'link-run') { if (est) guiLink(d); else onLink(d); return; }
+    if (d.type === 'move') { if (est) moveInGui(d); else moveFromPreview(d); return; }
     if (d.type === 'edit-at') { editChecked(d); return; }
     if (d.type === 'loaded') { editPageLoaded(); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
@@ -5250,7 +5406,7 @@
     $('work').classList.toggle('unity', next === 'unity');
     $('work').classList.toggle('web', webOn());
     renderImages();
-    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
+    showBottom(project.kind === 'website' || (!$('previewWrap').hidden && guiOn()) ? 'preview' : 'terminal');   // (an app's estimate stays open if the Preview was)
     updateChip();
     if (next === 'unity') { uMoveOldScratch(); unityShow(); $('uTa').focus(); }
     else { ta.value = activeSec().text; refreshAll(); measure(); syncScroll(); splitPlain(); }
@@ -8456,9 +8612,9 @@
     refreshAll();
     setMode(mode);   // Unity, unless Split Mode was used last
     $('work').classList.toggle('web', webOn());
-    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
+    showBottom(project.kind === 'website' || guiOn() ? 'preview' : 'terminal');   // (an app with windows: their estimate)
     updateChip();
-    if (webOn()) runWebsite(false);
+    if (webOn()) runWebsite(false); else if (guiOn()) runGui(false);
     loadImages().then(pruneImages);
     tLine('IntuaCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();

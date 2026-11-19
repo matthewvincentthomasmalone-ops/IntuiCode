@@ -253,6 +253,18 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Editor** again: the side, Help and the explanation come back, and the terminal is as it was.
 - [ ] Desktop app: the same, on the page at its local address.
 
+**An app's windows, estimated**
+- [ ] Import a Python file with a tkinter window (frames packed, an Entry and a Button in a grid, a Label placed with
+      `place(x=12, y=270)`): the Preview opens on its estimate, at the window's `geometry`, the label solid, the rest
+      dashed. A widget made but never packed is said under the window.
+- [ ] Editor mode: point at the list: its lines light up pink. Drag the label: its line becomes `place(x=…, y=…)` with the
+      new numbers, the bar says the code puts it there; Ctrl+Z puts the line back. Drag the Add button past the last
+      column: `grid(row=0, column=2)`. Drag the list (packed): it says pack places things one after another.
+- [ ] Run: the program runs in the terminal, which comes to the front.
+- [ ] Import a JUCE plug-in's editor (.h and .cpp): its window at `setSize`, parts placed by `setBounds` solid, by
+      `resized()`'s rectangle steps dashed, the rest dotted with why on hover. A component inside another is drawn inside it.
+- [ ] Desktop app: the same.
+
 **Customise**
 - [ ] **Menu → Customise…**: IntuaCode's look as very simple code, in blocks (IntuaCode, Menu bar, Project side, Help, Editor,
       Code, Terminal), each line `Name = value`. The values you can change are seafoam; Version, Look, Width and the others
