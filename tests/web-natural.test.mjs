@@ -86,6 +86,36 @@ test('structure: an address said the way people write it becomes one a link can 
   reads('html', '<section href="google.com"></section>', 'add a section, with href google.com');
 });
 
+test('a file on this computer, outside the project, is a warning that says how to bring a picture in', () => {
+  const outside = (w) => w.filter(x => /is a file on this computer, outside the project/.test(x));
+  // a picture: the page can't show it, and the warning names the images/ path it would have
+  for (const [path, safe] of [
+    ['C:\\Users\\matth\\Downloads\\tools.jpg', 'tools.jpg'], ['C:/Users/matth/Downloads/my tools.jpg', 'my-tools.jpg'],
+    ['d:\\photos\\cake.PNG', 'cake.PNG'], ['file:///C:/Users/matth/Downloads/tools.jpg', 'tools.jpg'], ['~/Pictures/sky.webp', 'sky.webp'],
+  ]) {
+    const b = body(`add a picture of "${path}" described as "Tools"`);
+    assert.deepEqual(b.errs, [], path);
+    assert.equal(b.html, `<img src="${path}" alt="Tools">`, path);   // (the page says exactly what was written)
+    assert.equal(outside(b.warns).length, 1, path);
+    assert.match(b.warns[0], new RegExp('^`' + path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '` is a file on this computer'), path);
+    assert.ok(b.warns[0].includes('Menu → Add an image…') && b.warns[0].includes('`images/' + safe + '`'), b.warns[0]);
+  }
+  // the same after a comma, and for a link, a video, an embedded page and a background picture in Styling
+  assert.equal(outside(body('add a picture, from "C:\\pics\\a.png", described as "A"').warns).length, 1);
+  for (const s of ['add a link to "C:\\docs\\notes.pdf" saying "Notes"', 'add a video of "D:\\clips\\intro.mp4"', 'add a webpage from "C:\\site\\index.html"']) {
+    const w = outside(body(s).warns);
+    assert.equal(w.length, 1, s);
+    assert.match(w[0], /Put the file in the project's folder and use its path from there\.$/, s);
+  }
+  assert.match(body('add a link to "C:\\docs\\notes.pdf" saying "Notes"').warns[0], /can't link to it/);
+  assert.equal(outside(css('style page: background picture C:\\Users\\matth\\sky.png').warns).length, 1);
+  // the project's own files and the web are fine: images/…, a relative or site path, \images\… (the site's own), https://
+  for (const path of ['images/tools.jpg', 'tools.jpg', '/images/tools.jpg', '\\images\\tools.jpg', '../shared/logo.png', 'https://example.com/tools.jpg', 'www.example.com/a.png']) {
+    assert.deepEqual(outside(body(`add a picture of "${path}" described as "Tools"`).warns), [], path);
+  }
+  assert.deepEqual(outside(css('style page: background picture images/sky.png').warns), []);
+});
+
 test('structure: an embedded page (an iframe) is also a webpage or a webpage link, its address from, to or of "…"', () => {
   for (const s of [
     'add an embedded page, from "https://example.com"', 'add embedded page from "https://example.com"', 'add an embedded page of "https://example.com"',

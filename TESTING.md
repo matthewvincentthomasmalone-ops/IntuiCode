@@ -223,6 +223,11 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] **Menu → Add an image…**, pick a PNG: it's listed under Images with a thumbnail. In Structure, **Use** adds
       `add a picture of "images/….png" …`, and the preview shows it. Save to a folder: the folder has `images/`.
       Open that folder again: the picture is still there.
+- [ ] In Structure, write `add a picture of "C:\Users\…\something.jpg" described as "…"` with a real picture's path:
+      Problems (and the help under the line) says it's a file on this computer that the page can't show, with
+      **Add the picture…**. Click it and pick that picture: it's under Images, the line now says
+      `"images/something.jpg"`, the warning is gone and the preview shows it. Ctrl+Z puts the path back. In Unity,
+      the same in a green part (Translate to Plain Language Syntax on an `<img>` with such a path).
 - [ ] A game in Mechanics: `load the picture "images/….png" as ship`, then `draw ship at 20, 20 on game` inside
       `every frame`: it's drawn in the preview.
 

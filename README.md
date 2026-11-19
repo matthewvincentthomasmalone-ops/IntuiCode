@@ -355,7 +355,11 @@ it, for the folder you're in: `add a picture of "images/cat.png" described as "�
 `style page: background picture images/sky.jpg` (Styling), `load the picture "images/ship.png" as ship`
 and then `draw ship at x, y on game` (Mechanics, for games), or `tk.PhotoImage(file="images/ship.png")`
 (Python, in a tkinter window). The preview shows them straight away. Saving a project writes them into
-`images/` beside the code; the browser keeps them for you until then.
+`images/` beside the code; the browser keeps them for you until then. A sentence that names a picture
+elsewhere on the computer (`add a picture of "C:\Users\…\tools.jpg"`) gets a warning, because a page can
+only show its own files and the web. **Add the picture…** beside it picks the file with the same chooser,
+copies it into `images/` and puts `images/tools.jpg` in the line (Undo takes it back). IntuaCode doesn't
+read the file from the path itself: the app only reads folders you picked.
 
 **Two sides, and the help follows the one you're in**
 

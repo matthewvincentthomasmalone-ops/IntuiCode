@@ -238,9 +238,21 @@
   const LABEL = '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?';
   const WEB_ADDRESS = new RegExp(`^(?:www\\.)?${LABEL}(?:\\.${LABEL})*\\.(?:${TLDS})(?::\\d+)?(?:[/?#].*)?$`, 'i');
   const EMAIL = /^[^\s@/:?#"<>]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\?\S*)?$/i;
+  /* A file on this computer, outside the project: C:\…, file:…, ~/…. A page reaches only its own files and the
+     web, so the preview (and anyone the page is shared with) can't show it. Said as a warning, with how to bring a
+     picture into the project (the app puts a button that does that beside it: see OUTSIDE_FILE in app.js). (\images\a.png
+     is the site's own images/a.png to a browser, so a path starting with \ is left alone.) */
+  const ON_COMPUTER = /^(?:[a-z]:[\\/]|file:|~[\\/])/i;
+  function outsideSays(v, kind) {
+    const name = String(v).split(/[\\/]/).pop();
+    const pic = /\.(?:png|jpe?g|gif|webp|svg)$/i.test(name), safe = name.replace(/[^\w.-]+/g, '-').replace(/^[-.]+/, '').slice(-80);
+    return `${code(v)} is a file on this computer, outside the project, so the page can't ${kind === 'href' ? 'link to' : 'show'} it: a page reaches only the project's own files and the web.`
+      + (pic ? ` Add the picture to the project (Menu → Add an image… copies it into images/), then use ${code('images/' + safe)}.` : ' Put the file in the project\'s folder and use its path from there.');
+  }
   function address(t, kind) {
     const v = String(t);
     if (!v.trim() || v !== v.trim()) return { value: v };
+    if (ON_COMPUTER.test(v)) return { value: v, warn: outsideSays(v, kind) };
     if (kind === 'href' && /^#/.test(v)) {
       const id = toId(v.slice(1));
       return /\s/.test(v) && id ? { value: '#' + id, note: `A place on the page is found by its name, and a name can't have spaces, so ${code(v)} is ${code('#' + id)}.` } : { value: v };
@@ -295,7 +307,7 @@
       return one('on' + ev, strOf(m[1]));
     }
     // (an address that isn't one a page can use as written comes with a note saying what it became: see address)
-    const at = (n, t, kind) => { if (t == null) return null; const a = address(t, kind); return [a.note ? [n, a.value, a.note] : [n, a.value]]; };
+    const at = (n, t, kind) => { if (t == null) return null; const a = address(t, kind); return [a.warn ? [n, a.value, a.note || null, a.warn] : a.note ? [n, a.value, a.note] : [n, a.value]]; };
     if ((m = s.match(/^linking to\s+(.+)$/i))) return at('href', strOf(m[1]), 'href');
     if ((m = s.match(/^from\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i))) return at('src', strOf(m[1]), 'src');
     if ((m = s.match(/^described as\s+(.+)$/i))) return one('alt', strOf(m[1]));
@@ -600,7 +612,7 @@
       return el('button', { text: t || '', id, attrs: { type: 'button' } });
     }
     // (an address is said the way people write it: google.com is https://google.com, see address)
-    const at = (t, kind) => { const a = address(t, kind); if (a.note) note(inf, a.note); return a.value; };
+    const at = (t, kind) => { const a = address(t, kind); if (a.note) note(inf, a.note); if (a.warn) inf.warns.push(a.warn); return a.value; };
     if ((m = s.match(/^add\s+(?:a\s+)?link(.*?)\s+to\s+("[^"]*"|'[^']*')\s+(?:saying|showing)\s+(.+)$/i))) {
       const t = strOf(m[3]); if (t == null) inf.errs.push('Put the link text in quotes, like: add a link to "https://example.com" saying "Example"');
       return el('a', { text: t ?? '', id: called(m[1]), attrs: { href: at(strOf(m[2]), 'href') } });
@@ -729,8 +741,9 @@
       if (attrs.length) inf.errs.push('Text on its own can\'t have settings: put it in an element ("add text "…", hidden from screen readers").');
     } else {
       el.attrs = { ...(el.attrs || {}) };
-      for (const [k, v, said] of attrs) {
+      for (const [k, v, said, warn] of attrs) {
         if (said) note(inf, said);
+        if (warn) inf.warns.push(warn);
         if (v == null) delete el.attrs[k];
         else if (k === 'id' && !el.id) {
           // an id can't have spaces in a page: "main display" is main-display, as "called main display" is
@@ -1193,7 +1206,11 @@
       // ("background colour" before "background": tried the other way, "colour #a9a9a9" was taken as the colour)
       if ((m = part.match(/^background(?:\s+colou?r)?\s+(.+?)(?:\s+(\d+)%\s+(?:see-through|transparent))?$/i))) {
         const pic = m[1].match(/^picture\s+(.+)$/i);
-        if (pic) { out.push(['background-image', `url(${pic[1].trim()})`], ['background-size', 'cover']); continue; }
+        if (pic) {
+          const said = pic[1].trim(), file = strOf(said) ?? said;
+          if (ON_COMPUTER.test(file)) inf.warns.push(outsideSays(file, 'src'));
+          out.push(['background-image', `url(${said})`], ['background-size', 'cover']); continue;
+        }
         const c = color(m[1], inf);
         if (m[2]) {
           const a = withAlpha(c, +m[2]);
