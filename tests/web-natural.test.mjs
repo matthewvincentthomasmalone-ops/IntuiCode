@@ -86,6 +86,28 @@ test('structure: an address said the way people write it becomes one a link can 
   reads('html', '<section href="google.com"></section>', 'add a section, with href google.com');
 });
 
+test('structure: an embedded page (an iframe) is also a webpage or a webpage link, its address from, to or of "…"', () => {
+  for (const s of [
+    'add an embedded page, from "https://example.com"', 'add embedded page from "https://example.com"', 'add an embedded page of "https://example.com"',
+    'add a webpage, from "https://example.com"', 'add webpage from "https://example.com"',
+    'add a webpage link, from "https://example.com"', 'add a webpage link to "https://example.com"', 'add webpage link from "https://example.com"',
+  ]) {
+    const b = body(s);
+    assert.deepEqual(b.errs, [], s);
+    assert.equal(b.html, '<iframe src="https://example.com"></iframe>', s);
+  }
+  // with a name and the settings after its commas
+  assert.equal(body('add a webpage link called map to "https://example.com/map", sized 600 by 400, with tooltip "Map of the town", loaded lazily').html,
+    '<iframe id="map" src="https://example.com/map" width="600" height="400" title="Map of the town" loading="lazy"></iframe>');
+  // those words and no others: an iframe and a web page aren't words for it
+  for (const s of ['add an iframe, from "https://example.com"', 'add a web page, from "https://example.com"']) assert.notDeepEqual(body(s).errs, [], s);
+  // a link is still a link, and text that says "webpage link" is still text
+  assert.equal(body('add a link to "https://example.com" saying "Example"').html, '<a href="https://example.com">Example</a>');
+  assert.equal(body('add a paragraph "the webpage link below"').html, '<p>the webpage link below</p>');
+  // the code reads back with the word it is said with
+  reads('html', '<iframe src="https://example.com" title="Map"></iframe>', 'add an embedded page, from "https://example.com", with tooltip "Map"');
+});
+
 test('structure: an address without quotes is taken when it is clearly one; anything else says to quote it', () => {
   assert.deepEqual(body('add a link to google.com saying "Google"'), { html: '<a href="https://google.com">Google</a>', errs: [], warns: [], notes: [body('add a link to "google.com" saying "x"').notes[0]] });
   assert.equal(body('add a link called home to / saying "Home"').html, '<a id="home" href="/">Home</a>');
