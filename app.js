@@ -7245,33 +7245,103 @@ ${key}</div>${wins}${notes}</body></html>`;
   }
   /* One imported file as a project file: { section, note }. exact: every file as its exact lines, HTML too (a
    * Vite app's, whose dev server fills in its page). */
-  async function importSection(f, path, lang, exact) {
+  // (what's turned into sentences as it comes in, the reader checking each: the rest comes in as its code, line for line)
+  const readsIn = (lang, exact) => !!UNITY && UNITY.LANGS.includes(lang) && !exact && !/^(?:python|css|js|ts|tsx)$/.test(lang);
+  async function importSection(f, path, lang, exact, later) {
     const code = f.source.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
     const id = newId();
     if (!UNITY || !UNITY.LANGS.includes(lang)) return { section: { id, path, lang, text: code + '\n' } };
-    if (exact || lang === 'python' || lang === 'css' || lang === 'js' || lang === 'ts' || lang === 'tsx') return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    if (!readsIn(lang, exact)) return { section: { id, path, lang, text: UNITY.toFile(lang, code.split('\n'), []) + '\n' } };
+    // a big import: its code now, line for line, and its sentences later (in the background)
+    if (later) { const text = UNITY.toFile(lang, code.split('\n'), []) + '\n'; return { section: { id, path, lang, text }, later: { id, kind: lang, source: code + '\n', text } }; }
     let r;
     try { r = await uConvert(lang, code + '\n'); } catch (e) { r = { ok: false, reason: e.message }; }
     if (r.ok) return { section: { id, path, lang, text: r.text.replace(/\n+$/, '') + '\n' }, note: r.exact === false ? `${path} may not come back exactly: ${r.reason || 'check it'}.` : '' };
     // can't be said in sentences (a header file, say): kept exactly as it is, as code IntuaCode reads to you
     return { section: { id, path, lang: lang === 'html' ? 'text' : 'c', text: code + '\n' }, note: `${path} couldn't be read into sentences (${r.reason}), so it's kept exactly as it is.` };
   }
+  /* A big import (more than two files to read into sentences, or more than 40 KB of them) comes in as its code at once,
+     and each of those files is turned into sentences in the background (sentencesLater). */
+  const LATER_FILES = 2, LATER_BYTES = 40000;
   async function importSections(files, taken, exact = false) {
-    const out = [], notes = [];
+    const out = [], notes = [], later = [];
+    const toRead = files.filter(f => readsIn(importLang(f), exact));
+    const big = toRead.length > LATER_FILES || toRead.reduce((n, f) => n + String(f.source || '').length, 0) > LATER_BYTES;
     let left = 0, secrets = 0;
     for (const f of files) {
       if (/(^|\/)\.env(\.|$)/.test(f.name)) { secrets++; continue; }   // never bring secrets into a project
       if (taken.size >= IMPORT_MAX) { left++; continue; }
       const lang = importLang(f), path = importPath(shortPath(f.name), lang, taken);
       if (!path) { left++; continue; }
-      const got = await importSection(f, path, lang, exact);
+      const got = await importSection(f, path, lang, exact, big);
       taken.add(path.toLowerCase());
       out.push(got.section);
+      if (got.later) later.push(got.later);
       if (got.note) notes.push(got.note);
     }
     if (secrets) notes.push(`Left out ${secrets} secrets file${secrets > 1 ? 's' : ''} (.env): passwords and keys stay out of projects.`);
     if (left) notes.push(`${left} file${left > 1 ? 's' : ''} didn't fit (a project holds ${IMPORT_MAX} files, with names IntuaCode can write).`);
-    return { sections: out, notes };
+    return { sections: out, notes, later };
+  }
+
+  /* Sentences, later: each file a big import brought in as its code is turned into sentences in a worker
+     (lang/convert_worker.js: the same reader and check, away from the page, so the window isn't held up), the open
+     file first (opened while waiting, it's next). A file changed while it waited stays as code. Without a worker, the
+     page does it, a file at a time. */
+  const later = { queue: [], running: false, done: 0, total: 0, project: null, worker: null, waits: new Map(), seq: 0 };
+  function sentencesLater(items) {
+    if (!items.length) return;
+    if (later.project !== project) { later.queue = []; later.done = later.total = 0; }
+    later.project = project;
+    later.queue.push(...items); later.total += items.length;
+    tLine(`${items.length} file${items.length > 1 ? 's are' : ' is'} here as code, and turning into sentences in the background, the open one first: you can work meanwhile.`, 't-sys');
+    if (!later.running) runLater();
+  }
+  function laterWorker() {
+    if (later.worker === false || typeof Worker === 'undefined') return null;
+    if (!later.worker) {
+      try {
+        later.worker = new Worker(new URL('lang/convert_worker.js', document.baseURI).href);
+        later.worker.onmessage = (e) => { const w = later.waits.get(e.data && e.data.id); if (w) { later.waits.delete(e.data.id); w(e.data); } };
+        later.worker.onerror = (e) => { e.preventDefault(); for (const w of later.waits.values()) w({ ok: false, fatal: true, reason: e.message }); later.waits.clear(); later.worker = false; };
+      } catch (_) { later.worker = false; return null; }
+    }
+    return later.worker;
+  }
+  async function sentencesAway(kind, source) {
+    const w = laterWorker();
+    if (w) {
+      const res = await new Promise((done) => { const id = ++later.seq; later.waits.set(id, done); w.postMessage({ id, kind, source, base: new URL('.', document.baseURI).href }); });
+      if (res.ok) return res.r;
+      if (!res.fatal) return { ok: false, reason: res.reason };
+      try { later.worker.terminate(); } catch (_) { /* gone */ }
+      later.worker = false;   // (it couldn't start: the page does the rest, and says so)
+      tLine(`The background reader couldn't start (${res.reason}), so the files are turned into sentences here, one at a time: the window may pause between them.`, 't-sys');
+    }
+    await new Promise(r => setTimeout(r, 30));   // (a moment for the window between files)
+    try { return await uConvert(kind, source); } catch (e) { return { ok: false, reason: e.message }; }
+  }
+  async function runLater() {
+    later.running = true;
+    const st = $('pyStatus'), was = [st.textContent, st.className.replace(/^py-status\s*/, '')];   // (put back after)
+    while (later.queue.length && later.project === project) {
+      const k = later.queue.findIndex(q => q.id === project.active), item = later.queue.splice(k >= 0 ? k : 0, 1)[0];
+      setStatus(`Turning files into sentences: ${later.done + 1} of ${later.total}…`);
+      const r = await sentencesAway(item.kind, item.source);
+      later.done++;
+      if (later.project !== project) break;   // (another project opened meanwhile)
+      const sec = project.sections.find(x => x.id === item.id);
+      if (!sec) continue;
+      if (sec.text !== item.text) { tLine(`${sec.path} was changed while it waited, so it stays as code: Translate turns it into sentences.`, 't-sys'); continue; }
+      if (!r || !r.ok) { tLine(`${sec.path} couldn't be read into sentences (${(r && r.reason) || 'the reader stopped'}), so it's kept exactly as it is.`, 't-sys'); continue; }
+      sec.text = r.text.replace(/\n+$/, '') + '\n';
+      if (r.exact === false) tLine(`Note: ${sec.path} may not come back exactly: ${r.reason || 'check it'}.`, 't-sys');
+      if (sec.id === project.active) { ta.value = sec.text; if (mode === 'unity') unityShow(); }
+      refreshAll(); save();
+    }
+    if (later.project === project && later.total) tLine(`✓ Turned ${later.done} imported file${later.done === 1 ? '' : 's'} into sentences.`, 't-ok');
+    if (/^Turning files into sentences/.test($('pyStatus').textContent)) setStatus(was[0], was[1]);
+    later.running = false; later.queue = []; later.done = later.total = 0;
   }
   function countLangs(sections) {
     const counts = {};
@@ -7286,7 +7356,7 @@ ${key}</div>${wins}${notes}</body></html>`;
     const tops = new Set(files.map(f => (f.name.includes('/') ? f.name.split('/')[0] : '')));
     importTop = tops.size === 1 && !tops.has('') ? [...tops][0] : '';
     tLine(`Importing ${files.length} file${files.length > 1 ? 's' : ''}…`, 't-sys');
-    const { sections, notes } = await importSections(files, new Set());
+    const { sections, notes, later: toRead } = await importSections(files, new Set());
     if (!sections.length) { tLine('No code files were found there.', 't-err'); return; }
     const name = slug(importTop || baseName(files[0].name).replace(/\.\w+$/, '')) || 'imported';
     const pick = (re) => sections.find(s => re.test(s.path));
@@ -7294,18 +7364,20 @@ ${key}</div>${wins}${notes}</body></html>`;
       || pick(/^(src\/)?(main|index|app)\.\w+$/i) || sections.find(isSentences) || sections[0];
     replaceProject({ version: 2, lang: 'python', name, sections, active: first.id, start: first.id }, `Imported ${name}: ${countLangs(sections)}.${note ? ' ' + note : ''}`);
     for (const n of notes) tLine('Note: ' + n, 't-sys');
+    sentencesLater(toRead);
   }
   /* Single files: added to the open project, the first one opened. */
   async function addFiles(files) {
     closeImport();
     importTop = '';
-    const { sections, notes } = await importSections(files, new Set(project.sections.map(s => s.path.toLowerCase())));
+    const { sections, notes, later: toRead } = await importSections(files, new Set(project.sections.map(s => s.path.toLowerCase())));
     if (!sections.length) { tLine(notes[0] || 'Nothing was added.', 't-err'); return; }
     const copy = JSON.parse(JSON.stringify(project));
     copy.sections.push(...sections);
     const err = changeProject(copy, sections[0].id, `Added ${sections.map(s => s.path).join(', ')} to the project.`);
     if (err) { tLine(err, 't-err'); return; }
     for (const n of notes) tLine('Note: ' + n, 't-sys');
+    sentencesLater(toRead);
   }
 
   /* ------------------------------------------------------------------ */

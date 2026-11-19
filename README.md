@@ -517,8 +517,11 @@ CSS, JavaScript, TypeScript and React come in as their exact lines, ready to tra
 pages, C++ programs and Arduino sketches are read into sentences (checked against the original), because
 IntuaCode writes the page, `main` or `setup` and `loop` around them. Every other language (C, Rust, Go, C#,
 Java, Kotlin, Swift, PHP, Ruby, Bash, Lua, Dart, SQL, Vue…), and data and notes (JSON, YAML, TOML, CSV,
-Markdown), comes in as it is, and the help reads it to you part by part (`lang/code_read.js`). A `.env`
-secrets file is never brought in. Pasted code and files whose name doesn't say are **auto-detected** from
+Markdown), comes in as it is, and the help reads it to you part by part (`lang/code_read.js`). A big import (more
+than two HTML, C++ or Arduino files, or more than 40 KB of them) comes in at once as their exact lines, and each is
+turned into sentences in the background, in a worker (`lang/convert_worker.js`) so the window stays free: the file
+open first, then the rest, the status line saying how far it's got. A file you change while it waits stays as code
+(Translate turns it into sentences). A `.env` secrets file is never brought in. Pasted code and files whose name doesn't say are **auto-detected** from
 their text, with the reason shown.
 
 **Saving and Backups**

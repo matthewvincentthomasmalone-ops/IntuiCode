@@ -186,7 +186,16 @@ Run, Problems, Parts and the Library work on imported code as on any other. Pyth
 exact lines (Unity shows them as code, ready to translate); HTML, C++ and Arduino are converted to sentences,
 because their writers wrap the file (a page's head, `main`, `setup` and `loop`); other languages, notes and data
 come in as they are, and the code reader (`lang/code_read.js`) explains them in the help. Paths are made safe
-(`pathProblem`), at most 200 files come in, and `.env` files never do. Both modes share the help under the pane,
+(`pathProblem`), at most 200 files come in, and `.env` files never do.
+
+A big import (more than two files to read into sentences, or more than 40 KB of them: FEC 16's 1.2 MB of C++ took a
+quarter of an hour, each file read and checked as it came in) comes in at once as exact lines (`UNITY.toFile`, which
+compiles to the very same code), and `sentencesLater` reads each into sentences in a Web Worker
+(`lang/convert_worker.js`: the same writers, tree-sitter grammars and `lang/convert.js`, the check included), the open
+file first, one at a time. A result goes in only if the file is still as it came in (changed meanwhile, it stays code,
+and says so); a file that can't be read stays exact lines, as before. If the worker can't start, the page reads them
+itself, a file at a time, and says the window may pause. (The worker gives the lang files a `window` while they load,
+and takes it away before tree-sitter's loader runs, which would take it for a page.) Both modes share the help under the pane,
 the side (the tree, Parts, Problems), Predictive Mode and the Preview.
 
 ## Decision: parts, and the two sides of a project
