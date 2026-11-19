@@ -318,6 +318,16 @@ code and asked where the element is: the bar over the page says it's moved only 
 it, and if another style wins (an `!important`, a more specific rule), it says where the page put it instead. Nothing
 about a move is remembered: the next one reads the page's own numbers again. **Editor** again brings everything back.
 
+**Resizing, in Editor mode.** What you point at has a handle on its bottom right corner: drag it to resize. An embedded
+page, a picture, a video or a drawing (or a box holding only one of them) keeps its shape; anything else resizes freely,
+and keeps its shape with **Shift** held. The size shows as you drag (`#frame 400 × 268 its shape kept`). A shape kept is
+written as a rule, so fine-tuning the width later keeps it too: `style frame: width: 396px, height: auto, aspect-ratio:
+3 / 2` (the shape it had; padding and borders count apart, as CSS does, so the box is the size you dragged it to). A free
+resize writes its width and height. It goes in the same sentence as a move, is typed so **Ctrl+Z** takes it back, and
+the rebuilt page is asked its size: if another style wins (a `max-width`, or the box it's in), the bar says what size
+the page made it. A word in a line of text can't be resized (its size is its letters'): it says to make it a box first.
+In Editor mode an embedded page doesn't take the pointer into itself, so it can be pointed at, moved and resized.
+
 **An app's windows, estimated (tkinter and JUCE).** A website shows itself in the Preview; an app's window can't run in a
 browser, so for a project whose code makes windows (Python with tkinter, C++ with JUCE), the Preview draws an estimate of
 them, read from the code, as soon as the project opens: each window at its size, the groups in it (frames, components
@@ -725,7 +735,7 @@ npm install && npm run vendor
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `lang/look.js` | Customise: the look as very simple code, the settings that can change, each value checked (in words), and what it sets on the page |
 | `lang/gui.js` | The GUI estimate: an app's windows (tkinter, JUCE) read from its code, each part exact, laid out by rules or a sketch, and a drag as new numbers in its line; the probes (tkinter, JUCE) and a measured app drawn the same way |
-| `lang/arrange.js` | Editor mode: something dragged in the Preview, said as a style sentence (where it goes in Styling), and a name for something that has none |
+| `lang/arrange.js` | Editor mode: something dragged or resized in the Preview, said as a style sentence (where it goes in Styling; a shape kept as an aspect-ratio), and a name for something that has none |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
 | `samples/` | Example code to import, including a small multi-file project (`samples/taskboard`) |

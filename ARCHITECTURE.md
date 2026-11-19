@@ -414,6 +414,23 @@ the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, n
 - **Done when the page says so.** The page is rebuilt from the code, and asked where the element is now (its sentence
   line, `data-ic-line`). The bar says it's moved only if that's where it was dropped (to a pixel); otherwise it says where
   the page put it, and that another style wins. A move written but never answered says it isn't checked.
+- **A resize is a size, and a shape kept is a rule.** The bottom right corner of what's pointed at is a handle. A page,
+  a picture, a video or a drawing (or a box holding only one, with no words of its own) keeps its shape, as does anything
+  with Shift held; the rest resizes freely. On the drop the page says its size before and after (its border box), its
+  padding and borders, its `box-sizing`, `display` and `aspect-ratio`, as the browser worked them out, and
+  `lang/arrange.js` makes them into sizes: the content's width (and height), when padding and borders count apart, so
+  the box is the size it was dragged to. A shape kept is written as `width`, `height: auto` and `aspect-ratio` (the
+  shape the page says it has, or had: `3 / 2` when a small fraction is it to 0.2%), so a width fine-tuned later keeps
+  it; a free resize as `width` and `height`, an aspect-ratio in that sentence taken out. As the drag shows it, a shape is
+  kept inside the padding, as `aspect-ratio` keeps it, so what's shown is what's written. It goes where a move goes (a
+  sentence that says only where and how big counts as that place; a look that says a width among its colours stays the
+  look), is typed, and is checked on the rebuilt page by its size (to 2px: a height made from a width is a fraction
+  rounded). Something inline in a line of text isn't resized (its size is its words'). In Editor mode the page's embedded
+  pages take no pointer (`pointer-events: none`), and one is found by where the pointer is, so it can be arranged. An
+  app's part (the GUI estimate) isn't resized yet: it says so.
+- **The move's time is taken before the rebuild.** The rebuilt page's own start (`performance.timeOrigin`) is when the
+  frame is given it, inside the rebuild; a time taken after it was, on a busy computer, later than that page, and every
+  answer it gave was taken for the old page's.
 - **What's moved lights up its code.** In Editor mode the page reports what's pointed at and pressed as Project Link
   does, whether Project Link is on or not, and its style sentences come first (then its Structure sentence, then the
   script lines that name it). A press scrolls the open file to the most relevant line: in Styling, the sentence that says
