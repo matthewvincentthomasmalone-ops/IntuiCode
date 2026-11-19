@@ -1,0 +1,29 @@
+{
+ "intuacode": "layout",
+ "version": 1,
+ "toolkit": "tkinter",
+ "made": "2026-11-19T09:00:41Z",
+ "windows": [
+  {
+   "title": "Tasks",
+   "w": 360,
+   "h": 300,
+   "picture": null,
+   "root": {
+    "type": "Tk", "name": "window", "id": ".", "text": "", "x": 0, "y": 0, "w": 360, "h": 300, "shown": true, "manager": "wm",
+    "children": [
+     {
+      "type": "Frame", "name": "top", "id": ".!frame", "text": "", "x": 8, "y": 8, "w": 344, "h": 26, "shown": true, "manager": "pack",
+      "children": [
+       { "type": "Entry", "name": "entry", "id": ".!frame.!entry", "text": "", "x": 12, "y": 11, "w": 184, "h": 19, "shown": true, "manager": "grid", "children": [] },
+       { "type": "Button", "name": "add", "id": ".!frame.!button", "text": "Add", "x": 200, "y": 8, "w": 33, "h": 26, "shown": true, "manager": "grid", "children": [] }
+      ]
+     },
+     { "type": "Listbox", "name": "tasks", "id": ".!listbox", "text": "", "x": 8, "y": 42, "w": 344, "h": 258, "shown": true, "manager": "pack", "children": [] },
+     { "type": "Label", "name": "status", "id": ".!label", "text": "0 tasks", "x": 12, "y": 270, "w": 41, "h": 21, "shown": true, "manager": "place", "children": [] },
+     { "type": "Button", "name": "lost", "id": ".!button", "text": "Never shown", "x": 19992, "y": 19969, "w": 1, "h": 1, "shown": false, "manager": "", "children": [] }
+    ]
+   }
+  }
+ ]
+}

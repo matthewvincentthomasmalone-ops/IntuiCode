@@ -733,6 +733,31 @@ try {
     if (page.w !== 360 || page.h !== 300 || page.x !== 12 || page.y !== 20 || !/^Tasks/.test(page.title) || page.solid !== 'solid') throw new Error(JSON.stringify(page));
   });
 
+  // Measure, with this computer's Python: the probe runs the app with its window out of sight, and says where Tk put it
+  await check('an app\'s windows: Measure runs the tkinter app (its window out of sight) and the Preview shows it where Tk put it', async () => {
+    await waitFor('Measure, beside the Preview', inPage(() => !document.getElementById('btnMeasure').hidden), 10000);
+    await click('btnMeasure');
+    const said = await waitFor('the measurement', inPage(() => {
+      const bar = document.getElementById('editBar'), t = bar.textContent;
+      return !bar.hidden && t && !/^Running /.test(t) ? t : null;
+    }), 60000);
+    if (!/^Measured in the running app at .+: 1 part, each where the app really puts it\./.test(said)) throw new Error(said);
+    const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
+    await wd('POST', `/session/${session}/frame`, { id: frame });
+    let page;
+    try {
+      page = await waitFor('the measured window in the Preview', () => js(() => {
+        const c = document.querySelector('.client'), l = document.getElementById('l');
+        if (!c || !l || !c.getBoundingClientRect().width || !/^Measured in the running app/.test(document.querySelector('.top').textContent)) return null;
+        const cr = c.getBoundingClientRect(), lr = l.getBoundingClientRect();
+        return { w: Math.round(cr.width), h: Math.round(cr.height), x: Math.round(lr.left - cr.left), y: Math.round(lr.top - cr.top), measured: l.classList.contains('h-measured') };
+      }), 20000);
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
+    if (page.w !== 360 || page.h !== 300 || page.x !== 12 || page.y !== 20 || !page.measured) throw new Error(JSON.stringify(page));
+  });
+
   // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the
   // close (so the tests can end the app): this is the page's side, asked as the desktop layer asks it.
   await check('closing with changes not saved asks first; Cancel keeps the window', async () => {

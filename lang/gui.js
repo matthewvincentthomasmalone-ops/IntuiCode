@@ -20,6 +20,9 @@
  *             src roles: made (where it's made), placed (where its position is), does (what it does), shown (added)
  *   move(files, node, dx, dy, nodes) -> { path, line, text, x, y } (the code line with the new numbers) or { why }
  *   flat(win)                -> every node of a window, the window first, parents before children
+ *   measured(report, est)    -> a layout report (the running app, measured by a probe) as windows the same shape, how
+ *                               'measured', each part linked to the estimate's part of the same name; reportIn(text)
+ *                               finds a report in what a probe printed; TK_PROBE, JUCE_PROBE are the probes
  *
  * No page here (no DOM): the app and the tests both use it.
  */
@@ -173,13 +176,13 @@
     Entry: 'entry', Text: 'text', Canvas: 'canvas', Listbox: 'list', Scale: 'slider', Checkbutton: 'check', Radiobutton: 'radio',
     Spinbox: 'entry', Scrollbar: 'scrollbar', Combobox: 'choice', Progressbar: 'progress', Treeview: 'list', Notebook: 'frame',
     PanedWindow: 'frame', Message: 'label', OptionMenu: 'choice', Separator: 'line' };
-  const CH = 7, LH = 18;   // a character's width and a line's height, roughly, in Tk's default font
+  const CH = 6, LH = 18;   // a character's width and a line's height, roughly, in Tk's default font (as the probe measured them)
   function tkSize(kind, type, o) {
     const n = (k, d) => (o[k] != null ? o[k] : d), text = o.text || '';
     switch (type) {
-      case 'Button': return { w: o.width != null ? n('width') * CH + 12 : Math.max(text.length * CH + 18, 32), h: o.height != null ? n('height') * LH + 8 : 26 };
-      case 'Label': case 'Message': return { w: o.width != null ? n('width') * CH + 4 : Math.max(text.length * CH + 4, 8), h: o.height != null ? n('height') * LH + 2 : 20 };
-      case 'Entry': case 'Spinbox': return { w: n('width', 20) * CH + 6, h: 22 };
+      case 'Button': return { w: o.width != null ? n('width') * CH + 12 : Math.max(text.length * CH + 15, 30), h: o.height != null ? n('height') * LH + 8 : 26 };
+      case 'Label': case 'Message': return { w: o.width != null ? n('width') * CH + 4 : Math.max(text.length * CH, 8), h: o.height != null ? n('height') * LH + 2 : 21 };
+      case 'Entry': case 'Spinbox': return { w: n('width', 20) * CH + 4, h: 19 };
       case 'Text': return { w: n('width', 80) * CH + 6, h: n('height', 24) * 16 + 6 };
       case 'Listbox': return { w: n('width', 20) * CH + 6, h: n('height', 10) * 17 + 6 };
       case 'Canvas': return { w: n('width', 378) + 4, h: n('height', 265) + 4 };
@@ -776,7 +779,87 @@
     return { why: node.why || `Its position is worked out in the code${at}: change the numbers there.` };
   }
 
-  const api = { estimate, flat, move, num, statements, splitArgs, readJuce };
+
+  /* ---------- measured: the running app's own report ---------- */
+
+  /* The layout report (version 1), the same from every probe:
+       { intuacode: 'layout', version: 1, toolkit, made (ISO time), windows: [{ title, w, h, picture?, root: Part }] }
+       Part: { type (its class: Button, juce::Slider, fec::console::ConsolePage), name (the code's name for it, if the
+               probe can tell), id, text, x, y, w, h (in its window), shown, children: [Part] }
+     measured(report, est) draws it: each part where the app put it, linked to the estimate's part of the same name (or
+     the same kind, in the same place among its group), so its code lights up, and one the code places with numbers still
+     moves (as the code's part it stands for, eid). -> { toolkits, windows, notes, made } or null for something that isn't a report. */
+  const shortType = (t) => String(t || '').replace(/<.*$/, '').split('::').pop();
+  function measured(report, est) {
+    if (!report || report.intuacode !== 'layout' || !Array.isArray(report.windows)) return null;
+    const notes = [], windows = [], ewins = (est && est.windows) || [];
+    const kindOf = (t) => { const s = shortType(t); return TK_KINDS[s] || JUCE_KINDS[s] || (/Component$|Page$|Panel$|View$|Bay$|Strip/.test(s) ? 'frame' : 'frame'); };
+    // the estimate's children matched to the report's: by the code's name first, then by kind in order
+    const pair = (rkids, ekids) => {
+      const out = new Map(), used = new Set();
+      for (const r of rkids) {
+        const e = r.name && ekids.find(k => !used.has(k) && k.name === r.name);
+        if (e) { out.set(r, e); used.add(e); }
+      }
+      // by kind, in order; a part the code makes several of (an array, a loop) stands for as many of the app's
+      const byType = new Map();
+      for (const r of rkids) if (!out.has(r)) { const t = shortType(r.type); if (!byType.has(t)) byType.set(t, []); byType.get(t).push(r); }
+      for (const [t, rs] of byType) {
+        const es = ekids.filter(k => !used.has(k) && shortType(k.type) === t);
+        let i = 0;
+        es.forEach((e, j) => {
+          const after = es.length - j - 1;   // (each of the code's parts after it stands for one at least)
+          const n = typeof e.many === 'number' ? e.many : e.many ? Math.max(1, rs.length - i - after) : 1;
+          for (let k = 0; k < n && i < rs.length; k++) out.set(rs[i++], e);
+          used.add(e);
+        });
+      }
+      return out;
+    };
+    report.windows.forEach((rw, wi) => {
+      if (!rw || !rw.root) return;
+      const ew = ewins.find(w => w.title === rw.title) || ewins[wi] || null, ids = new Set();
+      const build = (r, e) => {
+        const base = String(r.name || (e && e.name) || shortType(r.type) || 'part').replace(/[^\w-]+/g, '-');
+        let id = base;
+        for (let k = 2; ids.has(id); k++) id = `${base}-${k}`;
+        ids.add(id);
+        const exact = e && e.how === 'exact' && e.kind !== 'window';
+        const node = { id, kind: e && e.kind === 'window' ? 'window' : kindOf(r.type), type: shortType(r.type), name: r.name || (e && e.name) || null,
+          label: r.text || (e && e.label) || r.name || '', how: 'measured', x: Math.round(+r.x || 0), y: Math.round(+r.y || 0), w: Math.round(+r.w || 0), h: Math.round(+r.h || 0),
+          // (moved, it's the code's part it stands for that moves, eid: here its place is the app's)
+          src: e ? e.src : [], place: 'none', geom: null, cell: null, many: null, children: [],
+          estimate: e ? { x: e.x, y: e.y, w: e.w, h: e.h, how: e.how } : null, eid: e ? e.id : null,
+          // (why it can't be moved here: the code's reason, as the estimate gives it)
+          why: !e ? 'The code read here doesn\'t say where it\'s made.' : exact || e.kind === 'window' ? null
+            : e.why || `In the code its place is ${e.how === 'rules' ? 'laid out by rules' : 'worked out when it runs'}.` };
+        const kids = (r.children || []).filter(c => c && c.shown !== false), hidden = (r.children || []).filter(c => c && c.shown === false);
+        for (const h of hidden) if (h.name) notes.push(`${h.name} (${shortType(h.type)}) is made but not shown in the running app.`);
+        const matched = pair(kids, e ? e.children : []);
+        node.children = kids.map(c => build(c, matched.get(c) || null));
+        return node;
+      };
+      const root = build(rw.root, ew ? ew.root : null);
+      root.kind = 'window';
+      windows.push({ title: rw.title || (ew && ew.title) || 'window', toolkit: report.toolkit || (ew && ew.toolkit) || '', w: Math.round(+rw.w || root.w), h: Math.round(+rw.h || root.h), root, picture: rw.picture || null, measured: true });
+    });
+    if (report.note) notes.push(String(report.note));
+    return { toolkits: [report.toolkit || ''], windows, notes, made: report.made || null, measured: true };
+  }
+  /* The report a probe printed: the JSON between its two marks. -> the report, or null. */
+  const MARK = '\u0001INTUACODE-LAYOUT\u0001';
+  function reportIn(text) {
+    const parts = String(text || '').split(MARK);
+    if (parts.length < 3) return null;
+    try { return JSON.parse(parts[1]); } catch (e) { return null; }
+  }
+
+  /* The probes, as files IntuaCode writes out: tkinter's runs the program (the desktop app does it), JUCE's goes in the
+     app (it writes its report when the app runs with INTUACODE_LAYOUT set). */
+  const TK_PROBE = "\"\"\"IntuaCode's layout probe for tkinter: runs the program, and once its window is up, reports where every widget is\n(as Tk placed it), then closes it. The window is put out of sight while it's measured. Usage:\n    python -u probe_tk.py main.py [its arguments]\nIt prints one line, between two marks, of JSON: IntuaCode's layout report (version 1).\"\"\"\nimport json, os, sys, threading, runpy, time, types\nimport tkinter\n\nMARK = '\\x01INTUACODE-LAYOUT\\x01'\nthreading.Timer(20, lambda: os._exit(3)).start()   # (a program that never opens a window, or never stops)\n\n\ndef names_in_program():\n    \"\"\"The program's own names for its widgets: module names (status), and an object's (self.status).\"\"\"\n    found = {}\n    scope = vars(sys.modules.get('__main__')) if sys.modules.get('__main__') else {}\n    for key, value in list(scope.items()):   # its own names first (window), then an object's (self.status)\n        if isinstance(value, tkinter.Misc):\n            found.setdefault(str(value), key)\n    for key, value in list(scope.items()):\n        if not isinstance(value, (type, types.ModuleType)) and not isinstance(value, tkinter.Misc) and hasattr(value, '__dict__') and not callable(value):\n            try:\n                for k2, v2 in list(vars(value).items()):\n                    if isinstance(v2, tkinter.Misc):\n                        found.setdefault(str(v2), k2)\n            except TypeError:\n                pass\n    return found\n\n\ndef report(root):\n    root.update_idletasks()\n    root.update()\n    names = names_in_program()\n\n    def node(w, ox, oy):\n        try:\n            text = w.cget('text')\n        except (tkinter.TclError, AttributeError):\n            text = ''\n        kind = w.winfo_class()\n        return {\n            'type': kind[1:] if kind.startswith('T') and kind[1:2].isupper() else kind,   # (ttk's TButton is a Button)\n            'name': names.get(str(w)), 'id': str(w), 'text': str(text) if text is not None else '',\n            'x': w.winfo_rootx() - ox, 'y': w.winfo_rooty() - oy, 'w': w.winfo_width(), 'h': w.winfo_height(),\n            'shown': bool(w.winfo_ismapped()), 'manager': w.winfo_manager(),\n            'children': [node(c, ox, oy) for c in w.winfo_children() if not isinstance(c, tkinter.Menu)],\n        }\n\n    tops = [root] + [w for w in root.winfo_children() if isinstance(w, tkinter.Toplevel)]\n    windows = []\n    for top in tops:\n        ox, oy = top.winfo_rootx(), top.winfo_rooty()\n        n = node(top, ox, oy)\n        windows.append({'title': top.title(), 'w': n['w'], 'h': n['h'], 'picture': None, 'root': n})\n    data = {'intuacode': 'layout', 'version': 1, 'toolkit': 'tkinter', 'made': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),\n            'windows': windows}\n    sys.stdout.write(MARK + json.dumps(data) + MARK + '\\n')\n    sys.stdout.flush()\n    os._exit(0)\n\n\n_mainloop = tkinter.Misc.mainloop\n\n\ndef mainloop(self, n=0):\n    root = self._root()\n    try:\n        root.attributes('-alpha', 0.0)          # (out of sight where the system lets it be)\n    except tkinter.TclError:\n        pass\n    root.geometry('+-20000+-20000')             # (and off the screen: its size stays the program's)\n    root.after(500, lambda: report(root))\n    _mainloop(self, n)\n\n\ntkinter.Misc.mainloop = mainloop\ntkinter.mainloop = lambda n=0: mainloop(tkinter._get_default_root('mainloop') if hasattr(tkinter, '_get_default_root') else tkinter._default_root, n)\nif len(sys.argv) < 2:\n    sys.exit('usage: probe_tk.py program.py')\nsys.argv = sys.argv[1:]\nsys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[0])))\nrunpy.run_path(sys.argv[0], run_name='__main__')\nsys.stdout.write(MARK + json.dumps({'intuacode': 'layout', 'version': 1, 'toolkit': 'tkinter', 'windows': [], 'note': 'The program ended without opening a window (no mainloop).'}) + MARK + '\\n')\nsys.stdout.flush()\nos._exit(0)\n";
+  const JUCE_PROBE = "#pragma once\n// IntuaCode's layout probe for JUCE. When the app runs with INTUACODE_LAYOUT set to a file's path, a moment after its\n// window shows it writes where every component is to that file, as IntuaCode's layout report (version 1), with a\n// picture of each window beside it; IntuaCode's Preview then draws the app as it really is. Nothing happens, and nothing\n// is written, unless INTUACODE_LAYOUT is set.\n//\n//   1. #include \"IntuaCodeProbe.h\" in the file that makes the main window, and after the window is made and shown:\n//          intuacode::probeLayoutSoon();\n//   2. Run the app with INTUACODE_LAYOUT=<the project's folder>/intuacode-layout.json\n//      (and INTUACODE_LAYOUT_QUIT=1 to close it once it has written the report).\n//   3. In IntuaCode, press Measure in the Preview.\n#include <juce_gui_basics/juce_gui_basics.h>\n#include <cstring>\n#include <memory>\n#include <typeinfo>\n#if defined(__GNUG__)\n #include <cxxabi.h>\n #include <cstdlib>\n#endif\n\nnamespace intuacode {\n\n// a component's class, as written in the code (fec::console::ConsolePage, juce::Slider)\ninline juce::String typeNameOf(const juce::Component& c) {\n    const char* raw = typeid(c).name();\n   #if defined(__GNUG__)\n    int status = 0;\n    std::unique_ptr<char, void (*)(void*)> plain(abi::__cxa_demangle(raw, nullptr, nullptr, &status), std::free);\n    return status == 0 && plain != nullptr ? juce::String(plain.get()) : juce::String(raw);\n   #else\n    juce::String s(raw);   // MSVC: \"class fec::console::ConsolePage\"\n    for (auto word : { \"class \", \"struct \" })\n        if (s.startsWith(word)) return s.substring((int) std::strlen(word));\n    return s;\n   #endif\n}\n\ninline juce::var describe(juce::Component& c, juce::Component& window) {\n    auto* o = new juce::DynamicObject();\n    const auto r = window.getLocalArea(&c, c.getLocalBounds());\n    juce::String text;\n    if (auto* b = dynamic_cast<juce::Button*>(&c)) text = b->getButtonText();\n    else if (auto* l = dynamic_cast<juce::Label*>(&c)) text = l->getText();\n    o->setProperty(\"type\", typeNameOf(c));\n    o->setProperty(\"name\", c.getName());\n    o->setProperty(\"id\", c.getComponentID());\n    o->setProperty(\"text\", text);\n    o->setProperty(\"x\", r.getX());\n    o->setProperty(\"y\", r.getY());\n    o->setProperty(\"w\", r.getWidth());\n    o->setProperty(\"h\", r.getHeight());\n    o->setProperty(\"shown\", c.isShowing());\n    juce::Array<juce::var> children;\n    for (auto* child : c.getChildren())\n        children.add(describe(*child, window));\n    o->setProperty(\"children\", children);\n    return juce::var(o);\n}\n\n// Every window on the screen: where each component is, in the window, and a picture of it beside the report.\ninline void writeLayout(const juce::File& report) {\n    juce::Array<juce::var> windows;\n    auto& desktop = juce::Desktop::getInstance();\n    for (int i = 0; i < desktop.getNumComponents(); ++i) {\n        auto* top = desktop.getComponent(i);\n        if (top == nullptr || !top->isShowing()) continue;\n        juce::Component* content = top;\n        if (auto* rw = dynamic_cast<juce::ResizableWindow*>(top))\n            if (auto* cc = rw->getContentComponent()) content = cc;\n        auto* w = new juce::DynamicObject();\n        w->setProperty(\"title\", top->getName());\n        w->setProperty(\"w\", content->getWidth());\n        w->setProperty(\"h\", content->getHeight());\n        const auto picture = report.getSiblingFile(report.getFileNameWithoutExtension() + \"-\" + juce::String(i) + \".png\");\n        const auto image = content->createComponentSnapshot(content->getLocalBounds(), true, 1.0f);\n        picture.deleteFile();\n        if (auto stream = picture.createOutputStream()) {\n            juce::PNGImageFormat png;\n            if (png.writeImageToStream(image, *stream)) w->setProperty(\"picture\", picture.getFileName());\n        }\n        w->setProperty(\"root\", describe(*content, *content));\n        windows.add(juce::var(w));\n    }\n    auto* o = new juce::DynamicObject();\n    o->setProperty(\"intuacode\", \"layout\");\n    o->setProperty(\"version\", 1);\n    o->setProperty(\"toolkit\", \"JUCE\");\n    o->setProperty(\"made\", juce::Time::getCurrentTime().toISO8601(true));\n    o->setProperty(\"windows\", windows);\n    report.replaceWithText(juce::JSON::toString(juce::var(o)));\n}\n\n// After the main window is made: measures it a moment later (when it's laid out), if INTUACODE_LAYOUT is set.\ninline void probeLayoutSoon(int afterMs = 1500) {\n    const auto path = juce::SystemStats::getEnvironmentVariable(\"INTUACODE_LAYOUT\", {});\n    if (path.isEmpty()) return;\n    juce::Timer::callAfterDelay(afterMs, [path] {\n        writeLayout(juce::File(path));\n        if (juce::SystemStats::getEnvironmentVariable(\"INTUACODE_LAYOUT_QUIT\", {}).isNotEmpty())\n            juce::JUCEApplicationBase::quit();\n    });\n}\n\n} // namespace intuacode\n";
+
+  const api = { estimate, flat, move, num, statements, splitArgs, readJuce, measured, reportIn, MARK, TK_PROBE, JUCE_PROBE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.IntuiGui = api;
 })(typeof window !== 'undefined' ? window : globalThis);

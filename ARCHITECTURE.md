@@ -29,7 +29,7 @@ the desktop app.
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
 | `lang/changelog.js` | The change log: what changed between two versions of the code (each file's lines, counts and the named parts they fall in), a sentence for an entry, and a log read back from a project file checked for its shape |
-| `lang/gui.js` | The GUI estimate: an app's windows read from its code (tkinter: widgets, pack, grid and place followed with Tk's default sizes; JUCE: Component classes across .h and .cpp, what each adds, setSize, setBounds, resized()'s rectangle steps, constexpr numbers), each part marked exact, rules or sketch with the lines that make, place and wire it, and a drag as the line that places it with new numbers |
+| `lang/gui.js` | The GUI estimate: an app's windows read from its code (tkinter: widgets, pack, grid and place followed with Tk's default sizes; JUCE: Component classes across .h and .cpp, what each adds, setSize, setBounds, resized()'s rectangle steps, constexpr numbers), each part marked exact, rules or sketch with the lines that make, place and wire it, and a drag as the line that places it with new numbers; the layout report (version 1) a probe makes of the running app, the two probes (tkinter, run by IntuaCode; JUCE, a header the app carries), and a report drawn as windows the same shape, each part matched to the code's |
 | `lang/arrange.js` | Editor mode: a drag in the Preview as offsets (from where the page says the element is), written as a style sentence in Styling (in the element's own, or one straight after its look), and a name for an element that has none, said each way it could go in its sentence |
 | `lang/look.js` | Customise: IntuaCode's look laid out as very simple code (blocks of `Name = value` lines), the settings that can change, each value checked in plain words against the dark look it goes on, and the CSS variables and classes it sets |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
@@ -456,12 +456,42 @@ it. Like a move on a page, it's worked out, never kept:
   or column); a packed part, one worked out by rules or a sketch says how it's placed and lights up the line instead.
   The new line is typed into the open file (in a file of sentences, only an exact `python:` or `c++:` line), so Undo
   takes it back, and the estimate is read again from the code to check it's where it was dropped.
-- **Not the real thing.** Fonts and native controls differ, and a sketch is only the code's order. What would make it the
-  real thing is the running app measuring itself (each component's bounds, and a picture of it), drawn the same way: a
-  probe the app would carry, not built yet. FEC 16's code shows why it's needed: its layout is worked out from the window's
-  size and its state, so it reads almost all as a sketch, though its groups are right.
+- **Not the real thing.** Fonts and native controls differ, and a sketch is only the code's order. The real thing is the
+  running app measuring itself (next decision). FEC 16's code shows why it's needed: its layout is worked out from the
+  window's size and its state, so it reads almost all as a sketch, though its groups are right.
 - **The Preview is laid out before it loads.** A Preview shown and given a page at once was sometimes started as in a
   hidden frame (laid out at nothing) in Chrome without a window; the frame's width is read before the page goes in.
+
+## Decision: the running app measures itself, and the Preview draws that until the code changes
+
+*Decided 2026-11-19.*
+
+An estimate is only the code read. Measure asks the app itself: a probe in the running app reports where the toolkit put
+every part, as a layout report (version 1, the same from any toolkit: `{ intuacode: 'layout', version: 1, toolkit, made,
+windows: [{ title, w, h, picture?, root }] }`, each part its class, the code's name for it if the probe can tell, its text,
+its bounds in its window, whether it's shown, and its children). Kept as worked out, never as stored:
+
+- **Two ways to run a probe.** tkinter's IntuaCode runs (desktop): `probe_tk.py` runs the program with `runpy`, and when
+  it reaches `mainloop` makes the window see-through and puts it off the screen (its size stays the program's), asks Tk
+  for every widget's place (`winfo_rootx` less the window's, `winfo_width`, `winfo_ismapped`), names each by the
+  program's own names (module names first, then an object's: `self.status`), prints the report between two marks, and
+  ends; 20 seconds without a window, and it ends anyway. It's written to `.intuicode/` and run with `run_capture`, the
+  program's files written first as Run writes them. JUCE's is a header the app carries (`IntuaCodeProbe.h`): with
+  `INTUACODE_LAYOUT` set, a moment after the window shows it writes the report and a PNG of each window beside it;
+  Measure reads it from the project's folder, and with none there copies the header and says the three steps. Without
+  the variable it does nothing.
+- **Drawn as the estimate is drawn.** Each part where the app put it (how: measured, solid green), matched to the code's
+  part by the code's name, then by class in order among its group (a part the code makes several of, in a loop or an
+  array, stands for as many), so pointing lights up its code as before; a part the code read doesn't make says so; one
+  made but not shown is said under the window. A JUCE window's picture is behind its parts.
+- **Fresh only for the code it measured.** The measurement belongs to the code as it was (its files' text); when that
+  changes, the estimate is back, saying the measurement is older. A move is the code's part moving (the same new
+  numbers, row and column, and the same check on the re-read estimate); a part placed by numbers, relative to its group,
+  is then as far from where it was measured, so the measurement holds for the moved code too, less the window's picture,
+  which showed it where it was. Ctrl+Z back to the measured code is the measurement again. A grid move, which can move
+  the others, isn't carried: Measure again.
+- **The estimate learns from it.** Tk's sizes in the estimate (a character's width, a Button's, an Entry's height) are
+  the ones the probe measured (Tk 8.6, Windows); a test keeps the estimate within a pixel of that measurement.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 

@@ -336,6 +336,18 @@ it there. A grid part moves by cell (`row=1, column=2`); a packed part says it's
 position. Nothing about an estimate is kept: it's read from the code each time it changes. Run still runs the program
 in the terminal.
 
+**Measure: the app as it really runs (desktop).** An estimate is the code read; **Measure**, beside Editor over the
+Preview, asks the running app. For a tkinter app, IntuaCode runs it for a moment with its window out of sight (see-through
+and off the screen) and a small probe asks Tk where it put every part, by the program's own names (`status`,
+`self.entry`), then closes it. A JUCE app carries the probe, one header (`IntuaCodeProbe.h`, copied when you press
+Measure and there's nothing to read yet): run with `INTUACODE_LAYOUT` set, it writes where every component is, and a
+picture of each window, into the project's folder, and Measure reads that. The Preview then draws the window as measured
+(solid green), each part linked to its code as before, until the code changes: then the estimate is back, saying the
+measurement is older. A move in Editor mode is still the code's part moving: a part placed by numbers keeps the
+measurement (the code puts it as far from where it was measured), and Ctrl+Z goes back to the code that was measured.
+The estimate's sizes for Tk come from this measurement, so they agree within a pixel or two on the computer that measured
+them.
+
 **Customise: the look, as code.** **Menu → Customise** lays IntuaCode's look out as very simple code: a block for each
 part of the window (IntuaCode, Menu bar, Project side, Help, Editor, Code, Terminal), each line a plain name and its
 value, like `Text size = 14.5`. The values in seafoam are yours to change; the pink ones are fixed, there so it reads as
@@ -708,7 +720,7 @@ npm install && npm run vendor
 | `lang/changelog.js` | What changed: the lines between two versions of the code, the parts they fall in, counts, and each entry checked when read back |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `lang/look.js` | Customise: the look as very simple code, the settings that can change, each value checked (in words), and what it sets on the page |
-| `lang/gui.js` | The GUI estimate: an app's windows (tkinter, JUCE) read from its code, each part exact, laid out by rules or a sketch, and a drag as new numbers in its line |
+| `lang/gui.js` | The GUI estimate: an app's windows (tkinter, JUCE) read from its code, each part exact, laid out by rules or a sketch, and a drag as new numbers in its line; the probes (tkinter, JUCE) and a measured app drawn the same way |
 | `lang/arrange.js` | Editor mode: something dragged in the Preview, said as a style sentence (where it goes in Styling), and a name for something that has none |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |

@@ -3,10 +3,12 @@
 // against what each toolkit would do; then the Preview and Editor mode on a tkinter app in the real page, in Chrome.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import { ROOT } from './helpers/engine.mjs';
+import { PYTHON, ROOT } from './helpers/engine.mjs';
 import { findChrome, openBrowser } from './helpers/browser.mjs';
 
 const ctx = { console };
@@ -63,10 +65,10 @@ test('gui: tkinter, as Tk lays it out: pack (sides, padding, fill, expand), grid
   assert.deepEqual(plain(parts(w)), {
     window: [0, 0, 360, 300, 'exact'],
     top: [8, 8, 344, 26, 'rules'],           // fill=X, padx=pady=PAD
-    entry: [12, 10, 216, 22, 'rules'],       // grid row 0 column 0, padx=4: from the frame's top left
-    add: [232, 8, 39, 26, 'rules'],
+    entry: [12, 12, 184, 19, 'rules'],       // grid row 0 column 0, padx=4: from the frame's top left
+    add: [200, 8, 33, 26, 'rules'],          // (sizes: Tk's, as the probe measured them; tests/fixtures/tk-layout.json)
     tasks: [8, 42, 344, 258, 'rules'],       // fill=BOTH, expand: the rest of the window
-    status: [12, 270, 53, 20, 'exact'],      // place(x=12, y=270): the code says the numbers
+    status: [12, 270, 42, 21, 'exact'],      // place(x=12, y=270): the code says the numbers
   });
   assert.equal(find(w, 'add').node.label, 'Add');
   // what each part is made, placed and does in the code (0-based lines)
@@ -256,16 +258,53 @@ function serveApp(req) {
   return { type: TYPES[path.extname(file)] || 'application/octet-stream', body: readFileSync(file) };
 }
 
-test('gui: in the page, an imported tkinter app shows its window in the Preview, and Editor mode moves a part in its code', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
-  const browser = await openBrowser();
-  try {
-    const tab = await browser.tab();
-    await tab.open(ORIGIN + '/', { serve: serveApp });
+/* Driving the page in Chrome: waiting for it, asking the Preview where a part is (its frame is sandboxed: the Preview's
+   own question, by the part's place in what it shows), and dragging in it. */
+function drive(tab) {
+  const until = async (cond, what, tries = 150) => { for (let i = 0; i < tries; i++) { if (await tab.run(`!!(${cond})`)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(`waited for ${what}: ${await tab.run('document.getElementById("editBar").textContent')}`); };
+  const where = (line) => tab.run(`new Promise((ok, no) => {
+    const f = (e) => { if (e.data && e.data.type === 'edit-at' && e.data.line === ${line}) { removeEventListener('message', f); ok(e.data); } };
+    addEventListener('message', f); document.getElementById('preview').contentWindow.postMessage({ intuicodeWhere: ${line} }, '*');
+    setTimeout(() => no(new Error('the page didn\\'t answer')), 5000);
+  })`);
+  const frame = async () => JSON.parse(await tab.run('JSON.stringify(document.getElementById("preview").getBoundingClientRect())'));
+  const mouse = (type, x, y, held) => tab.send('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' && !held ? 'none' : 'left', buttons: type === 'mousePressed' || held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
+  // (Chrome without a window can leave a frame of its own process unsized after it's shown again: a window draws and
+  // sizes it all the time; here the window's size is nudged until it has) -> the window as the page draws it
+  const sized = async (w, h) => {
+    let win = null;
+    for (let i = 0; i < 60 && !(win && win.w === w && win.h === h); i++) {
+      try { win = await where(0); } catch (e) { win = null; }
+      if (win && win.w === w) break;
+      const fr = await frame();
+      await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
+      await tab.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: fr.x + 20 + (i % 5), y: fr.y + 20, button: 'none', buttons: 0 });
+      await new Promise(r => setTimeout(r, 250));
+    }
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
-    const until = async (cond, what) => { for (let i = 0; i < 150; i++) { if (await tab.run(`!!(${cond})`)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(`waited for ${what}: ${await tab.run('document.getElementById("editBar").textContent')}`); };
-    await until('document.getElementById("btnEditor") && document.getElementById("ta")', 'the app');
+    return win;
+  };
+  // (asked just after the page is rebuilt, the old page may be the one asked: again, once the new one is up)
+  const whereSoon = async (line) => { for (let i = 0; ; i++) { try { return await where(line); } catch (e) { if (i >= 4) throw e; await new Promise(r => setTimeout(r, 300)); } } };
+  // (a drag waits for the page the Preview was last given to be the one up: pressed while it's rebuilt, nothing moves)
+  const loaded = () => until('window.__icLoaded === document.getElementById("preview").getAttribute("srcdoc")', 'the Preview\'s page to load');
+  const drag = async (line, dx, dy) => {
+    await loaded();
+    const f = await frame(), at = await whereSoon(line), x = f.x + at.x + at.w / 2, y = f.y + at.y + at.h / 2;
+    await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
+    await mouse('mouseMoved', x, y); await new Promise(r => setTimeout(r, 150));
+    await mouse('mousePressed', x, y);
+    for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dx * i / 8, y + dy * i / 8, true);
+    await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
+    await mouse('mouseReleased', x + dx, y + dy);
+    await until('document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move');
+    return { bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
+  };
+  const code = () => tab.run('document.getElementById("uTa").value');
+  // the tkinter app, imported as a folder of one file: it opens on its window's estimate in the Preview
+  const importTk = async () => {
+    await tab.run(`(() => { const f = document.getElementById('preview'); f.addEventListener('load', () => { window.__icLoaded = f.getAttribute('srcdoc'); }); return true; })()`);
     await tab.run('(() => { const w = document.getElementById("welcomeModal"); if (!w.hidden) document.getElementById("welcomeLook").click(); return true; })()');
-    // imported as a folder of one file
     await tab.run(`(() => {
       const f = new File([${JSON.stringify(TK)}], 'tk_app.py'); Object.defineProperty(f, 'webkitRelativePath', { value: 'tasks/tk_app.py' });
       const inp = document.getElementById('impFolder'); Object.defineProperty(inp, 'files', { value: [f], configurable: true }); inp.dispatchEvent(new Event('change'));
@@ -274,29 +313,27 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
     await until('/Imported tasks/.test(document.getElementById("termLog").innerText)', 'the import to finish');
     // opened, it shows its window's estimate in the Preview (as a website shows its page)
     await until('!document.getElementById("tabPreview").hidden && document.getElementById("tabPreview").getAttribute("aria-selected") === "true"', 'the Preview (a window is read from the code)');
-    assert.equal(await tab.run('document.getElementById("btnEditor").hidden'), false);
-    // where the page puts a part: the Preview's own question (the frame is sandboxed), by its place in the estimate
-    const index = (name) => tab.run(`IntuiGui.flat(IntuiGui.estimate([{ path: 'tk_app.py', code: ${JSON.stringify(TK)} }]).windows[0]).findIndex(x => x.node.name === ${JSON.stringify(name)})`);
-    const where = (line) => tab.run(`new Promise((ok, no) => {
-      const f = (e) => { if (e.data && e.data.type === 'edit-at' && e.data.line === ${line}) { removeEventListener('message', f); ok(e.data); } };
-      addEventListener('message', f); document.getElementById('preview').contentWindow.postMessage({ intuicodeWhere: ${line} }, '*');
-      setTimeout(() => no(new Error('the page didn\\'t answer')), 5000);
-    })`);
-    const statusAt = await index('status'), tasksAt = await index('tasks');
-    // (the estimate's page, not the page the Preview showed before: its window, the first part, is 360 × 300)
+    // (the estimate's page, not the page the Preview showed before)
     await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("An estimate of the app")', 'the estimate in the Preview');
-    let win = null;
-    // (Chrome without a window can leave a frame of its own process unsized after it's shown again: a window draws and
-    // sizes it all the time; here the window's size is nudged until it has)
-    for (let i = 0; i < 60 && !(win && win.w === 360 && win.h === 300); i++) {
-      try { win = await where(0); } catch (e) { win = null; }
-      if (win && win.w === 360) break;
-      const fr = JSON.parse(await tab.run('JSON.stringify(document.getElementById("preview").getBoundingClientRect())'));
-      await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
-      await tab.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: fr.x + 20 + (i % 5), y: fr.y + 20, button: 'none', buttons: 0 });
-      await new Promise(r => setTimeout(r, 250));
-    }
+  };
+  return { until, where, frame, mouse, sized, drag, code, importTk };
+}
+
+test('gui: in the page, an imported tkinter app shows its window in the Preview, and Editor mode moves a part in its code', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
+  const browser = await openBrowser();
+  try {
+    const tab = await browser.tab();
+    await tab.open(ORIGIN + '/', { serve: serveApp });
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
+    const { until, where, frame, mouse, sized, drag, code, importTk } = drive(tab);
+    await until('document.getElementById("btnEditor") && document.getElementById("ta")', 'the app');
+    await importTk();
+    assert.equal(await tab.run('document.getElementById("btnEditor").hidden'), false);
+    assert.equal(await tab.run('document.getElementById("btnMeasure").hidden'), true, 'measuring runs the app, which the desktop app does');
+    const index = (name) => tab.run(`IntuiGui.flat(IntuiGui.estimate([{ path: 'tk_app.py', code: ${JSON.stringify(TK)} }]).windows[0]).findIndex(x => x.node.name === ${JSON.stringify(name)})`);
+    const statusAt = await index('status'), tasksAt = await index('tasks');
+    // its window, the first part, is 360 × 300
+    const win = await sized(360, 300);
     assert.deepEqual([win && win.w, win && win.h], [360, 300], 'the window, at its geometry("360x300"): ' + JSON.stringify(win) + ' ' + await tab.run('JSON.stringify({ wrap: document.getElementById("previewWrap").hidden, sel: document.getElementById("tabPreview").getAttribute("aria-selected"), shut: document.getElementById("work").className, frame: document.getElementById("preview").getBoundingClientRect().toJSON(), log: document.getElementById("termLog").innerText.slice(-200) })'));
     const s0 = await where(statusAt), t0 = await where(tasksAt);
     assert.deepEqual([t0.w, t0.h], [344, 258], 'the list as Tk lays it out');
@@ -305,20 +342,6 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
     // Editor mode: the code and the estimate side by side
     await tab.run('document.getElementById("btnEditor").click()');
     assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Drag a part of the window to move it\./);
-    const frame = async () => JSON.parse(await tab.run('JSON.stringify(document.getElementById("preview").getBoundingClientRect())'));
-    const mouse = (type, x, y, held) => tab.send('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' && !held ? 'none' : 'left', buttons: type === 'mousePressed' || held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
-    const drag = async (line, dx, dy) => {
-      const f = await frame(), at = await where(line), x = f.x + at.x + at.w / 2, y = f.y + at.y + at.h / 2;
-      await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
-      await mouse('mouseMoved', x, y); await new Promise(r => setTimeout(r, 150));
-      await mouse('mousePressed', x, y);
-      for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dx * i / 8, y + dy * i / 8, true);
-      await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
-      await mouse('mouseReleased', x + dx, y + dy);
-      await until('document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move');
-      return { bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
-    };
-    const code = () => tab.run('document.getElementById("uTa").value');
     // pointing at the list lights up its code: where it's placed, where it's made
     {
       const f = await frame(), at = await where(tasksAt);
@@ -337,12 +360,180 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
     await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
     await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
     assert.equal((await code()).split('\n')[20], 'status.place(x=12, y=270)');
+    await until('/id="status" title="[^"]*" style="left:12px;top:270px/.test(document.getElementById("preview").getAttribute("srcdoc") || "")', 'the label back in the estimate');
     // the list (pack) isn't at a position: it says why, and the code stays as it is
     const before = await code();
     m = await drag(tasksAt, 20, 20);
     assert.equal(m.bad, true);
     assert.match(m.bar, /^tasks: pack\(\) places things one after another/);
     assert.equal(await code(), before);
+    await tab.close();
+  } finally { await browser.close(); }
+});
+
+/* ---------- Measure: the running app's own report (a probe's), drawn as the app is ---------- */
+// this file's app (TK), as the tkinter probe measured it (Tk 8.6, Windows)
+const REPORT = JSON.parse(readFileSync(path.join(ROOT, 'tests/fixtures/tk-layout.json'), 'utf8'));
+
+test('gui: a measurement puts each part where the running app put it, linked to its code; one the code places with numbers still moves', () => {
+  const files = [{ path: 'tk_app.py', code: TK }], est = G.estimate(files), view = G.measured(REPORT, est);
+  assert.equal(view.measured, true);
+  const w = view.windows[0];
+  assert.deepEqual([w.title, w.w, w.h, w.toolkit], ['Tasks', 360, 300, 'tkinter']);
+  assert.deepEqual(plain(parts(w)), {
+    window: [0, 0, 360, 300, 'measured'], top: [8, 8, 344, 26, 'measured'], entry: [12, 11, 184, 19, 'measured'],
+    add: [200, 8, 33, 26, 'measured'], tasks: [8, 42, 344, 258, 'measured'], status: [12, 270, 41, 21, 'measured'] }, 'the one not shown (lost) isn\'t there');
+  assert.deepEqual(plain(view.notes), ['lost (Button) is made but not shown in the running app.']);
+  // the estimate's sizes come from this measurement: within a pixel of it
+  for (const { node: e } of G.flat(est.windows[0])) {
+    const m = find(w, e.name).node;
+    assert.ok([0, 1, 2, 3].every(i => Math.abs([e.x, e.y, e.w, e.h][i] - [m.x, m.y, m.w, m.h][i]) <= 1), `${e.name}: estimated ${[e.x, e.y, e.w, e.h]}, measured ${[m.x, m.y, m.w, m.h]}`);
+    // and each part is linked to its code, as the estimate links it (so its code lights up)
+    assert.deepEqual(plain(m.src), plain(e.src), e.name);
+  }
+  // moved, a part is the code's part it stands for: place() with numbers, its new numbers
+  const code = (n) => G.flat(est.windows[0]).find(x => x.node.id === n.eid), s = code(find(w, 'status').node);
+  assert.equal(G.move(files, s.node, 30, -10, s.parent).text, 'status.place(x=42, y=260)');
+  // pack: where it is was measured, how it got there is pack's (it says so, and nothing is written)
+  const t = code(find(w, 'tasks').node);
+  assert.match(G.move(files, t.node, 20, 20, t.parent).why, /^pack\(\) places things one after another/);
+  assert.match(find(w, 'tasks').node.why, /laid out by rules/, 'in its tip');
+  assert.equal(code(w.root).node.kind, 'window');
+  // a part the code read here doesn't make: measured, and said so
+  const more = JSON.parse(JSON.stringify(REPORT));
+  more.windows[0].root.children.push({ type: 'Canvas', name: null, id: '.!canvas', text: '', x: 0, y: 0, w: 50, h: 50, shown: true, children: [] });
+  const c = G.flat(G.measured(more, est).windows[0]).find(x => x.node.type === 'Canvas').node;
+  assert.deepEqual([c.how, c.place, c.src.length], ['measured', 'none', 0]);
+  assert.match(c.why, /doesn't say where it's made/);
+  // the report, in what the probe printed (after whatever the program printed), and what isn't one
+  assert.deepEqual(plain(G.reportIn('Loading…\n' + G.MARK + JSON.stringify(REPORT) + G.MARK + '\n')), REPORT);
+  assert.equal(G.reportIn('Loading…\n'), null);
+  assert.equal(G.reportIn(G.MARK + '{not json' + G.MARK), null);
+  assert.equal(G.measured({ windows: [] }, est), null, 'not a report');
+  assert.match(G.TK_PROBE, /INTUACODE-LAYOUT/);
+  assert.match(G.JUCE_PROBE, /namespace intuacode[\s\S]*inline void probeLayoutSoon\(/);
+});
+
+test('gui: a JUCE app\'s report (IntuaCodeProbe.h): its classes matched to the code\'s parts, several made in a loop to the one that makes them', () => {
+  const files = [{ path: 'PluginEditor.h', code: JUCE_H }, { path: 'PluginEditor.cpp', code: JUCE_CPP }], est = G.estimate(files);
+  // as the probe writes it, its classes as the compiler names them; JUCE components have no names unless given one
+  const part = (type, x, y, w, h, more = {}) => ({ type, name: '', id: '', text: '', x, y, w, h, shown: true, children: [], ...more });
+  const report = { intuacode: 'layout', version: 1, toolkit: 'JUCE', made: '2026-11-19T10:00:00.000Z', windows: [{ title: 'Gain', w: 400, h: 300, picture: 'intuacode-layout-0.png',
+    root: part('GainEditor', 0, 0, 400, 300, { children: [
+      part('juce::Slider', 20, 60, 120, 120), part('juce::TextButton', 150, 267, 100, 26, { text: 'Bypass' }), part('juce::Label', 10, 8, 380, 24, { text: 'Gain' }),
+      part('MeterStrip', 320, 40, 80, 260, { children: [part('juce::Slider', 324, 44, 72, 232), part('juce::Label', 324, 276, 72, 20)] }),
+      part('juce::ComboBox', 8, 52, 140, 24),
+      ...[0, 1, 2, 3].map(i => part('juce::ToggleButton', 156 + i * 56, 52, 52, 24, { text: `Band ${i + 1}` })),
+    ] }) }] };
+  const view = G.measured(report, est), w = view.windows[0], p = plain(parts(w));
+  assert.deepEqual([w.title, w.w, w.h, w.picture, view.toolkits[0]], ['Gain', 400, 300, 'intuacode-layout-0.png', 'JUCE']);
+  assert.deepEqual(p.gain, [20, 60, 120, 120, 'measured']);
+  assert.deepEqual(p.bypass, [150, 267, 100, 26, 'measured'], 'where it really is (the estimate had 110)');
+  assert.deepEqual(p.level, [324, 44, 72, 232, 'measured'], 'inside the meter');
+  assert.equal(find(w, 'title').node.label, 'Gain');
+  // the four band buttons: each where it is, each linked to the code that makes them
+  const bands = G.flat(w).filter(x => x.node.name === 'bands').map(x => x.node);
+  assert.deepEqual(plain(bands.map(b => [b.id, b.x, b.label])), [['bands', 156, 'Band 1'], ['bands-2', 212, 'Band 2'], ['bands-3', 268, 'Band 3'], ['bands-4', 324, 'Band 4']]);
+  assert.ok(bands.every(b => b.src.length && b.src === bands[0].src));
+  // moved, it's the code's part: setBounds with numbers moves; the rest says why not
+  const code = (n) => G.flat(est.windows[0]).find(x => x.node.id === n.eid), g = code(find(w, 'gain').node);
+  assert.deepEqual(plain(G.move(files, g.node, 15, -5, g.parent)), { path: 'PluginEditor.cpp', line: 32, text: '    gain.setBounds(35, 55, 120, 120);', x: 35, y: 55 });
+  assert.match(G.move(files, code(find(w, 'mode').node).node, 5, 5).why, /^Its place is worked out in resized\(\)/);
+});
+
+// a Python with Tk that can open a window here (CI's Linux tests have no screen)
+const TK_UP = (() => { try { return spawnSync(PYTHON, ['-c', 'import tkinter; tkinter.Tk().destroy()'], { timeout: 20000 }).status === 0; } catch (e) { return false; } })();
+test('gui: the tkinter probe runs the app out of sight and says where Tk put each part, by the program\'s own names', { skip: !TK_UP && 'no Python with Tk and a screen' }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'intuicode-probe-'));
+  try {
+    writeFileSync(path.join(dir, 'tk_app.py'), TK);
+    writeFileSync(path.join(dir, 'probe_tk.py'), G.TK_PROBE);
+    writeFileSync(path.join(dir, 'no_window.py'), 'print("no window here")\n');
+    const run = (file) => spawnSync(PYTHON, ['-u', 'probe_tk.py', file], { cwd: dir, encoding: 'utf8', timeout: 40000 });
+    const r = run('tk_app.py'), report = G.reportIn(r.stdout);
+    assert.ok(report, `no report (${r.status}): ${r.stdout} ${r.stderr}`);
+    assert.deepEqual(plain([report.intuacode, report.version, report.toolkit, report.windows.length]), ['layout', 1, 'tkinter', 1]);
+    const w = report.windows[0], kids = Object.fromEntries(w.root.children.map(c => [c.name, c]));
+    assert.deepEqual([w.title, w.w, w.h, w.root.name], ['Tasks', 360, 300, 'window']);
+    assert.deepEqual(Object.keys(kids), ['top', 'tasks', 'status', 'lost']);
+    assert.deepEqual(plain(kids.top.children.map(c => c.name)), ['entry', 'add']);
+    // what the code settles, whatever the fonts: pack's padding and fill, place's numbers
+    assert.deepEqual([kids.top.x, kids.top.y, kids.top.w], [8, 8, 344]);
+    assert.deepEqual([kids.tasks.x, kids.tasks.w, kids.tasks.y + kids.tasks.h], [8, 344, 300]);
+    assert.deepEqual([kids.status.x, kids.status.y, kids.status.text], [12, 270, '0 tasks']);
+    assert.equal(kids.lost.shown, false);
+    // drawn, every part is linked to its code
+    const view = G.measured(report, G.estimate([{ path: 'tk_app.py', code: TK }]));
+    for (const { node } of G.flat(view.windows[0])) assert.ok(node.src.length, `${node.name} is linked to its code`);
+    // a program that opens no window says so
+    const none = G.reportIn(run('no_window.py').stdout);
+    assert.deepEqual([none.windows.length, none.note], [0, 'The program ended without opening a window (no mainloop).']);
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
+/* The desktop app's page with a pretend desktop layer (tests/desktop-mock.html): Measure runs the probe there, and what
+   it prints is the pretend run's (tests/e2e/run.mjs measures with the real one, and Python). */
+function serveMock(req) {
+  const url = new URL(req.url);
+  if (url.origin === ORIGIN && url.pathname === '/index.html' && url.search === '?raw') return { type: 'text/html', body: readFileSync(path.join(ROOT, 'index.html'), 'utf8') };
+  return serveApp(req);
+}
+test('gui: with the desktop layer, Measure runs the probe, and the Preview shows the app as measured, through a move, until the code changes', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
+  const browser = await openBrowser();
+  try {
+    const tab = await browser.tab();
+    await tab.open(ORIGIN + '/tests/desktop-mock.html', { serve: serveMock });
+    await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
+    const { until, sized, drag, code, importTk } = drive(tab);
+    await until('document.getElementById("btnEditor") && document.getElementById("ta") && document.documentElement.classList.contains("desktop")', 'the app, as the desktop app');
+    await importTk();
+    await until('!document.getElementById("btnMeasure").hidden', 'Measure, beside the Preview');
+    const page = () => tab.run('document.getElementById("preview").getAttribute("srcdoc") || ""');
+    // what the probe prints, run: this app as Tk measured it (after what the program printed)
+    await tab.run(`(() => { window.mock.capture = { code: 0, out: 'Loading tasks\\n' + ${JSON.stringify(G.MARK + JSON.stringify(REPORT) + G.MARK)} + '\\n', err: '' }; return true; })()`);
+    await tab.run('(() => { document.getElementById("btnMeasure").click(); return true; })()');
+    await until('/^Measured in the running app/.test(document.getElementById("editBar").textContent)', 'the measurement');
+    assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Measured in the running app at .+: 5 parts, each where the app really puts it\. It shows until the code changes\.Close$/);
+    // how: the project's files and the probe (in IntuaCode's own folder there), then Python on the probe and the program
+    const calls = JSON.parse(await tab.run('JSON.stringify(window.mock.calls.filter(c => c[0] === "run_capture" || c[0] === "write_text"))'));
+    const ran = calls.find(c => c[0] === 'run_capture')[1];
+    assert.deepEqual([ran.program, plain(ran.args)], ['python3', ['-u', ran.cwd + '/.intuicode/probe_tk.py', 'tk_app.py']]);
+    assert.equal(calls.find(c => c[0] === 'write_text' && c[1].path === ran.cwd + '/.intuicode/probe_tk.py')[1].content, G.TK_PROBE);
+    assert.match(calls.find(c => c[0] === 'write_text' && c[1].path === ran.cwd + '/tk_app.py')[1].content, /status\.place\(x=12, y=270\)/);
+    // the Preview: the window as measured, each part where Tk put it (in its group), the one not shown not there
+    await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("Measured in the running app at")', 'the measured window in the Preview');
+    assert.match(await page(), /id="status" title="[^"]*" style="left:12px;top:270px;width:41px;height:21px"/);
+    assert.match(await page(), /id="entry" title="[^"]*" style="left:4px;top:3px;width:184px;height:19px"/, 'in its frame: 12 − 8, 11 − 8');
+    assert.doesNotMatch(await page(), /id="lost"/);
+
+    // Editor mode: the label, placed by numbers, moves in its code, and the measurement holds for the code it's moved to
+    const at = (name) => tab.run(`IntuiGui.flat(IntuiGui.measured(${JSON.stringify(REPORT)}, IntuiGui.estimate([{ path: 'tk_app.py', code: ${JSON.stringify(TK)} }])).windows[0]).findIndex(x => x.node.name === ${JSON.stringify(name)})`);
+    const statusAt = await at('status'), tasksAt = await at('tasks');
+    await tab.run('document.getElementById("btnEditor").click()');
+    const win = await sized(360, 300);
+    assert.deepEqual([win && win.w, win && win.h], [360, 300], 'the measured window: ' + JSON.stringify(win));
+    let m = await drag(statusAt, 30, -10);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, /^Moved status 30 right and 10 up, and the code puts it there\./);
+    assert.equal((await code()).split('\n')[20], 'status.place(x=42, y=260)');
+    await until('/id="status" title="[^"]*" style="left:42px;top:260px;width:41px;height:21px"/.test(document.getElementById("preview").getAttribute("srcdoc") || "")', 'the measured label, moved as far');
+    assert.match(await page(), /Measured in the running app at/);
+    // Ctrl+Z: the code it measured, as measured
+    await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
+    await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
+    assert.equal((await code()).split('\n')[20], 'status.place(x=12, y=270)');
+    await until('/id="status" title="[^"]*" style="left:12px;top:270px;width:41px;height:21px"/.test(document.getElementById("preview").getAttribute("srcdoc") || "")', 'the label back where it was measured');
+    assert.match(await page(), /Measured in the running app at/);
+    // the list: where it is was measured, but pack lays it out (it says so, and nothing is written)
+    const before = await code();
+    m = await drag(tasksAt, 20, 20);
+    assert.equal(m.bad, true);
+    assert.match(m.bar, /^tasks: pack\(\) places things one after another/);
+    assert.equal(await code(), before);
+    // the code changes: the estimate again, saying the measurement is older than the code
+    await tab.run(`(() => { const ta = document.getElementById('uTa'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); document.execCommand('insertText', false, 'print("done")\\n'); return true; })()`);
+    await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("is older than the code: Measure again")', 'the estimate, saying the measurement is older', 300);
+    assert.match(await page(), /An estimate of the app's window, read from its code/);
     await tab.close();
   } finally { await browser.close(); }
 });

@@ -259,6 +259,15 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Import a JUCE plug-in's editor (.h and .cpp): its window at `setSize`, parts placed by `setBounds` solid, by
       `resized()`'s rectangle steps dashed, the rest dotted with why on hover. A component inside another is drawn inside it.
 - [ ] Desktop app: the same.
+- [ ] Desktop app, the tkinter file: **Measure** (beside Editor) runs it for a moment, no window seen; the Preview says
+      "Measured in the running app at …", every part solid green where Tk put it, the never-packed one not there. The bar
+      says how many parts; Close closes it.
+- [ ] Editor mode on the measured window: drag the label: its line's numbers change and it stays measured, moved; Ctrl+Z:
+      measured, where it was. Type anything in the code: the estimate is back, saying the measurement is older.
+- [ ] A tkinter file with no `mainloop()`: Measure says it ended without opening a window. The browser: no Measure.
+- [ ] A JUCE app: Measure with nothing to read copies `IntuaCodeProbe.h` and says the three steps. With the header added,
+      `intuacode::probeLayoutSoon();` after the window shows, and the app run with `INTUACODE_LAYOUT=<folder>/intuacode-layout.json`:
+      Measure draws each component where it is, over a picture of the window, the components linked to their code.
 
 **Customise**
 - [ ] **Menu → Customise…**: IntuaCode's look as very simple code, in blocks (IntuaCode, Menu bar, Project side, Help, Editor,
