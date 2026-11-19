@@ -390,6 +390,26 @@ folder was next opened, and an edit to the same file in IntuaCode in the meantim
 - **The window's own colours stay readable.** Seafoam (the Predictive Mode button's) and pink are shown on the editor's
   background, which can only be dark; `tests/look.test.mjs` checks both on the lightest one it lets through.
 
+## Decision: in WebKit, IntuaCode keeps the code's Undo itself
+
+*Decided 2026-11-19.*
+
+WebKit (the desktop app on macOS and Linux, Safari) keeps one Undo for the whole window, frames and all, and when the
+Preview's frame is given a new page (a rebuild, 600 ms after typing, or after a move) it empties it: typed, the Preview
+rebuilt, and Ctrl+Z took nothing back. Checked in Playwright's WebKit (18.2): Ctrl+Z before the rebuild took the typing
+back, after it nothing; in Chrome both did (its Undo is per frame). So in WebKit, IntuaCode keeps each file's Undo:
+
+- **Steps, as an editor's.** Each file's text, step by step: typing in one step while it doesn't pause (800 ms) or
+  turn from adding to taking away; anything else (a paste, a fix, a move typed in) a step of its own. A change made from
+  outside the editor (a move, an import's sentences arriving) is a step too, taken before the next one, so Ctrl+Z takes
+  it back first. At most 400 steps a file.
+- **The keys and the menu.** Ctrl+Z (or ⌘Z), Ctrl+Shift+Z and Ctrl+Y in the code (Split Mode's and Unity's), and the
+  Edit menu's Undo and Redo (`beforeinput`'s historyUndo and historyRedo) go through it; the caret goes where the text
+  changed. A move's own take-back (`movesBack`) steps aside: the move is a step.
+- **Only where it's needed.** On when the engine is WebKit (AppleWebKit and no Chrome in the user agent: WebKitGTK,
+  WKWebView, Safari); Chromium (the browser, the desktop app on Windows) keeps its own. `intuicode.undo.v1` ("own" or
+  "engine") chooses; the tests switch it on in Chrome.
+
 ## Decision: a webpage box is a box the page fills, its shape a rule in the page's head
 
 *Decided 2026-11-19.*
@@ -433,7 +453,8 @@ the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, n
   after a move puts the file back as it was before it, move by move, last first, in Unity and Split Mode: IntuaCode's own
   (`movesBack`), because an engine's Undo can't be relied on for it. WebKit (Linux, macOS) keeps one Undo for the whole
   page, frames and all, and with the Preview rebuilt after a move it had nothing to take back (the desktop tests on Linux
-  showed it; Chromium's Undo, per frame, did). Anything typed since a move, and Ctrl+Z is the editor's own again. A name
+  showed it; Chromium's Undo, per frame, did). Anything typed since a move, and Ctrl+Z is the editor's own again. (In
+  WebKit, IntuaCode keeps the whole Undo itself, and a move is a step of it: next decision.) A name
   given in Structure stays: it changes nothing on the page. When opening Styling would change which page the Preview
   shows (another page of a site is open), the move is written into the file as it is, without Undo.
 - **A name only when the page stays the same.** Something with no name gets one in its sentence (from its text, or what it

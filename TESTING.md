@@ -251,6 +251,9 @@ Tick each one. If something is off, note what you did and what the terminal said
       it, not where it was dropped, and that another style wins.
 - [ ] Full screen on the code, then on the Preview: each fills the window; again, both come back side by side. Drag the
       line between them: the page gets wider (double-click: half and half), and it's remembered.
+- [ ] macOS or Linux desktop app: type a sentence in Structure, wait for the Preview to show it, then Ctrl+Z (⌘Z): it's
+      taken back (IntuaCode's own Undo), and Ctrl+Shift+Z puts it back. Two bursts of typing with a pause: two steps.
+      Edit → Undo in the menu does the same.
 - [ ] Split Mode in Editor mode: the sentences above the code, the page beside them. A drag is typed into the sentences,
       and Ctrl+Z takes it back.
 - [ ] **Editor** again: the side, Help and the explanation come back, and the terminal is as it was.

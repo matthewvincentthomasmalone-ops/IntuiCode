@@ -545,3 +545,31 @@ test('editor: with the desktop layer (tests/desktop-mock.html), a move is writte
     await tab.close();
   } finally { await browser.close(); }
 });
+
+test('editor: with IntuaCode\'s own Undo (as in WebKit), a move is a step of it: Ctrl+Z takes it back, Ctrl+Y puts it back', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
+  const browser = await openBrowser();
+  try {
+    const tab = await browser.tab();
+    await tab.open(ORIGIN + '/', { serve: serveApp });
+    await tab.run('(() => { localStorage.setItem("intuicode.undo.v1", "own"); return true; })()');
+    await tab.open(ORIGIN + '/', { serve: serveApp });
+    await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
+    const { until, where, drag, undo } = driving(tab);
+    await until('document.getElementById("btnEditor") && document.getElementById("ta") && document.getElementById("ta").value.length > 0', 'the app');
+    await tab.run('(() => { const w = document.getElementById("welcomeModal"); if (!w.hidden) document.getElementById("welcomeLook").click(); return true; })()');
+    await until('!document.getElementById("previewWrap").hidden', 'the Preview');
+    await where(4);
+    await tab.run('document.getElementById("btnEditor").click()');
+    const m = await drag(4, 30, 12);
+    assert.match(m.bar, /^Moved cta 30 right and 12 down, and the page shows it there\./);
+    const line5 = () => tab.run('document.getElementById("uTa").value.split(String.fromCharCode(10))[4]');
+    assert.equal(await line5(), 'style cta: position: relative, left: 30px, top: 12px');
+    await undo();
+    assert.equal(await line5(), 'when cta is hovered: background #ffe9d2', 'Ctrl+Z: the move taken back');
+    await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'y', code: 'KeyY', windowsVirtualKeyCode: 89, modifiers: 2 });
+    await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'y', code: 'KeyY', windowsVirtualKeyCode: 89, modifiers: 2 });
+    assert.equal(await line5(), 'style cta: position: relative, left: 30px, top: 12px', 'Ctrl+Y: put back');
+    await tab.run('document.getElementById("btnEditor").click()');
+    await tab.close();
+  } finally { await browser.close(); }
+});
