@@ -675,6 +675,68 @@ try {
     if (bad.length) throw new Error(`${bad.join(', ')}: ${JSON.stringify(r)}`);
   });
 
+  await check('Editor mode: the code and the page fill the window; a drag in the page is written in Styling, checked on the page, and undone', async () => {
+    await clearTerminal();
+    await blueprint('Landing page');
+    await waitFor('the preview at its local address', () => js(() => (/^http:\/\/127\.0\.0\.1:\d+\/index\.html$/.test(document.getElementById('preview').src) ? true : null)), 30000);
+    // (the code on screen is Unity's or Split Mode's, whichever the checks before left open)
+    const where = () => js(() => {
+      const r = (s) => { const e = document.querySelector(s), b = e && e.getBoundingClientRect(); return b && b.width ? Math.round(b.left) : null; };
+      const code = document.getElementById('unityView').hidden ? '.panes' : '#unityView';
+      return { side: r('.side'), explain: r('#explainWrap'), help: r('#btnIndex'), code: r(code), page: r('#term'), pressed: document.getElementById('btnEditor').getAttribute('aria-pressed') };
+    });
+    const before = await where();
+    await click('btnEditor');
+    const on = await where();
+    if (on.side !== null || on.explain !== null || on.help !== null || on.code !== 0 || !(on.page > 0) || on.pressed !== 'true') throw new Error('Editor mode: ' + JSON.stringify(on));
+    await sleep(1000);   // (the page is told it's in Editor mode)
+    // Undo is checked with Ctrl+Z, pressed (WebKit takes Undo only from the keyboard or a menu, never from a script's
+    // execCommand), so: do WebDriver's keys reach the window on this system? A letter typed in a box made for it, before
+    // the move (WebKit's Undo is the whole page's: a letter typed after it would be the first thing Ctrl+Z takes back)
+    const keys = (list) => wd('POST', `/session/${session}/actions`, { actions: [{ type: 'key', id: 'keyboard', actions: list }] }).then(() => wd('DELETE', `/session/${session}/actions`).catch(() => {}));
+    await js(() => { const i = document.createElement('input'); i.id = 'e2eKeys'; document.body.appendChild(i); i.focus(); return true; });
+    await keys([{ type: 'keyDown', value: 'k' }, { type: 'keyUp', value: 'k' }]);
+    const typed = await js(() => { const i = document.getElementById('e2eKeys'), v = i.value; i.remove(); return v; });
+    // the page's own pointer events, made in the page (WebDriver's pointer can't reach into the frame on every system)
+    const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
+    await wd('POST', `/session/${session}/frame`, { id: frame });
+    try {
+      await waitFor('the button in the page', () => js(() => {
+        const el = document.getElementById('cta');
+        if (!el) return null;
+        const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const ev = (type, dx, dy) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: x + dx, clientY: y + dy, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        ev('pointerdown', 0, 0);
+        for (let i = 1; i <= 4; i++) ev('pointermove', 10 * i, 4 * i);
+        ev('pointerup', 40, 16);
+        return true;
+      }), 20000);
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
+    const bar = await waitFor('the move, checked on the rebuilt page', () => js(() => { const t = document.getElementById('editBar').innerText; return /shows it there|not where it was dropped|can't|couldn't/.test(t) ? t : null; }), 30000)
+      .catch(async () => { throw new Error('the move was never checked: ' + await js(() => document.getElementById('editBar').innerText)); });
+    if (!/^Moved cta 40 right and 16 down, and the page shows it there\. Written in style\.css line 5/.test(bar)) throw new Error(bar);
+    // typed into Styling, in the editor on screen (Unity's line for line, or Split Mode's sentences), which has the keys
+    const written = await js(() => {
+      const id = document.getElementById('unityView').hidden ? 'ta' : 'uTa';
+      return { line: document.getElementById(id).value.split('\n')[4], keys: document.activeElement && document.activeElement.id, editor: id };
+    });
+    if (written.line !== 'style cta: position: relative, left: 40px, top: 16px' || written.keys !== written.editor) throw new Error(JSON.stringify(written));
+    // the editor's own Undo takes it back: Ctrl+Z, in the code (where the keys are after a move)
+    const line5 = () => js((id) => document.getElementById(id).value.split('\n')[4], written.editor);
+    if (typed !== 'k') console.log(`  (WebDriver's keys don't reach the window here: a letter typed came out ${JSON.stringify(typed)}. Ctrl+Z is checked on Windows and in Chrome.)`);
+    else {
+      await keys([{ type: 'keyDown', value: '\uE009' }, { type: 'keyDown', value: 'z' }, { type: 'keyUp', value: 'z' }, { type: 'keyUp', value: '\uE009' }]);
+      await waitFor('Ctrl+Z to take the move back', async () => (await line5()) === 'when cta is hovered: background #ffe9d2', 5000)
+        .catch(async () => { throw new Error(`keys reach the window, but after Ctrl+Z (in ${await js(() => document.activeElement && document.activeElement.id)}), line 5 is ${JSON.stringify(await line5())}`); });
+    }
+    // pressed again: everything as it was
+    await click('btnEditor');
+    const off = await where();
+    if (!isDeepStrictEqual(off, before)) throw new Error(`${JSON.stringify(off)} isn't ${JSON.stringify(before)}`);
+  });
+
   // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the
   // close (so the tests can end the app): this is the page's side, asked as the desktop layer asks it.
   await check('closing with changes not saved asks first; Cancel keeps the window', async () => {

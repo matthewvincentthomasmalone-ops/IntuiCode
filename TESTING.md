@@ -231,6 +231,28 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] A game in Mechanics: `load the picture "images/….png" as ship`, then `draw ship at 20, 20 on game` inside
       `every frame`: it's drawn in the preview.
 
+**Editor mode** (a website project, in the Preview)
+- [ ] **Editor** (over the Preview): the code and the page fill the window side by side; the Project side, Help (and its
+      button) and the explanation are gone. The bar over the page says how to use it.
+- [ ] Turn **Project Link** off, then point at **See the menu**: its code still lights up pink, style.css first in the
+      line over the page (then index.html). Leaving Editor mode, it goes.
+- [ ] Drag **See the menu** a little right and down: as it moves, a blue box and `#cta → 40 ↓ 16` follow it. Let go:
+      Styling opens at a new line straight after the button's look, `style cta: position: relative, left: 40px, top: 16px`,
+      and the bar says it moved and the page shows it there. Drag it again: the same line changes. **Ctrl+Z** in the code:
+      the line goes back to the first move; again: it's gone, and the button is back where it started.
+- [ ] Drag **Made with IntuaCode** (no name): its sentence becomes `add a paragraph called made-with-intuacode "Made with
+      IntuaCode"`, and it moves. Hold **Alt** and drag it: the footer moves (`add a footer called footer`).
+- [ ] While dragging, nothing on the page reacts (the button isn't clicked, a link isn't followed); **Esc** mid-drag puts
+      it back.
+- [ ] Add `css: #cta { left: 0 !important; }` to Styling, then drag the button sideways: the bar says where the page put
+      it, not where it was dropped, and that another style wins.
+- [ ] Full screen on the code, then on the Preview: each fills the window; again, both come back side by side. Drag the
+      line between them: the page gets wider (double-click: half and half), and it's remembered.
+- [ ] Split Mode in Editor mode: the sentences above the code, the page beside them. A drag is typed into the sentences,
+      and Ctrl+Z takes it back.
+- [ ] **Editor** again: the side, Help and the explanation come back, and the terminal is as it was.
+- [ ] Desktop app: the same, on the page at its local address.
+
 **Customise**
 - [ ] **Menu → Customise…**: IntuaCode's look as very simple code, in blocks (IntuaCode, Menu bar, Project side, Help, Editor,
       Code, Terminal), each line `Name = value`. The values you can change are seafoam; Version, Look, Width and the others
