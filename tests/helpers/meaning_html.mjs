@@ -31,6 +31,10 @@ export const HTML_STRUCTURE = [
   { page: 'add a form called signup\n    add a hidden value "home" sent as "source"\n    add a text box called who, sent as "who"',
     holds: 'new FormData(page.el("signup")).get("source") === "home" && page.q("input[type=hidden]").getBoundingClientRect().height === 0 && page.q("input[type=hidden]").checkVisibility() === false' },
   { page: 'add a picture of "cat.png" described as "A cat on a mat"', holds: 'page.q("img").alt === "A cat on a mat" && page.q("img").getAttribute("src") === "cat.png" && page.q("img").complete && page.q("img").naturalWidth === 1' },
+  // an embedded page: the browser asks for the other page and gives it the space and the name the words say
+  { page: 'add an embedded page, from "map.html", sized 600 by 400, with tooltip "A map of the town"',
+    holds: 'page.q("iframe").getAttribute("src") === "map.html" && page.q("iframe").clientWidth === 600 && page.q("iframe").clientHeight === 400 && page.q("iframe").title === "A map of the town" && page.went.includes("/map.html")' },
+  { page: 'add a webpage link to "map.html"', holds: 'page.q("iframe").getAttribute("src") === "map.html" && page.went.includes("/map.html")' },
   { page: 'add a drawing area called game 480 by 270', holds: 'page.el("game").tagName === "CANVAS" && page.el("game").width === 480 && page.el("game").height === 270' },
   { page: 'add a link to "https://example.com/" saying "Go"', holds: 'page.q("a").href === "https://example.com/" && page.q("a").textContent === "Go"' },
   { page: 'add a section called intro', holds: 'page.el("intro").tagName === "SECTION"' },

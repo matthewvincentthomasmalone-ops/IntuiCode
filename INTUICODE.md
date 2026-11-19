@@ -473,6 +473,8 @@ drop-down   = "add" [ "a" ] ( "drop-down" | "dropdown" | "drop-down list" | "men
 list-item   = "add" [ "a" ] [ "list" ] "item" text ;                                (* → <li> *)
 label       = "add" [ "a" ] "label" text [ "for" name ] ;                           (* → <label for> *)
 video       = "add" [ "a" ] "video" [ "called" name ] "of" text ;                   (* → <video controls> *)
+embedded-page = "add" [ "a" | "an" ] ( "embedded page" | "webpage" | "webpage link" ) [ "called" name ] ( "from" | "to" | "of" ) text ;
+                                                                          (* → <iframe src>; ", from …" after a comma too *)
 canvas      = "add" [ "a" ] ( "drawing area" | "canvas" ) [ "called" name ] [ number ( "by" | "x" ) number ] ; (* → <canvas> *)
 rule        = "add" [ "a" ] "line" ;                                                (* → <hr> *)
 container   = "add" [ "a" | "an" ] container-word [ "called" name ] ;               (* opens a block *)
@@ -508,7 +510,7 @@ section, header, footer, navigation bar, main area, side panel, article, form, l
 table head, table body, table foot, table caption, row, cell, heading cell, dialog, figure, caption, collapsible
 section, summary, definition list, term, definition, quotation, short quotation, citation, address, heading group,
 menu, search area, field group, legend, link, button, label, picture, input, drop-down, option, option group, big text
-box, output, progress bar, meter, video, sound player, media source, captions track, embedded page, drawing area, line
+box, output, progress bar, meter, video, sound player, media source, captions track, embedded page (webpage, webpage link), drawing area, line
 break, line, drawing, script, and the text words (strong text, emphasised text, bold text, italic text, underlined
 text, struck-out text, small text, highlighted text, deleted text, inserted text, subscript, superscript,
 abbreviation, code, key, sample output, variable, time). Inside a drawing (SVG) they are: set of shapes, reusable
@@ -2811,6 +2813,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 |  | `add a hidden value "‹home›" sent as "‹source›"` | `<input type="hidden" name="source" value="home">` | Sent with its form, never shown: something the server needs, not the person filling it in. |
 |  | `add a file picker called ‹name› for ‹pictures›` | `<input type="file" accept="image/*">` | Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›". |
 | **Media** | `add a picture of "‹file.jpg›" described as "‹what it shows›"` | `<img src="…" alt="…">` | The description is read aloud by screen readers. |
+|  | `add an embedded page, from "‹https://…›", sized ‹600› by ‹400›, with tooltip "‹what it shows›"` | `<iframe src="…" width="600" height="400" title="…">` | Another web page shown inside this one. The tooltip names it for screen readers. Also: add a webpage, add a webpage link. |
 |  | `add a drawing area called ‹game› ‹480› by ‹270›` | `<canvas id="game" width="480" height="270">` | Where a game or a picture is drawn, from Mechanics. |
 |  | `add a link to "‹https://…›" saying "‹text›"` | `<a href="…">…</a>` | An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:…. |
 | **Layout** | `add a section called ‹name›` | `<section id="name">` | Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel. |

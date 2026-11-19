@@ -426,6 +426,38 @@ try {
     if (p.error || !/dot\.png/.test(p.listed) || !/^add a picture of "images\/dot\.png" described as/.test(p.sentence)) throw new Error(JSON.stringify(p));
   });
 
+  await check('a picture on this computer, outside the project: Problems says so, and Add the picture… copies it into images/ and fixes the line', async () => {
+    await blueprint('To-do list page');
+    const p = await wd('POST', `/session/${session}/execute/async`, {
+      script: `const done = arguments[0];
+        (async () => {
+          const until = async (f) => { for (let i = 0; i < 60 && !f(); i++) await new Promise(r => setTimeout(r, 100)); return f(); };
+          document.querySelector('#tree [data-id="structure"]').click();
+          const ta = document.getElementById('ta'), path = ['C:', 'Users', 'me', 'Pictures', 'cake.png'].join(String.fromCharCode(92));
+          ta.value = ta.value.replace(/\\n*$/, '') + '\\nadd a picture of "' + path + '" described as "A cake"';
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+          // (the line being typed shows its problems once the cursor leaves it)
+          ta.focus(); ta.setSelectionRange(0, 0); ta.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowUp', bubbles: true })); ta.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          const button = await until(() => document.querySelector('#problems [data-add-pic]'));
+          if (!button) return { error: 'no Add the picture… in Problems', problems: document.getElementById('problems').innerText };
+          const warned = document.getElementById('problems').innerText.includes('is a file on this computer');
+          const inp = document.getElementById('imgPick');
+          let opened = 0;
+          inp.click = () => { opened++; };   // (the chooser itself is the system's: the test picks the file for it)
+          button.click();
+          delete inp.click;
+          const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
+          const dt = new DataTransfer(); dt.items.add(new File([png], 'cake.png', { type: 'image/png' }));
+          inp.files = dt.files; inp.dispatchEvent(new Event('change'));
+          const line = () => ta.value.split('\\n').find(l => /cake\\.png/.test(l)) || '';
+          await until(() => /images\\/cake\\.png/.test(line()));
+          return { warned, opened, line: line(), listed: document.getElementById('imgList').innerText, still: document.getElementById('problems').innerText.includes('is a file on this computer') };
+        })().then(done, (e) => done({ error: String(e) }));`,
+      args: [],
+    });
+    if (p.error || !p.warned || p.opened !== 1 || p.line !== 'add a picture of "images/cake.png" described as "A cake"' || !/cake\.png/.test(p.listed) || p.still) throw new Error(JSON.stringify(p));
+  });
+
   await check('the website preview runs in its own sandbox', async () => {
     await clearTerminal();
     await blueprint('To-do list page');

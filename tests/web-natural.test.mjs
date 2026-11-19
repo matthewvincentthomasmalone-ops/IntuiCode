@@ -86,6 +86,58 @@ test('structure: an address said the way people write it becomes one a link can 
   reads('html', '<section href="google.com"></section>', 'add a section, with href google.com');
 });
 
+test('a file on this computer, outside the project, is a warning that says how to bring a picture in', () => {
+  const outside = (w) => w.filter(x => /is a file on this computer, outside the project/.test(x));
+  // a picture: the page can't show it, and the warning names the images/ path it would have
+  for (const [path, safe] of [
+    ['C:\\Users\\matth\\Downloads\\tools.jpg', 'tools.jpg'], ['C:/Users/matth/Downloads/my tools.jpg', 'my-tools.jpg'],
+    ['d:\\photos\\cake.PNG', 'cake.PNG'], ['file:///C:/Users/matth/Downloads/tools.jpg', 'tools.jpg'], ['~/Pictures/sky.webp', 'sky.webp'],
+  ]) {
+    const b = body(`add a picture of "${path}" described as "Tools"`);
+    assert.deepEqual(b.errs, [], path);
+    assert.equal(b.html, `<img src="${path}" alt="Tools">`, path);   // (the page says exactly what was written)
+    assert.equal(outside(b.warns).length, 1, path);
+    assert.match(b.warns[0], new RegExp('^`' + path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '` is a file on this computer'), path);
+    assert.ok(b.warns[0].includes('Menu → Add an image…') && b.warns[0].includes('`images/' + safe + '`'), b.warns[0]);
+  }
+  // the same after a comma, and for a link, a video, an embedded page and a background picture in Styling
+  assert.equal(outside(body('add a picture, from "C:\\pics\\a.png", described as "A"').warns).length, 1);
+  for (const s of ['add a link to "C:\\docs\\notes.pdf" saying "Notes"', 'add a video of "D:\\clips\\intro.mp4"', 'add a webpage from "C:\\site\\index.html"']) {
+    const w = outside(body(s).warns);
+    assert.equal(w.length, 1, s);
+    assert.match(w[0], /Put the file in the project's folder and use its path from there\.$/, s);
+  }
+  assert.match(body('add a link to "C:\\docs\\notes.pdf" saying "Notes"').warns[0], /can't link to it/);
+  assert.equal(outside(css('style page: background picture C:\\Users\\matth\\sky.png').warns).length, 1);
+  // the project's own files and the web are fine: images/…, a relative or site path, \images\… (the site's own), https://
+  for (const path of ['images/tools.jpg', 'tools.jpg', '/images/tools.jpg', '\\images\\tools.jpg', '../shared/logo.png', 'https://example.com/tools.jpg', 'www.example.com/a.png']) {
+    assert.deepEqual(outside(body(`add a picture of "${path}" described as "Tools"`).warns), [], path);
+  }
+  assert.deepEqual(outside(css('style page: background picture images/sky.png').warns), []);
+});
+
+test('structure: an embedded page (an iframe) is also a webpage or a webpage link, its address from, to or of "…"', () => {
+  for (const s of [
+    'add an embedded page, from "https://example.com"', 'add embedded page from "https://example.com"', 'add an embedded page of "https://example.com"',
+    'add a webpage, from "https://example.com"', 'add webpage from "https://example.com"',
+    'add a webpage link, from "https://example.com"', 'add a webpage link to "https://example.com"', 'add webpage link from "https://example.com"',
+  ]) {
+    const b = body(s);
+    assert.deepEqual(b.errs, [], s);
+    assert.equal(b.html, '<iframe src="https://example.com"></iframe>', s);
+  }
+  // with a name and the settings after its commas
+  assert.equal(body('add a webpage link called map to "https://example.com/map", sized 600 by 400, with tooltip "Map of the town", loaded lazily').html,
+    '<iframe id="map" src="https://example.com/map" width="600" height="400" title="Map of the town" loading="lazy"></iframe>');
+  // those words and no others: an iframe and a web page aren't words for it
+  for (const s of ['add an iframe, from "https://example.com"', 'add a web page, from "https://example.com"']) assert.notDeepEqual(body(s).errs, [], s);
+  // a link is still a link, and text that says "webpage link" is still text
+  assert.equal(body('add a link to "https://example.com" saying "Example"').html, '<a href="https://example.com">Example</a>');
+  assert.equal(body('add a paragraph "the webpage link below"').html, '<p>the webpage link below</p>');
+  // the code reads back with the word it is said with
+  reads('html', '<iframe src="https://example.com" title="Map"></iframe>', 'add an embedded page, from "https://example.com", with tooltip "Map"');
+});
+
 test('structure: an address without quotes is taken when it is clearly one; anything else says to quote it', () => {
   assert.deepEqual(body('add a link to google.com saying "Google"'), { html: '<a href="https://google.com">Google</a>', errs: [], warns: [], notes: [body('add a link to "google.com" saying "x"').notes[0]] });
   assert.equal(body('add a link called home to / saying "Home"').html, '<a id="home" href="/">Home</a>');
