@@ -307,7 +307,8 @@ you left them.
 **Editor mode (websites): move things on the page, then fine-tune them in Styling.** **Editor**, over the Preview,
 puts the code and the page side by side, filling the window (the Project side, Help and the explanation go away; full
 screen still works for either one, and the line between them can be dragged to make the page wider). Drag anything on
-the page (a heading, a button, a box, a frame) roughly where you want it; hold **Alt** to move the box it's in. The move is
+the page (a heading, a button, a box, a frame) roughly where you want it; hold **Alt** to move the box it's in. What you
+point at or drag lights up its code in pink (Project Link on or off), its style first, since that's where a move goes. The move is
 written as a sentence of its own in Styling, straight after the element's look (`style cta: position: relative, left:
 40px, top: 16px`), and Styling opens at that line so you can fine-tune the numbers. The move is typed into Styling as if
 you'd typed it, so **Ctrl+Z** there takes it back (move by move). The next move of the same thing changes that sentence.

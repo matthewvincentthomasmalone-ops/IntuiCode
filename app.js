@@ -3118,7 +3118,7 @@
       return { sels: sels.slice(0, 40), hrefs: hrefs.slice(0, 40) };
     };
     const report = (target, ev) => {
-      if (!linkOn || picking) return;
+      if ((!linkOn && !editing) || picking) return;   // (in Editor mode the code always lights up)
       const el = target && target.closest ? target.closest('[data-ic-line]') : null;
       const key = el ? el.dataset.icLine + '|' + (ev === 'hover' ? 'hover' : 'use') : '';
       if (ev === 'hover' && key === lastLink) return;
@@ -3386,7 +3386,7 @@
     return [...by];
   }
   function onLink(d) {
-    if (!layout.link || !previewInfo) return;
+    if (!(layout.link || editing) || !previewInfo) return;   // Editor mode lights the code up, Project Link on or not
     if (d.type === 'link') {
       if (d.none || !link.el || link.el.line !== d.line || link.el.page !== d.page) link.run = null;   // another element: the last handler's done
       link.el = d.none ? null : d;
@@ -3399,8 +3399,10 @@
       lines.set(sec.id, cur);
     };
     const el = link.el, html = pageAt((el || link.run || d).page), scripts = pageScripts(html);
-    if (el && html) add(html, blockFrom(textOf(html), el.line));
+    // (in Editor mode its style first: that's where a move goes)
+    if (el && html && !editing) add(html, blockFrom(textOf(html), el.line));
     if (el) for (const [sec, sels] of sheetsFor(el, html)) add(sec, cssLinesFor(sec, sels));
+    if (el && html && editing) add(html, blockFrom(textOf(html), el.line));
     if (el && !link.run) for (const s of scripts) add(s, jsLinesNaming(s, el));
     if (link.run) for (const s of scripts) add(s, jsLinesRan(s, link.run.src));
     link.lines = lines;
@@ -3435,8 +3437,11 @@
   }
   /* After a click or a handler, the open file's pink lines come into view (pointing alone never scrolls). */
   function scrollToLinked() {
-    const ls = [...linkedLines(activeSec().id)].sort((a, b) => a - b);
+    let ls = [...linkedLines(activeSec().id)].sort((a, b) => a - b);
     if (!ls.length) return;
+    // in Editor mode, the line that says where it is (where a move goes), when it's in the open file
+    const at = editing && ARR && link.el && link.el.id && activeSec().file === 'styling' ? ARR.styleLine(activeSec().text, secResult(activeSec().id), link.el.id) : -1;
+    if (at >= 0 && ls.includes(at)) ls = [at];
     const box = mode === 'unity' ? uTa : ta, lh = mode === 'unity' ? (parseFloat(getComputedStyle(uTa).lineHeight) || 22) : LH;
     const top = ls[0] * lh, bottom = (ls[ls.length - 1] + 1) * lh;
     if (top < box.scrollTop || bottom > box.scrollTop + box.clientHeight) {
@@ -3711,7 +3716,7 @@
 
   const ARR = window.IntuiArrange;
   const EDIT_TITLE = $('btnEditor').title;
-  const EDIT_HINT = 'Drag anything on the page to move it roughly into place. <kbd>Alt</kbd> moves the box it\'s in. Each move is written in Styling, where you fine-tune it.';
+  const EDIT_HINT = 'Drag anything on the page to move it roughly into place. <kbd>Alt</kbd> moves the box it\'s in. The code behind what you point at lights up pink; each move is written in Styling, where you fine-tune it.';
   let editCheck = null, editTermWas = null;   // the move waiting for the rebuilt page to say where it is; the terminal, folded or not, before
   function setEditor(on) {
     on = !!on && webOn() && !!ARR;
@@ -3729,6 +3734,7 @@
       editCheck = null;
       if (editTermWas === false) setDock('term', false);
       editTermWas = null;
+      if (!layout.link) clearLink();   // (lit up for Editor mode only)
     }
     $('app').classList.toggle('edit-mode', on);
     const b = $('btnEditor');

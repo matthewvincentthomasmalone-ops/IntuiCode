@@ -410,6 +410,10 @@ the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, n
 - **Done when the page says so.** The page is rebuilt from the code, and asked where the element is now (its sentence
   line, `data-ic-line`). The bar says it's moved only if that's where it was dropped (to a pixel); otherwise it says where
   the page put it, and that another style wins. A move written but never answered says it isn't checked.
+- **What's moved lights up its code.** In Editor mode the page reports what's pointed at and pressed as Project Link
+  does, whether Project Link is on or not, and its style sentences come first (then its Structure sentence, then the
+  script lines that name it). A press scrolls the open file to the most relevant line: in Styling, the sentence that says
+  where it is (`styleLine`), where the move will go.
 - **The page is told, not rebuilt, when Editor mode starts.** The editor tells each page it loads that it's in Editor
   mode (a message), rather than writing it into the page's helper: that would make the page different, and the next
   rebuild would reload it in the middle of a drag. In Editor mode nothing above the page changes height while dragging

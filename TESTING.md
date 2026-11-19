@@ -229,6 +229,8 @@ Tick each one. If something is off, note what you did and what the terminal said
 **Editor mode** (a website project, in the Preview)
 - [ ] **Editor** (over the Preview): the code and the page fill the window side by side; the Project side, Help (and its
       button) and the explanation are gone. The bar over the page says how to use it.
+- [ ] Turn **Project Link** off, then point at **See the menu**: its code still lights up pink, style.css first in the
+      line over the page (then index.html). Leaving Editor mode, it goes.
 - [ ] Drag **See the menu** a little right and down: as it moves, a blue box and `#cta → 40 ↓ 16` follow it. Let go:
       Styling opens at a new line straight after the button's look, `style cta: position: relative, left: 40px, top: 16px`,
       and the bar says it moved and the page shows it there. Drag it again: the same line changes. **Ctrl+Z** in the code:

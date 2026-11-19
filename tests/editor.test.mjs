@@ -221,11 +221,27 @@ test('editor: in the page, the windows make room, a drag is written in Styling a
     const before = await layout();
     assert.ok(before.side && before.explain && before.help);
 
+    // (Project Link off: Editor mode lights up the code behind what's pointed at anyway)
+    await tab.run('document.getElementById("btnLink").click()');
+    assert.equal(await tab.run('document.getElementById("btnLink").getAttribute("aria-pressed")'), 'false');
+
     // Editor mode: the code and the page, side by side, half and half; the side, the help and the explanation away
     await tab.run('document.getElementById("btnEditor").click()');
     assert.equal(await tab.run('document.getElementById("btnEditor").getAttribute("aria-pressed")'), 'true');
     assert.deepEqual(await layout(), { side: null, code: [0, 700], page: [700, 700], explain: null, help: null });
     assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Drag anything on the page to move it roughly into place\. Alt moves the box it's in\./);
+
+    // pointing at the button lights up its code in pink: its style first (where a move goes), then its sentence
+    {
+      const f = await frame(), at = await where(4);
+      await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
+      await mouse('mouseMoved', f.x + at.x + at.w / 2, f.y + at.y + at.h / 2);
+      await new Promise(r => setTimeout(r, 150));   // (and moved a little over it, as a pointer does)
+      await mouse('mouseMoved', f.x + at.x + at.w / 2 + 2, f.y + at.y + at.h / 2 + 1);
+      await until('!document.getElementById("linkBar").hidden && /^Pointing at/.test(document.getElementById("linkBar").textContent)', 'the button\'s code to light up');
+      assert.match(await tab.run('document.getElementById("linkBar").textContent'), /^Pointing at <button>#cta\s*style\.css lines? 4[^·]*· index\.html line 5/);
+      assert.ok(await tab.run('document.querySelectorAll(".u-hl .ul.lk").length') > 0, 'pink lines in the code');
+    }
 
     // a drag: written as its own style sentence after the button's look, and the rebuilt page shows it there
     let m = await drag(4, 40, 16);
