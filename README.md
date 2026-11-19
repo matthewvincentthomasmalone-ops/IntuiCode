@@ -311,7 +311,8 @@ the page (a heading, a button, a box, a frame) roughly where you want it; hold *
 point at or drag lights up its code in pink (Project Link on or off), its style first, since that's where a move goes. The move is
 written as a sentence of its own in Styling, straight after the element's look (`style cta: position: relative, left:
 40px, top: 16px`), and Styling opens at that line so you can fine-tune the numbers. The move is typed into Styling as if
-you'd typed it, so **Ctrl+Z** there takes it back (move by move). The next move of the same thing changes that sentence.
+you'd typed it, so **Ctrl+Z** there takes it back (move by move; on macOS and Linux, where the window's engine forgets
+its Undo when the Preview is rebuilt, IntuaCode keeps the code's Undo itself, typing and moves alike). The next move of the same thing changes that sentence.
 Something without a name is given one in its sentence first (`add a footer called footer`), only if that
 makes exactly the same page with just the name added; otherwise it says to name it. The page is then rebuilt from the
 code and asked where the element is: the bar over the page says it's moved only when the page shows it where you dropped

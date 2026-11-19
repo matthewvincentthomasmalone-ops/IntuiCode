@@ -1989,6 +1989,7 @@
   }
 
   ta.addEventListener('input', () => { onEdit(); updateAc(); });
+  ta.addEventListener('input', (e) => undoAfterInput(e));   // (after the editor's own: IntuaCode's Undo, where it keeps one)
   ta.addEventListener('scroll', () => { closeDdMenu(); syncScroll(); if (!ac.hidden) updateAc(); placeTip(); });
   ta.addEventListener('click', (e) => {
     closeAc();
@@ -3871,6 +3872,7 @@
     if (movesBack.length > 50) movesBack.shift();
   }
   function moveBack(e) {
+    if (OWN_UNDO) return;   // (IntuaCode's own Undo has the move as a step: see undoGo)
     if (!movesBack.length || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || String(e.key).toLowerCase() !== 'z') return;
     const m = movesBack[movesBack.length - 1], sec = activeSec();
     if (m.sec !== sec.id) return;
@@ -3882,6 +3884,75 @@
   }
   ta.addEventListener('keydown', moveBack, true);
   $('uTa').addEventListener('keydown', moveBack, true);
+
+  /* Undo of IntuaCode's own, where the engine's can't be relied on. WebKit (the desktop app on macOS and Linux) keeps one
+     Undo for the whole window, frames and all, and the Preview rebuilt (after typing, or a move) leaves it with nothing
+     to take back. There, IntuaCode keeps each file's Undo itself: its text, step by step (typing in one step while it
+     doesn't pause or turn from adding to taking away; anything else a step of its own, a change from outside the editor
+     too), and Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and the Edit menu's Undo and Redo, go through it. Elsewhere (Chromium:
+     the browser, the desktop app on Windows) the engine's own Undo is per frame, and stays. (intuicode.undo.v1 says
+     "own" or "engine" to choose.) */
+  const OWN_UNDO = (() => {
+    try { const v = localStorage.getItem('intuicode.undo.v1'); if (v === 'own') return true; if (v === 'engine') return false; } catch (_) { /* none */ }
+    return /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium|Edg\//.test(navigator.userAgent);
+  })();
+  const undoBook = new Map();   // section id -> { steps: [text], at, last, kind }
+  const undoSec = () => (mode === 'unity' ? uSec() : activeSec());
+  // its text as it is now, a step of its own when it's changed since the last one (from outside the editor)
+  function undoSeen(sec) {
+    if (!sec) return null;
+    let b = undoBook.get(sec.id);
+    if (!b) { b = { steps: [sec.text], at: 0, last: 0, kind: null }; undoBook.set(sec.id, b); }
+    else if (b.steps[b.at] !== sec.text) { b.steps.splice(b.at + 1); b.steps.push(sec.text); b.at = b.steps.length - 1; b.kind = null; }
+    return b;
+  }
+  function undoNote(sec, kind) {
+    const b = undoBook.get(sec.id);
+    if (!b) return undoSeen(sec);
+    if (b.steps[b.at] === sec.text) return b;
+    const now = Date.now(), goesOn = kind && kind === b.kind && now - b.last < 800 && b.at === b.steps.length - 1 && b.at > 0;
+    if (goesOn) b.steps[b.at] = sec.text;
+    else { b.steps.splice(b.at + 1); b.steps.push(sec.text); b.at = b.steps.length - 1; if (b.steps.length > 400) { b.steps.shift(); b.at--; } }
+    b.last = now; b.kind = kind;
+    return b;
+  }
+  const undoBreak = (sec) => { const b = sec && undoBook.get(sec.id); if (b) { b.kind = null; b.last = 0; } };
+  // -> true when there was a step to go to
+  function undoGo(dir) {
+    syncText();
+    const sec = undoSec(), b = undoSeen(sec);
+    if (!b) return false;
+    const to = b.at + dir;
+    if (to < 0 || to >= b.steps.length) return false;
+    const was = sec.text, text = b.steps[to];
+    b.at = to; b.kind = null; b.last = 0;
+    setSecText(sec, text);
+    // (the caret where it changed)
+    if (mode === 'write' && sec.id === project.active) { let i = 0; while (i < was.length && i < text.length && was[i] === text[i]) i++; try { ta.setSelectionRange(i, i); } catch (_) { /* hidden */ } }
+    return true;
+  }
+  function undoKey(e) {
+    if (!OWN_UNDO || e.defaultPrevented || e.altKey || !(e.ctrlKey || e.metaKey)) return;
+    const k = String(e.key).toLowerCase(), dir = k === 'z' ? (e.shiftKey ? 1 : -1) : k === 'y' && !e.shiftKey ? 1 : 0;
+    if (!dir) return;
+    e.preventDefault(); e.stopPropagation();
+    undoGo(dir);
+  }
+  for (const el of [ta, $('uTa')]) {
+    el.addEventListener('keydown', undoKey, true);
+    el.addEventListener('beforeinput', (e) => {
+      if (!OWN_UNDO) return;
+      if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') { e.preventDefault(); undoGo(e.inputType === 'historyUndo' ? -1 : 1); return; }
+      syncText(); undoSeen(undoSec());   // (as it was before this change)
+    }, true);
+  }
+  // after the editor's own: the file's text is the new one by then
+  function undoAfterInput(e) {
+    if (!OWN_UNDO) return;
+    syncText();
+    const t = e.inputType || '';
+    undoNote(undoSec(), /^delete/.test(t) ? 'delete' : /^(?:insertText|insertLineBreak|insertParagraph)$/.test(t) ? 'insert' : null);
+  }
   // each page the Preview loads is told it's in Editor mode, and a move waiting to be checked asks the rebuilt page
   // (the frame's load, and the page's own word that it's loaded: either one will do, and a second asks again harmlessly)
   function editPageLoaded() {
@@ -3930,6 +4001,7 @@
      after the one before it, so it's one edit that Undo takes back. In Unity, a new line after a green part joins it;
      one after code is made a green part of its own (Undo takes the line, and the part with it). */
   function typeMove(sty, w) {
+    if (OWN_UNDO) { undoSeen(sty); undoBreak(sty); }
     const before = sty.text.split('\n'), after = w.text.split('\n'), line = after[w.line], fresh = after.length > before.length;
     if (mode === 'unity' && unity.id === sty.id) {
       const lines = uLines(), ex = unity.lang && UNITY.EXACT[unity.lang] ? line.match(UNITY.EXACT[unity.lang]) : null, shown = ex ? ex[1] + ex[2] : line;
@@ -5533,7 +5605,7 @@ ${key}</div>${wins}${notes}</body></html>`;
 
   if (UNITY) {
     uTa.addEventListener('beforeinput', () => { uCaret = uRegionAt(uLineOf(uTa.selectionStart)); });
-    uTa.addEventListener('input', () => {
+    uTa.addEventListener('input', (e) => {
       const now = uTa.value.split('\n');
       unity.regions = UNITY.adjust(unity.regions, uBefore, now, uCaret);
       uBefore = now;
@@ -5542,6 +5614,7 @@ ${key}</div>${wins}${notes}</body></html>`;
       // drawn at most once a frame, however fast the typing (the regions above are already right); a timer,
       // not requestAnimationFrame, so it still draws when the window isn't in front
       if (!uFrame) uFrame = setTimeout(() => { uFrame = 0; renderUnity(); }, 16);
+      undoAfterInput(e);
     });
     uTa.addEventListener('scroll', () => { uSync(); uUpdateGhost(); });
     for (const ev of ['select', 'click', 'keyup', 'focus']) uTa.addEventListener(ev, uTools);

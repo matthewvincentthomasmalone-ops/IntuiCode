@@ -41,6 +41,7 @@ directions, using rules rather than AI. This file records where it is going and 
 | 21 | Measure: the running app measures itself (a probe: tkinter's run by IntuaCode, its window out of sight; JUCE's a header the app carries) and the Preview draws it as it is, each part linked to its code, until the code changes; moves by numbers keep it | done (first version, 2026-11-19, desktop). Probes for PySide/PyQt and wxPython (run by IntuaCode) and Qt Widgets and Dear ImGui (headers), 2026-11-19. Next: FEC 16 carrying the JUCE one, the estimate's sizes learnt per computer |
 | 22 | A webpage box: another page in a box that keeps its shape (the page fills it; its shape a rule in the page's head, so Styling and Editor mode resize it), read back as its sentence | done (first version, 2026-11-19) |
 | 23 | Big imports in at once: their files as exact code straight away, read into sentences in the background (a Web Worker, the open file first; a file changed meanwhile stays code) | done (first version, 2026-11-19) |
+| 24 | Undo in WebKit (macOS, Linux): found that a Preview rebuilt empties the engine's Undo (checked in WebKit 18.2), so IntuaCode keeps the code's Undo itself there, step by step, keys and menu | done (first version, 2026-11-19) |
 
 The direction, since step 7: IntuaCode is for people who build ambitious things with help (often
 AI's) and want to stay the author: to understand their project at any stage, change it themselves,
