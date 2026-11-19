@@ -3216,7 +3216,7 @@
         const line = +m.intuicodeWhere;
         Promise.resolve(document.fonts && document.fonts.ready).then(() => {   // (its fonts in: they change sizes)
           const el = document.querySelector('[data-ic-line="' + line + '"]'), r = el && el.getBoundingClientRect();
-          send({ type: 'edit-at', line, found: !!el, x: r ? Math.round(r.left + scrollX) : null, y: r ? Math.round(r.top + scrollY) : null, w: r ? Math.round(r.width) : null, h: r ? Math.round(r.height) : null });
+          send({ type: 'edit-at', line, found: !!el, x: r ? Math.round(r.left + scrollX) : null, y: r ? Math.round(r.top + scrollY) : null, w: r ? Math.round(r.width) : null, h: r ? Math.round(r.height) : null, born: performance.timeOrigin || null });
         });
       }
     });
@@ -3732,7 +3732,7 @@
       setDock('term', true);
       if ($('previewWrap').hidden) { showBottom('preview'); runWebsite(false); }
     } else {
-      if (editCheck) clearTimeout(editCheck.timer);
+      if (editCheck) { clearTimeout(editCheck.timer); clearInterval(editCheck.poll); }
       editCheck = null;
       if (editTermWas === false) setDock('term', false);
       editTermWas = null;
@@ -3881,7 +3881,7 @@
       if (typed) { if (project.active !== sty.id) openSection(sty.id, w.line); typeMove(sty, w); }   // (already open: its Undo goes on, move by move)
       else { sty.text = w.text; if (sty.id === project.active) ta.value = sty.text; }
     });
-    if (editCheck) clearTimeout(editCheck.timer);
+    if (editCheck) { clearTimeout(editCheck.timer); clearInterval(editCheck.poll); }
     editCheck = { line: d.line, x: d.x + d.dx, y: d.y + d.dy, name, sec: sty.id, at: w.line, dirs, typed };
     typingLine = -1;
     refreshAll(); save(); autosave();
@@ -3889,19 +3889,27 @@
     editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
     clearTimeout(previewTimer);
     runWebsite(false);
-    // a page slow to rebuild says so, and its answer still checks the move when it comes
+    // a page slow to rebuild says so, and its answer still checks the move when it comes; the page is asked again every
+    // second meanwhile (its load, or its word that it's loaded, can go missing), and only the rebuilt one's answer counts
     const c = editCheck;
+    c.since = Date.now();
     c.timer = setTimeout(() => {
       if (editCheck !== c) return;
       editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the move isn't checked yet.`, true);
     }, 8000);
+    c.poll = setInterval(() => {
+      if (editCheck !== c) return clearInterval(c.poll);
+      const w = $('preview').contentWindow;
+      if (w) w.postMessage({ intuicodeWhere: c.line }, '*');
+    }, 1000);
   }
   /* The rebuilt page says where the element is: it's where it was dropped, or something else wins. */
   function editChecked(d) {
     const c = editCheck;
     if (!c || d.line !== c.line) return;
+    if (d.born && c.since && d.born < c.since) return;   // (the page from before the move, still showing the drag)
     editCheck = null;
-    clearTimeout(c.timer);
+    clearTimeout(c.timer); clearInterval(c.poll);
     const sty = project.sections.find(s => s.id === c.sec), at = sty ? editGo(sty, c.at) : 'Styling';
     if (!d.found) return editSay(`<code>${escHtml(c.name)}</code> isn't on the rebuilt page, so the move written in ${at} can't be checked.`, true);
     if (Math.abs(d.x - c.x) <= 1 && Math.abs(d.y - c.y) <= 1) return editSay(`Moved <code>${escHtml(c.name)}</code> ${c.dirs}, and the page shows it there. Written in ${at}, ready to fine-tune${c.typed ? ' (<kbd>Ctrl+Z</kbd> there takes it back)' : ''}.`);
