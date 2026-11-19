@@ -699,6 +699,34 @@ try {
     if (!isDeepStrictEqual(off, before)) throw new Error(`${JSON.stringify(off)} isn't ${JSON.stringify(before)}`);
   });
 
+  await check('an app\'s windows: a tkinter file opens on its estimate in the Preview, the window at its size and a part where place() puts it', async () => {
+    await clearTerminal();
+    await js(() => {
+      const code = 'import tkinter as tk\nw = tk.Tk()\nw.title("Tasks")\nw.geometry("360x300")\nl = tk.Label(w, text="Hello")\nl.place(x=12, y=20)\nw.mainloop()\n';
+      const f = new File([code], 'app.py');
+      Object.defineProperty(f, 'webkitRelativePath', { value: 'e2e-tk/app.py' });
+      const inp = document.getElementById('impFolder');
+      Object.defineProperty(inp, 'files', { value: [f], configurable: true });
+      inp.dispatchEvent(new Event('change'));
+      return true;
+    });
+    await waitFor('the estimate in the Preview', inPage(() => document.getElementById('tabPreview').getAttribute('aria-selected') === 'true' && !document.getElementById('btnEditor').hidden), 30000);
+    const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
+    await wd('POST', `/session/${session}/frame`, { id: frame });
+    let page;
+    try {
+      page = await waitFor('the window drawn in the Preview', () => js(() => {
+        const c = document.querySelector('.client'), l = document.getElementById('l');
+        if (!c || !l || !c.getBoundingClientRect().width) return null;
+        const cr = c.getBoundingClientRect(), lr = l.getBoundingClientRect();
+        return { w: Math.round(cr.width), h: Math.round(cr.height), x: Math.round(lr.left - cr.left), y: Math.round(lr.top - cr.top), title: document.querySelector('.win header').textContent, solid: getComputedStyle(l).borderTopStyle };
+      }), 20000);
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
+    if (page.w !== 360 || page.h !== 300 || page.x !== 12 || page.y !== 20 || !/^Tasks/.test(page.title) || page.solid !== 'solid') throw new Error(JSON.stringify(page));
+  });
+
   // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the
   // close (so the tests can end the app): this is the page's side, asked as the desktop layer asks it.
   await check('closing with changes not saved asks first; Cancel keeps the window', async () => {

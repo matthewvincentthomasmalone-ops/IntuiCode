@@ -318,6 +318,24 @@ code and asked where the element is: the bar over the page says it's moved only 
 it, and if another style wins (an `!important`, a more specific rule), it says where the page put it instead. Nothing
 about a move is remembered: the next one reads the page's own numbers again. **Editor** again brings everything back.
 
+**An app's windows, estimated (tkinter and JUCE).** A website shows itself in the Preview; an app's window can't run in a
+browser, so for a project whose code makes windows (Python with tkinter, C++ with JUCE), the Preview draws an estimate of
+them, read from the code, as soon as the project opens: each window at its size, the groups in it (frames, components
+inside components) nested as the code nests them, and the parts in those, labelled as the code labels them (a list of
+parts made in a loop shows as one group, `×5`). How sure each place is shows in its outline:
+- **solid: exact.** The code says the numbers (`place(x=40, y=20)`, `setBounds(10, 20, 100, 30)`).
+- **dashed: laid out by rules.** pack, grid, or JUCE's rectangle steps in `resized()` (`removeFromTop(40)`, `reduced(8)`…),
+  followed as the toolkit does them: the arrangement is right, the sizes are estimated (fonts and native controls differ).
+- **dotted: a sketch.** The program works it out when it runs (from the window's size, its state, a loop), so it's shown in
+  the order the code adds it; hovering says why. Notes under the windows say what's made but never shown.
+
+Editor mode works on it as on a page: what you point at lights up its code in pink (where it's placed first, then where
+it's made and what it does), and a part whose numbers are in the code (solid) can be dragged: its new numbers are typed
+into its line (`status.place(x=42, y=260)`), Ctrl+Z takes them back, and the estimate is read again to check the code puts
+it there. A grid part moves by cell (`row=1, column=2`); a packed part says it's placed one after another, not at a
+position. Nothing about an estimate is kept: it's read from the code each time it changes. Run still runs the program
+in the terminal.
+
 **Customise: the look, as code.** **Menu → Customise** lays IntuaCode's look out as very simple code: a block for each
 part of the window (IntuaCode, Menu bar, Project side, Help, Editor, Code, Terminal), each line a plain name and its
 value, like `Text size = 14.5`. The values in seafoam are yours to change; the pink ones are fixed, there so it reads as
@@ -690,6 +708,7 @@ npm install && npm run vendor
 | `lang/changelog.js` | What changed: the lines between two versions of the code, the parts they fall in, counts, and each entry checked when read back |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `lang/look.js` | Customise: the look as very simple code, the settings that can change, each value checked (in words), and what it sets on the page |
+| `lang/gui.js` | The GUI estimate: an app's windows (tkinter, JUCE) read from its code, each part exact, laid out by rules or a sketch, and a drag as new numbers in its line |
 | `lang/arrange.js` | Editor mode: something dragged in the Preview, said as a style sentence (where it goes in Styling), and a name for something that has none |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |

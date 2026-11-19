@@ -487,8 +487,12 @@
     const readFn = (c, fn, text, from, f, lineAt, init) => {
       const at = (i) => lineAt(from + i);
       for (const a of String(init || '').matchAll(/(\w+)\s*\{\s*(?:\{\s*\}\s*,\s*)?("(?:[^"\\]|\\.)*")/g)) c.labels.set(a[1], strOf(a[2]));
+      // a loop's name stands for what it goes through: for (auto& bus : busStrips) addAndMakeVisible(bus) adds busStrips
+      const through = new Map();
+      for (const m of text.matchAll(/\bfor\s*\(\s*(?:const\s+)?(?:auto|[\w:<>]+)\s*[&*]*\s*(\w+)\s*:\s*(?:this->)?(\w+)\s*\)/g)) through.set(m[1], m[2]);
       for (const m of text.matchAll(/\badd(AndMakeVisible|ChildComponent)\s*\(\s*([&*]?)\s*(?:this->)?(\w+)(\s*\[[^\]]*\])?/g)) {
-        c.added.push({ name: m[3], hidden: m[1] === 'ChildComponent', line: at(m.index), path: f.path, indexed: !!m[4] });
+        const name = through.get(m[3]) || m[3];
+        c.added.push({ name, hidden: m[1] === 'ChildComponent', line: at(m.index), path: f.path, indexed: !!m[4] || through.has(m[3]) });
       }
       if (fn === c.name) for (const m of text.matchAll(/(?:^|[;{}\s])(?:this->)?setSize\s*\(([^;]+)\)\s*;/g)) {
         const a = splitArgs(m[1]); const w = num(a[0], consts), h = num(a[1], consts);
@@ -701,8 +705,9 @@
       const w = tkWindows(f, r);
       windows.push(...w.windows); notes.push(...w.notes);
     }
-    const cpp = files.filter(f => /\.(?:cpp|cc|cxx|h|hpp|hh)$/i.test(f.path) && /juce/i.test(f.code));
-    if (cpp.length) {
+    // every C++ file, once any of them uses JUCE (a .cpp that defines what its .h declares needn't say juce itself)
+    const cpp = files.filter(f => /\.(?:cpp|cc|cxx|h|hpp|hh)$/i.test(f.path));
+    if (cpp.some(f => /\bjuce\b|JuceHeader/.test(f.code))) {
       const j = juceWindows(cpp);
       if (j && j.windows.length) { toolkits.add('JUCE'); windows.push(...j.windows); notes.push(...j.notes); }
     }
@@ -750,8 +755,9 @@
     if (node.place === 'grid' && parent && parent.grid) {
       // dropped in another cell of its grid: its row and column change (a cell that's taken says so)
       const { ox, oy, xs, ys } = parent.grid, cx = node.x + dx + node.w / 2 - ox, cy = node.y + dy + node.h / 2 - oy;
-      const col = Math.max(0, xs.findIndex((v, i) => i < xs.length - 1 && cx >= v && cx < xs[i + 1]));
-      const row = Math.max(0, ys.findIndex((v, i) => i < ys.length - 1 && cy >= v && cy < ys[i + 1]));
+      // (just past the last row or column: a new one)
+      const cell = (bounds, v) => (v < 0 ? 0 : v >= bounds[bounds.length - 1] ? bounds.length - 1 : Math.max(0, bounds.findIndex((b, i) => i < bounds.length - 1 && v >= b && v < bounds[i + 1])));
+      const col = cell(xs, cx), row = cell(ys, cy);
       const was = node.cell;
       if (!was || (row === was.r && col === was.c)) return { why: 'It\'s still in the same cell of the grid: a grid places things by row and column, not by the pixel.' };
       const taken = parent.children.find(c => c !== node && c.cell && c.cell.r === row && c.cell.c === col);

@@ -29,6 +29,7 @@ the desktop app.
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
 | `lang/changelog.js` | The change log: what changed between two versions of the code (each file's lines, counts and the named parts they fall in), a sentence for an entry, and a log read back from a project file checked for its shape |
+| `lang/gui.js` | The GUI estimate: an app's windows read from its code (tkinter: widgets, pack, grid and place followed with Tk's default sizes; JUCE: Component classes across .h and .cpp, what each adds, setSize, setBounds, resized()'s rectangle steps, constexpr numbers), each part marked exact, rules or sketch with the lines that make, place and wire it, and a drag as the line that places it with new numbers |
 | `lang/arrange.js` | Editor mode: a drag in the Preview as offsets (from where the page says the element is), written as a style sentence in Styling (in the element's own, or one straight after its look), and a name for an element that has none, said each way it could go in its sentence |
 | `lang/look.js` | Customise: IntuaCode's look laid out as very simple code (blocks of `Name = value` lines), the settings that can change, each value checked in plain words against the dark look it goes on, and the CSS variables and classes it sets |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
@@ -427,6 +428,37 @@ the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, n
 The same moves could be written for other GUIs (a Tkinter `place`, a JUCE `setBounds`) where positions are plain numbers in
 the code; that isn't built. A layout that works positions out (`pack`, `grid`, a flex box) would have to say it can't take
 a free position, never guess one.
+
+## Decision: an app's windows are estimated from its code, and the estimate says how sure it is
+
+*Decided 2026-11-19.*
+
+A website shows itself; an app's window (tkinter, a JUCE plug-in or app) can't run in a browser. So for a project whose
+code makes windows, the Preview draws an estimate of them, read from the code (`lang/gui.js`), and Editor mode works on
+it. Like a move on a page, it's worked out, never kept:
+
+- **Read, not run.** tkinter: the widgets made (`tk.Button(parent, …)`), the window's `geometry`, and pack, grid and place
+  followed as Tk does them (the packer's cavity and padding, fill and expand; the grid's rows and columns from the top
+  left; place's numbers), sizes from Tk's defaults (characters for a Button or Entry). JUCE: the Component classes (a .h
+  declares, a .cpp defines), their members (namespaced, `std::unique_ptr`, `std::array` and C arrays, several on a line),
+  what each adds (in loops too: a loop's name stands for what it goes through), `setSize`, and `resized()`'s
+  `setBounds`, numbers or rectangle steps (`getLocalBounds()`, `removeFrom…`, `reduced`, `withSizeKeepingCentre`…) with
+  `constexpr` numbers known. Comments are blanked first, so an apostrophe in one isn't a character.
+- **Each place says how sure it is.** Exact (the code says the numbers), rules (followed: the arrangement is right, the
+  sizes estimated), or a sketch (the program works it out when it runs; shown in the order it's added, with why). A part
+  made but never shown, or made in a parent that isn't read, is said under the windows. Groups nest as the code nests
+  them; a part made many times shows once, with its count.
+- **Only numbers written as numbers move.** A drag of an exact part rewrites that line's numbers (`place(x=, y=)`,
+  `setBounds(x, y, …)`); a grid part changes its row and column (a cell that's taken says so; past the edge is a new row
+  or column); a packed part, one worked out by rules or a sketch says how it's placed and lights up the line instead.
+  The new line is typed into the open file (in a file of sentences, only an exact `python:` or `c++:` line), so Undo
+  takes it back, and the estimate is read again from the code to check it's where it was dropped.
+- **Not the real thing.** Fonts and native controls differ, and a sketch is only the code's order. What would make it the
+  real thing is the running app measuring itself (each component's bounds, and a picture of it), drawn the same way: a
+  probe the app would carry, not built yet. FEC 16's code shows why it's needed: its layout is worked out from the window's
+  size and its state, so it reads almost all as a sketch, though its groups are right.
+- **The Preview is laid out before it loads.** A Preview shown and given a page at once was sometimes started as in a
+  hidden frame (laid out at nothing) in Chrome without a window; the frame's width is read before the page goes in.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 

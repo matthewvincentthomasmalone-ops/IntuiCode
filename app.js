@@ -217,9 +217,9 @@
     setMode(mode === 'unity' ? 'unity' : 'write');
     openSection(project.active);
     $('work').classList.toggle('web', webOn());
-    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
+    showBottom(project.kind === 'website' || guiOn() ? 'preview' : 'terminal');   // (an app with windows: their estimate)
     updateChip();
-    if (webOn()) runWebsite(false);
+    if (webOn()) runWebsite(false); else if (guiOn()) runGui(false);
     if (desk.on) showFolder();
     loadImages();
     if (message) tLine(message + ' (Your previous project is kept: type "restore" in the terminal to swap back.)', 't-sys');
@@ -1364,8 +1364,9 @@
     refreshAll();
     updateChip();
     $('work').classList.toggle('web', webOn());
-    $('tabPreview').hidden = !webOn();
-    if (!webOn()) showBottom('terminal');
+    const shows = webOn() || guiOn();
+    $('tabPreview').hidden = !shows;
+    if (!shows) showBottom('terminal');
     save(); autosave();
     if (mode === 'unity') unityShow(); else splitPlain();
     if (message) tLine(message, 't-sys');
@@ -2995,6 +2996,7 @@
     // only problems in the files that run stop a run (a half-written note or page doesn't stop the Python)
     const blocking = (langs) => { typingLine = -1; activeSec().text = ta.value; refreshAll(); closeAc(); renderProblems(); return project.sections.filter(s => langs.includes(s.lang)).reduce((n, s) => n + issues(s, 'errs'), 0); };
     if (WEB_ROLE[st.lang]) return runWebsite(true);
+    showBottom('terminal');   // (a program runs in the terminal, even when the Preview shows its window's estimate)
     if (!isSentences(st)) {
       tLine(`This project starts at ${st.path} (${langName(st.lang)}), which IntuaCode doesn't run. To run another file, open its ⋯ menu in the Project list and choose "Start here".` + (writeOf(st) === 'code' && desk.on ? ' Its own tools can run it from the terminal, after $.' : ''), 't-sys');
       return;
@@ -3675,6 +3677,9 @@
         return;
       } catch (_) { /* no preview address: use srcdoc */ }
     }
+    // (the frame laid out first: a Preview shown a moment ago is known to be shown before its page loads, so the page
+    // isn't laid out as in a hidden frame)
+    void frame.offsetWidth;
     if (seq === previewSeq) frame.srcdoc = html;
   }
   $('pvAddr').addEventListener('click', async (e) => {
@@ -3746,7 +3751,8 @@
     b.title = on ? 'Leave Editor mode: the side, the help and the explanation come back' : EDIT_TITLE;
     const w = $('preview').contentWindow;
     if (w) w.postMessage({ intuicodeEdit: on }, '*');
-    editSay(on ? EDIT_HINT : '');
+    // (an app's estimate: its parts move in the code, where their numbers are)
+    editSay(on ? (webOn() ? EDIT_HINT : 'Drag a part of the window to move it. <kbd>Alt</kbd> moves the group it\'s in, and the code behind what you point at lights up pink. A part whose numbers are in the code (solid outline) moves there, ready to fine-tune; the rest say how they\'re placed.') : '');
     measure(); syncScroll(); placeTip();
     if (mode === 'unity') uSync();
   }
@@ -5354,7 +5360,7 @@ html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Se
     $('work').classList.toggle('unity', next === 'unity');
     $('work').classList.toggle('web', webOn());
     renderImages();
-    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
+    showBottom(project.kind === 'website' || (!$('previewWrap').hidden && guiOn()) ? 'preview' : 'terminal');   // (an app's estimate stays open if the Preview was)
     updateChip();
     if (next === 'unity') { uMoveOldScratch(); unityShow(); $('uTa').focus(); }
     else { ta.value = activeSec().text; refreshAll(); measure(); syncScroll(); splitPlain(); }
@@ -8525,9 +8531,9 @@ html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Se
     refreshAll();
     setMode(mode);   // Unity, unless Split Mode was used last
     $('work').classList.toggle('web', webOn());
-    showBottom(project.kind === 'website' ? 'preview' : 'terminal');
+    showBottom(project.kind === 'website' || guiOn() ? 'preview' : 'terminal');   // (an app with windows: their estimate)
     updateChip();
-    if (webOn()) runWebsite(false);
+    if (webOn()) runWebsite(false); else if (guiOn()) runGui(false);
     loadImages().then(pruneImages);
     tLine('IntuaCode terminal. Press Run to run your program, or type help.', 't-sys');
     setupDesktop();
