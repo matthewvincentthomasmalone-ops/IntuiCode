@@ -647,9 +647,11 @@ try {
     await clearTerminal();
     await blueprint('Landing page');
     await waitFor('the preview at its local address', () => js(() => (/^http:\/\/127\.0\.0\.1:\d+\/index\.html$/.test(document.getElementById('preview').src) ? true : null)), 30000);
+    // (the code on screen is Unity's or Split Mode's, whichever the checks before left open)
     const where = () => js(() => {
       const r = (s) => { const e = document.querySelector(s), b = e && e.getBoundingClientRect(); return b && b.width ? Math.round(b.left) : null; };
-      return { side: r('.side'), explain: r('#explainWrap'), help: r('#btnIndex'), code: r('.panes'), page: r('#term'), pressed: document.getElementById('btnEditor').getAttribute('aria-pressed') };
+      const code = document.getElementById('unityView').hidden ? '.panes' : '#unityView';
+      return { side: r('.side'), explain: r('#explainWrap'), help: r('#btnIndex'), code: r(code), page: r('#term'), pressed: document.getElementById('btnEditor').getAttribute('aria-pressed') };
     });
     const before = await where();
     await click('btnEditor');
@@ -675,10 +677,14 @@ try {
     }
     const bar = await waitFor('the move, checked on the rebuilt page', () => js(() => { const t = document.getElementById('editBar').innerText; return /shows it there|not where it was dropped|isn't checked|can't|couldn't/.test(t) ? t : null; }), 20000);
     if (!/^Moved cta 40 right and 16 down, and the page shows it there\. Written in style\.css line 5/.test(bar)) throw new Error(bar);
-    const written = await js(() => ({ line: document.getElementById('ta').value.split('\n')[4], keys: document.activeElement && document.activeElement.id }));
-    if (written.line !== 'style cta: position: relative, left: 40px, top: 16px' || written.keys !== 'ta') throw new Error(JSON.stringify(written));
+    // typed into Styling, in the editor on screen (Unity's line for line, or Split Mode's sentences), which has the keys
+    const written = await js(() => {
+      const id = document.getElementById('unityView').hidden ? 'ta' : 'uTa';
+      return { line: document.getElementById(id).value.split('\n')[4], keys: document.activeElement && document.activeElement.id, editor: id };
+    });
+    if (written.line !== 'style cta: position: relative, left: 40px, top: 16px' || written.keys !== written.editor) throw new Error(JSON.stringify(written));
     // the editor's own Undo takes it back
-    const undone = await js(() => { const ta = document.getElementById('ta'); ta.focus(); document.execCommand('undo'); return ta.value.split('\n')[4]; });
+    const undone = await js((id) => { const ed = document.getElementById(id); ed.focus(); document.execCommand('undo'); return ed.value.split('\n')[4]; }, written.editor);
     if (undone !== 'when cta is hovered: background #ffe9d2') throw new Error('after Undo, line 5 is ' + JSON.stringify(undone));
     // pressed again: everything as it was
     await click('btnEditor');
