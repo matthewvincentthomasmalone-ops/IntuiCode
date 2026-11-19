@@ -47,7 +47,9 @@ int total${n}(int a, int b) {
 const many = (f) => '#include <iostream>\n#include <string>\n\n' + [0, 1, 2, 3, 4, 5].map(k => cpp(f * 10 + k)).join('\n');
 const FILES = [['main.cpp', many(1) + '\nint main() {\n    Counter10 c;\n    c.add(total10(1, 4));\n    std::cout << c.count << std::endl;\n    return 0;\n}\n'], ['counter2.cpp', many(2)], ['counter3.cpp', many(3)], ['counter4.cpp', many(4)]];
 
-test('import: a big import comes in as its code at once; its files turn into sentences in the background, in a worker', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
+// (the page reads code with tree-sitter from vendor/, which npm run vendor fetches: the test job doesn't)
+const VENDOR = existsSync(path.join(ROOT, 'vendor/tree-sitter/tree-sitter.js'));
+test('import: a big import comes in as its code at once; its files turn into sentences in the background, in a worker', { skip: (!findChrome() && 'no Chrome or Edge') || (!VENDOR && 'no vendor/tree-sitter (npm run vendor)') }, async () => {
   const browser = await openBrowser();
   try {
     const tab = await browser.tab();
