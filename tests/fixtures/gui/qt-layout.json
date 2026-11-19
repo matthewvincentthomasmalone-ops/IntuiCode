@@ -1,0 +1,75 @@
+{
+ "intuacode": "layout",
+ "version": 1,
+ "toolkit": "PySide6",
+ "made": "2026-11-19T12:00:00Z",
+ "windows": [
+  {
+   "title": "Tasks",
+   "w": 360,
+   "h": 300,
+   "picture": null,
+   "root": {
+    "type": "Tasks",
+    "name": "win",
+    "id": null,
+    "text": "",
+    "x": 0,
+    "y": 0,
+    "w": 360,
+    "h": 300,
+    "shown": true,
+    "children": [
+     {
+      "type": "QLineEdit",
+      "name": "entry",
+      "id": null,
+      "text": "",
+      "x": 11,
+      "y": 11,
+      "w": 251,
+      "h": 26,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QPushButton",
+      "name": "add",
+      "id": null,
+      "text": "Add",
+      "x": 268,
+      "y": 11,
+      "w": 81,
+      "h": 26,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QListWidget",
+      "name": "tasks",
+      "id": null,
+      "text": "",
+      "x": 11,
+      "y": 43,
+      "w": 338,
+      "h": 246,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QLabel",
+      "name": "status",
+      "id": null,
+      "text": "0 tasks",
+      "x": 12,
+      "y": 270,
+      "w": 100,
+      "h": 30,
+      "shown": true,
+      "children": []
+     }
+    ]
+   }
+  }
+ ]
+}

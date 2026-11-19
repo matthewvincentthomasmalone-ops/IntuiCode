@@ -354,6 +354,18 @@ position. A part's corner resizes it, the same way: a placed part gets `place(â€
 or `setSize(400, 320)`; a packed or gridded part says it's the size it asks for. Nothing about an estimate is kept: it's
 read from the code each time it changes. Run still runs the program in the terminal.
 
+**More toolkits: Qt, wxPython, Dear ImGui.** The same estimate, Editor mode and Measure work on Qt in Python (PySide6,
+PySide2, PyQt5, PyQt6) and in C++ (Widgets), on wxPython, and on Dear ImGui (C++). Qt's box, grid and form layouts are
+followed with its margins and spacing, what grows taking the room (a line edit across its row, a list down the window),
+and `setGeometry`, `move` and `resize` with numbers are exact; wx's sizers are followed by proportion, `EXPAND` and
+border, and `pos=`, `size=` are exact; ImGui's items go one below another from its window's padding (`SameLine`
+beside), `SetCursorPos`, `SetNextWindowPos` and `SetNextWindowSize` exact. A drag or a corner rewrites those numbers
+(a corner on a Qt part placed by `move()` makes it `setGeometry(x, y, w, h)`; on a wx part, `size=` is added). Measure
+runs a PySide/PyQt or wxPython app as it runs a tkinter one, its window out of sight (Qt's probe sends a picture of each
+window too; with no screen at all it lays out offscreen); a Qt Widgets (C++) or ImGui app carries its probe, a header
+(`IntuaCodeQtProbe.h`, `IntuaCodeImGuiProbe.h`), as a JUCE one does. Qt's sizes are the ones its probe measured in
+Windows 11's style, so the estimate of a PySide app there is to the pixel where the text's width doesn't count.
+
 **Measure: the app as it really runs (desktop).** An estimate is the code read; **Measure**, beside Editor over the
 Preview, asks the running app. For a tkinter app, IntuaCode runs it for a moment with its window out of sight (see-through
 and off the screen) and a small probe asks Tk where it put every part, by the program's own names (`status`,
@@ -742,6 +754,7 @@ npm install && npm run vendor
 | `lang/changelog.js` | What changed: the lines between two versions of the code, the parts they fall in, counts, and each entry checked when read back |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `lang/look.js` | Customise: the look as very simple code, the settings that can change, each value checked (in words), and what it sets on the page |
+| `lang/gui_kits.js` | The GUI estimate's other toolkits: Qt (PySide/PyQt and C++ Widgets: box, grid and form layouts), wxPython (sizers) and Dear ImGui (its items' flow), each read, laid out, moved and resized in its code, and their probes |
 | `lang/gui.js` | The GUI estimate: an app's windows (tkinter, JUCE) read from its code, each part exact, laid out by rules or a sketch, and a drag as new numbers in its line; the probes (tkinter, JUCE) and a measured app drawn the same way |
 | `lang/arrange.js` | Editor mode: something dragged or resized in the Preview, said as a style sentence (where it goes in Styling; a shape kept as an aspect-ratio), and a name for something that has none |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |

@@ -266,6 +266,11 @@ Tick each one. If something is off, note what you did and what the terminal said
       hold other things.
 
 **An app's windows, estimated**
+- [ ] A PySide6 app (a QVBoxLayout with a row of a QLineEdit and a QPushButton, a QListWidget, a QLabel `move()`d): the
+      Preview draws it as Qt lays it out. Desktop app, Measure: it runs out of sight, and draws over a picture of it.
+      A wxPython app (sizers): the same. A Qt C++ or ImGui app: Measure copies its header and says the steps.
+- [ ] Editor mode on them: a `move()`d label moves (`move(22, 275)`); its corner makes it `setGeometry(…)`; a wx
+      label's corner adds `size=(…)`; an ImGui item after `SetCursorPos` moves; the window's corner is its size.
 - [ ] Import a Python file with a tkinter window (frames packed, an Entry and a Button in a grid, a Label placed with
       `place(x=12, y=270)`): the Preview opens on its estimate, at the window's `geometry`, the label solid, the rest
       dashed. A widget made but never packed is said under the window.

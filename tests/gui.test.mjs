@@ -14,7 +14,7 @@ import { findChrome, openBrowser } from './helpers/browser.mjs';
 const ctx = { console };
 ctx.window = ctx;
 vm.createContext(ctx);
-vm.runInContext(readFileSync(path.join(ROOT, 'lang/gui.js'), 'utf8'), ctx, { filename: 'lang/gui.js' });
+for (const f of ['lang/gui.js', 'lang/gui_kits.js']) vm.runInContext(readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
 const G = ctx.IntuiGui;
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const parts = (win) => Object.fromEntries(G.flat(win).map(({ node: n }) => [n.name || n.kind, [n.x, n.y, n.w, n.h, n.how]]));
@@ -341,12 +341,12 @@ function drive(tab) {
     return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
   };
   const code = () => tab.run('document.getElementById("uTa").value');
-  // the tkinter app, imported as a folder of one file: it opens on its window's estimate in the Preview
-  const importTk = async () => {
+  // an app, imported as a folder of one file: it opens on its window's estimate in the Preview
+  const importTk = async (code = TK, file = 'tk_app.py') => {
     await tab.run(`(() => { const f = document.getElementById('preview'); f.addEventListener('load', () => { window.__icLoaded = f.getAttribute('srcdoc'); }); return true; })()`);
     await tab.run('(() => { const w = document.getElementById("welcomeModal"); if (!w.hidden) document.getElementById("welcomeLook").click(); return true; })()');
     await tab.run(`(() => {
-      const f = new File([${JSON.stringify(TK)}], 'tk_app.py'); Object.defineProperty(f, 'webkitRelativePath', { value: 'tasks/tk_app.py' });
+      const f = new File([${JSON.stringify(code)}], ${JSON.stringify(file)}); Object.defineProperty(f, 'webkitRelativePath', { value: 'tasks/' + ${JSON.stringify(file)} });
       const inp = document.getElementById('impFolder'); Object.defineProperty(inp, 'files', { value: [f], configurable: true }); inp.dispatchEvent(new Event('change'));
       return true;
     })()`);
@@ -427,6 +427,10 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
 });
 
 /* ---------- Measure: the running app's own report (a probe's), drawn as the app is ---------- */
+const QT_APP = readFileSync(path.join(ROOT, 'tests/fixtures/gui/qt_app.py'), 'utf8');
+const QT_REPORT = JSON.parse(readFileSync(path.join(ROOT, 'tests/fixtures/gui/qt-layout.json'), 'utf8'));
+// (a picture, as the Qt probe sends one: a pixel)
+const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 // this file's app (TK), as the tkinter probe measured it (Tk 8.6, Windows)
 const REPORT = JSON.parse(readFileSync(path.join(ROOT, 'tests/fixtures/tk-layout.json'), 'utf8'));
 
@@ -621,6 +625,35 @@ test('gui: with the desktop layer, Measure runs the probe, and the Preview shows
     await tab.run(`(() => { const ta = document.getElementById('uTa'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); document.execCommand('insertText', false, 'print("done")\\n'); return true; })()`);
     await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("is older than the code: Measure again")', 'the estimate, saying the measurement is older', 300);
     assert.match(await page(), /An estimate of the app's window, read from its code/);
+    await tab.close();
+  } finally { await browser.close(); }
+});
+
+test('gui: with the desktop layer, Measure on a PySide app runs the Qt probe, and draws the window with its picture', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
+  const browser = await openBrowser();
+  try {
+    const tab = await browser.tab();
+    await tab.open(ORIGIN + '/tests/desktop-mock.html', { serve: serveMock });
+    await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
+    const { until, importTk } = drive(tab);
+    await until('document.getElementById("btnEditor") && document.getElementById("ta") && document.documentElement.classList.contains("desktop")', 'the app, as the desktop app');
+    await importTk(QT_APP, 'qt_app.py');
+    await until('!document.getElementById("btnMeasure").hidden', 'Measure, beside the Preview');
+    const rep = { ...QT_REPORT, windows: QT_REPORT.windows.map(w => ({ ...w, pictureData: PIXEL })) };
+    await tab.run(`(() => { window.mock.capture = { code: 0, out: ${JSON.stringify(G.MARK + JSON.stringify(rep) + G.MARK)} + '\\n', err: '', after: 500 }; return true; })()`);
+    await tab.run('(() => { document.getElementById("btnMeasure").click(); return true; })()');
+    await until('/^Measured in the running app/.test(document.getElementById("editBar").textContent)', 'the measurement', 100);
+    // the Qt probe, run with the program
+    const ran = JSON.parse(await tab.run('JSON.stringify(window.mock.calls.filter(c => c[0] === "run_capture").pop()[1])'));
+    assert.deepEqual(plain(ran.args), ['-u', ran.cwd + '/.intuicode/probe_qt.py', 'qt_app.py']);
+    const wrote = JSON.parse(await tab.run('JSON.stringify(window.mock.calls.find(c => c[0] === "write_text" && /probe_qt\\.py$/.test(c[1].path))[1])'));
+    assert.equal(wrote.content, G.QT_PY_PROBE);
+    // drawn as measured, over its picture
+    await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("Measured in the running app at")', 'the measured window');
+    const page = await tab.run('document.getElementById("preview").getAttribute("srcdoc")');
+    assert.match(page, /\(PySide6\)/);
+    assert.match(page, /background-image:url\(data:image\/png;base64,iVBOR/);
+    assert.match(page, /id="status" title="[^"]*" style="left:12px;top:270px;width:100px;height:30px"/);
     await tab.close();
   } finally { await browser.close(); }
 });

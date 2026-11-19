@@ -4078,7 +4078,7 @@
     const wins = est.windows.map((w, wi) => {
       const pic = extra.pictures && extra.pictures[wi];
       const r = w.root, bottom = Math.max(w.h, ...GUI.flat(w).map(x => x.node.y + x.node.h)), right = Math.max(w.w, ...GUI.flat(w).map(x => x.node.x + x.node.w));
-      return `<section class="win t-${w.toolkit === 'JUCE' ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? (est.measured ? ' · parts run past the window' : ' · the sketch runs past the window') : ''}</span></header>`
+      return `<section class="win t-${/JUCE|ImGui/.test(w.toolkit) ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? (est.measured ? ' · parts run past the window' : ' · the sketch runs past the window') : ''}</span></header>`
         + `<div class="client${pic ? ' pic' : ''}" data-ic-line="${at.get(r)}" id="${escAttr(r.id)}" title="${escAttr(r.why || '')}" style="width:${right}px;height:${bottom}px${pic ? `;background-image:url(${pic});background-size:${w.w}px ${w.h}px` : ''}">${r.children.map(c => box(c, 0, 0)).join('')}`
         + `${bottom > w.h ? `<div class="edge" style="top:${w.h}px;width:${right}px"></div>` : ''}${right > w.w ? `<div class="edge v" style="left:${w.w}px;height:${bottom}px"></div>` : ''}</div></section>`;
     }).join('');
@@ -4138,36 +4138,44 @@ ${key}</div>${wins}${notes}</body></html>`;
     const g = guiEstimate();
     if (!g || !GUI) return;
     if (!desk.on) return measureSay('Measuring runs the app, which the desktop app does. Here, the Preview shows the estimate read from its code.', true);
-    const tk = g.est.toolkits.includes('tkinter'), opened = guiOpened;
+    // the probe for its toolkit: a Python one IntuaCode runs, or a header the app carries (its report read from the folder)
+    const PY = { tkinter: { file: 'probe_tk.py', text: GUI.TK_PROBE, uses: /\btkinter\b/, lib: 'tkinter', inside: /[\\/]tkinter[\\/]/ },
+      'PySide/PyQt': { file: 'probe_qt.py', text: GUI.QT_PY_PROBE, uses: /\b(?:PySide[26]|PyQt[56])\b/, lib: 'Qt', inside: /[\\/](?:PySide[26]|PyQt[56])[\\/]/ },
+      wxPython: { file: 'probe_wx.py', text: GUI.WX_PROBE, uses: /\bimport\s+wx\b|\bfrom\s+wx\b/, lib: 'wx', inside: /[\\/]wx[\\/]/ } };
+    const kit = g.est.toolkits.map(t => PY[t]).find(Boolean), opened = guiOpened;
     const btn = $('btnMeasure');
     btn.disabled = true;
     try {
-      if (tk) {
-        if (!desk.python) return measureSay('Measuring a tkinter app runs it with Python, and no Python was found on this computer.', true);
-        const py = startSec().lang === 'python' && /\btkinter\b/.test(codeOf(startSec())) ? startSec() : project.sections.find(s => s.lang === 'python' && /\btkinter\b/.test(codeOf(s)));
-        if (!py) return measureSay('No Python file here opens a tkinter window to measure.', true);
+      if (kit) {
+        if (!desk.python) return measureSay(`Measuring a ${kit.lib} app runs it with Python, and no Python was found on this computer.`, true);
+        const py = startSec().lang === 'python' && kit.uses.test(codeOf(startSec())) ? startSec() : project.sections.find(s => s.lang === 'python' && kit.uses.test(codeOf(s)));
+        if (!py) return measureSay(`No Python file here opens a ${kit.lib} window to measure.`, true);
         measureSay(`Running ${escHtml(fileName(py))} for a moment, its window out of sight, to measure it…`);
         const dir = desk.folder || await invoke('scratch_folder');
         for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: codeOf(s) });
-        await invoke('write_text', { path: join(dir, '.intuicode/probe_tk.py'), content: GUI.TK_PROBE });
-        const [code, out, err] = await invoke('run_capture', { program: desk.python[0], args: ['-u', join(dir, '.intuicode/probe_tk.py'), fileName(py)], cwd: dir });
+        await invoke('write_text', { path: join(dir, '.intuicode/' + kit.file), content: kit.text });
+        const [code, out, err] = await invoke('run_capture', { program: desk.python[0], args: ['-u', join(dir, '.intuicode/' + kit.file), fileName(py)], cwd: dir });
         const report = GUI.reportIn(out);
         // (ended by the probe, which says where it was: the innermost line of the program's own code)
         const timedOut = /^Timeout \(/m.test(err || ''), at = timedOut && String(err).split('\n').map(l => /^\s*File "(.+?)", line (\d+)/.exec(l))
-          .find(m => m && !/(^|[\\/])probe_tk\.py$|^<frozen |[\\/]tkinter[\\/]/.test(m[1]));
+          .find(m => m && !/(^|[\\/])probe_\w+\.py$|^<frozen /.test(m[1]) && !kit.inside.test(m[1]));
         if (!report) return measureSay(timedOut ? `The app didn't open its window within 25 seconds, so it was ended${at ? `; it was at ${escHtml(at[1].split(/[\\/]/).pop())} line ${at[2]}` : ''}.`
           : `The app didn't say where its parts are${err ? `: ${escHtml(String(err).trim().split('\n').pop())}` : '.'}`, true);
         if (!report.windows.length) return measureSay(escHtml(report.note || 'The app ran without opening a window.'), true);
-        return measured(report, g, null, opened);
+        // (a probe that can, Qt's, sends each window's picture with it)
+        return measured(report, g, report.windows.map(w => (w && typeof w.pictureData === 'string' && w.pictureData ? 'data:image/png;base64,' + w.pictureData : null)), opened);
       }
-      // JUCE (and any app with its own probe): its report in the project's folder
+      // a C++ app with its own probe (JUCE, Qt, Dear ImGui): its report in the project's folder
+      const HEADER = { Qt: { file: 'IntuaCodeQtProbe.h', text: GUI.QT_PROBE, how: 'add it to the app, call <code>intuacode::probeQtLayoutSoon();</code> after its window is shown' },
+        'Dear ImGui': { file: 'IntuaCodeImGuiProbe.h', text: GUI.IMGUI_PROBE, how: 'define <code>IMGUI_ENABLE_TEST_ENGINE</code> in imconfig.h, include it in one .cpp with <code>INTUACODE_IMGUI_PROBE_IMPLEMENTATION</code> defined, call <code>intuacode::imguiProbeFrame();</code> after each <code>ImGui::Render()</code>' } };
+      const head = g.est.toolkits.map(t => HEADER[t]).find(Boolean) || { file: 'IntuaCodeProbe.h', text: GUI.JUCE_PROBE, how: 'add it to the app, call <code>intuacode::probeLayoutSoon();</code> after its window is shown' };
       let text = null;
       if (desk.folder) { try { text = await invoke('read_text', { path: join(desk.folder, 'intuacode-layout.json') }); } catch (_) { text = null; } }
       let report = null;
       try { report = text ? JSON.parse(text) : null; } catch (_) { report = null; }
       if (!report || report.intuacode !== 'layout') {
-        await copyText(GUI.JUCE_PROBE, btn, 'Measure');
-        return measureSay(`No measurement yet${desk.folder ? '' : ' (save the project to a folder first: the app writes it there)'}. <b>IntuaCodeProbe.h</b> is copied: add it to the app, call <code>intuacode::probeLayoutSoon();</code> after its window is shown, run it with <code>INTUACODE_LAYOUT=${escHtml(desk.folder ? join(desk.folder, 'intuacode-layout.json') : '…/intuacode-layout.json')}</code>, then press Measure again.`);
+        await copyText(head.text, btn, 'Measure');
+        return measureSay(`No measurement yet${desk.folder ? '' : ' (save the project to a folder first: the app writes it there)'}. <b>${head.file}</b> is copied: ${head.how}, run it with <code>INTUACODE_LAYOUT=${escHtml(desk.folder ? join(desk.folder, 'intuacode-layout.json') : '…/intuacode-layout.json')}</code>, then press Measure again.`);
       }
       // each window's picture, beside the report
       const pictures = [];

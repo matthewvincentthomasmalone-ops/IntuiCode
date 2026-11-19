@@ -1,0 +1,184 @@
+{
+ "intuacode": "layout",
+ "version": 1,
+ "toolkit": "PySide6",
+ "made": "2026-11-19T12:00:00Z",
+ "windows": [
+  {
+   "title": "Form",
+   "w": 278,
+   "h": 440,
+   "picture": null,
+   "root": {
+    "type": "Form",
+    "name": "win",
+    "id": null,
+    "text": "",
+    "x": 0,
+    "y": 0,
+    "w": 278,
+    "h": 440,
+    "shown": true,
+    "children": [
+     {
+      "type": "QGroupBox",
+      "name": null,
+      "id": null,
+      "text": "Details",
+      "x": 11,
+      "y": 11,
+      "w": 256,
+      "h": 128,
+      "shown": true,
+      "children": [
+       {
+        "type": "QLabel",
+        "name": null,
+        "id": null,
+        "text": "Name",
+        "x": 22,
+        "y": 38,
+        "w": 32,
+        "h": 26,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "QLineEdit",
+        "name": "name",
+        "id": null,
+        "text": "",
+        "x": 60,
+        "y": 38,
+        "w": 196,
+        "h": 26,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "QLabel",
+        "name": null,
+        "id": null,
+        "text": "Age",
+        "x": 22,
+        "y": 70,
+        "w": 22,
+        "h": 26,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "QSpinBox",
+        "name": "age",
+        "id": null,
+        "text": "0",
+        "x": 60,
+        "y": 70,
+        "w": 196,
+        "h": 26,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "QLabel",
+        "name": null,
+        "id": null,
+        "text": "Kind",
+        "x": 22,
+        "y": 102,
+        "w": 24,
+        "h": 26,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "QComboBox",
+        "name": "kind",
+        "id": null,
+        "text": "",
+        "x": 60,
+        "y": 102,
+        "w": 196,
+        "h": 26,
+        "shown": true,
+        "children": []
+       }
+      ]
+     },
+     {
+      "type": "QCheckBox",
+      "name": "agree",
+      "id": null,
+      "text": "I agree",
+      "x": 11,
+      "y": 145,
+      "w": 81,
+      "h": 24,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QSlider",
+      "name": "level",
+      "id": null,
+      "text": "",
+      "x": 98,
+      "y": 149,
+      "w": 169,
+      "h": 16,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QPushButton",
+      "name": "ok",
+      "id": null,
+      "text": "OK",
+      "x": 11,
+      "y": 175,
+      "w": 81,
+      "h": 26,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QPushButton",
+      "name": "cancel",
+      "id": null,
+      "text": "Cancel",
+      "x": 98,
+      "y": 175,
+      "w": 169,
+      "h": 26,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QProgressBar",
+      "name": "bar",
+      "id": null,
+      "text": "",
+      "x": 11,
+      "y": 207,
+      "w": 256,
+      "h": 24,
+      "shown": true,
+      "children": []
+     },
+     {
+      "type": "QTextEdit",
+      "name": "notes",
+      "id": null,
+      "text": "",
+      "x": 11,
+      "y": 237,
+      "w": 256,
+      "h": 192,
+      "shown": true,
+      "children": []
+     }
+    ]
+   }
+  }
+ ]
+}

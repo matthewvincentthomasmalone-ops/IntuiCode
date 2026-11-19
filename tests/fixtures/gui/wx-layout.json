@@ -1,0 +1,88 @@
+{
+ "intuacode": "layout",
+ "version": 1,
+ "toolkit": "wxPython",
+ "made": "2026-11-19T12:00:00Z",
+ "windows": [
+  {
+   "title": "Tasks",
+   "w": 360,
+   "h": 300,
+   "picture": null,
+   "root": {
+    "type": "Frame",
+    "name": null,
+    "id": "frame",
+    "text": "Tasks",
+    "x": 0,
+    "y": 0,
+    "w": 360,
+    "h": 300,
+    "shown": true,
+    "children": [
+     {
+      "type": "Panel",
+      "name": null,
+      "id": "panel",
+      "text": "panel",
+      "x": 0,
+      "y": 0,
+      "w": 360,
+      "h": 300,
+      "shown": true,
+      "children": [
+       {
+        "type": "TextCtrl",
+        "name": "entry",
+        "id": "text",
+        "text": "",
+        "x": 8,
+        "y": 8,
+        "w": 263,
+        "h": 23,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "Button",
+        "name": "add",
+        "id": "button",
+        "text": "Add",
+        "x": 277,
+        "y": 8,
+        "w": 75,
+        "h": 23,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "ListBox",
+        "name": "tasks",
+        "id": "listBox",
+        "text": "",
+        "x": 8,
+        "y": 39,
+        "w": 344,
+        "h": 253,
+        "shown": true,
+        "children": []
+       },
+       {
+        "type": "StaticText",
+        "name": "status",
+        "id": "staticText",
+        "text": "0 tasks",
+        "x": 12,
+        "y": 270,
+        "w": 36,
+        "h": 16,
+        "shown": true,
+        "children": []
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}
