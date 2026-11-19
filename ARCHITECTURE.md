@@ -473,6 +473,12 @@ it. Like a move on a page, it's worked out, never kept:
   or column); a packed part, one worked out by rules or a sketch says how it's placed and lights up the line instead.
   The new line is typed into the open file (in a file of sentences, only an exact `python:` or `c++:` line), so Undo
   takes it back, and the estimate is read again from the code to check it's where it was dropped.
+- **A corner is a size, in the same line.** A placed part's `place(…)` gets `width=` and `height=` (its own changed, or
+  added; `relwidth` and sizes worked out say why not), a JUCE part's `setBounds` its last two numbers, and a window its
+  `geometry("WxH")` or `setSize(w, h)`. Read again, it has to be that size. A packed or gridded part, or one sized by
+  rules, says it's the size it asks for (a Button's width is in characters). A window's corner is often a part's too
+  (the list that fills it): Alt, the group it's in, reaches the window. In a measured view, a part sized by numbers is
+  that size where it was measured, so the measurement holds.
 - **Not the real thing.** Fonts and native controls differ, and a sketch is only the code's order. The real thing is the
   running app measuring itself (next decision). FEC 16's code shows why it's needed: its layout is worked out from the
   window's size and its state, so it reads almost all as a sketch, though its groups are right.

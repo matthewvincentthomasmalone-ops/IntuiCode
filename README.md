@@ -343,8 +343,10 @@ Editor mode works on it as on a page: what you point at lights up its code in pi
 it's made and what it does), and a part whose numbers are in the code (solid) can be dragged: its new numbers are typed
 into its line (`status.place(x=42, y=260)`), Ctrl+Z takes them back, and the estimate is read again to check the code puts
 it there. A grid part moves by cell (`row=1, column=2`); a packed part says it's placed one after another, not at a
-position. Nothing about an estimate is kept: it's read from the code each time it changes. Run still runs the program
-in the terminal.
+position. A part's corner resizes it, the same way: a placed part gets `place(…, width=60, height=30)`, a JUCE part
+`setBounds`' width and height, and the window (its corner, with **Alt** when a part fills it) its `geometry("400x320")`
+or `setSize(400, 320)`; a packed or gridded part says it's the size it asks for. Nothing about an estimate is kept: it's
+read from the code each time it changes. Run still runs the program in the terminal.
 
 **Measure: the app as it really runs (desktop).** An estimate is the code read; **Measure**, beside Editor over the
 Preview, asks the running app. For a tkinter app, IntuaCode runs it for a moment with its window out of sight (see-through

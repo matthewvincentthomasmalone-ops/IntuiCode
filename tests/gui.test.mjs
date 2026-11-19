@@ -162,6 +162,29 @@ void GainEditor::resized() {
 }
 `;
 
+test('gui: a corner dragged is a size: place(width=, height=), setBounds\' size, a window\'s geometry or setSize; read back, it\'s that size', () => {
+  const files = [{ path: 'tk_app.py', code: TK }], w = G.estimate(files).windows[0], f = (n) => find(w, n).node;
+  const again = (r) => { const code = TK.split('\n'); code[r.line] = r.text; return G.estimate([{ path: 'tk_app.py', code: code.join('\n') }]).windows[0]; };
+  let r = G.resize(files, f('status'), 60, 30);
+  assert.deepEqual(plain(r), { path: 'tk_app.py', line: 20, text: 'status.place(x=12, y=270, width=60, height=30)', w: 60, h: 30 });
+  assert.deepEqual(plain(parts(again(r)).status), [12, 270, 60, 30, 'exact'], 'read back, it\'s that size, where it was');
+  r = G.resize([{ path: 'tk_app.py', code: TK.replace('status.place(x=12, y=270)', 'status.place(x=12, y=270, width=50, height=20)') }], { ...f('status'), w: 50, h: 20 }, 70, 24);
+  assert.equal(r.text, 'status.place(x=12, y=270, width=70, height=24)', 'its own numbers changed');
+  r = G.resize(files, w.root, 400, 320);
+  assert.deepEqual([r.line, r.text], [9, 'window.geometry("400x320")']);
+  assert.deepEqual([again(r).w, again(r).h], [400, 320]);
+  assert.match(G.resize(files, f('tasks'), 300, 200).why, /^pack\(\) gives it the size it asks for \(tk_app\.py, line 19\)/);
+  assert.match(G.resize(files, f('add'), 60, 30).why, /^grid\(\) gives it the size it asks for/);
+  const rel = [{ path: 'tk_app.py', code: TK.replace('status.place(x=12, y=270)', 'status.place(x=12, y=270, relwidth=0.5)') }];
+  assert.match(G.resize(rel, find(G.estimate(rel).windows[0], 'status').node, 60, 30).why, /^place\(\) sizes it from what it's in \(relwidth, relheight\)/);
+  assert.equal(G.resize(files, f('status'), f('status').w, f('status').h).why, 'It wasn\'t resized.');
+  // JUCE: setBounds' width and height; the editor's setSize; rectangle steps say why not
+  const JF = [{ path: 'PluginEditor.h', code: JUCE_H }, { path: 'PluginEditor.cpp', code: JUCE_CPP }], jw = G.estimate(JF).windows[0];
+  assert.deepEqual(plain(G.resize(JF, find(jw, 'gain').node, 150, 140)), { path: 'PluginEditor.cpp', line: 32, text: '    gain.setBounds(20, 60, 150, 140);', w: 150, h: 140 });
+  assert.equal(G.resize(JF, jw.root, 500, 360).text, '    setSize(500, 360);');
+  assert.match(G.resize(JF, find(jw, 'title').node, 200, 30).why, /^Its size is worked out in the code \(PluginEditor\.cpp, line 31\)/);
+});
+
 test('gui: JUCE, from the classes: what each adds, setSize, setBounds and resized()\'s rectangle steps; the rest a sketch', () => {
   const files = [{ path: 'PluginEditor.h', code: JUCE_H }, { path: 'PluginEditor.cpp', code: JUCE_CPP }];
   const est = G.estimate(files);
@@ -268,7 +291,7 @@ function drive(tab) {
     setTimeout(() => no(new Error('the page didn\\'t answer')), 5000);
   })`);
   const frame = async () => JSON.parse(await tab.run('JSON.stringify(document.getElementById("preview").getBoundingClientRect())'));
-  const mouse = (type, x, y, held) => tab.send('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' && !held ? 'none' : 'left', buttons: type === 'mousePressed' || held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
+  const mouse = (type, x, y, held, alt) => tab.send('Input.dispatchMouseEvent', { type, x, y, modifiers: alt ? 1 : 0, button: type === 'mouseMoved' && !held ? 'none' : 'left', buttons: type === 'mousePressed' || held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
   // (Chrome without a window can leave a frame of its own process unsized after it's shown again: a window draws and
   // sizes it all the time; here the window's size is nudged until it has) -> the window as the page draws it
   const sized = async (w, h) => {
@@ -300,6 +323,23 @@ function drive(tab) {
     await until('document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move');
     return { bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
   };
+  // the handle: onto the part (twice: the first move after a rebuild is how Chrome without a window finds it's there),
+  // onto its bottom right corner, pressed, moved in steps, let go
+  // (with Alt, the group it's in: a window whose corner a part fills)
+  const resize = async (line, dw, dh, alt) => {
+    await loaded();
+    const f = await frame(), at = await whereSoon(line), x = f.x + at.x + at.w - 3, y = f.y + at.y + at.h - 3;
+    await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
+    await mouse('mouseMoved', f.x + at.x + at.w / 2, f.y + at.y + at.h / 2, false, alt); await new Promise(r => setTimeout(r, 150));
+    await mouse('mouseMoved', f.x + at.x + at.w / 2 + 2, f.y + at.y + at.h / 2 + 1, false, alt); await new Promise(r => setTimeout(r, 100));
+    await mouse('mouseMoved', x, y, false, alt); await new Promise(r => setTimeout(r, 100));
+    await mouse('mousePressed', x, y, false, alt);
+    for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dw * i / 8, y + dh * i / 8, true, alt);
+    await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
+    await mouse('mouseReleased', x + dw, y + dh, false, alt);
+    await until('document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the size');
+    return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
+  };
   const code = () => tab.run('document.getElementById("uTa").value');
   // the tkinter app, imported as a folder of one file: it opens on its window's estimate in the Preview
   const importTk = async () => {
@@ -316,7 +356,7 @@ function drive(tab) {
     // (the estimate's page, not the page the Preview showed before)
     await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("An estimate of the app")', 'the estimate in the Preview');
   };
-  return { until, where, frame, mouse, sized, drag, code, importTk };
+  return { until, where, frame, mouse, sized, drag, resize, code, importTk };
 }
 
 test('gui: in the page, an imported tkinter app shows its window in the Preview, and Editor mode moves a part in its code', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
@@ -325,7 +365,7 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
     const tab = await browser.tab();
     await tab.open(ORIGIN + '/', { serve: serveApp });
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
-    const { until, where, frame, mouse, sized, drag, code, importTk } = drive(tab);
+    const { until, where, frame, mouse, sized, drag, resize, code, importTk } = drive(tab);
     await until('document.getElementById("btnEditor") && document.getElementById("ta")', 'the app');
     await importTk();
     assert.equal(await tab.run('document.getElementById("btnEditor").hidden'), false);
@@ -341,7 +381,7 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
 
     // Editor mode: the code and the estimate side by side
     await tab.run('document.getElementById("btnEditor").click()');
-    assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Drag a part of the window to move it\./);
+    assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Drag a part of the window to move it, or its corner to resize it\./);
     // pointing at the list lights up its code: where it's placed, where it's made
     {
       const f = await frame(), at = await where(tasksAt);
@@ -367,6 +407,21 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
     assert.equal(m.bad, true);
     assert.match(m.bar, /^tasks: pack\(\) places things one after another/);
     assert.equal(await code(), before);
+    // the label's corner: its size in its place() line, read back as that size
+    const s1 = await where(statusAt);
+    m = await resize(statusAt, 18, 9);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, new RegExp(`^Resized status to ${s1.w + 18} × ${s1.h + 9}, and the code makes it so\\. Written in tk_app\\.py line 21`));
+    assert.equal((await code()).split('\n')[20], `status.place(x=12, y=270, width=${s1.w + 18}, height=${s1.h + 9})`);
+    // the window's corner (the list fills it there: Alt, the group it's in, is the window): its geometry
+    m = await resize(tasksAt, 40, 20, true);   // (from the list's corner, 8 inside the window's: the window grows by as much)
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, /^Resized window to 400 × 320, and the code makes it so\./);
+    assert.equal((await code()).split('\n')[9], 'window.geometry("400x320")');
+    // the list (pack): its size is pack's, and it says so
+    m = await resize(tasksAt, 20, 20);
+    assert.equal(m.bad, true);
+    assert.match(m.bar, /^tasks: pack\(\) gives it the size it asks for/);
     await tab.close();
   } finally { await browser.close(); }
 });
@@ -478,10 +533,10 @@ test('gui: the tkinter probe runs the app out of sight and says where Tk put eac
     // one that hangs before its window shows, holding Python's lock, is ended all the same, saying where it was
     writeFileSync(path.join(dir, 'spin.py'), 'import tkinter as tk\nw = tk.Tk()\nn = 0\nwhile True:\n    n += 1\n');
     const t0 = Date.now(), spun = spawnSync(PYTHON, ['-u', 'probe_tk.py', 'spin.py'], { cwd: dir, encoding: 'utf8', timeout: 40000, env: { ...process.env, INTUACODE_PROBE_TIMEOUT: '2' } });
-    assert.equal(spun.status, 1, spun.stderr);
+    assert.notEqual(spun.status, 0, spun.stderr);   // (ended: what it says counts, not its exit code, which Windows can make another)
     assert.ok(Date.now() - t0 < 15000, 'ended after its 2 seconds');
     assert.match(spun.stderr, /^Timeout \(0:00:02\)!/m);
-    assert.match(spun.stderr, /File "spin\.py", line 5 in <module>/);
+    assert.match(spun.stderr, /File "spin\.py", line [45] in <module>/, 'in the loop: on whichever of its two lines it was');
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
 });
 
@@ -498,7 +553,7 @@ test('gui: with the desktop layer, Measure runs the probe, and the Preview shows
     const tab = await browser.tab();
     await tab.open(ORIGIN + '/tests/desktop-mock.html', { serve: serveMock });
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
-    const { until, sized, drag, code, importTk } = drive(tab);
+    const { until, sized, drag, resize, code, importTk } = drive(tab);
     await until('document.getElementById("btnEditor") && document.getElementById("ta") && document.documentElement.classList.contains("desktop")', 'the app, as the desktop app');
     await importTk();
     await until('!document.getElementById("btnMeasure").hidden', 'Measure, beside the Preview');
@@ -555,6 +610,13 @@ test('gui: with the desktop layer, Measure runs the probe, and the Preview shows
     assert.equal(m.bad, true);
     assert.match(m.bar, /^tasks: pack\(\) places things one after another/);
     assert.equal(await code(), before);
+    // the label's corner, measured 41 × 21: its size in the code, and the measurement holds at that size
+    m = await resize(statusAt, 18, 9);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, /^Resized status to 59 × 30, and the code makes it so\./);
+    assert.equal((await code()).split('\n')[20], 'status.place(x=12, y=270, width=59, height=30)');
+    await until('/id="status" title="[^"]*" style="left:12px;top:270px;width:59px;height:30px"/.test(document.getElementById("preview").getAttribute("srcdoc") || "")', 'the measured label, at its new size');
+    assert.match(await page(), /Measured in the running app at/);
     // the code changes: the estimate again, saying the measurement is older than the code
     await tab.run(`(() => { const ta = document.getElementById('uTa'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); document.execCommand('insertText', false, 'print("done")\\n'); return true; })()`);
     await until('(document.getElementById("preview").getAttribute("srcdoc") || "").includes("is older than the code: Measure again")', 'the estimate, saying the measurement is older', 300);

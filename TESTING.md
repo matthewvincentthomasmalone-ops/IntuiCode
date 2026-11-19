@@ -268,6 +268,9 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Editor mode: point at the list: its lines light up pink. Drag the label: its line becomes `place(x=…, y=…)` with the
       new numbers, the bar says the code puts it there; Ctrl+Z puts the line back. Drag the Add button past the last
       column: `grid(row=0, column=2)`. Drag the list (packed): it says pack places things one after another.
+- [ ] Editor mode, corners: drag the label's corner: `place(x=12, y=270, width=…, height=…)`, and it's that size. Hold
+      **Alt** over the list and drag the window's corner: `window.geometry("400x320")`. The list's own corner: pack
+      gives it the size it asks for. A JUCE part placed with `setBounds` numbers: its last two change.
 - [ ] Run: the program runs in the terminal, which comes to the front.
 - [ ] Import a JUCE plug-in's editor (.h and .cpp): its window at `setSize`, parts placed by `setBounds` solid, by
       `resized()`'s rectangle steps dashed, the rest dotted with why on hover. A component inside another is drawn inside it.
