@@ -439,6 +439,13 @@ test('gui: a JUCE app\'s report (IntuaCodeProbe.h): its classes matched to the c
   const code = (n) => G.flat(est.windows[0]).find(x => x.node.id === n.eid), g = code(find(w, 'gain').node);
   assert.deepEqual(plain(G.move(files, g.node, 15, -5, g.parent)), { path: 'PluginEditor.cpp', line: 32, text: '    gain.setBounds(35, 55, 120, 120);', x: 35, y: 55 });
   assert.match(G.move(files, code(find(w, 'mode').node).node, 5, 5).why, /^Its place is worked out in resized\(\)/);
+  // a window is matched by its class when its title isn't the code's (a JUCE window's title is its name), whatever else
+  // is on the screen before it
+  const popup = { title: 'Tip', w: 120, h: 30, root: part('juce::TooltipWindow', 0, 0, 120, 30) };
+  const two = G.measured({ ...report, windows: [popup, ...report.windows] }, est);
+  assert.deepEqual(plain(two.windows.map(x => [x.title, x.root.src.length > 0])), [['Tip', false], ['Gain', true]]);
+  assert.ok(find(two.windows[1], 'gain').node.src.length, 'its parts linked to their code');
+  assert.match(G.JUCE_PROBE, /inline bool quitsAfterMeasuring\(\)/, 'a run only to be measured says so');
 });
 
 // a Python with Tk that can open a window here (CI's Linux tests have no screen)
