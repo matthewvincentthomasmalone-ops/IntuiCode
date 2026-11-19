@@ -475,6 +475,13 @@ test('gui: the tkinter probe runs the app out of sight and says where Tk put eac
     // a program that opens no window says so
     const none = G.reportIn(run('no_window.py').stdout);
     assert.deepEqual([none.windows.length, none.note], [0, 'The program ended without opening a window (no mainloop).']);
+    // one that hangs before its window shows, holding Python's lock, is ended all the same, saying where it was
+    writeFileSync(path.join(dir, 'spin.py'), 'import tkinter as tk\nw = tk.Tk()\nn = 0\nwhile True:\n    n += 1\n');
+    const t0 = Date.now(), spun = spawnSync(PYTHON, ['-u', 'probe_tk.py', 'spin.py'], { cwd: dir, encoding: 'utf8', timeout: 40000, env: { ...process.env, INTUACODE_PROBE_TIMEOUT: '2' } });
+    assert.equal(spun.status, 1, spun.stderr);
+    assert.ok(Date.now() - t0 < 15000, 'ended after its 2 seconds');
+    assert.match(spun.stderr, /^Timeout \(0:00:02\)!/m);
+    assert.match(spun.stderr, /File "spin\.py", line 5 in <module>/);
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
 });
 
@@ -496,10 +503,21 @@ test('gui: with the desktop layer, Measure runs the probe, and the Preview shows
     await importTk();
     await until('!document.getElementById("btnMeasure").hidden', 'Measure, beside the Preview');
     const page = () => tab.run('document.getElementById("preview").getAttribute("srcdoc") || ""');
-    // what the probe prints, run: this app as Tk measured it (after what the program printed)
-    await tab.run(`(() => { window.mock.capture = { code: 0, out: 'Loading tasks\\n' + ${JSON.stringify(G.MARK + JSON.stringify(REPORT) + G.MARK)} + '\\n', err: '' }; return true; })()`);
+    // a program the probe had to end (it didn't open its window in time): where it was, said
+    await tab.run(`(() => { window.mock.capture = { code: 1, out: '', err: 'Timeout (0:00:25)!\\nThread 0x1 (most recent call first):\\n  File "C:\\\\Users\\\\me\\\\tasks\\\\tk_app.py", line 7 in load\\n  File "tk_app.py", line 20 in <module>\\n  File "<frozen runpy>", line 88 in _run_code\\n  File "/x/.intuicode/probe_tk.py", line 85 in <module>\\n' }; return true; })()`);
     await tab.run('(() => { document.getElementById("btnMeasure").click(); return true; })()');
-    await until('/^Measured in the running app/.test(document.getElementById("editBar").textContent)', 'the measurement');
+    await until('/^The app didn\'t open its window/.test(document.getElementById("editBar").textContent)', 'what Measure says of a program it ended');
+    assert.match(await tab.run('document.getElementById("editBar").textContent'), /^The app didn't open its window within 25 seconds, so it was ended; it was at tk_app\.py line 7\.Close$/);
+    assert.equal(await tab.run('document.getElementById("editBar").classList.contains("bad")'), true);
+    // what the probe prints, run: this app as Tk measured it (after what the program printed)
+    await tab.run(`(() => { window.mock.capture = { code: 0, out: 'Loading tasks\\n' + ${JSON.stringify(G.MARK + JSON.stringify(REPORT) + G.MARK)} + '\\n', err: '', after: 3000 }; return true; })()`);
+    // (what the bar says meanwhile: a run takes a while, as the real one does)
+    await tab.run(`(() => { const b = document.getElementById('editBar'); window.__bar = []; new MutationObserver(() => window.__bar.push((b.hidden ? 'hidden: ' : '') + b.textContent.slice(0, 40))).observe(b, { attributes: true, childList: true, subtree: true, characterData: true }); return true; })()`);
+    await tab.run('(() => { document.getElementById("btnMeasure").click(); return true; })()');
+    await until('/^Measured in the running app/.test(document.getElementById("editBar").textContent)', 'the measurement', 100);
+    const bars = JSON.parse(await tab.run('JSON.stringify(window.__bar)'));
+    assert.match(bars[0], /^Running tk_app\.py for a moment/);
+    assert.ok(!bars.some(b => b.startsWith('hidden')), 'the bar stays while it runs: ' + JSON.stringify(bars));
     assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Measured in the running app at .+: 5 parts, each where the app really puts it\. It shows until the code changes\.Close$/);
     // how: the project's files and the probe (in IntuaCode's own folder there), then Python on the probe and the program
     const calls = JSON.parse(await tab.run('JSON.stringify(window.mock.calls.filter(c => c[0] === "run_capture" || c[0] === "write_text"))'));

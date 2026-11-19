@@ -54,7 +54,7 @@
           case 'find_git': return 'git version 2.53.0';
           case 'find_cpp': return m.cpp === undefined ? ['g++', 'g++ (mock) 14.2.0'] : m.cpp;
           case 'find_arduino': return m.arduino === undefined ? null : m.arduino;
-          case 'run_capture': { const r = m.capture || { code: 0, out: '[]', err: '' }; return [r.code, r.out, r.err]; }
+          case 'run_capture': { const r = m.capture || { code: 0, out: '[]', err: '' }; if (r.after) await new Promise(ok => setTimeout(ok, r.after)); return [r.code, r.out, r.err]; }   // (after: ms the program takes)
           case 'run_program': case 'run_shell': case 'compile_cpp': {
             const r = (m.runs && m.runs.length ? m.runs.shift() : null) || m.nextRun || { out: cmd === 'run_shell' ? `(shell) ${args.command}\n` : 'hello from the real Python\n', err: '', code: 0 };
             m.nextRun = null;

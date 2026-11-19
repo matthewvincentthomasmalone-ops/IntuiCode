@@ -772,7 +772,7 @@ try {
     const said = await waitFor('the measurement', inPage(() => {
       const bar = document.getElementById('editBar'), t = bar.textContent;
       return !bar.hidden && t && !/^Running /.test(t) ? t : null;
-    }), 60000);
+    }), 60000).catch(async (e) => { throw new Error(`${e.message}\nThe bar: ${JSON.stringify(await js(() => { const b = document.getElementById('editBar'); return { hidden: b.hidden, text: b.textContent, measuring: document.getElementById('btnMeasure').disabled }; }))}`); });
     if (!/^Measured in the running app at .+: 1 part, each where the app really puts it\./.test(said)) throw new Error(said);
     const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
     await wd('POST', `/session/${session}/frame`, { id: frame });

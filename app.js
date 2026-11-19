@@ -4062,7 +4062,11 @@ ${key}</div>${wins}${notes}</body></html>`;
         await invoke('write_text', { path: join(dir, '.intuicode/probe_tk.py'), content: GUI.TK_PROBE });
         const [code, out, err] = await invoke('run_capture', { program: desk.python[0], args: ['-u', join(dir, '.intuicode/probe_tk.py'), fileName(py)], cwd: dir });
         const report = GUI.reportIn(out);
-        if (!report) return measureSay(`The app didn't say where its parts are${code === 3 ? ' (it didn\'t open its window within 20 seconds)' : ''}${err ? `: ${escHtml(String(err).trim().split('\n').pop())}` : '.'}`, true);
+        // (ended by the probe, which says where it was: the innermost line of the program's own code)
+        const timedOut = /^Timeout \(/m.test(err || ''), at = timedOut && String(err).split('\n').map(l => /^\s*File "(.+?)", line (\d+)/.exec(l))
+          .find(m => m && !/(^|[\\/])probe_tk\.py$|^<frozen |[\\/]tkinter[\\/]/.test(m[1]));
+        if (!report) return measureSay(timedOut ? `The app didn't open its window within 25 seconds, so it was ended${at ? `; it was at ${escHtml(at[1].split(/[\\/]/).pop())} line ${at[2]}` : ''}.`
+          : `The app didn't say where its parts are${err ? `: ${escHtml(String(err).trim().split('\n').pop())}` : '.'}`, true);
         if (!report.windows.length) return measureSay(escHtml(report.note || 'The app ran without opening a window.'), true);
         return measured(report, g, null, opened);
       }

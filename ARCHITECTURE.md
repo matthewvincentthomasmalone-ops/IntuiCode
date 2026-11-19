@@ -475,7 +475,9 @@ its bounds in its window, whether it's shown, and its children). Kept as worked 
   it reaches `mainloop` makes the window see-through and puts it off the screen (its size stays the program's), asks Tk
   for every widget's place (`winfo_rootx` less the window's, `winfo_width`, `winfo_ismapped`), names each by the
   program's own names (module names first, then an object's: `self.status`), prints the report between two marks, and
-  ends; 20 seconds without a window, and it ends anyway. It's written to `.intuicode/` and run with `run_capture`, the
+  ends. 25 seconds without a window and it's ended anyway, by `faulthandler`'s watchdog (a thread of C's, so even a
+  program or a Tk call holding Python's lock is ended), which says where it was; Measure names that line. It's written
+  to `.intuicode/` and run with `run_capture`, the
   program's files written first as Run writes them. JUCE's is a header the app carries (`IntuaCodeProbe.h`): with
   `INTUACODE_LAYOUT` set, a moment after the window shows it writes the report and a PNG of each window beside it;
   Measure reads it from the project's folder, and with none there copies the header and says the three steps. Without
