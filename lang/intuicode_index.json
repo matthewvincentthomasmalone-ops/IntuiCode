@@ -1343,6 +1343,15 @@
         },
         {
           "topic": "Media",
+          "say": "add an embedded page, from \"‹https://…›\", sized ‹600› by ‹400›, with tooltip \"‹what it shows›\"",
+          "becomes": "<iframe src=\"…\" width=\"600\" height=\"400\" title=\"…\">",
+          "folders": [
+            "structure"
+          ],
+          "tip": "Another web page shown inside this one. The tooltip names it for screen readers. Also: add a webpage, add a webpage link."
+        },
+        {
+          "topic": "Media",
           "say": "add a drawing area called ‹game› ‹480› by ‹270›",
           "becomes": "<canvas id=\"game\" width=\"480\" height=\"270\">",
           "folders": [

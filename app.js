@@ -279,6 +279,9 @@
   const codeBase = new Map();   // section id -> Map(line text + its count -> code)
   let lastEdit = null;          // { title, line }: the edit that might have caused it
   const DRIFT = /^Its code changed after an edit elsewhere/;
+  // a picture on this computer, outside the project, named in a sentence (see addPictureButton)
+  const OUTSIDE_FILE = /^`([^`]+)` is a file on this computer/;
+  let picFor = null;   // { sec, line, path, where }: the line the next picture picked goes into
   function lineKeys(sec) {
     const seen = new Map();
     return sec.text.split('\n').map(l => { const t = l.trim(), n = (seen.get(t) || 0) + 1; seen.set(t, n); return t + '\u0001' + n; });
@@ -603,7 +606,7 @@
     const typing = li === typingLine && inf.errs.length, fixes = fixKnown(sec, li, text);
     if (typing) items.push('<li>Keep typing, or pick a suggestion. Problems on this line show once you move to another line.</li>');
     else inf.errs.forEach(e => { if (!(fill && /^Fill in the ‹[^›]*› slot\.$/.test(e))) items.push(`<li class="err">${withCode(tidyMsg(e, fixes))}</li>`); });
-    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${li}">Keep the new code</button>` : ''}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${li}">Keep the new code</button>` : ''}${addPictureButton(w, sec.id, li, 'say')}</li>`));
     const pyLines = inf.py.filter(i => r.lines[i].text.trim());
     const why = inf.notes.length && pyLines.length ? `<button type="button" class="linklike ex-why" data-pick="${pyLines[0]}">${inf.notes.length === 1 ? 'A note' : inf.notes.length + ' notes'} on the ${escHtml(tutorSays(sec))}: click its line on the right</button>` : '';
     box.innerHTML = `${planBanner(li)}${fill}<div class="ex-map">
@@ -883,7 +886,7 @@
     const inf = src >= 0 && r.info[src] ? r.info[src] : { notes: [], warns: [], errs: [] };
     const items = [];
     inf.errs.forEach(e => items.push(`<li class="err">${withCode(e)}</li>`));
-    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${src}">Keep the new code</button>` : ''}</li>`));
+    inf.warns.forEach(w => items.push(`<li class="warn">${withCode(w)}${DRIFT.test(w) ? ` <button type="button" class="btn small" data-keep-code="${src}">Keep the new code</button>` : ''}${src >= 0 ? addPictureButton(w, sec.id, src, 'say') : ''}</li>`));
     const notes = (o.note ? [o.note] : []).concat(inf.notes);
     $('explain').innerHTML = `${src >= 0 ? planBanner(src) : ''}<div class="ex-map">
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} line ${codeIdx + 1}</span><div class="ex-py">${hlCode(lang, o.text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
@@ -1446,6 +1449,13 @@
   $('filePath').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyFileDialog(); } });
   $('fileLang').addEventListener('input', showFileHow);
 
+  /* In Problems: Add the picture… under a warning about a picture on this computer (in Unity, for the file it shows). */
+  function probPictureHtml(p) {
+    const inU = mode === 'unity' && !!UNITY && p.s.id === unity.id;
+    if (mode === 'unity' && !inU) return '';
+    const b = addPictureButton(p.msg, p.s.id, p.i, inU ? 'unity' : 'say');
+    return b ? `<div class="prob-fix">${b.trim()}</div>` : '';
+  }
   function renderProblems() {
     const items = intentItems();   // promises not kept come first: they're about what you meant
     let errCount = items.filter(p => p.kind === 'err').length;
@@ -1474,6 +1484,7 @@
         if (fix) offered.add(key);
         return `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(tidyMsg(p.msg, fixes)))}</span></button>`
           + (fix ? `<div class="prob-fix"><button type="button" class="btn small" data-fix-sec="${escHtml(p.s.id)}" data-fix-line="${p.i}" data-fix-where="${inU ? 'unity' : 'say'}" data-fix-text="${escHtml(fix.text)}" title="Checked: the line translates with no errors. ${escHtml(fix.why)}">Fix</button><span class="fx-line">${fixMarked(text, fix.text)}</span></div>` : '')
+          + (p.kind === 'warn' ? probPictureHtml(p) : '')
           + '</li>';
       }).join('')
       : '<li class="none">No problems. Press Run to try it.</li>';
@@ -2115,6 +2126,8 @@
     if (b) openSection(b.dataset.id);
   });
   $('problems').addEventListener('click', (e) => {
+    const pic = e.target.closest('[data-add-pic]');
+    if (pic) return addPictureFor(pic.dataset);
     const f = e.target.closest('[data-fix-text]');
     if (f) return f.dataset.fixWhere === 'unity' ? uApplyFix(+f.dataset.fixLine, f.dataset.fixText) : applyFix(f.dataset.fixSec, +f.dataset.fixLine, f.dataset.fixText);
     const b = e.target.closest('button[data-sec]');
@@ -2293,6 +2306,7 @@
     if ((b = t('[data-fix-text]'))) return b.dataset.fixWhere === 'unity' ? uApplyFix(+b.dataset.fixLine, b.dataset.fixText) : applyFix(project.active, +b.dataset.fixLine, b.dataset.fixText);
     if ((b = t('[data-plan]'))) return openStep(+b.dataset.plan);
     if ((b = t('[data-keep-code]'))) return keepNewCode(project.active, +b.dataset.keepCode);
+    if ((b = t('[data-add-pic]'))) return addPictureFor(b.dataset);
     if ((b = t('[data-pick]'))) return pickCode(+b.dataset.pick, true);
     if ((b = t('[data-go-say]'))) return goToLine(+b.dataset.goSay);
     if ((b = t('[data-term]'))) return openGlossary(b.dataset.term);
@@ -5186,7 +5200,7 @@ ${key}</div>${wins}${notes}</body></html>`;
         try { out = UNITY.toCode(unity.lang, lines, unity.regions, at, uW()); } catch (e) { items.push(`<li class="err">The writer hit a problem: ${escHtml(e.message)}</li>`); }
         if (out) {
           const known = uFixCache.get(uFixKey(li));
-          out.problems.forEach(p => { p.errs.forEach(e => items.push(`<li class="err">Line ${p.line + 1}: ${withCode(p.line === li ? tidyMsg(e, known) : e)}</li>`)); p.warns.forEach(w => items.push(`<li class="warn">Line ${p.line + 1}: ${withCode(w)}</li>`)); });
+          out.problems.forEach(p => { p.errs.forEach(e => items.push(`<li class="err">Line ${p.line + 1}: ${withCode(p.line === li ? tidyMsg(e, known) : e)}</li>`)); p.warns.forEach(w => items.push(`<li class="warn">Line ${p.line + 1}: ${withCode(w)}${addPictureButton(w, sec.id, p.line, 'unity')}</li>`)); });
           label = out.problems.some(p => p.errs.length) ? 'Can\'t go back to code yet' : 'Original Code will write';
         }
       }
@@ -7233,9 +7247,11 @@ ${key}</div>${wins}${notes}</body></html>`;
     return { entry, replaced: at >= 0 };
   }
 
-  async function addImageFiles(files) {
-    if (mode !== 'write') setMode('write');
-    if (!usesImages()) { tLine('Pictures are for websites and Python projects: a C++ or Arduino program has no screen of its own to show them on.', 't-sys'); return; }
+  /* Adds the pictures to images/ -> the ones added. stay: a line asked for the picture (Add the picture…), so Unity
+     stays open and the line gets its path, in place of the tip on how to use it. */
+  async function addImageFiles(files, stay = false) {
+    if (mode !== 'write' && !(stay && mode === 'unity')) setMode('write');
+    if (!usesImages()) { tLine('Pictures are for websites and Python projects: a C++ or Arduino program has no screen of its own to show them on.', 't-sys'); return []; }
     const added = [];
     for (const f of files) {
       const name = f.name.replace(/[^\w.-]+/g, '-').replace(/^[-.]+/, '').slice(-80);
@@ -7245,11 +7261,12 @@ ${key}</div>${wins}${notes}</body></html>`;
       added.push(entry);
       tLine(`${replaced ? 'Replaced' : 'Added'} images/${name}${entry.w ? ` (${entry.w} × ${entry.h} pixels)` : ''}.`, 't-sys');
     }
-    if (!added.length) return;
+    if (!added.length) return added;
     imagesChanged();
-    const say = imageSentence(added[0].name);
+    const say = !stay && imageSentence(added[0].name);
     if (say) tLine(`In ${metaOf(activeSec()).title} it's used like this: ${say}  (Use, beside it on the left, puts that in for you.)`, 't-sys');
     if (project.kind === 'python' && /\.(jpe?g|webp|svg)$/i.test(added[0].name)) tLine('tkinter shows PNG and GIF pictures. Save a copy as PNG to use this one in a window.', 't-sys');
+    return added;
   }
   function imagesChanged() { save(); autosave(); renderImages(); if (webOn()) runWebsite(false); }
 
@@ -7288,8 +7305,40 @@ ${key}</div>${wins}${notes}</body></html>`;
       tLine(`Took images/${del.dataset.del} out of the project.${desk.folder ? ' Its file stays in the folder\'s images/.' : ''}`, 't-sys');
     }
   });
-  $('btnAddImage').addEventListener('click', () => $('imgPick').click());
-  $('imgPick').addEventListener('change', async (e) => { const files = [...e.target.files]; e.target.value = ''; await addImageFiles(files); });
+  $('btnAddImage').addEventListener('click', () => { picFor = null; $('imgPick').click(); });
+  $('imgPick').addEventListener('change', async (e) => {
+    const files = [...e.target.files], asked = picFor;
+    e.target.value = ''; picFor = null;
+    const added = await addImageFiles(asked ? files.slice(0, 1) : files, !!asked);
+    if (asked && added.length) putPicturePath(asked, added[0].name);
+  });
+  $('imgPick').addEventListener('cancel', () => { picFor = null; });
+
+  /* A sentence with a picture on this computer, outside the project (the writer's warning, see outsideSays in
+     lang/web_write.js): Add the picture… beside the warning picks it with the same chooser as Add an image…, copies it
+     into images/, and puts images/‹name› in the line in place of the path, as one edit Undo takes back. The window
+     can't read the file from the path in the sentence: it reads only folders you picked, so a project can't name a
+     file and take it. (OUTSIDE_FILE and picFor are up with DRIFT, so the help can draw before this part runs.) */
+  function addPictureButton(w, secId, li, where) {
+    const m = w.match(OUTSIDE_FILE);
+    if (!m || !/\.(?:png|jpe?g|gif|webp|svg)$/i.test(m[1]) || !usesImages()) return '';
+    return ` <button type="button" class="btn small" data-add-pic="${escHtml(m[1])}" data-add-pic-sec="${escHtml(secId)}" data-add-pic-line="${li}" data-add-pic-where="${where}" title="Pick the picture and copy it into the project's images/ folder: this line then uses it from there">Add the picture…</button>`;
+  }
+  function addPictureFor(d) {
+    picFor = { sec: d.addPicSec, line: +d.addPicLine, path: d.addPic, where: d.addPicWhere };
+    $('imgPick').click();
+  }
+  function putPicturePath(f, name) {
+    const want = 'images/' + name;
+    const sec = project.sections.find(s => s.id === f.sec);
+    const line = f.where === 'unity' ? (mode === 'unity' && sec && unity.id === sec.id ? uLines()[f.line] : null) : sec ? lineOfSec(sec, f.line) : null;
+    // (the path as typed, or with each \ written \\ as the reader writes it in quotes: both mean the same file)
+    const said = line == null ? null : [f.path, f.path.replace(/\\/g, '\\\\')].find(p => line.includes(p));
+    if (!said) { tLine(`Added ${want}. Line ${f.line + 1} changed since, so put "${want}" in it in place of the path.`, 't-sys'); return; }
+    const next = line.replace(said, want);
+    if (f.where === 'unity') uApplyFix(f.line, next); else applyFix(f.sec, f.line, next);
+    tLine(`Added ${want}, and line ${f.line + 1} now uses it.`, 't-sys');
+  }
 
   /* The preview can't reach files, so each picture's name in the page becomes the picture itself. */
   function withImages(html) {
