@@ -540,7 +540,13 @@ it. Like a move on a page, it's worked out, never kept:
   declares, a .cpp defines), their members (namespaced, `std::unique_ptr`, `std::array` and C arrays, several on a line),
   what each adds (in loops too: a loop's name stands for what it goes through), `setSize`, and `resized()`'s
   `setBounds`, numbers or rectangle steps (`getLocalBounds()`, `removeFrom…`, `reduced`, `withSizeKeepingCentre`…) with
-  `constexpr` numbers known. Comments are blanked first, so an apostrophe in one isn't a character.
+  `constexpr` numbers known. Comments are blanked first, so an apostrophe in one isn't a character. What's added is
+  followed as a big app writes it (found measuring FEC 16, below): through lists of parts (`for (auto* b : {&play,
+  &stop})`, a declared `std::array<T*, N>`), references (`auto& mix = mixRoleButtons[i]`, and `lane.pan` through
+  `auto& lane = lanes[i]`), a helper's parameter (`prepareKnob(equaliser[0], …)`), a part made in a function
+  (`std::make_unique<T>` moved into a member), a struct of references (`controls.trim`), and into another part
+  (`drawer.addAndMakeVisible(tab)`). Numbers include `#define`s and conditions (`isFec24 ? 4 : 2`), and an
+  `if constexpr` that's false adds nothing.
 - **Each place says how sure it is.** Exact (the code says the numbers), rules (followed: the arrangement is right, the
   sizes estimated), or a sketch (the program works it out when it runs; shown in the order it's added, with why). A part
   made but never shown, or made in a parent that isn't read, is said under the windows. Groups nest as the code nests
@@ -583,9 +589,8 @@ its bounds in its window, whether it's shown, and its children). Kept as worked 
   Measure reads it from the project's folder, and with none there copies the header and says the three steps. Without
   the variable it does nothing.
 - **Drawn as the estimate is drawn.** Each part where the app put it (how: measured, solid green), matched to the code's
-  part by the code's name, then by class in order among its group (a part the code makes several of, in a loop or an
-  array, stands for as many), so pointing lights up its code as before; a part the code read doesn't make says so; one
-  made but not shown is said under the window. A JUCE window's picture is behind its parts.
+  part only where that's sure (next decision), so pointing lights up its code as before; a part the code read doesn't
+  make says so; one made but not shown is said under the window. A JUCE window's picture is behind its parts.
 - **Fresh only for the code it measured.** The measurement belongs to the code as it was (its files' text); when that
   changes, the estimate is back, saying the measurement is older. A move is the code's part moving (the same new
   numbers, row and column, and the same check on the re-read estimate); a part placed by numbers, relative to its group,
@@ -594,6 +599,35 @@ its bounds in its window, whether it's shown, and its children). Kept as worked 
   the others, isn't carried: Measure again.
 - **The estimate learns from it.** Tk's sizes in the estimate (a character's width, a Button's, an Entry's height) are
   the ones the probe measured (Tk 8.6, Windows); a test keeps the estimate within a pixel of that measurement.
+
+## Decision: a measured part is linked to its code only where that's sure
+
+*Decided 2026-11-19, from FEC 16's own report.*
+
+FEC 16 carried the JUCE probe (Ubuntu 24.04, GCC 13.3, JUCE 8.0.13) and reported its console: one window, 1,672
+components, 700 of them shown. Against what IntuaCode read of its code, 48 were linked, and some of those wrongly: the
+first four of its 26 footer buttons were linked to the code's four TextButtons by order alone (REWIND to
+`operationsTab`), and a move there would have changed another part's code. Two things were wrong:
+
+- **The code was read as a small app is written.** FEC adds most parts through lists, references, helpers and a function
+  the app calls once a channel (read now as the GUI estimate's decision says), so the estimate had 49 parts. It has 206
+  now, and the 16 channel strips are inside the console page, not "not inside any window".
+- **Order was trusted when the counts didn't agree.** The pairing is now, in turn:
+  - the code's name, where the probe knows it (tkinter, Qt, wx);
+  - what the part says: its text, or for JUCE its name, which is its text or what `setName` gave it, against the code's
+    label, an array's own labels (`{{TextButton{"S1"}, …}}`) or its `setName`; a part the code makes several of takes
+    all that say it, if it's made that many times;
+  - its place among the code's parts of its kind, only where the counts agree: each part made N times stands for N, one
+    made an unknown number of times only when it's the code's one part of that kind there. Parts one loop adds together
+    (or a function the app calls once a channel) go in turn, a0 b0 a1 b1, as the app added them.
+  A part the code reaches through its base (`juce::ToggleButton& compressor`, in the app an `OptoToggle`) is matched as
+  that base: each class the code makes says what it is first. Whatever's left says the code doesn't say which it is. A
+  slider's text box or an editor's caret is the widget's own, not a part. Measure says how many are linked.
+
+FEC now: 635 shown parts besides the window (the widgets' insides no longer counted), 603 linked. Where both sides say
+something they agree (169 of them, none differ), and each part made once a channel lands one to a column, on one row.
+The 32 left are the top level's sliders and toggles: FEC adds them to its main component and then gives them to the
+strips, so the main component has 30 sliders where its code adds 233, and which is which can't be told from the code.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 

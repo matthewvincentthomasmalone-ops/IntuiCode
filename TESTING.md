@@ -299,6 +299,10 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] A JUCE app: Measure with nothing to read copies `IntuaCodeProbe.h` and says the three steps. With the header added,
       `intuacode::probeLayoutSoon();` after the window shows, and the app run with `INTUACODE_LAYOUT=<folder>/intuacode-layout.json`:
       Measure draws each component where it is, over a picture of the window, the components linked to their code.
+- [ ] FEC 16 (its `intuacode-layout-report` branch: copy `docs/intuacode/intuacode-layout.json` and its picture to the
+      project's folder): Measure says 635 parts, 603 of them linked to their code. Point at a channel's MIX IN, a bus EQ
+      knob, a channel strip's trim: each lights up its own code (`mixRoleButtons`, `equaliser`, `controls.trim`). The
+      top level's unlaid sliders and toggles say the code doesn't say which they are.
 
 **Customise**
 - [ ] **Menu → Customise…**: IntuaCode's look as very simple code, in blocks (IntuaCode, Menu bar, Project side, Help, Editor,

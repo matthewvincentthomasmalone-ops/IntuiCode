@@ -507,6 +507,130 @@ test('gui: a JUCE app\'s report (IntuaCodeProbe.h): its classes matched to the c
   assert.match(G.JUCE_PROBE, /inline bool quitsAfterMeasuring\(\)/, 'a run only to be measured says so');
 });
 
+/* A JUCE app written as a big one is (FEC 16's console, 1,672 components when measured): parts added through lists of
+   them and references into arrays, by a helper, made in a function the app calls once a channel, added into another
+   part, reached through a struct of references, and counts from the build's own constants. */
+const DESK_H = `#pragma once
+#include <juce_gui_basics/juce_gui_basics.h>
+#ifndef DESK_EDITION
+#define DESK_EDITION 4
+#endif
+inline constexpr int channels = DESK_EDITION;
+inline constexpr bool wide = channels > 4;
+inline constexpr int buses = wide ? 4 : 2;
+
+class LampToggle : public juce::ToggleButton {};
+
+struct StripRefs {
+    juce::Slider& level;
+    juce::ToggleButton& lamp;
+};
+
+class Strip : public juce::Component {
+public:
+    explicit Strip(StripRefs);
+private:
+    StripRefs refs;
+    juce::Label caption;
+};
+
+class Desk final : public juce::Component {
+public:
+    Desk();
+    void addStrip(int index, StripRefs refs);
+private:
+    void prepare(juce::Slider& knob, const juce::String& name);
+    juce::TextButton play{"PLAY"}, stop{"STOP"}, undo{"UNDO"}, redo{"REDO"}, extra{"EXTRA"};
+    std::array<juce::Slider, channels> knobs, faders;
+    std::array<juce::TextButton, buses> busKeys;
+    juce::Slider gain, pan;
+    juce::Component drawer;
+    juce::TextButton settings{"SETTINGS"};
+    std::array<std::unique_ptr<Strip>, channels> strips;
+};
+`;
+const DESK_CPP = `#include "Desk.h"
+
+Strip::Strip(StripRefs r) : refs(r) {
+    for (auto* part : {&refs.level, &refs.lamp}) addAndMakeVisible(*part);
+    addAndMakeVisible(caption);
+}
+
+Desk::Desk() {
+    for (auto* b : {&play, &stop}) addAndMakeVisible(*b);
+    const std::array<juce::TextButton*, 2> tools{&undo, &redo};
+    for (auto* t : tools) addAndMakeVisible(t);
+    for (int i = 0; i < channels; ++i) {
+        auto& k = knobs[static_cast<std::size_t>(i)];
+        auto& f = faders[static_cast<std::size_t>(i)];
+        addAndMakeVisible(k);
+        addAndMakeVisible(f);
+    }
+    for (auto& key : busKeys) addAndMakeVisible(key);
+    prepare(gain, "Gain");
+    prepare(pan, "Pan");
+    if constexpr (wide) addAndMakeVisible(extra);
+    addAndMakeVisible(drawer);
+    drawer.addAndMakeVisible(settings);
+    setSize(600, 400);
+}
+
+void Desk::prepare(juce::Slider& knob, const juce::String& name) {
+    knob.setName(name);
+    addAndMakeVisible(knob);
+}
+
+void Desk::addStrip(int index, StripRefs refs) {
+    auto strip = std::make_unique<Strip>(refs);
+    addAndMakeVisible(*strip);
+    strips[static_cast<std::size_t>(index)] = std::move(strip);
+}
+`;
+test('gui: JUCE as a big app writes it: lists of parts, references into arrays, a helper, a part made per call, one added into another, the build\'s constants', () => {
+  const files = [{ path: 'Desk.h', code: DESK_H }, { path: 'Desk.cpp', code: DESK_CPP }], est = G.estimate(files), w = est.windows[0];
+  const kids = (n) => n.children.map(c => `${c.name}${c.many ? '×' + c.many : ''}`);
+  // (channels: 4, from #define; buses: 2, wide being false; and extra, only added in a wide build, isn't there)
+  assert.deepEqual(plain(kids(w.root)), ['play', 'stop', 'undo', 'redo', 'knobs×4', 'faders×4', 'busKeys×2', 'gain', 'pan', 'drawer', 'strips×4']);
+  const at = (n) => w.root.children.find(c => c.name === n);
+  assert.deepEqual(plain(kids(at('drawer'))), ['settings'], 'added into the drawer: inside it');
+  assert.deepEqual(plain(kids(at('strips'))), ['refs.level', 'refs.lamp', 'caption'], 'reached through its struct of references');
+  const line = (s) => DESK_CPP.split('\n').findIndex(l => l.includes(s));
+  const shown = (n) => n.src.find(s => s.role === 'shown');
+  assert.deepEqual(plain(shown(at('knobs'))), { path: 'Desk.cpp', line: line('addAndMakeVisible(k);'), role: 'shown' }, 'through its reference');
+  assert.deepEqual(plain(shown(at('gain'))), { path: 'Desk.cpp', line: line('prepare(gain'), role: 'shown' }, 'where the helper is given it');
+  assert.equal(shown(at('strips')).line, line('addAndMakeVisible(*strip)'));
+  assert.ok(!est.notes.some(n => /Strip\b/.test(n)), 'the strips are inside the desk: ' + est.notes);
+
+  // the app as measured: each part linked to the code's part it is, in the order the code adds them
+  const part = (type, x, y, pw, ph, more = {}) => ({ type, name: '', id: '', text: '', x, y, w: pw, h: ph, shown: true, children: [], ...more });
+  const button = (x, text) => part('juce::TextButton', x, 8, 60, 24, { name: text, text });
+  const report = { intuacode: 'layout', version: 1, toolkit: 'JUCE', windows: [{ title: 'Desk', w: 600, h: 400, root: part('Desk', 0, 0, 600, 400, { children: [
+    button(10, 'PLAY'), button(74, 'STOP'), button(140, 'UNDO'), button(204, 'REDO'),
+    ...[0, 1, 2, 3].flatMap(i => [part('juce::Slider', 20 + i * 60, 40, 40, 40, { children: [part('juce::LookAndFeel_V2::SliderLabelComp', 20 + i * 60, 70, 40, 10)] }), part('juce::Slider', 25 + i * 60, 90, 30, 120)]),
+    button(300, 'A'), button(364, 'B'),
+    part('juce::Slider', 400, 40, 50, 50, { name: 'Gain' }), part('juce::Slider', 460, 40, 50, 50, { name: 'Pan' }),
+    part('juce::Component', 400, 220, 180, 160, { children: [button(410, 'SETTINGS')] }),
+    ...[0, 1, 2, 3].map(i => part('Strip', 20 + i * 60, 220, 56, 170, { children: [part('juce::Slider', 24 + i * 60, 224, 48, 100), part('LampToggle', 24 + i * 60, 330, 48, 20, { text: 'ON' }), part('juce::Label', 24 + i * 60, 360, 48, 20, { text: `Ch ${i + 1}` })] })),
+  ] }) }] };
+  const code = (n) => (n.eid && G.flat(w).find(x => x.node.id === n.eid).node.name) || null;
+  const top = G.measured(report, est).windows[0].root.children;
+  assert.deepEqual(plain(top.map(code)), ['play', 'stop', 'undo', 'redo', 'knobs', 'faders', 'knobs', 'faders', 'knobs', 'faders', 'knobs', 'faders',
+    'busKeys', 'busKeys', 'gain', 'pan', 'drawer', 'strips', 'strips', 'strips', 'strips'], 'a loop\'s knob and fader in turn');
+  assert.deepEqual(plain([top[6].x, top[7].x]), [80, 85], 'the second knob, then the second fader');
+  assert.equal(top[4].children.length, 0, 'a slider\'s text box is the slider\'s own, not a part');
+  assert.equal(code(top[16].children[0]), 'settings');
+  assert.deepEqual(plain(top[17].children.map(code)), ['refs.level', 'refs.lamp', 'caption'], 'the app\'s LampToggle is the juce::ToggleButton& the code reaches it by');
+  assert.equal(top[17].children[1].kind, 'check', 'a LampToggle is a ToggleButton');
+
+  // one more button in the app than the code makes there: which is which can't be told, so none of them is linked by
+  // order (a wrong link would move another part's code); what says its text still is
+  const more = JSON.parse(JSON.stringify(report));
+  more.windows[0].root.children.splice(12, 0, button(236, 'HELP'));
+  const unsure = G.measured(more, est).windows[0].root.children;
+  assert.deepEqual(plain(unsure.slice(0, 16).map(code)), ['play', 'stop', 'undo', 'redo', 'knobs', 'faders', 'knobs', 'faders', 'knobs', 'faders', 'knobs', 'faders', null, null, null, 'gain']);
+  assert.match(unsure[12].why, /^The code makes TextButtons here, but not as many as the app shows, so which one this is can't be told\.$/);
+});
+
 // a Python with Tk that can open a window here (CI's Linux tests have no screen)
 const TK_UP = (() => { try { return spawnSync(PYTHON, ['-c', 'import tkinter; tkinter.Tk().destroy()'], { timeout: 20000 }).status === 0; } catch (e) { return false; } })();
 test('gui: the tkinter probe runs the app out of sight and says where Tk put each part, by the program\'s own names', { skip: !TK_UP && 'no Python with Tk and a screen' }, () => {

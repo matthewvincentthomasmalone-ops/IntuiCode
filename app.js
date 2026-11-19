@@ -4274,7 +4274,10 @@ ${key}</div>${wins}${notes}</body></html>`;
     guiMeasure = { made: report.made || new Date().toISOString(), at: new Map([[g.key, { view, pictures }]]) };
     runGui(true);
     const parts = view.windows.reduce((n, w) => n + GUI.flat(w).length - 1, 0);
-    measureSay(`Measured in the running app at ${guiAt(guiMeasure.made)}: ${parts} part${parts === 1 ? '' : 's'}, each where the app really puts it. It shows until the code changes.`);
+    // (a part is linked to its code only where that's sure: say how many, when it isn't all of them)
+    const linked = view.windows.reduce((n, w) => n + GUI.flat(w).filter(x => x.parent && x.node.eid).length, 0);
+    const some = linked < parts ? ` ${linked} of them ${linked === 1 ? 'is' : 'are'} linked to their code; the code read here doesn't say which the others are.` : '';
+    measureSay(`Measured in the running app at ${guiAt(guiMeasure.made)}: ${parts} part${parts === 1 ? '' : 's'}, each where the app really puts it.${some} It shows until the code changes.`);
   }
   function runPreview(announce) { if (webOn()) runWebsite(announce); else runGui(announce); }
 
