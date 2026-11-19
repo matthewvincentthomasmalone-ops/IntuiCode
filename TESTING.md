@@ -260,6 +260,10 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Drag **See the menu**'s corner: it resizes freely (`style cta: width: …px, height: …px`, after its look); with
       **Shift** held, its shape is kept (`aspect-ratio`). **Ctrl+Z** takes each back. **Esc** mid-resize puts it back.
 - [ ] Add `style frame: at most 200 wide` after it and resize the frame wider: the bar says what size the page made it.
+- [ ] Add `add a webpage box called news, from "https://example.com", sized 600 by 400`: a 600 × 400 box, the page filling
+      it. In Styling, `style news: width: 300px`: the box and the page are 300 × 200. In Editor mode, its corner keeps its
+      shape (`aspect-ratio: 3 / 2`); pointing anywhere on it points at the box. Indent a line under it: it says it can't
+      hold other things.
 
 **An app's windows, estimated**
 - [ ] Import a Python file with a tkinter window (frames packed, an Entry and a Button in a grid, a Label placed with

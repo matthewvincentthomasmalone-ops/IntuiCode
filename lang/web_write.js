@@ -688,6 +688,12 @@
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the label\'s text in quotes.'); return el('label', { id: nameOf(m[1]), text: t || '', attrs: m[3] ? { for: toId(m[3]) } : {} }); }
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) return el('label', { text: strOf(m[1]) ?? m[1], attrs: m[2] ? { for: toId(m[2]) } : {} });
     if ((m = s.match(/^add\s+(?:a\s+)?video(.*?)\s+of\s+("[^"]*")$/i))) return el('video', { id: called(m[1]), attrs: { src: at(strOf(m[2]), 'src'), controls: '' } });
+    // a webpage box: a box holding an embedded page, which fills it; the box keeps the page's shape (its size's), so
+    // resizing the box resizes the page (its address, as an embedded page's, said with from, to or of, or after a comma)
+    if ((m = s.match(/^add\s+(?:a\s+)?webpage box(.*?)(?:\s+(?:from|to|of)\s+("[^"]*"|'[^']*'))?$/i)) && !/\S/.test(cut(m[1]))) {
+      const page = { tag: 'iframe', id: null, groups: [], attrs: m[2] ? { src: at(strOf(m[2]), 'src') } : {}, text: null, container: false, unmarked: true };
+      return { ...el('div', { id: called(m[1]) }), webpageBox: true, children: [page] };
+    }
     // an embedded page (an iframe), with its address said the way a link's or a video's is: from, to or of "…"
     // (", from "…"" after a comma is the setting, and is how the reader says it)
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(?:embedded page|webpage link|webpage)(.*?)\s+(?:from|to|of)\s+("[^"]*"|'[^']*')$/i)) && !/\S/.test(cut(m[1]))) return el('iframe', { id: called(m[1]), attrs: { src: at(strOf(m[2]), 'src') } });
@@ -752,6 +758,18 @@
         } else { delete el.attrs[k]; el.attrs[k] = v; }
         if (k === 'type') el.typeSaid = true;
         if (k === 'alt' && v == null) inf.warns = inf.warns.filter(w => !/described as/.test(w));
+      }
+      // a webpage box: its address, tooltip and the page's own settings are the page's; its size is the box's
+      if (el.webpageBox) {
+        const page = el.children[0];
+        for (const k of Object.keys(el.attrs)) if (/^(?:src|title|allow|allowfullscreen|loading|referrerpolicy|sandbox|name)$/.test(k)) { page.attrs[k] = el.attrs[k]; delete el.attrs[k]; }
+        const w = el.attrs.width, h = el.attrs.height;
+        delete el.attrs.width; delete el.attrs.height;
+        const sized = /^\d+$/.test(String(w ?? '')) && /^\d+$/.test(String(h ?? '')) && +w > 0 && +h > 0;
+        if (!sized) note(inf, 'A webpage box is 600 by 400 unless it says ", sized … by …".');
+        el.attrs['data-webpage-box'] = sized ? `${w}x${h}` : '600x400';
+        if (!page.attrs.src) inf.errs.push('Say which page it shows: add a webpage box from "https://…".');
+        else note(inf, 'The page fills the box, and the box keeps its shape: resize the box (Editor mode, or its width in Styling) and the page follows.');
       }
       // a name given after a comma ("with id …") is a name too
       if (el.id) inf.warns = inf.warns.filter(w => !/^Give the [\w -]+ a name \("called /.test(w));
@@ -913,7 +931,7 @@
       if (el.tag === 'button' && parent.el.tag === 'form' && !el.typeSaid) { el.attrs.type = 'submit'; note(inf, 'Inside a form, this button sends the form (type="submit"). Handle it in Mechanics with "when … is sent".'); }
       parent.el.children.push(el);
       if (el.textNode == null) all.push(el);
-      if (el.container) { el.children = el.children || []; stack.push({ ind, el }); }
+      if (el.container || el.webpageBox) { el.children = el.children || []; stack.push({ ind, el }); }   // (a webpage box too: what's indented under it is said to be wrong)
     });
     // groups added from Styling ("save belongs to group primary")
     for (const [id, gs] of Object.entries(shared.addGroups)) {
@@ -935,13 +953,24 @@
     if (title != null) push(`  <title>${esc(title)}</title>`, ti);
     let open = null;
     for (const h of head) { push(open ? h.text : '  ' + h.text, h.src); open = rawOpen(h.text, open); }
+    // webpage boxes: the page fills its box, and each box is the shape of its size (one rule a size, by its
+    // data-webpage-box; Styling's rules, for its name, come after and win)
+    const boxes = [...new Set(all.filter(e => e.webpageBox).map(e => e.attrs['data-webpage-box']))];
+    if (boxes.length) {
+      const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+      push('  <style data-webpage-boxes>', -1);
+      push('    [data-webpage-box] { display: block; max-width: 100%; }', -1);
+      push('    [data-webpage-box] > iframe { display: block; width: 100%; height: 100%; border: 0; }', -1);
+      for (const b of boxes) { const [w, h] = b.split('x').map(Number), g = gcd(w, h); push(`    [data-webpage-box="${b}"] { width: ${w}px; aspect-ratio: ${w / g} / ${h / g}; }`, -1); }
+      push('  </style>', -1);
+    }
     const styleAt = out.length;   // Styling's link goes here, once the whole page is known (see addsLink)
     push('</head>', -1);
     push(`<body${pageGroups.length ? ` class="${pageGroups.join(' ')}"` : ''}${bodyAttrs ? ' ' + bodyAttrs : ''}>`, info.findIndex(x => x.target === 'body'));
     const attrs = (e) => {
       let a = '';
       if (e.id) a += ` id="${e.id}"`;
-      if (shared.mark && e.src != null && e.src >= 0) a += ` data-ic-line="${e.src}"`;
+      if (shared.mark && e.src != null && e.src >= 0 && !e.unmarked) a += ` data-ic-line="${e.src}"`;
       if (e.groups && e.groups.length) a += ` class="${e.groups.join(' ')}"`;
       for (const [k, v] of Object.entries(e.attrs || {})) a += v === '' && k !== 'alt' ? ` ${k}` : ` ${k}="${escAttr(v)}"`;
       return a;
@@ -969,7 +998,7 @@
       if (e.textNode != null) return one(esc(e.textNode));
       if (VOID_TAGS.has(e.tag) && !e.svg) return one(`<${e.tag}${attrs(e)}>`);
       const kids = e.children || [];
-      if (!(kids.length && (e.container || e.tag === 'label' || e.tag === 'select'))) return one(empty(e));
+      if (!(kids.length && (e.container || e.webpageBox || e.tag === 'label' || e.tag === 'select'))) return one(empty(e));
       if (!e.svg && !BLOCK_TAGS.test(e.tag) && !OWN_BOX_TAGS.test(e.tag) && !e.after) { const s = oneLine(e); if (s != null) return one(s); }
       const res = one(`<${e.tag}${attrs(e)}>`);
       if (e.text) res.push({ text: `${pad}  ${esc(e.text)}`, src: e.src });
@@ -3270,6 +3299,7 @@
     T('Controls', 'add a hidden value "‹home›" sent as "‹source›"', '<input type="hidden" name="source" value="home">', 'Sent with its form, never shown: something the server needs, not the person filling it in.', ['structure']),
     T('Controls', 'add a file picker called ‹name› for ‹pictures›', '<input type="file" accept="image/*">', 'Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›".', ['structure']),
     T('Media', 'add a picture of "‹file.jpg›" described as "‹what it shows›"', '<img src="…" alt="…">', 'The description is read aloud by screen readers.', ['structure']),
+    T('Media', 'add a webpage box called ‹news›, from "‹https://…›", sized ‹600› by ‹400›', '<div data-webpage-box><iframe src="…">', 'A web page in a box that keeps its shape: the page fills the box, so resizing the box (Editor mode, or its width in Styling) resizes the page.', ['structure']),
     T('Media', 'add an embedded page, from "‹https://…›", sized ‹600› by ‹400›, with tooltip "‹what it shows›"', '<iframe src="…" width="600" height="400" title="…">', 'Another web page shown inside this one. The tooltip names it for screen readers. Also: add a webpage, add a webpage link.', ['structure']),
     T('Media', 'add a drawing area called ‹game› ‹480› by ‹270›', '<canvas id="game" width="480" height="270">', 'Where a game or a picture is drawn, from Mechanics.', ['structure']),
     T('Media', 'add a link to "‹https://…›" saying "‹text›"', '<a href="…">…</a>', 'An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:….', ['structure']),

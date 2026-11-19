@@ -380,6 +380,25 @@ folder was next opened, and an edit to the same file in IntuaCode in the meantim
 - **The window's own colours stay readable.** Seafoam (the Predictive Mode button's) and pink are shown on the editor's
   background, which can only be dark; `tests/look.test.mjs` checks both on the lightest one it lets through.
 
+## Decision: a webpage box is a box the page fills, its shape a rule in the page's head
+
+*Decided 2026-11-19.*
+
+Another page shown in this one (an embedded page) is often wanted at a size that keeps its shape. `add a webpage box
+called news, from "…", sized 600 by 400` is a box (`<div data-webpage-box="600x400">`) holding the page, which fills
+it (`width: 100%; height: 100%`), and the box is the shape of its size:
+
+- **The shape is a rule, not a style on the box.** Structure writes one `<style data-webpage-boxes>` in the head, a rule a
+  size (`[data-webpage-box="600x400"] { width: 600px; aspect-ratio: 3 / 2; }`), before Styling's link. A style on the
+  box itself would beat anything Styling says; as an attribute's rule it loses to Styling's rule for its name, so a
+  width there (or a corner in Editor mode, which writes one with the shape kept) resizes it, the page following. On a
+  narrow screen it's no wider than what it's in (`max-width: 100%`), its height following.
+- **One sentence, one thing to point at.** The page inside has no line mark of its own (`data-ic-line`), so pointing,
+  moving and resizing are the box's; nothing can be indented under it. The page's settings (its address, tooltip) go to
+  the page, the size to the box; with no size it's 600 by 400, and says so.
+- **Read back as written.** The reader says the box, its page and its size as the sentence, and says nothing for the
+  head's rules (the check makes them again, exactly, or they'd stay code).
+
 ## Decision: Editor mode moves what's on the page by writing a style, and believes the rebuilt page
 
 *Decided 2026-11-19.*

@@ -328,6 +328,12 @@ the rebuilt page is asked its size: if another style wins (a `max-width`, or the
 the page made it. A word in a line of text can't be resized (its size is its letters'): it says to make it a box first.
 In Editor mode an embedded page doesn't take the pointer into itself, so it can be pointed at, moved and resized.
 
+**A webpage in a box.** `add a webpage box called news, from "https://…", sized 600 by 400` puts another page in a box
+that keeps its shape: the page fills the box, so resizing the box (its corner in Editor mode, or a width in Styling:
+`style news: width: 300px`) resizes the page, its height following. Its shape is a small rule Structure puts in the
+page's head (`[data-webpage-box="600x400"] { width: 600px; aspect-ratio: 3 / 2; }`), before Styling, so Styling's rules
+for its name win. Nothing goes inside the box but the page; read back, it's that sentence again.
+
 **An app's windows, estimated (tkinter and JUCE).** A website shows itself in the Preview; an app's window can't run in a
 browser, so for a project whose code makes windows (Python with tkinter, C++ with JUCE), the Preview draws an estimate of
 them, read from the code, as soon as the project opens: each window at its size, the groups in it (frames, components

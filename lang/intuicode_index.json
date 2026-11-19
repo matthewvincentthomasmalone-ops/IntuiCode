@@ -1343,6 +1343,15 @@
         },
         {
           "topic": "Media",
+          "say": "add a webpage box called ‹news›, from \"‹https://…›\", sized ‹600› by ‹400›",
+          "becomes": "<div data-webpage-box><iframe src=\"…\">",
+          "folders": [
+            "structure"
+          ],
+          "tip": "A web page in a box that keeps its shape: the page fills the box, so resizing the box (Editor mode, or its width in Styling) resizes the page."
+        },
+        {
+          "topic": "Media",
           "say": "add an embedded page, from \"‹https://…›\", sized ‹600› by ‹400›, with tooltip \"‹what it shows›\"",
           "becomes": "<iframe src=\"…\" width=\"600\" height=\"400\" title=\"…\">",
           "folders": [
