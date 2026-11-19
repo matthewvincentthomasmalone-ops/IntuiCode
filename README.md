@@ -304,6 +304,19 @@ make it taller or shorter (double-click it for the usual size). Run, and a progr
 the terminal back; while it's folded, a dot on its tab says there's something new. IntuaCode remembers how
 you left them.
 
+**Editor mode (websites): move things on the page, then fine-tune them in Styling.** **Editor**, over the Preview,
+puts the code and the page side by side, filling the window (the Project side, Help and the explanation go away; full
+screen still works for either one, and the line between them can be dragged to make the page wider). Drag anything on
+the page (a heading, a button, a box, a frame) roughly where you want it; hold **Alt** to move the box it's in. The move is
+written as a sentence of its own in Styling, straight after the element's look (`style cta: position: relative, left:
+40px, top: 16px`), and Styling opens at that line so you can fine-tune the numbers. The move is typed into Styling as if
+you'd typed it, so **Ctrl+Z** there takes it back (move by move). The next move of the same thing changes that sentence.
+Something without a name is given one in its sentence first (`add a footer called footer`), only if that
+makes exactly the same page with just the name added; otherwise it says to name it. The page is then rebuilt from the
+code and asked where the element is: the bar over the page says it's moved only when the page shows it where you dropped
+it, and if another style wins (an `!important`, a more specific rule), it says where the page put it instead. Nothing
+about a move is remembered: the next one reads the page's own numbers again. **Editor** again brings everything back.
+
 **Customise: the look, as code.** **Menu → Customise** lays IntuaCode's look out as very simple code: a block for each
 part of the window (IntuaCode, Menu bar, Project side, Help, Editor, Code, Terminal), each line a plain name and its
 value, like `Text size = 14.5`. The values in seafoam are yours to change; the pink ones are fixed, there so it reads as
@@ -607,7 +620,7 @@ npm run meaning     # which of Python's and JavaScript's words have an example t
 ```
 
 The desktop app has its own tests, which open the real app window and drive it (Python with
-typed input, shell commands, files and the folders allowed, the sandboxed preview, C++,
+typed input, shell commands, files and the folders allowed, the sandboxed preview, Editor mode, C++,
 Arduino, code opened as sentences). GitHub runs them on Linux and on Windows (with Visual
 Studio's compiler) for every push to `main` and every pull request
 (**Actions → Desktop app tests**). To run them on Linux:
@@ -676,6 +689,7 @@ npm install && npm run vendor
 | `lang/changelog.js` | What changed: the lines between two versions of the code, the parts they fall in, counts, and each entry checked when read back |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`), and the `.zip` the browser offers |
 | `lang/look.js` | Customise: the look as very simple code, the settings that can change, each value checked (in words), and what it sets on the page |
+| `lang/arrange.js` | Editor mode: something dragged in the Preview, said as a style sentence (where it goes in Styling), and a name for something that has none |
 | `runner.js` | Runs Python in the page; handles `input()` by replaying answers; stops endless loops |
 | `app.js`, `app.css`, `index.html` | The editor: Unity and Split Mode, the project tree and its parts, the help, Project Link, terminal, Index |
 | `samples/` | Example code to import, including a small multi-file project (`samples/taskboard`) |

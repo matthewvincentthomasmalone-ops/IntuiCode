@@ -643,6 +643,49 @@ try {
     if (bad.length) throw new Error(`${bad.join(', ')}: ${JSON.stringify(r)}`);
   });
 
+  await check('Editor mode: the code and the page fill the window; a drag in the page is written in Styling, checked on the page, and undone', async () => {
+    await clearTerminal();
+    await blueprint('Landing page');
+    await waitFor('the preview at its local address', () => js(() => (/^http:\/\/127\.0\.0\.1:\d+\/index\.html$/.test(document.getElementById('preview').src) ? true : null)), 30000);
+    const where = () => js(() => {
+      const r = (s) => { const e = document.querySelector(s), b = e && e.getBoundingClientRect(); return b && b.width ? Math.round(b.left) : null; };
+      return { side: r('.side'), explain: r('#explainWrap'), help: r('#btnIndex'), code: r('.panes'), page: r('#term'), pressed: document.getElementById('btnEditor').getAttribute('aria-pressed') };
+    });
+    const before = await where();
+    await click('btnEditor');
+    const on = await where();
+    if (on.side !== null || on.explain !== null || on.help !== null || on.code !== 0 || !(on.page > 0) || on.pressed !== 'true') throw new Error('Editor mode: ' + JSON.stringify(on));
+    await sleep(1000);   // (the page is told it's in Editor mode)
+    // the page's own pointer events, made in the page (WebDriver's pointer can't reach into the frame on every system)
+    const frame = await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' });
+    await wd('POST', `/session/${session}/frame`, { id: frame });
+    try {
+      await waitFor('the button in the page', () => js(() => {
+        const el = document.getElementById('cta');
+        if (!el) return null;
+        const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const ev = (type, dx, dy) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: x + dx, clientY: y + dy, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        ev('pointerdown', 0, 0);
+        for (let i = 1; i <= 4; i++) ev('pointermove', 10 * i, 4 * i);
+        ev('pointerup', 40, 16);
+        return true;
+      }), 20000);
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
+    const bar = await waitFor('the move, checked on the rebuilt page', () => js(() => { const t = document.getElementById('editBar').innerText; return /shows it there|not where it was dropped|isn't checked|can't|couldn't/.test(t) ? t : null; }), 20000);
+    if (!/^Moved cta 40 right and 16 down, and the page shows it there\. Written in style\.css line 5/.test(bar)) throw new Error(bar);
+    const written = await js(() => ({ line: document.getElementById('ta').value.split('\n')[4], keys: document.activeElement && document.activeElement.id }));
+    if (written.line !== 'style cta: position: relative, left: 40px, top: 16px' || written.keys !== 'ta') throw new Error(JSON.stringify(written));
+    // the editor's own Undo takes it back
+    const undone = await js(() => { const ta = document.getElementById('ta'); ta.focus(); document.execCommand('undo'); return ta.value.split('\n')[4]; });
+    if (undone !== 'when cta is hovered: background #ffe9d2') throw new Error('after Undo, line 5 is ' + JSON.stringify(undone));
+    // pressed again: everything as it was
+    await click('btnEditor');
+    const off = await where();
+    if (!isDeepStrictEqual(off, before)) throw new Error(`${JSON.stringify(off)} isn't ${JSON.stringify(before)}`);
+  });
+
   // The window's close button can't be pressed from here, and under WebDriver the desktop layer doesn't hold the
   // close (so the tests can end the app): this is the page's side, asked as the desktop layer asks it.
   await check('closing with changes not saved asks first; Cancel keeps the window', async () => {

@@ -2520,7 +2520,7 @@
   /* ------------------------------------------------------------------ */
 
   const LAYOUT_KEY = 'intuicode.layout.v1';
-  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, dd: false, predict: false, partsBy: 'type', sideView: 'files' }, store.get(LAYOUT_KEY, {}));
+  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, editCol: 0, dd: false, predict: false, partsBy: 'type', sideView: 'files' }, store.get(LAYOUT_KEY, {}));
   // Project Link and Predictive Mode take turns: predictions popping up while you click around a running page get in the way
   if (layout.link === undefined) layout.link = !layout.predict;
   if (layout.link && layout.predict) layout.predict = false;
@@ -2538,6 +2538,7 @@
     for (const [key, prop] of Object.entries(ROW_PROP)) {
       if (layout[key]) work.style.setProperty(prop, layout[key] + 'px'); else work.style.removeProperty(prop);
     }
+    if (layout.editCol) work.style.setProperty('--edit-col', layout.editCol + 'px'); else work.style.removeProperty('--edit-col');
     measure(); syncScroll(); placeTip();
   }
   function setDock(which, open) {
@@ -3132,6 +3133,93 @@
     document.addEventListener('input', (e) => report(e.target, 'type'), true);
     document.documentElement.addEventListener('mouseleave', () => { if (linkOn && lastLink) { lastLink = ''; send({ type: 'link', none: true }); } });
     window.addEventListener('message', (e) => { if (e.data && e.data.intuicodeLink !== undefined) { linkOn = !!e.data.intuicodeLink; if (!linkOn) lastLink = ''; } });
+    // Editor mode (its listeners are added before the page's own are watched, so they're never taken for the page's):
+    // anything IntuaCode wrote (each has its sentence line) can be dragged. The drag only shows the
+    // move; the editor writes it in Styling, the page is rebuilt from that code, and the page is then asked where
+    // the element is (edit-at), so a move is only said to be done once the rebuilt page shows it there. The editor
+    // says it's in Editor mode each time the page loads (it isn't written into this script: turning it on or off
+    // would make the page different, and the next rebuild would reload it, mid-drag).
+    let editing = false, drag = null, edHover = null, lastMoved = null;
+    const ebox = document.createElement('div'), elab = document.createElement('div');
+    ebox.style.cssText = 'all:initial;position:fixed;pointer-events:none;box-sizing:border-box;border:2px solid #5ab0ff;background:rgba(90,176,255,.1);z-index:2147483646;display:none;border-radius:2px';
+    elab.style.cssText = 'all:initial;position:fixed;pointer-events:none;z-index:2147483647;display:none;font:600 11px/1.5 system-ui,sans-serif;color:#fff;background:#1d6fd1;padding:1px 6px;border-radius:3px;white-space:nowrap';
+    document.addEventListener('DOMContentLoaded', () => { document.body.appendChild(ebox); document.body.appendChild(elab); });
+    // the element under the pointer that has a sentence of its own; with Alt, the one it's in
+    const markedAt = (t, up) => {
+      let el = t && t.closest ? t.closest('[data-ic-line]') : null;
+      const outer = up && el && el.parentElement ? el.parentElement.closest('[data-ic-line]') : null;
+      return outer || el;
+    };
+    const said = (el) => (el.id ? '#' + el.id : '<' + el.tagName.toLowerCase() + '>');
+    const ownText = (el) => Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent).join(' ').replace(/\\s+/g, ' ').trim().slice(0, 80);
+    const showEdit = (el, text) => {
+      if (!el) { ebox.style.display = 'none'; elab.style.display = 'none'; return; }
+      const r = el.getBoundingClientRect();
+      Object.assign(ebox.style, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+      elab.textContent = text;
+      Object.assign(elab.style, { display: 'block', left: Math.max(0, r.left) + 'px', top: (r.top >= 20 ? r.top - 19 : r.bottom + 2) + 'px' });
+    };
+    const setEditing = (on) => {
+      if (drag) drag.el.style.translate = drag.was;
+      editing = on; drag = null; edHover = null; showEdit(null);
+      document.documentElement.style.userSelect = document.documentElement.style.webkitUserSelect = on ? 'none' : '';   // (WebKit: its own name)
+    };
+    const endDrag = (keep) => { const d = drag; drag = null; if (d && !keep) d.el.style.translate = d.was; return d; };
+    // the drag so far, from where the pointer is now (the move and the letting go both say)
+    const dragTo = (e) => {
+      const dx = Math.round(e.clientX - drag.cx + scrollX - drag.sx), dy = Math.round(e.clientY - drag.cy + scrollY - drag.sy);
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
+      drag.moved = true; drag.dx = dx; drag.dy = dy;
+      drag.el.style.translate = dx + 'px ' + dy + 'px';
+      showEdit(drag.el, said(drag.el) + '   ' + (dx < 0 ? '← ' + -dx : '→ ' + dx) + '   ' + (dy < 0 ? '↑ ' + -dy : '↓ ' + dy));
+    };
+    document.addEventListener('pointermove', (e) => {
+      if (!editing || picking) return;
+      if (drag) { dragTo(e); return; }
+      const el = markedAt(e.target, e.altKey);
+      if (el !== edHover) { edHover = el; showEdit(el, el ? said(el) : ''); }
+    }, true);
+    document.addEventListener('pointerdown', (e) => {
+      if (!editing || picking || e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      const el = markedAt(e.target, e.altKey);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      drag = { el, cx: e.clientX, cy: e.clientY, sx: scrollX, sy: scrollY, x: r.left + scrollX, y: r.top + scrollY, was: el.style.translate, moved: false, dx: 0, dy: 0 };
+      try { window.focus(); } catch (err) {}   // (the keys come here while dragging: Esc puts it back)
+    }, true);
+    document.addEventListener('pointerup', (e) => {
+      if (!drag) return;
+      e.preventDefault(); e.stopPropagation();
+      dragTo(e);   // (where it was let go: the last moves before it can be merged into it)
+      const d = endDrag(drag.moved);
+      if (!d.moved) return;
+      lastMoved = d;
+      // where it is now, from the page itself: its position and offsets as the browser worked them out
+      // (the drag's translate doesn't change them; it stays until the page is rebuilt with the move)
+      const cs = getComputedStyle(d.el), px = (v) => { const n = parseFloat(v); return isFinite(n) ? n : null; };
+      send({ type: 'move', line: +d.el.dataset.icLine, id: d.el.id || '', tag: d.el.tagName.toLowerCase(), text: ownText(d.el),
+        dx: d.dx, dy: d.dy, x: Math.round(d.x), y: Math.round(d.y), position: cs.position, left: px(cs.left), top: px(cs.top) });
+    }, true);
+    document.addEventListener('pointercancel', () => { if (drag) { endDrag(false); showEdit(null); } }, true);
+    document.addEventListener('keydown', (e) => { if (drag && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endDrag(false); showEdit(null); } }, true);
+    // while arranging, the page's own buttons, links and forms don't go off
+    for (const t of ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'dragstart', 'submit']) {
+      document.addEventListener(t, (e) => { if (editing && !picking) { e.preventDefault(); e.stopPropagation(); } }, true);
+    }
+    window.addEventListener('message', (e) => {
+      const m = e.data;
+      if (!m) return;
+      if (m.intuicodeEdit !== undefined) setEditing(!!m.intuicodeEdit);
+      if (m.intuicodeEditUndo && lastMoved) { lastMoved.el.style.translate = lastMoved.was; lastMoved = null; showEdit(null); }
+      if (m.intuicodeWhere !== undefined) {
+        const line = +m.intuicodeWhere;
+        Promise.resolve(document.fonts && document.fonts.ready).then(() => {   // (its fonts in: they change sizes)
+          const el = document.querySelector('[data-ic-line="' + line + '"]'), r = el && el.getBoundingClientRect();
+          send({ type: 'edit-at', line, found: !!el, x: r ? Math.round(r.left + scrollX) : null, y: r ? Math.round(r.top + scrollY) : null, w: r ? Math.round(r.width) : null, h: r ? Math.round(r.height) : null });
+        });
+      }
+    });
     // the page's own handlers, from here on, say when they answer (and which one) while Project Link is on
     const USED = /^(click|dblclick|input|change|submit|keydown|keyup|keypress|pointerdown|pointerup|mousedown|mouseup|touchstart|touchend)$/;
     const realAdd = EventTarget.prototype.addEventListener, realRemove = EventTarget.prototype.removeEventListener, wraps = new WeakMap();
@@ -3147,7 +3235,7 @@
     EventTarget.prototype.removeEventListener = function (type, fn, opts) { return realRemove.call(this, type, (fn && wraps.get(fn)) || fn, opts); };
   })();`;
 
-  let previewInfo = null, picking = false, previewTimer = null;
+  let previewInfo = null, picking = false, previewTimer = null, editing = false;   // editing: Editor mode (further down)
   /* ---------- Project Link: the code behind what's in use in the preview, in pink ---------- */
   /* The page says what's being pointed at, focused, clicked or typed in (the element's sentence line, and the CSS
      rules that style it) and which of its handlers answered. That becomes lines of the project's files, as Unity
@@ -3376,6 +3464,8 @@
     $('tabTerm').setAttribute('aria-selected', String(!showPreview));
     $('btnPick').hidden = !showPreview;
     $('btnLink').hidden = !showPreview;
+    $('btnEditor').hidden = !web;
+    if (!web && editing) setEditor(false);
     $('btnClear').hidden = showPreview;
     if (!showPreview) clearLink();
   }
@@ -3609,6 +3699,211 @@
   $('tabTerm').addEventListener('click', () => { setDock('term', true); showBottom('terminal'); });
   $('tabPreview').addEventListener('click', () => { setDock('term', true); showBottom('preview'); runWebsite(false); });
   $('btnPick').addEventListener('click', () => setPicking(!picking));
+
+  /* ------------------------------------------------------------------ */
+  /* Editor mode: the code and the page side by side, filling the window */
+  /* (the side, the help and the explanation put away). Anything on the  */
+  /* page can be dragged roughly into place: the move is written in      */
+  /* Styling (lang/arrange.js), the page is rebuilt from that code, and  */
+  /* the move is only said to be done once the rebuilt page shows the    */
+  /* element where it was dropped. Nothing about a move is kept.         */
+  /* ------------------------------------------------------------------ */
+
+  const ARR = window.IntuiArrange;
+  const EDIT_TITLE = $('btnEditor').title;
+  const EDIT_HINT = 'Drag anything on the page to move it roughly into place. <kbd>Alt</kbd> moves the box it\'s in. Each move is written in Styling, where you fine-tune it.';
+  let editCheck = null, editTermWas = null;   // the move waiting for the rebuilt page to say where it is; the terminal, folded or not, before
+  function setEditor(on) {
+    on = !!on && webOn() && !!ARR;
+    if (on === editing) return;
+    editing = on;
+    if (on) {
+      if (maxed) setMax(maxed);   // both windows, side by side
+      closeIndex();
+      setPicking(false);
+      editTermWas = layout.term;
+      setDock('term', true);
+      if ($('previewWrap').hidden) { showBottom('preview'); runWebsite(false); }
+    } else {
+      if (editCheck) clearTimeout(editCheck.timer);
+      editCheck = null;
+      if (editTermWas === false) setDock('term', false);
+      editTermWas = null;
+    }
+    $('app').classList.toggle('edit-mode', on);
+    const b = $('btnEditor');
+    b.setAttribute('aria-pressed', String(on));
+    b.title = on ? 'Leave Editor mode: the side, the help and the explanation come back' : EDIT_TITLE;
+    const w = $('preview').contentWindow;
+    if (w) w.postMessage({ intuicodeEdit: on }, '*');
+    editSay(on ? EDIT_HINT : '');
+    measure(); syncScroll(); placeTip();
+    if (mode === 'unity') uSync();
+  }
+  $('btnEditor').addEventListener('click', () => setEditor(!editing));
+  // each page the Preview loads is told it's in Editor mode, and a move waiting to be checked asks the rebuilt page
+  $('preview').addEventListener('load', () => {
+    const w = $('preview').contentWindow;
+    if (!editing || !w) return;
+    w.postMessage({ intuicodeEdit: true }, '*');
+    if (editCheck) w.postMessage({ intuicodeWhere: editCheck.line }, '*');
+  });
+
+  function editSay(html, bad) {
+    const bar = $('editBar');
+    bar.hidden = !html || !editing;
+    if (bar.hidden) return;
+    bar.classList.toggle('bad', !!bad);
+    bar.innerHTML = `<span class="ed-dot" aria-hidden="true"></span><span>${html}</span>`;
+  }
+  const editGo = (sec, line) => `<button type="button" class="linklike" data-link-go="${escHtml(sec.id)}" data-link-line="${line}">${escHtml(fileName(sec))} <span class="dim">line ${line + 1}</span></button>`;
+  $('editBar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-link-go]');
+    if (b) openSection(b.dataset.linkGo, +b.dataset.linkLine);
+  });
+  /* The page puts the dragged element back where its code says (a move that couldn't be written). */
+  function editUndo() { const w = $('preview').contentWindow; if (w) w.postMessage({ intuicodeEditUndo: true }, '*'); }
+  /* The project with some files' text changed, to compile before anything is written. */
+  const withTexts = (pairs) => ({ ...project, sections: project.sections.map(s => { const p = pairs.find(([x]) => x === s); return p ? { ...s, text: p[1] } : s; }) });
+
+  /* An element with no name gets one in its sentence, so Styling can point at it. Each way of saying it is
+     compiled first, and the one kept makes exactly the same page with only that id added. -> { name, text } or null */
+  function nameInStructure(page, d, others) {
+    const lines = page.text.split('\n'), line = lines[d.line], r0 = secResult(page.id), before = r0 && r0.previewText;
+    if (line == null || !line.trim() || !before) return null;
+    const ids = new Set(Object.keys((compiled.web && compiled.web.ids) || {}));
+    const taken = (n) => ids.has(n) || new RegExp(`(^|[^\\w-])${n}([^\\w-]|$)`, 'im').test(others);
+    const name = ARR.nameFor(d, taken);
+    for (const said of ARR.namings(line, name)) {
+      const text = lines.map((l, i) => (i === d.line ? said : l)).join('\n');
+      const r = compileAll(withTexts([[page, text]])).results[page.id];
+      if (r && r.info[d.line] && !r.info[d.line].errs.length && ARR.namedOnly(before, r.previewText || '', name, d.line)) return { name, text };
+    }
+    return null;
+  }
+
+  /* The move written into the open Styling file (it's the one shown) as typing: its sentence replaced, or a new line
+     after the one before it, so it's one edit that Undo takes back. In Unity, a new line after a green part joins it;
+     one after code is made a green part of its own (Undo takes the line, and the part with it). */
+  function typeMove(sty, w) {
+    const before = sty.text.split('\n'), after = w.text.split('\n'), line = after[w.line], fresh = after.length > before.length;
+    if (mode === 'unity' && unity.lang && unity.id === sty.id) {
+      const lines = uLines();
+      if (lines.length !== before.length) { uSetText(w.text); return; }   // (not line for line: written as it is)
+      const at = fresh ? Math.max(w.line - 1, 0) : w.line, start = uPosOf(at), end = start + lines[at].length;
+      uCaret = uRegionAt(at);
+      const lone = fresh && uCaret < 0;
+      uTa.focus();
+      if (!fresh) uTa.setSelectionRange(start, end);
+      else if (w.line === 0) uTa.setSelectionRange(0, 0);
+      else uTa.setSelectionRange(end, end);
+      document.execCommand('insertText', false, !fresh ? line : w.line === 0 ? line + '\n' : '\n' + line);
+      if (lone) { unity.regions.push({ from: w.line, to: w.line, original: null, words: [line], base: '' }); uCommit(); renderUnity(); }
+      uTools();
+      return;
+    }
+    const pos = (n) => before.slice(0, n).reduce((k, l) => k + l.length + 1, 0);
+    if (!fresh) insertText(line, pos(w.line), pos(w.line) + before[w.line].length);
+    else if (w.line === 0) insertText(line + '\n', 0, 0);
+    else { const e = pos(w.line - 1) + before[w.line - 1].length; insertText('\n' + line, e, e); }
+    closeAc();
+  }
+
+  /* A drop in the Preview: { line, id, tag, text, dx, dy, x, y, position, left, top }, from the page. */
+  function moveFromPreview(d) {
+    if (!editing || !ARR) return;
+    const pg = previewInfo && previewInfo.page, page = pageAt(d.page), sty = pg && pg.styling;
+    const what = `<code>&lt;${escHtml(String(d.tag || ''))}&gt;</code>`;
+    const fail = (html) => { editUndo(); editSay(html, true); };
+    if (!page || !isSentences(page) || !Number.isInteger(d.line)) return fail(`That ${what} isn't from a page IntuaCode writes, so it can't be moved from here.`);
+    if (!sty || !isSentences(sty)) return fail(`${escHtml(fileName(page))} has no Styling file to write the move in.`);
+    syncText(); compile();   // (what was just typed counts)
+    const off = ARR.offsets(d);
+    if (off.why) return fail(escHtml(off.why));
+    let name = d.id, structure = null;
+    if (!name) {
+      // (a name Styling or Mechanics already says would suddenly mean this element; Structure's own words, such as
+      // "add a header", aren't names, and the names it gives are known from compiling it)
+      const named = nameInStructure(page, d, [sty, pg.mechanics].filter(Boolean).map(s => s.text).join('\n'));
+      if (!named) {
+        openSection(page.id, d.line);
+        return fail(`This ${what} has no name, so Styling can't point at it, and it couldn't be given one here. Give it one in its sentence (open now): add "called …".`);
+      }
+      name = named.name; structure = named.text;
+    }
+    // checked before anything is written: the sentence compiles, as a rule for that element
+    const w = ARR.withMove(sty.text, secResult(sty.id), name, off.props);
+    const tr = compileAll(withTexts([[sty, w.text], ...(structure != null ? [[page, structure]] : [])])).results[sty.id];
+    const inf = tr && tr.info[w.line];
+    if (!inf || inf.errs.length || ARR.styleLine(w.text, tr, name) !== w.line) {
+      return fail(`The move couldn't be written as a style for <code>${escHtml(name)}</code>${inf && inf.errs.length ? ': ' + escHtml(inf.errs[0]) : '.'}`);
+    }
+    const dirs = ARR.moved(d.dx, d.dy);
+    // typed into Styling, as a fix is, so the editor's own Undo (Ctrl+Z) takes the move back; unless opening Styling
+    // would change which page the Preview shows (another page of the site is open), when it's written in place
+    const typed = !pg.html || pg.html === (compiled.page && compiled.page.structure);
+    logAs('you', `Moved ${name} ${dirs} in the Preview (Editor mode)${structure != null ? `, naming it in ${fileName(page)}` : ''}.`, () => {
+      if (structure != null) {
+        page.text = structure;
+        if (page.id === project.active) { ta.value = structure; if (mode === 'unity') unityShow(); }
+      }
+      if (typed) { if (project.active !== sty.id) openSection(sty.id, w.line); typeMove(sty, w); }   // (already open: its Undo goes on, move by move)
+      else { sty.text = w.text; if (sty.id === project.active) ta.value = sty.text; }
+    });
+    if (editCheck) clearTimeout(editCheck.timer);
+    editCheck = { line: d.line, x: d.x + d.dx, y: d.y + d.dy, name, sec: sty.id, at: w.line, dirs, typed };
+    typingLine = -1;
+    refreshAll(); save(); autosave();
+    editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
+    clearTimeout(previewTimer);
+    runWebsite(false);
+    const c = editCheck;
+    c.timer = setTimeout(() => {
+      if (editCheck !== c) return;
+      editCheck = null;
+      editSay(`Written in ${editGo(sty, c.at)}, but the page didn't say where <code>${escHtml(name)}</code> is now, so the move isn't checked.`, true);
+    }, 6000);
+  }
+  /* The rebuilt page says where the element is: it's where it was dropped, or something else wins. */
+  function editChecked(d) {
+    const c = editCheck;
+    if (!c || d.line !== c.line) return;
+    editCheck = null;
+    clearTimeout(c.timer);
+    const sty = project.sections.find(s => s.id === c.sec), at = sty ? editGo(sty, c.at) : 'Styling';
+    if (!d.found) return editSay(`<code>${escHtml(c.name)}</code> isn't on the rebuilt page, so the move written in ${at} can't be checked.`, true);
+    if (Math.abs(d.x - c.x) <= 1 && Math.abs(d.y - c.y) <= 1) return editSay(`Moved <code>${escHtml(c.name)}</code> ${c.dirs}, and the page shows it there. Written in ${at}, ready to fine-tune${c.typed ? ' (<kbd>Ctrl+Z</kbd> there takes it back)' : ''}.`);
+    editSay(`The page puts <code>${escHtml(c.name)}</code> at ${d.x}, ${d.y}, not where it was dropped (${c.x}, ${c.y}): another style wins over the one written in ${at}. With Project Link on, pointing at it lights up the rules that style it.`, true);
+  }
+
+  // the line between the code and the page: drag it to change how wide the page is (remembered)
+  const editGrip = $('editGrip');
+  function setEditCol(px) {
+    const r = $('work').getBoundingClientRect();
+    layout.editCol = Math.round(Math.min(Math.max(px, 280), Math.max(r.width - 320, 280)));
+    $('work').style.setProperty('--edit-col', layout.editCol + 'px');
+  }
+  const afterEditCol = () => { store.set(LAYOUT_KEY, layout); syncScroll(); placeTip(); if (mode === 'unity') uSync(); };
+  editGrip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    editGrip.setPointerCapture(e.pointerId);
+    document.body.classList.add('resizing', 'cols');   // the preview frame mustn't swallow the drag
+    const move = (ev) => setEditCol($('work').getBoundingClientRect().right - ev.clientX);
+    const up = () => {
+      document.body.classList.remove('resizing', 'cols');
+      editGrip.removeEventListener('pointermove', move); editGrip.removeEventListener('pointerup', up); editGrip.removeEventListener('pointercancel', up);
+      afterEditCol();
+    };
+    editGrip.addEventListener('pointermove', move); editGrip.addEventListener('pointerup', up); editGrip.addEventListener('pointercancel', up);
+  });
+  editGrip.addEventListener('dblclick', () => { layout.editCol = 0; applyLayout(); afterEditCol(); });
+  editGrip.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    setEditCol($('term').getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 24 : -24));
+    afterEditCol();
+  });
   window.addEventListener('message', (e) => {
     if (e.source !== $('preview').contentWindow || !e.data || !e.data.intuicode) return;
     const d = e.data;
@@ -3618,6 +3913,8 @@
       return;
     }
     if (d.type === 'link' || d.type === 'link-run') { onLink(d); return; }
+    if (d.type === 'move') { moveFromPreview(d); return; }
+    if (d.type === 'edit-at') { editChecked(d); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
       let where = '', mech = previewInfo && previewInfo.page.mechanics, at = '';
@@ -3819,7 +4116,7 @@
   $('indexSearch').addEventListener('input', renderIndex);
   /* Help (the panel on the right): the Tutor's switch, the words here explained (Ctrl+H, in Split Mode, where
      it works), and the Index of every sentence. */
-  function openIndex() { renderIndex(); $('index').hidden = false; $('btnIndex').setAttribute('aria-expanded', 'true'); }
+  function openIndex() { if (editing) setEditor(false); renderIndex(); $('index').hidden = false; $('btnIndex').setAttribute('aria-expanded', 'true'); }
   $('btnGlossOpen').addEventListener('click', () => openGlossary());
   function closeIndex() { $('index').hidden = true; $('btnIndex').setAttribute('aria-expanded', 'false'); }
   $('btnIndex').addEventListener('click', () => ($('index').hidden ? openIndex() : closeIndex()));

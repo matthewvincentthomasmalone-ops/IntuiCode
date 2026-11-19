@@ -29,6 +29,7 @@ the desktop app.
 | `lang/parts.js` | Parts: every file (code or sentences) split into parts, each Interface & Display, Backend & Mechanics, Setup & Settings or Data & Notes, by the words and calls its lines use; for the side Parts list, the two buttons at the top and the help |
 | `lang/promises.js` | INTENT.md: promises in plain sentences, each checked against the project's code (kept, not kept, or can't be told, with where); the names the code defines; each step's checks and the parts no step covers |
 | `lang/changelog.js` | The change log: what changed between two versions of the code (each file's lines, counts and the named parts they fall in), a sentence for an entry, and a log read back from a project file checked for its shape |
+| `lang/arrange.js` | Editor mode: a drag in the Preview as offsets (from where the page says the element is), written as a style sentence in Styling (in the element's own, or one straight after its look), and a name for an element that has none, said each way it could go in its sentence |
 | `lang/look.js` | Customise: IntuaCode's look laid out as very simple code (blocks of `Name = value` lines), the settings that can change, each value checked in plain words against the dark look it goes on, and the CSS variables and classes it sets |
 | `lang/openspec.js` | Hand to my AI: the project map as an OpenSpec change (`proposal.md`, `tasks.md`, `.openspec.yaml` under `openspec/changes/<name>/`), the map's progress, and a stored `.zip` of the files for the browser |
 | `lang/predict.js` | Predictive Mode: the rest of the sentence being typed, from sentences written before (the project's files and lines entered with Enter), as a terminal predicts a command |
@@ -377,6 +378,51 @@ folder was next opened, and an edit to the same file in IntuaCode in the meantim
   on at the top of `app.js`, before anything is drawn. The same in the browser and the desktop app.
 - **The window's own colours stay readable.** Seafoam (the Predictive Mode button's) and pink are shown on the editor's
   background, which can only be dark; `tests/look.test.mjs` checks both on the lightest one it lets through.
+
+## Decision: Editor mode moves what's on the page by writing a style, and believes the rebuilt page
+
+*Decided 2026-11-19.*
+
+**Editor** (over the Preview, websites) puts the code and the page side by side, filling the window, and anything on the
+page can be dragged roughly into place. The drag itself is only a picture of the move (the CSS `translate`, inline, until
+the page is rebuilt). Like INTENT.md's promises, a move's state is worked out, never kept:
+
+- **The page's numbers, not a model of them.** On the drop, the page says how the element is positioned and its offsets,
+  as the browser worked them out (`getComputedStyle`), and how far it went. `lang/arrange.js` makes those into offsets: a
+  static element is nudged from its place (`position: relative`), one already relative, absolute or fixed keeps its kind,
+  from the offsets it has (so a rule elsewhere that set them is counted), and a sticky one isn't moved (its `top` is where
+  it sticks).
+- **A sentence, checked before it's written.** The offsets go in the element's last `style …:` sentence at the left edge
+  when that's empty or already says where it is, otherwise in a sentence of their own straight after it (short, so the
+  numbers are in view to fine-tune; being later, it's the one that counts), written as IntuaCode reads CSS back
+  (`position: relative, left: 40px, top: 16px`). The project is compiled with it first: no problems, and the sentence
+  makes the rule `#name`. A sentence inside "on screens narrower than …" isn't the one changed: a move is for every screen.
+- **Typed, so Undo takes it back.** Styling is opened (if it isn't already) and the sentence is typed into the editor on
+  screen (`execCommand('insertText')`, as a fix is used): its line replaced, or a new line after the one before it. So the
+  editor's own Undo (Ctrl+Z) takes back each move, last first, in Unity and Split Mode. In Unity a new line typed after a
+  green part joins it; one after code is made a green part of its own (Undo takes the line, and the part goes with it). A
+  name given in Structure stays: it changes nothing on the page. When opening Styling would change which page the Preview
+  shows (another page of a site is open), the move is written into the file as it is, without Undo.
+- **A name only when the page stays the same.** Something with no name gets one in its sentence (from its text, or what it
+  is: `footer`, `frame`), never one Styling or Mechanics already says. Each way of saying it (`called …` after the words
+  that say what it is, or `, with id …`) is compiled, and the first that makes the marked page exactly as it was, with only
+  `id="name"` added to that line's element, is kept. If none does, it says to name it, and opens the sentence.
+- **Done when the page says so.** The page is rebuilt from the code, and asked where the element is now (its sentence
+  line, `data-ic-line`). The bar says it's moved only if that's where it was dropped (to a pixel); otherwise it says where
+  the page put it, and that another style wins. A move written but never answered says it isn't checked.
+- **The page is told, not rebuilt, when Editor mode starts.** The editor tells each page it loads that it's in Editor
+  mode (a message), rather than writing it into the page's helper: that would make the page different, and the next
+  rebuild would reload it in the middle of a drag. In Editor mode nothing above the page changes height while dragging
+  (Project Link's line sits over the page's bottom edge; the status above it stays on one line).
+- **The same in both versions.** The browser's one page (sandboxed) and the desktop app's page at its local address
+  carry the same helper; the desktop reloads its page when Styling changes, and the check follows the frame's `load`.
+  `tests/editor.test.mjs` drags with Chrome's own pointer in the browser version and through `tests/desktop-mock.html`;
+  `tests/e2e/run.mjs` drags in the real app's page (Windows and Linux). IntuaCode has one look, dark: the bar and the
+  outline in the page are drawn in a blue that reads on the dark bar and on light or dark pages.
+
+The same moves could be written for other GUIs (a Tkinter `place`, a JUCE `setBounds`) where positions are plain numbers in
+the code; that isn't built. A layout that works positions out (`pack`, `grid`, a flex box) would have to say it can't take
+a free position, never guess one.
 
 ## Decision: TypeScript and React are the JavaScript sentences, plus their own
 
