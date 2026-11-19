@@ -3914,12 +3914,15 @@
     refreshAll(); save(); autosave();
     if (typed) moveMade(sty, was);
     editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
+    // (the time before the rebuild: the rebuilt page's own start is when the frame is given it, inside runWebsite, so
+    // a time taken after it, on a busy computer, is later than the very page it's waiting for)
+    const since = Date.now();
     clearTimeout(previewTimer);
     runWebsite(false);
     // a page slow to rebuild says so, and its answer still checks the move when it comes; the page is asked again every
     // second meanwhile (its load, or its word that it's loaded, can go missing), and only the rebuilt one's answer counts
     const c = editCheck;
-    c.since = Date.now();
+    c.since = since;
     c.timer = setTimeout(() => {
       if (editCheck !== c) return;
       editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the move isn't checked yet.`, true);
@@ -3934,7 +3937,7 @@
   function editChecked(d) {
     const c = editCheck;
     if (!c || d.line !== c.line) return;
-    if (d.born && c.since && d.born < c.since) return;   // (the page from before the move, still showing the drag)
+    if (d.born && c.since && d.born < c.since - 20) return;   // (the page from before the move, still showing the drag; 20 ms for two processes' clocks)
     editCheck = null;
     clearTimeout(c.timer); clearInterval(c.poll);
     const sty = project.sections.find(s => s.id === c.sec), at = sty ? editGo(sty, c.at) : 'Styling';

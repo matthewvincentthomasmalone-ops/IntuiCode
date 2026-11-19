@@ -186,15 +186,7 @@ function driving(tab) {
     for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dx * i / 8, y + dy * i / 8, true, alt);
     await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
     await mouse('mouseReleased', x + dx, y + dy, false, alt);
-    // (checked on the rebuilt page, which answers once its fonts are in and it's laid out: Chrome without a window does
-    // that for a frame of its own process when it draws it, and a window draws all the time, so here it's asked to while
-    // waiting; a busy computer can take a while)
-    const checked = '!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was';
-    for (let i = 0; i < 100 && !(await tab.run(`!!(${checked})`)); i++) {
-      await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
-      await new Promise(r => setTimeout(r, 200));
-    }
-    await until(checked, 'the move to be checked');
+    await until('!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move to be checked');
     return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
   };
   // Ctrl+Z, as pressed (where the keys are: the code, after a move)
@@ -233,6 +225,11 @@ test('editor: in the page, the windows make room, a drag is written in Styling a
     await tab.run('document.getElementById("btnLink").click()');
     assert.equal(await tab.run('document.getElementById("btnLink").getAttribute("aria-pressed")'), 'false');
 
+    // (from here, as on a busy computer: the rest of a rebuild's work, after the frame is given its page, takes 60 ms. The
+    // rebuilt page's own start is when it was given it, so its answer has to count all the same)
+    await tab.run(`(() => { const f = document.getElementById('preview'), d = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'srcdoc');
+      Object.defineProperty(f, 'srcdoc', { configurable: true, get() { return d.get.call(this); }, set(v) { d.set.call(this, v); const t = performance.now(); while (performance.now() - t < 60) {} } });
+      return true; })()`);
     // Editor mode: the code and the page, side by side, half and half; the side, the help and the explanation away
     await tab.run('document.getElementById("btnEditor").click()');
     assert.equal(await tab.run('document.getElementById("btnEditor").getAttribute("aria-pressed")'), 'true');
