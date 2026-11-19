@@ -731,6 +731,30 @@ try {
       await waitFor('Ctrl+Z to take the move back', async () => (await line5()) === 'when cta is hovered: background #ffe9d2', 5000)
         .catch(async () => { throw new Error(`keys reach the window, but after Ctrl+Z (in ${await js(() => document.activeElement && document.activeElement.id)}), line 5 is ${JSON.stringify(await line5())}`); });
     }
+    // its corner: resized (a button, freely), the size written in Styling and checked on the rebuilt page
+    await wd('POST', `/session/${session}/frame`, { id: await wd('POST', `/session/${session}/element`, { using: 'css selector', value: '#preview' }) });
+    let want;
+    try {
+      want = await waitFor('the button\'s corner', () => js(() => {
+        const el = document.getElementById('cta');
+        if (!el || el.style.translate) return null;   // (the page as rebuilt, the move's drag gone)
+        const r = el.getBoundingClientRect(), x = r.right - 3, y = r.bottom - 3;
+        const ev = (type, px, py, held) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: px, clientY: py, button: 0, buttons: held ? 1 : 0, pointerId: 1, isPrimary: true }));
+        ev('pointermove', r.left + r.width / 2, r.top + r.height / 2, false);   // (pointed at)
+        ev('pointermove', x, y, false);   // (onto its corner)
+        ev('pointerdown', x, y, true);
+        for (let i = 1; i <= 3; i++) ev('pointermove', x + 10 * i, y + 2 * i, true);
+        ev('pointerup', x + 30, y + 6, false);
+        return { w: Math.round(r.width) + 30, h: Math.round(r.height) + 6 };
+      }), 20000);
+    } finally {
+      await wd('POST', `/session/${session}/frame/parent`, {});
+    }
+    const sized = await waitFor('the size, checked on the rebuilt page', () => js(() => { const t = document.getElementById('editBar').innerText; return /shows it so|it was resized to|can't|couldn't/.test(t) ? t : null; }), 30000)
+      .catch(async () => { throw new Error('the size was never checked: ' + await js(() => document.getElementById('editBar').innerText)); });
+    if (!sized.startsWith(`Resized cta to ${want.w} × ${want.h}, and the page shows it so.`)) throw new Error(sized);
+    const sizeLine = await js((id) => document.getElementById(id).value.split('\n').find(l => /^style cta: .*width: \d+px, height: \d+px$/.test(l)) || null, written.editor);
+    if (!sizeLine) throw new Error('no size in Styling: ' + await js((id) => document.getElementById(id).value, written.editor));
     // pressed again: everything as it was
     await click('btnEditor');
     const off = await where();

@@ -252,6 +252,14 @@ Tick each one. If something is off, note what you did and what the terminal said
       and Ctrl+Z takes it back.
 - [ ] **Editor** again: the side, Help and the explanation come back, and the terminal is as it was.
 - [ ] Desktop app: the same, on the page at its local address.
+- [ ] Add `add an embedded page called frame, from "https://example.com", sized 300 by 200` to Structure. In Editor mode,
+      point at it: it's outlined (the page inside doesn't take the pointer), with a handle on its bottom right corner. Drag
+      the handle right: it grows keeping its 3:2 shape, `#frame 400 × 268 its shape kept` as it goes. Let go: Styling says
+      `style frame: width: 396px, height: auto, aspect-ratio: 3 / 2`, and the bar says the page shows it so. Drag the frame
+      itself: the move joins the same sentence.
+- [ ] Drag **See the menu**'s corner: it resizes freely (`style cta: width: …px, height: …px`, after its look); with
+      **Shift** held, its shape is kept (`aspect-ratio`). **Ctrl+Z** takes each back. **Esc** mid-resize puts it back.
+- [ ] Add `style frame: at most 200 wide` after it and resize the frame wider: the bar says what size the page made it.
 
 **An app's windows, estimated**
 - [ ] Import a Python file with a tkinter window (frames packed, an Entry and a Button in a grid, a Label placed with

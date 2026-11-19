@@ -3158,31 +3158,91 @@
     // says it's in Editor mode each time the page loads (it isn't written into this script: turning it on or off
     // would make the page different, and the next rebuild would reload it, mid-drag).
     let editing = false, drag = null, edHover = null, lastMoved = null;
-    const ebox = document.createElement('div'), elab = document.createElement('div');
+    const ebox = document.createElement('div'), elab = document.createElement('div'), ehandle = document.createElement('div'), ecur = document.createElement('style');
+    // (its bottom right corner is a handle: dragged, it resizes. A page, a picture, a video or a drawing, or a box holding
+    // only one, keeps its shape; anything else does with Shift held)
+    ehandle.style.cssText = 'all:initial;position:fixed;pointer-events:none;box-sizing:border-box;width:10px;height:10px;border:1.5px solid #fff;background:#5ab0ff;z-index:2147483647;display:none;border-radius:2px;box-shadow:0 0 0 1px #1d6fd1';
+    ecur.textContent = '*{cursor:nwse-resize!important}';
+    // (an embedded page takes the pointer into its own page: while arranging, the pointer goes through it, and it's
+    // found by where the pointer is)
+    const eframes = document.createElement('style');
+    eframes.textContent = 'iframe,embed,object{pointer-events:none!important}';
+    const framedAt = (e) => Array.from(document.querySelectorAll('iframe[data-ic-line],embed[data-ic-line],object[data-ic-line]')).reverse().find(f => {
+      const r = f.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom;
+    });
+    const SHAPED = /^(?:${(window.IntuiArrange && window.IntuiArrange.SHAPED_TAGS) || 'iframe|img|video|canvas|svg|picture|object|embed'})$/;
     ebox.style.cssText = 'all:initial;position:fixed;pointer-events:none;box-sizing:border-box;border:2px solid #5ab0ff;background:rgba(90,176,255,.1);z-index:2147483646;display:none;border-radius:2px';
     elab.style.cssText = 'all:initial;position:fixed;pointer-events:none;z-index:2147483647;display:none;font:600 11px/1.5 system-ui,sans-serif;color:#fff;background:#1d6fd1;padding:1px 6px;border-radius:3px;white-space:nowrap';
-    document.addEventListener('DOMContentLoaded', () => { document.body.appendChild(ebox); document.body.appendChild(elab); });
+    document.addEventListener('DOMContentLoaded', () => { document.body.appendChild(ebox); document.body.appendChild(elab); document.body.appendChild(ehandle); });
     // the element under the pointer that has a sentence of its own; with Alt, the one it's in
-    const markedAt = (t, up) => {
+    const markedAt = (t, up, e) => {
       let el = t && t.closest ? t.closest('[data-ic-line]') : null;
+      // (an embedded page under the pointer, inside what it's over, not covered by something else)
+      const f = e && framedAt(e);
+      if (f && t && (t === f || (t.contains && t.contains(f)))) el = f;
       const outer = up && el && el.parentElement ? el.parentElement.closest('[data-ic-line]') : null;
       return outer || el;
     };
     const said = (el) => (el.id ? '#' + el.id : '<' + el.tagName.toLowerCase() + '>');
     const ownText = (el) => Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent).join(' ').replace(/\\s+/g, ' ').trim().slice(0, 80);
     const showEdit = (el, text) => {
-      if (!el) { ebox.style.display = 'none'; elab.style.display = 'none'; return; }
+      if (!el) { ebox.style.display = 'none'; elab.style.display = 'none'; ehandle.style.display = 'none'; return; }
       const r = el.getBoundingClientRect();
       Object.assign(ebox.style, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
       elab.textContent = text;
       Object.assign(elab.style, { display: 'block', left: Math.max(0, r.left) + 'px', top: (r.top >= 20 ? r.top - 19 : r.bottom + 2) + 'px' });
+      const big = r.width >= 12 && r.height >= 12 && !(drag && drag.kind === 'move');
+      Object.assign(ehandle.style, { display: big ? 'block' : 'none', left: (r.right - 6) + 'px', top: (r.bottom - 6) + 'px' });
     };
+    // the handle: the corner of what's pointed at (a little inside it, and just outside)
+    const atCorner = (el, e) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect(), z = Math.max(6, Math.min(12, r.width / 3, r.height / 3));
+      return r.width >= 12 && r.height >= 12 && e.clientX >= r.right - z && e.clientX <= r.right + 5 && e.clientY >= r.bottom - z && e.clientY <= r.bottom + 5;
+    };
+    const cursorAt = (on) => { if (on && !ecur.isConnected) document.head.appendChild(ecur); else if (!on && ecur.isConnected) ecur.remove(); };
+    // what keeps its shape: a page, a picture, a video, a drawing, or a box holding only one (and no words of its own)
+    const onlyIn = (el) => { const kids = Array.from(el.children).filter(c => !/^(?:script|style|template)$/i.test(c.tagName)); return kids.length === 1 && !ownText(el) ? kids[0].tagName.toLowerCase() : null; };
+    // a resize shown on the page as it's dragged: put back, its own style as it was
+    const unsize = (d) => { if (d.css == null) d.el.removeAttribute('style'); else d.el.setAttribute('style', d.css); };
     const setEditing = (on) => {
-      if (drag) drag.el.style.translate = drag.was;
-      editing = on; drag = null; edHover = null; showEdit(null);
+      if (drag) { if (drag.kind === 'size') unsize(drag); else drag.el.style.translate = drag.was; }
+      editing = on; drag = null; edHover = null; showEdit(null); cursorAt(false);
+      if (on && !eframes.isConnected) (document.head || document.documentElement).appendChild(eframes); else if (!on && eframes.isConnected) eframes.remove();
       document.documentElement.style.userSelect = document.documentElement.style.webkitUserSelect = on ? 'none' : '';   // (WebKit: its own name)
     };
-    const endDrag = (keep) => { const d = drag; drag = null; if (d && !keep) d.el.style.translate = d.was; return d; };
+    const endDrag = (keep) => { const d = drag; drag = null; if (d && !keep) { if (d.kind === 'size') unsize(d); else d.el.style.translate = d.was; } cursorAt(false); return d; };
+    // the shape an aspect-ratio the page worked out says ("3 / 2", "auto 16 / 9", "1.5"), or null for none
+    const ratioIn = (v) => {
+      const m = String(v || '').match(/([\\d.]+)\\s*(?:\\/\\s*([\\d.]+))?\\s*$/);
+      if (!m || /^\\s*auto\\s*$/.test(String(v || ''))) return null;
+      const r = m[2] ? m[1] / m[2] : +m[1];
+      return r > 0 && isFinite(r) ? r : null;
+    };
+    // a resize so far: the corner's way from where it was taken. Its shape kept: the shape of what's inside its padding
+    // and borders when they count apart (as aspect-ratio keeps it), as far as the larger change says
+    const sizeTo = (e) => {
+      const d = drag, dw = e.clientX - d.cx, dh = e.clientY - d.cy;
+      if (!d.moved && Math.abs(dw) + Math.abs(dh) < 3) return;
+      d.moved = true;
+      d.kept = d.shaped || e.shiftKey;
+      const inner = d.boxSizing === 'border-box', px = inner ? 0 : d.padX, py = inner ? 0 : d.padY;
+      const cw0 = Math.max(1, d.w0 - px), ch0 = Math.max(1, d.h0 - py);
+      let cw = Math.max(4, d.w0 + dw - px), ch = Math.max(4, d.h0 + dh - py);
+      if (d.kept) {
+        const r = ratioIn(d.ratio) || cw0 / ch0, k = Math.abs(cw / cw0 - 1) >= Math.abs(ch / ch0 - 1) ? cw / cw0 : ch / ch0;
+        cw = Math.max(4, cw0 * k); ch = cw / r;
+      }
+      cw = Math.round(cw); ch = Math.round(ch);
+      d.w = cw + Math.round(px); d.h = ch + Math.round(py);
+      // (shown as it will be: the content's size, when padding and borders count apart)
+      d.el.style.setProperty('width', cw + 'px', 'important');
+      d.el.style.setProperty('height', ch + 'px', 'important');
+      d.el.style.setProperty('aspect-ratio', 'auto', 'important');
+      d.el.style.setProperty('max-width', 'none', 'important');
+      showEdit(d.el, said(d.el) + '   ' + d.w + ' × ' + d.h + (d.kept ? '   its shape kept' : ''));
+    };
     // the drag so far, from where the pointer is now (the move and the letting go both say)
     const dragTo = (e) => {
       const dx = Math.round(e.clientX - drag.cx + scrollX - drag.sx), dy = Math.round(e.clientY - drag.cy + scrollY - drag.sy);
@@ -3193,22 +3253,45 @@
     };
     document.addEventListener('pointermove', (e) => {
       if (!editing || picking) return;
-      if (drag) { dragTo(e); return; }
-      const el = markedAt(e.target, e.altKey);
+      if (drag) { if (drag.kind === 'size') sizeTo(e); else dragTo(e); return; }
+      // (on the handle of what's pointed at, that stays what's pointed at)
+      if (atCorner(edHover, e)) { cursorAt(true); return; }
+      cursorAt(false);
+      const el = markedAt(e.target, e.altKey, e);
       if (el !== edHover) { edHover = el; showEdit(el, el ? said(el) : ''); }
     }, true);
     document.addEventListener('pointerdown', (e) => {
       if (!editing || picking || e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
-      const el = markedAt(e.target, e.altKey);
+      if (atCorner(edHover, e)) {
+        // the handle: a resize. What the page says of it, now, before it changes
+        const el = edHover, r = el.getBoundingClientRect(), cs = getComputedStyle(el), n = (v) => parseFloat(v) || 0, only = onlyIn(el);
+        drag = { kind: 'size', el, cx: e.clientX, cy: e.clientY, w0: Math.round(r.width), h0: Math.round(r.height), w: Math.round(r.width), h: Math.round(r.height), x: r.left + scrollX, y: r.top + scrollY,
+          css: el.getAttribute('style'), moved: false, only, shaped: SHAPED.test(el.tagName.toLowerCase()) || (!!only && SHAPED.test(only)), kept: false,
+          padX: n(cs.paddingLeft) + n(cs.paddingRight) + n(cs.borderLeftWidth) + n(cs.borderRightWidth), padY: n(cs.paddingTop) + n(cs.paddingBottom) + n(cs.borderTopWidth) + n(cs.borderBottomWidth),
+          boxSizing: cs.boxSizing, display: cs.display, ratio: cs.aspectRatio };
+        try { window.focus(); } catch (err) {}
+        return;
+      }
+      const el = markedAt(e.target, e.altKey, e);
       if (!el) return;
       const r = el.getBoundingClientRect();
-      drag = { el, cx: e.clientX, cy: e.clientY, sx: scrollX, sy: scrollY, x: r.left + scrollX, y: r.top + scrollY, was: el.style.translate, moved: false, dx: 0, dy: 0 };
+      drag = { el, kind: 'move', cx: e.clientX, cy: e.clientY, sx: scrollX, sy: scrollY, x: r.left + scrollX, y: r.top + scrollY, was: el.style.translate, moved: false, dx: 0, dy: 0 };
       try { window.focus(); } catch (err) {}   // (the keys come here while dragging: Esc puts it back)
     }, true);
     document.addEventListener('pointerup', (e) => {
       if (!drag) return;
       e.preventDefault(); e.stopPropagation();
+      if (drag.kind === 'size') {
+        sizeTo(e);   // (where it was let go)
+        const d = endDrag(drag.moved);
+        if (!d.moved) return;
+        lastMoved = d;
+        // (it stays at its new size until the page is rebuilt with it)
+        send({ type: 'resize', line: +d.el.dataset.icLine, id: d.el.id || '', tag: d.el.tagName.toLowerCase(), text: ownText(d.el), only: d.only, kept: d.kept,
+          w0: d.w0, h0: d.h0, w: d.w, h: d.h, x: Math.round(d.x), y: Math.round(d.y), padX: d.padX, padY: d.padY, boxSizing: d.boxSizing, display: d.display, ratio: d.ratio });
+        return;
+      }
       dragTo(e);   // (where it was let go: the last moves before it can be merged into it)
       const d = endDrag(drag.moved);
       if (!d.moved) return;
@@ -3229,7 +3312,7 @@
       const m = e.data;
       if (!m) return;
       if (m.intuicodeEdit !== undefined) setEditing(!!m.intuicodeEdit);
-      if (m.intuicodeEditUndo && lastMoved) { lastMoved.el.style.translate = lastMoved.was; lastMoved = null; showEdit(null); }
+      if (m.intuicodeEditUndo && lastMoved) { if (lastMoved.kind === 'size') unsize(lastMoved); else lastMoved.el.style.translate = lastMoved.was; lastMoved = null; showEdit(null); }
       if (m.intuicodeWhere !== undefined) {
         const line = +m.intuicodeWhere;
         Promise.resolve(document.fonts && document.fonts.ready).then(() => {   // (its fonts in: they change sizes)
@@ -3743,7 +3826,7 @@
 
   const ARR = window.IntuiArrange;
   const EDIT_TITLE = $('btnEditor').title;
-  const EDIT_HINT = 'Drag anything on the page to move it roughly into place. <kbd>Alt</kbd> moves the box it\'s in. The code behind what you point at lights up pink; each move is written in Styling, where you fine-tune it.';
+  const EDIT_HINT = 'Drag anything on the page to move it roughly into place, or its corner to resize it. <kbd>Alt</kbd> moves the box it\'s in; <kbd>Shift</kbd> keeps a box\'s shape (a page, a picture or a video keeps its own). The code behind what you point at lights up pink; each move is written in Styling, where you fine-tune it.';
   let editCheck = null, editTermWas = null;   // the move waiting for the rebuilt page to say where it is; the terminal, folded or not, before
   function setEditor(on) {
     on = !!on && (webOn() || guiOn()) && !!ARR;
@@ -3870,13 +3953,15 @@
   /* A drop in the Preview: { line, id, tag, text, dx, dy, x, y, position, left, top }, from the page. */
   function moveFromPreview(d) {
     if (!editing || !ARR) return;
+    const sizing = d.type === 'resize', act = sizing ? 'resized' : 'moved';
     const pg = previewInfo && previewInfo.page, page = pageAt(d.page), sty = pg && pg.styling;
     const what = `<code>&lt;${escHtml(String(d.tag || ''))}&gt;</code>`;
     const fail = (html) => { editUndo(); editSay(html, true); };
-    if (!page || !isSentences(page) || !Number.isInteger(d.line)) return fail(`That ${what} isn't from a page IntuaCode writes, so it can't be moved from here.`);
-    if (!sty || !isSentences(sty)) return fail(`${escHtml(fileName(page))} has no Styling file to write the move in.`);
+    if (!page || !isSentences(page) || !Number.isInteger(d.line)) return fail(`That ${what} isn't from a page IntuaCode writes, so it can't be ${act} from here.`);
+    if (!sty || !isSentences(sty)) return fail(`${escHtml(fileName(page))} has no Styling file to write the ${sizing ? 'size' : 'move'} in.`);
     syncText(); compile();   // (what was just typed counts)
-    const off = ARR.offsets(d);
+    // (a size: its shape kept for a page, a picture, a video or a drawing, or a box holding only one; or with Shift)
+    const off = sizing ? ARR.sizes({ ...d, kept: !!d.kept || ARR.keepsShape(d.tag, d.only) }) : ARR.offsets(d);
     if (off.why) return fail(escHtml(off.why));
     let name = d.id, structure = null;
     if (!name) {
@@ -3890,17 +3975,17 @@
       name = named.name; structure = named.text;
     }
     // checked before anything is written: the sentence compiles, as a rule for that element
-    const w = ARR.withMove(sty.text, secResult(sty.id), name, off.props);
+    const w = ARR.withMove(sty.text, secResult(sty.id), name, off.props, off.drop);
     const tr = compileAll(withTexts([[sty, w.text], ...(structure != null ? [[page, structure]] : [])])).results[sty.id];
     const inf = tr && tr.info[w.line];
     if (!inf || inf.errs.length || ARR.styleLine(w.text, tr, name) !== w.line) {
-      return fail(`The move couldn't be written as a style for <code>${escHtml(name)}</code>${inf && inf.errs.length ? ': ' + escHtml(inf.errs[0]) : '.'}`);
+      return fail(`The ${sizing ? 'size' : 'move'} couldn't be written as a style for <code>${escHtml(name)}</code>${inf && inf.errs.length ? ': ' + escHtml(inf.errs[0]) : '.'}`);
     }
-    const dirs = ARR.moved(d.dx, d.dy);
+    const dirs = sizing ? `to ${ARR.sized(off.box.w, off.box.h)}${off.kept ? ', its shape kept' : ''}` : ARR.moved(d.dx, d.dy);
     // typed into Styling, as a fix is, so the editor's own Undo (Ctrl+Z) takes the move back; unless opening Styling
     // would change which page the Preview shows (another page of the site is open), when it's written in place
     const typed = !pg.html || pg.html === (compiled.page && compiled.page.structure), was = sty.text;
-    logAs('you', `Moved ${name} ${dirs} in the Preview (Editor mode)${structure != null ? `, naming it in ${fileName(page)}` : ''}.`, () => {
+    logAs('you', `${sizing ? 'Resized' : 'Moved'} ${name} ${dirs} in the Preview (Editor mode)${structure != null ? `, naming it in ${fileName(page)}` : ''}.`, () => {
       if (structure != null) {
         page.text = structure;
         if (page.id === project.active) { ta.value = structure; if (mode === 'unity') unityShow(); }
@@ -3909,11 +3994,11 @@
       else { sty.text = w.text; if (sty.id === project.active) ta.value = sty.text; }
     });
     if (editCheck) { clearTimeout(editCheck.timer); clearInterval(editCheck.poll); }
-    editCheck = { line: d.line, x: d.x + d.dx, y: d.y + d.dy, name, sec: sty.id, at: w.line, dirs, typed };
+    editCheck = { line: d.line, x: d.x + (d.dx || 0), y: d.y + (d.dy || 0), size: sizing ? off.box : null, name, sec: sty.id, at: w.line, dirs, typed };
     typingLine = -1;
     refreshAll(); save(); autosave();
     if (typed) moveMade(sty, was);
-    editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
+    editSay(`${sizing ? 'Resizing' : 'Moving'} <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
     // (the time before the rebuild: the rebuilt page's own start is when the frame is given it, inside runWebsite, so
     // a time taken after it, on a busy computer, is later than the very page it's waiting for)
     const since = Date.now();
@@ -3925,7 +4010,7 @@
     c.since = since;
     c.timer = setTimeout(() => {
       if (editCheck !== c) return;
-      editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the move isn't checked yet.`, true);
+      editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the ${sizing ? 'size' : 'move'} isn't checked yet.`, true);
     }, 8000);
     c.poll = setInterval(() => {
       if (editCheck !== c) return clearInterval(c.poll);
@@ -3941,7 +4026,12 @@
     editCheck = null;
     clearTimeout(c.timer); clearInterval(c.poll);
     const sty = project.sections.find(s => s.id === c.sec), at = sty ? editGo(sty, c.at) : 'Styling';
-    if (!d.found) return editSay(`<code>${escHtml(c.name)}</code> isn't on the rebuilt page, so the move written in ${at} can't be checked.`, true);
+    if (!d.found) return editSay(`<code>${escHtml(c.name)}</code> isn't on the rebuilt page, so the ${c.size ? 'size' : 'move'} written in ${at} can't be checked.`, true);
+    if (c.size) {
+      // (within 2px: a shape kept makes the height from the width, a fraction rounded)
+      if (Math.abs(d.w - c.size.w) <= 2 && Math.abs(d.h - c.size.h) <= 2) return editSay(`Resized <code>${escHtml(c.name)}</code> ${c.dirs}, and the page shows it so. Written in ${at}, ready to fine-tune${c.typed ? ' (<kbd>Ctrl+Z</kbd> there takes it back)' : ''}.`);
+      return editSay(`The page makes <code>${escHtml(c.name)}</code> ${ARR.sized(d.w, d.h)}, not the ${ARR.sized(c.size.w, c.size.h)} it was resized to: another style wins over the one written in ${at} (a max-width, say, or the box it's in). With Project Link on, pointing at it lights up the rules that style it.`, true);
+    }
     if (Math.abs(d.x - c.x) <= 1 && Math.abs(d.y - c.y) <= 1) return editSay(`Moved <code>${escHtml(c.name)}</code> ${c.dirs}, and the page shows it there. Written in ${at}, ready to fine-tune${c.typed ? ' (<kbd>Ctrl+Z</kbd> there takes it back)' : ''}.`);
     editSay(`The page puts <code>${escHtml(c.name)}</code> at ${d.x}, ${d.y}, not where it was dropped (${c.x}, ${c.y}): another style wins over the one written in ${at}. With Project Link on, pointing at it lights up the rules that style it.`, true);
   }
@@ -4228,6 +4318,10 @@ ${key}</div>${wins}${notes}</body></html>`;
     const est = guiShown && !webOn();   // (the Preview shows an app's estimate)
     if (d.type === 'link' || d.type === 'link-run') { if (est) guiLink(d); else onLink(d); return; }
     if (d.type === 'move') { if (est) moveInGui(d); else moveFromPreview(d); return; }
+    if (d.type === 'resize') {
+      if (est) { if (editing) { editUndo(); editSay('Resizing a part of an app\'s window isn\'t written yet: drag it to move it, or change its size in its code (pointing at it lights the code up).', true); } return; }
+      moveFromPreview(d); return;
+    }
     if (d.type === 'edit-at') { editChecked(d); return; }
     if (d.type === 'loaded') { editPageLoaded(); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);

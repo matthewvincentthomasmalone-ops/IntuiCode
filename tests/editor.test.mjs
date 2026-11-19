@@ -67,6 +67,47 @@ test('editor: a drop becomes offsets, from where the page says the element is', 
   assert.equal(ARR.moved(-3, 0), '3 left');
 });
 
+test('editor: a resize becomes sizes: its shape kept as a rule (a page, a picture, a video, a drawing, or Shift), or a width and height', () => {
+  // an embedded page sized 300 by 200 (its 2px borders count apart): wider, its shape kept, the shape it had
+  const frame = ARR.sizes({ w0: 304, h0: 204, w: 400, h: 268, padX: 4, padY: 4, boxSizing: 'content-box', display: 'inline', tag: 'iframe', kept: true, ratio: 'auto' });
+  assert.deepEqual(plain(frame), { props: { width: 396, height: 'auto', 'aspect-ratio': '3 / 2' }, drop: [], box: { w: 400, h: 268 }, kept: true });
+  // a shape the page already says (an aspect-ratio) is the one kept
+  assert.equal(ARR.sizes({ w0: 320, h0: 180, w: 640, h: 360, padX: 0, padY: 0, kept: true, ratio: 'auto 16 / 9', tag: 'video', display: 'inline' }).props['aspect-ratio'], '16 / 9');
+  // a box: its padding counts apart (content-box), so it's the size it was dragged to, and no shape kept
+  assert.deepEqual(plain(ARR.sizes({ w0: 220, h0: 60, w: 300, h: 90, padX: 20, padY: 20, boxSizing: 'content-box', display: 'block', tag: 'div', kept: false })),
+    { props: { width: 280, height: 70 }, drop: ['aspect-ratio'], box: { w: 300, h: 90 }, kept: false });
+  assert.deepEqual(plain(ARR.sizes({ w0: 200, h0: 100, w: 300, h: 130, padX: 20, padY: 20, boxSizing: 'border-box', display: 'block', tag: 'div', kept: false }).props), { width: 300, height: 130 }, 'border-box: its own size');
+  assert.match(ARR.sizes({ w0: 40, h0: 18, w: 60, h: 20, display: 'inline', tag: 'span' }).why, /part of a line of text \(display: inline\).*"display: inline-block"/);
+  assert.equal(ARR.sizes({ w0: 40, h0: 18, w: 40, h: 18, display: 'block', tag: 'div' }).why, 'It wasn\'t resized.');
+  // what keeps its shape: a page, a picture, a video, a drawing, or a box holding only one
+  assert.deepEqual(['iframe', 'img', 'video', 'svg', 'canvas', 'div', 'h1'].map(t => ARR.keepsShape(t)), [true, true, true, true, true, false, false]);
+  assert.equal(ARR.keepsShape('div', 'iframe'), true);
+  assert.deepEqual([ARR.ratioOf(1.5), ARR.ratioOf(1280 / 720), ARR.ratioOf(1), ARR.ratioOf(481 / 300)], ['3 / 2', '16 / 9', '1 / 1', '1.603']);
+  assert.equal(ARR.sized(400, 268), '400 × 268');
+});
+
+test('editor: a size goes in the sentence a move does and compiles; resized freely, a kept shape is taken out', () => {
+  const FRAME = BAKERY + 'add an embedded page called frame, from "about:blank", sized 300 by 200\n';
+  const kept = ARR.sizes({ w0: 304, h0: 204, w: 400, h: 268, padX: 4, padY: 4, kept: true, ratio: 'auto', tag: 'iframe', display: 'inline' });
+  let w = ARR.withMove(BAKERY_STYLE, site(FRAME, BAKERY_STYLE).styling, 'frame', kept.props, kept.drop);
+  let r = site(FRAME, w.text).styling;
+  assert.equal(w.text.split('\n')[w.line], 'style frame: width: 396px, height: auto, aspect-ratio: 3 / 2');
+  assert.deepEqual(plain(r.info[w.line].errs), []);
+  assert.match(r.text, /#frame \{\s*width: 396px;\s*height: auto;\s*aspect-ratio: 3 \/ 2;\s*\}/);
+  // a move after it: the same sentence
+  w = ARR.withMove(w.text, r, 'frame', ARR.offsets({ dx: 20, dy: 10, position: 'static' }).props);
+  assert.equal(w.text.split('\n')[w.line], 'style frame: width: 396px, height: auto, aspect-ratio: 3 / 2, position: relative, left: 20px, top: 10px');
+  r = site(FRAME, w.text).styling;
+  // resized freely: its width and height, the kept shape taken out, the rest as it was
+  w = ARR.withMove(w.text, r, 'frame', { width: 500, height: 100 }, ['aspect-ratio']);
+  assert.equal(w.text.split('\n')[w.line], 'style frame: width: 500px, height: 100px, position: relative, left: 20px, top: 10px');
+  assert.deepEqual(plain(site(FRAME, w.text).styling.info[w.line].errs), []);
+  // a look that says a width among its colours stays the look: the size goes after it
+  const look = BAKERY_STYLE + 'style frame: background white, width: 100%\n';
+  w = ARR.withMove(look, site(FRAME, look).styling, 'frame', { width: 500, height: 100 }, ['aspect-ratio']);
+  assert.deepEqual(w.text.split('\n').slice(w.line - 1, w.line + 1), ['style frame: background white, width: 100%', 'style frame: width: 500px, height: 100px']);
+});
+
 test('editor: a style sentence gets the offsets in place, as IntuaCode reads CSS back; the rest of it as written', () => {
   const p = { position: 'relative', left: 20, top: -10 };
   assert.equal(ARR.styleWith('style cta:', p), 'style cta: position: relative, left: 20px, top: -10px', 'a place made for it');
@@ -172,7 +213,7 @@ function driving(tab) {
     setTimeout(() => no(new Error('the page didn\\'t answer')), 5000);
   })`);
   const frame = async () => JSON.parse(await tab.run('JSON.stringify(document.getElementById("preview").getBoundingClientRect())'));
-  const mouse = (type, x, y, held, alt) => tab.send('Input.dispatchMouseEvent', { type, x, y, modifiers: alt ? 1 : 0, button: type === 'mouseMoved' && !held ? 'none' : 'left', buttons: type === 'mousePressed' || held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
+  const mouse = (type, x, y, held, alt, shift) => tab.send('Input.dispatchMouseEvent', { type, x, y, modifiers: (alt ? 1 : 0) | (shift ? 8 : 0), button: type === 'mouseMoved' && !held ? 'none' : 'left', buttons: type === 'mousePressed' || held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1 });
   // the browser's own pointer: onto the element (its middle, or 40px in), pressed, moved in steps, let go
   const drag = async (line, dx, dy, alt) => {
     const f = await frame(), at = await where(line), x = f.x + at.x + Math.min(at.w / 2, 40), y = f.y + at.y + at.h / 2;   // (inside it: a rounded corner isn't)
@@ -189,6 +230,25 @@ function driving(tab) {
     await until('!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move to be checked');
     return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
   };
+  // the handle: onto the element (so it's what's pointed at), then onto its bottom right corner, pressed, moved in
+  // steps (Shift held, or not), let go
+  const resize = async (line, dw, dh, shift) => {
+    const f = await frame(), at = await where(line), x = f.x + at.x + at.w - 3, y = f.y + at.y + at.h - 3;
+    await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
+    // (pointed at twice: the first move after the page is rebuilt is how Chrome without a window finds it's there)
+    await mouse('mouseMoved', f.x + at.x + at.w / 2, f.y + at.y + at.h / 2);
+    await new Promise(r => setTimeout(r, 150));
+    await mouse('mouseMoved', f.x + at.x + at.w / 2 + 2, f.y + at.y + at.h / 2 + 1);
+    await new Promise(r => setTimeout(r, 100));
+    await mouse('mouseMoved', x, y, false, false, shift);
+    await new Promise(r => setTimeout(r, 100));
+    await mouse('mousePressed', x, y, false, false, shift);
+    for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dw * i / 8, y + dh * i / 8, true, false, shift);
+    await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
+    await mouse('mouseReleased', x + dw, y + dh, false, false, shift);
+    await until('!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the size to be checked');
+    return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
+  };
   // Ctrl+Z, as pressed (where the keys are: the code, after a move)
   const undo = async () => {
     await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
@@ -198,7 +258,13 @@ function driving(tab) {
   const file = async (p) => (await new Promise(r => setTimeout(r, 450))) || tab.run(`JSON.parse(localStorage.getItem("intuicode.project.v1")).sections.find(s => s.path === ${JSON.stringify(p)}).text`);
   const box = (sel) => tab.run(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); const r = e && e.getBoundingClientRect(); return r && r.width ? [Math.round(r.left), Math.round(r.width)] : null; })()`);
   const layout = async () => ({ side: await box('.side'), code: await box('#unityView'), page: await box('#term'), explain: await box('#explainWrap'), help: await box('#btnIndex') });
-  return { until, where, frame, mouse, drag, undo, file, box, layout };
+  // something done, and the Preview rebuilt after it (counted by the frame's loads): what's dragged next is on that page
+  const rebuilt = async (fn) => {
+    const n = await tab.run(`(() => { const f = document.getElementById('preview'); if (!f.dataset.loads) { f.dataset.loads = '0'; f.addEventListener('load', () => { f.dataset.loads = String(+f.dataset.loads + 1); }); } return +f.dataset.loads; })()`);
+    await fn();
+    await until(`+document.getElementById('preview').dataset.loads > ${n}`, 'the page to be rebuilt');
+  };
+  return { until, where, frame, mouse, drag, resize, undo, rebuilt, file, box, layout };
 }
 
 test('editor: in the page, the windows make room, a drag is written in Styling and checked on the rebuilt page, and it all comes back', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
@@ -234,7 +300,7 @@ test('editor: in the page, the windows make room, a drag is written in Styling a
     await tab.run('document.getElementById("btnEditor").click()');
     assert.equal(await tab.run('document.getElementById("btnEditor").getAttribute("aria-pressed")'), 'true');
     assert.deepEqual(await layout(), { side: null, code: [0, 700], page: [700, 700], explain: null, help: null });
-    assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Drag anything on the page to move it roughly into place\. Alt moves the box it's in\./);
+    assert.match(await tab.run('document.getElementById("editBar").textContent'), /^Drag anything on the page to move it roughly into place, or its corner to resize it\. Alt moves the box it's in; Shift keeps a box's shape/);
 
     // pointing at the button lights up its code in pink: its style first (where a move goes), then its sentence
     {
@@ -348,6 +414,78 @@ test('editor: in the page, the windows make room, a drag is written in Styling a
   } finally { await browser.close(); }
 });
 
+test('editor: in the page, a corner resizes: an embedded page keeps its shape, a box resizes freely, Shift keeps its shape, Ctrl+Z takes it back', { skip: !findChrome() && 'no Chrome or Edge' }, async () => {
+  const browser = await openBrowser();
+  try {
+    const tab = await browser.tab();
+    const size = () => tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
+    const ready = () => tab.run('(async () => { for (let i = 0; i < 100; i++) { if (document.getElementById("btnEditor") && document.getElementById("ta")) return true; await new Promise(r => setTimeout(r, 100)); } return false; })()');
+    await tab.open(ORIGIN + '/', { serve: serveApp });
+    await size();
+    assert.ok(await ready());
+    // the Landing page, with an embedded page and a box in it: typed into its Structure (open as it starts), and the
+    // box's look into Styling as the project is kept, then opened again
+    await tab.run(`(() => {
+      const ta = document.getElementById('ta'), lines = ta.value.split('\\n'), at = lines.findIndex(l => /^add a section called menu/.test(l));
+      lines.splice(at, 0, 'add an embedded page called frame, from "about:blank", sized 300 by 200', 'add a box called panel', '    add a paragraph "Notes"');
+      ta.value = lines.join('\\n'); ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    assert.ok(await tab.run(`(async () => { for (let i = 0; i < 50; i++) { const p = localStorage.getItem('intuicode.project.v1'); if (p && p.includes('called frame')) return true; await new Promise(r => setTimeout(r, 100)); } return false; })()`), 'the project kept');
+    await tab.run(`(() => {
+      const p = JSON.parse(localStorage.getItem('intuicode.project.v1')), sy = p.sections.find(s => s.path === 'style.css');
+      sy.text = sy.text.replace(/\\s*$/, '\\n') + 'style panel: background #eee, space inside 10\\n';
+      localStorage.setItem('intuicode.project.v1', JSON.stringify(p));
+      return true;
+    })()`);
+    await tab.open(ORIGIN + '/', { serve: serveApp });
+    await size();
+    assert.ok(await ready());
+    await tab.run('(() => { const w = document.getElementById("welcomeModal"); if (!w.hidden) document.getElementById("welcomeLook").click(); })()');
+    const { until, where, resize, undo, file } = driving(tab);
+    await until('!document.getElementById("previewWrap").hidden', 'the Preview');
+    const lineOf = async (re) => (await file('index.html')).split('\n').findIndex(l => re.test(l));
+    const frameAt = await lineOf(/^add an embedded page called frame/), panelAt = await lineOf(/^add a box called panel/);
+    const styleAt = async (re) => (await file('style.css')).split('\n').filter(l => re.test(l));
+    const f0 = await where(frameAt);
+    assert.deepEqual([f0.w, f0.h], [304, 204], 'sized 300 by 200, and its borders');
+    await tab.run('document.getElementById("btnEditor").click()');
+    await until('/^Drag anything/.test(document.getElementById("editBar").textContent)', 'Editor mode');
+
+    // the embedded page: its shape kept, from the shape it has, as a rule
+    let m = await resize(frameAt, 96, 10);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, /^Resized frame to 400 × 268, its shape kept, and the page shows it so\. Written in style\.css line \d+, ready to fine-tune \(Ctrl\+Z there takes it back\)\./);
+    assert.deepEqual(await styleAt(/^style frame:/), ['style frame: width: 396px, height: auto, aspect-ratio: 3 / 2']);
+    const f1 = await where(frameAt);
+    assert.deepEqual([f1.w, f1.h], [400, 268]);
+
+    // the box: freely (its padding counts apart, so it's the size it was dragged to)
+    const p0 = await where(panelAt);
+    m = await resize(panelAt, -300, 40);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, new RegExp(`^Resized panel to ${p0.w - 300} × ${p0.h + 40}, and the page shows it so\\.`));
+    // (after its look; the empty sentence before it is the one IntuaCode offers when a name is new)
+    assert.deepEqual((await styleAt(/^style panel:/)).slice(-2), ['style panel: background #eee, space inside 10', `style panel: width: ${p0.w - 320}px, height: ${p0.h + 20}px`], 'after its look');
+    // with Shift, its shape kept: the same sentence, the shape as a rule
+    const p1 = await where(panelAt);
+    m = await resize(panelAt, 60, 0, true);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, /its shape kept, and the page shows it so/);
+    const kept = (await styleAt(/^style panel:/)).pop();
+    assert.match(kept, new RegExp(`^style panel: width: ${p1.w + 60 - 20}px, height: auto, aspect-ratio: \\d+(?: / \\d+|\\.\\d+)?$`), kept);
+    // (its shape inside its padding, 10 all round, as aspect-ratio keeps it; and as it was shown while dragged)
+    const p2 = await where(panelAt), inside = (b) => (b.w - 20) / (b.h - 20);
+    assert.ok(Math.abs(inside(p2) - inside(p1)) < 0.03, `its shape: ${p1.w} × ${p1.h}, then ${p2.w} × ${p2.h}`);
+    assert.match(m.bar, new RegExp(`^Resized panel to ${p2.w} × ${p2.h}, its shape kept`), 'the size shown as it was dragged is the size it is');
+    // Ctrl+Z, straight after: the size it had
+    await undo();
+    await until(`(JSON.parse(localStorage.getItem('intuicode.project.v1')).sections.find(s => s.path === 'style.css').text.split('\\n').find(l => /^style panel: width/.test(l)) || '') === 'style panel: width: ${p0.w - 320}px, height: ${p0.h + 20}px'`, 'Ctrl+Z to take the size back');
+    await tab.run('document.getElementById("btnEditor").click()');
+    await tab.close();
+  } finally { await browser.close(); }
+});
+
 /* The desktop app's page with a pretend desktop layer (tests/desktop-mock.html, as run.py serves it): the desktop code
    paths, in Chrome. There's no local address to pretend, so the preview shows one page, as the desktop app does when it
    can't open one (tests/e2e/run.mjs drives the real app, at its local address). */
@@ -362,7 +500,7 @@ test('editor: with the desktop layer (tests/desktop-mock.html), a move is writte
     const tab = await browser.tab();
     await tab.open(ORIGIN + '/tests/desktop-mock.html', { serve: serveMock });
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
-    const { until, where, drag, undo, layout } = driving(tab);
+    const { until, where, drag, resize, undo, rebuilt, layout } = driving(tab);
     await until('document.getElementById("btnEditor") && document.getElementById("ta") && document.documentElement.classList.contains("desktop")', 'the app, as the desktop app');
     await tab.run('(() => { const w = document.getElementById("welcomeModal"); if (!w.hidden) document.getElementById("welcomeLook").click(); return true; })()');
     // the Landing page, from Project Templates
@@ -383,6 +521,13 @@ test('editor: with the desktop layer (tests/desktop-mock.html), a move is writte
     assert.equal(m.bar, 'Moved cta 30 right and 12 down, and the page shows it there. Written in style.css line 5, ready to fine-tune (Ctrl+Z there takes it back).');
     const line5 = () => tab.run('document.getElementById("uTa").value.split(String.fromCharCode(10))[4]');
     assert.equal(await line5(), 'style cta: position: relative, left: 30px, top: 12px');
+    await rebuilt(undo);
+    assert.equal(await line5(), 'when cta is hovered: background #ffe9d2');
+    // its corner: resized freely (a button), the size in its own sentence after its look, checked on the page
+    const c0 = await where(4), r = await resize(4, 30, 6);
+    assert.equal(r.bad, false, r.bar);
+    assert.match(r.bar, new RegExp(`^Resized cta to ${c0.w + 30} × ${c0.h + 6}, and the page shows it so\\. Written in style\\.css line 5`));
+    assert.match(await line5(), /^style cta: width: \d+px, height: \d+px$/);
     await undo();
     assert.equal(await line5(), 'when cta is hovered: background #ffe9d2');
     await tab.run('document.getElementById("btnEditor").click()');
