@@ -191,7 +191,7 @@ function driving(tab) {
   };
   // Ctrl+Z, as pressed (where the keys are: the code, after a move)
   const undo = async () => {
-    await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2, commands: ['undo'] });
+    await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
     await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
   };
   // a file as the project keeps it (it's stored 300ms after a change)
