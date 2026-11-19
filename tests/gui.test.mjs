@@ -334,7 +334,7 @@ test('gui: in the page, an imported tkinter app shows its window in the Preview,
     assert.match(m.bar, /^Moved status 30 right and 10 up, and the code puts it there\. Written in tk_app\.py line 21/);
     assert.equal((await code()).split('\n')[20], 'status.place(x=42, y=260)');
     // Ctrl+Z, in the code, takes it back
-    await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2, commands: ['undo'] });
+    await tab.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
     await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
     assert.equal((await code()).split('\n')[20], 'status.place(x=12, y=270)');
     // the list (pack) isn't at a position: it says why, and the code stays as it is

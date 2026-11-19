@@ -4045,12 +4045,14 @@ html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Se
     const e = codeEdit(sec, r.line, String(file.code).replace(/\r\n?/g, '\n').split('\n')[r.line], r.text);
     if (e.why) return fail(`<code>${escHtml(name)}</code>: ${escHtml(e.why)}`);
     const dirs = r.row != null ? `to row ${r.row}, column ${r.column}` : ARR.moved(d.dx, d.dy);
+    const was = sec.text;
     logAs('you', `Moved ${name} ${dirs} in the Preview's estimate (Editor mode).`, () => {
       if (project.active !== sec.id) openSection(sec.id, e.line);
       typeMove(sec, e);
     });
     typingLine = -1;
     refreshAll(); save(); autosave();
+    moveMade(sec, was);   // (Ctrl+Z straight after puts it back)
     // read again from the code: is it where it was dropped (or in the cell it was dropped in)?
     const g = guiEstimate(), now = g && guiList(g.est).find(x => x.node.id === it.node.id), at = `${editGo(sec, e.line)}`;
     const there = now && (r.row != null ? now.node.cell && now.node.cell.r === r.row && now.node.cell.c === r.column
