@@ -683,9 +683,15 @@ try {
       return { line: document.getElementById(id).value.split('\n')[4], keys: document.activeElement && document.activeElement.id, editor: id };
     });
     if (written.line !== 'style cta: position: relative, left: 40px, top: 16px' || written.keys !== written.editor) throw new Error(JSON.stringify(written));
-    // the editor's own Undo takes it back
-    const undone = await js((id) => { const ed = document.getElementById(id); ed.focus(); document.execCommand('undo'); return ed.value.split('\n')[4]; }, written.editor);
-    if (undone !== 'when cta is hovered: background #ffe9d2') throw new Error('after Undo, line 5 is ' + JSON.stringify(undone));
+    // the editor's own Undo takes it back: Ctrl+Z, pressed (WebKit takes Undo only from the keyboard or a menu, never
+    // from a script's execCommand, so the keys are the browser's own, through WebDriver)
+    await js((id) => { document.getElementById(id).focus(); return true; }, written.editor);
+    await wd('POST', `/session/${session}/actions`, { actions: [{ type: 'key', id: 'keyboard', actions: [
+      { type: 'keyDown', value: '\uE009' }, { type: 'keyDown', value: 'z' }, { type: 'keyUp', value: 'z' }, { type: 'keyUp', value: '\uE009' }] }] });
+    await wd('DELETE', `/session/${session}/actions`).catch(() => {});
+    const line5 = () => js((id) => document.getElementById(id).value.split('\n')[4], written.editor);
+    await waitFor('Ctrl+Z to take the move back', async () => (await line5()) === 'when cta is hovered: background #ffe9d2', 5000)
+      .catch(async () => { throw new Error('after Ctrl+Z, line 5 is ' + JSON.stringify(await line5())); });
     // pressed again: everything as it was
     await click('btnEditor');
     const off = await where();
