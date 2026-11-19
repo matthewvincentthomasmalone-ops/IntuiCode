@@ -1221,8 +1221,11 @@
     const atEnd = new Set(ordered.slice(tail));   // where Structure puts the Styling link anyway
     const linkKey = (h) => JSON.stringify(attrsOf(h).filter(x => x.name !== 'href').map(x => [x.name, x.value]));
     let usualCharset = false, usualViewport = false;
+    // (Structure's rules for webpage boxes: said by the boxes; the check makes them again, exactly, or they stay code)
+    const boxRules = (h) => isEl(h) && tagOf(h) === 'style' && attrsOf(h).length === 1 && attrsOf(h)[0].name === 'data-webpage-boxes';
     for (const h of p.headItems) {
       if (isComment(h)) continue;
+      if (boxRules(h)) continue;
       const a = isEl(h) ? attrsOf(h) : [];
       const k = metaKind(h);
       if ((h === title && !titleRaw) || atEnd.has(h)) continue;
@@ -1498,6 +1501,14 @@
           return say(`add a drawing area${called}${both ? ` ${w} by ${h}` : ''}`, others(both ? ['width', 'height'] : []));
         }
         if (tag === 'hr' && !idOK) return say('add a line', others([]));
+        // a webpage box (Structure's): the box, the page in it (only its address and tooltip), and the box's size
+        if (tag === 'div' && /^\d+x\d+$/.test(get('data-webpage-box') || '') && kids.length === 1 && isEl(kids[0]) && tagOf(kids[0]) === 'iframe' && !childNodes(kids[0]).filter(x => !isBlankText(x)).length) {
+          const pa = attrsOf(kids[0]), psrc = getAttr(pa, 'src'), tip = getAttr(pa, 'title');
+          if (psrc != null && pa.every(x => x.name === 'src' || x.name === 'title') && pa.length === new Set(pa.map(x => x.name)).size) {
+            const [bw, bh] = get('data-webpage-box').split('x');
+            return say(`add a webpage box${called}, from ${quote(psrc)}, sized ${bw} by ${bh}${tip != null ? ', with tooltip ' + quote(tip) : ''}`, others(['data-webpage-box']));
+          }
+        }
       }
       // any other element, said the general way: its word, name, text or shape, then its attributes
       const word = WEB.elementWord(svg ? (named(named(n).find(x => x.type === 'start_tag' || x.type === 'self_closing_tag')).find(x => x.type === 'tag_name') || {}).text || tag : tag, svg);

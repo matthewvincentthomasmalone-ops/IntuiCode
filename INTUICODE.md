@@ -475,6 +475,9 @@ label       = "add" [ "a" ] "label" text [ "for" name ] ;                       
 video       = "add" [ "a" ] "video" [ "called" name ] "of" text ;                   (* → <video controls> *)
 embedded-page = "add" [ "a" | "an" ] ( "embedded page" | "webpage" | "webpage link" ) [ "called" name ] ( "from" | "to" | "of" ) text ;
                                                                           (* → <iframe src>; ", from …" after a comma too *)
+webpage-box = "add" [ "a" ] "webpage box" [ "called" name ] [ ( "from" | "to" | "of" ) text ] ;
+                                                                          (* → <div data-webpage-box><iframe src></div>: the page
+                                                                             fills the box, the box keeps the shape of its size *)
 canvas      = "add" [ "a" ] ( "drawing area" | "canvas" ) [ "called" name ] [ number ( "by" | "x" ) number ] ; (* → <canvas> *)
 rule        = "add" [ "a" ] "line" ;                                                (* → <hr> *)
 container   = "add" [ "a" | "an" ] container-word [ "called" name ] ;               (* opens a block *)
@@ -2813,6 +2816,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 |  | `add a hidden value "‹home›" sent as "‹source›"` | `<input type="hidden" name="source" value="home">` | Sent with its form, never shown: something the server needs, not the person filling it in. |
 |  | `add a file picker called ‹name› for ‹pictures›` | `<input type="file" accept="image/*">` | Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›". |
 | **Media** | `add a picture of "‹file.jpg›" described as "‹what it shows›"` | `<img src="…" alt="…">` | The description is read aloud by screen readers. |
+|  | `add a webpage box called ‹news›, from "‹https://…›", sized ‹600› by ‹400›` | `<div data-webpage-box><iframe src="…">` | A web page in a box that keeps its shape: the page fills the box, so resizing the box (Editor mode, or its width in Styling) resizes the page. |
 |  | `add an embedded page, from "‹https://…›", sized ‹600› by ‹400›, with tooltip "‹what it shows›"` | `<iframe src="…" width="600" height="400" title="…">` | Another web page shown inside this one. The tooltip names it for screen readers. Also: add a webpage, add a webpage link. |
 |  | `add a drawing area called ‹game› ‹480› by ‹270›` | `<canvas id="game" width="480" height="270">` | Where a game or a picture is drawn, from Mechanics. |
 |  | `add a link to "‹https://…›" saying "‹text›"` | `<a href="…">…</a>` | An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:…. |

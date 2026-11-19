@@ -380,6 +380,25 @@ folder was next opened, and an edit to the same file in IntuaCode in the meantim
 - **The window's own colours stay readable.** Seafoam (the Predictive Mode button's) and pink are shown on the editor's
   background, which can only be dark; `tests/look.test.mjs` checks both on the lightest one it lets through.
 
+## Decision: a webpage box is a box the page fills, its shape a rule in the page's head
+
+*Decided 2026-11-19.*
+
+Another page shown in this one (an embedded page) is often wanted at a size that keeps its shape. `add a webpage box
+called news, from "…", sized 600 by 400` is a box (`<div data-webpage-box="600x400">`) holding the page, which fills
+it (`width: 100%; height: 100%`), and the box is the shape of its size:
+
+- **The shape is a rule, not a style on the box.** Structure writes one `<style data-webpage-boxes>` in the head, a rule a
+  size (`[data-webpage-box="600x400"] { width: 600px; aspect-ratio: 3 / 2; }`), before Styling's link. A style on the
+  box itself would beat anything Styling says; as an attribute's rule it loses to Styling's rule for its name, so a
+  width there (or a corner in Editor mode, which writes one with the shape kept) resizes it, the page following. On a
+  narrow screen it's no wider than what it's in (`max-width: 100%`), its height following.
+- **One sentence, one thing to point at.** The page inside has no line mark of its own (`data-ic-line`), so pointing,
+  moving and resizing are the box's; nothing can be indented under it. The page's settings (its address, tooltip) go to
+  the page, the size to the box; with no size it's 600 by 400, and says so.
+- **Read back as written.** The reader says the box, its page and its size as the sentence, and says nothing for the
+  head's rules (the check makes them again, exactly, or they'd stay code).
+
 ## Decision: Editor mode moves what's on the page by writing a style, and believes the rebuilt page
 
 *Decided 2026-11-19.*
@@ -473,6 +492,12 @@ it. Like a move on a page, it's worked out, never kept:
   or column); a packed part, one worked out by rules or a sketch says how it's placed and lights up the line instead.
   The new line is typed into the open file (in a file of sentences, only an exact `python:` or `c++:` line), so Undo
   takes it back, and the estimate is read again from the code to check it's where it was dropped.
+- **A corner is a size, in the same line.** A placed part's `place(…)` gets `width=` and `height=` (its own changed, or
+  added; `relwidth` and sizes worked out say why not), a JUCE part's `setBounds` its last two numbers, and a window its
+  `geometry("WxH")` or `setSize(w, h)`. Read again, it has to be that size. A packed or gridded part, or one sized by
+  rules, says it's the size it asks for (a Button's width is in characters). A window's corner is often a part's too
+  (the list that fills it): Alt, the group it's in, reaches the window. In a measured view, a part sized by numbers is
+  that size where it was measured, so the measurement holds.
 - **Not the real thing.** Fonts and native controls differ, and a sketch is only the code's order. The real thing is the
   running app measuring itself (next decision). FEC 16's code shows why it's needed: its layout is worked out from the
   window's size and its state, so it reads almost all as a sketch, though its groups are right.

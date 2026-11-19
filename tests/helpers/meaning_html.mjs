@@ -35,6 +35,9 @@ export const HTML_STRUCTURE = [
   { page: 'add an embedded page, from "map.html", sized 600 by 400, with tooltip "A map of the town"',
     holds: 'page.q("iframe").getAttribute("src") === "map.html" && page.q("iframe").clientWidth === 600 && page.q("iframe").clientHeight === 400 && page.q("iframe").title === "A map of the town" && page.went.includes("/map.html")' },
   { page: 'add a webpage link to "map.html"', holds: 'page.q("iframe").getAttribute("src") === "map.html" && page.went.includes("/map.html")' },
+  // a webpage box: the box is its size, and the page fills it; a width in Styling keeps its shape
+  { page: 'add a webpage box called news, from "map.html", sized 600 by 400',
+    holds: 'page.el("news").clientWidth === 600 && page.el("news").clientHeight === 400 && page.q("iframe").clientWidth === 600 && page.q("iframe").clientHeight === 400 && page.went.includes("/map.html")' },
   { page: 'add a drawing area called game 480 by 270', holds: 'page.el("game").tagName === "CANVAS" && page.el("game").width === 480 && page.el("game").height === 270' },
   { page: 'add a link to "https://example.com/" saying "Go"', holds: 'page.q("a").href === "https://example.com/" && page.q("a").textContent === "Go"' },
   { page: 'add a section called intro', holds: 'page.el("intro").tagName === "SECTION"' },
@@ -76,6 +79,8 @@ export const HTML_STRUCTURE = [
 
 export const HTML_STYLING = [
   { page: 'add a heading called title saying "Hi"', style: 'set title colour to red', holds: css('#title', 'color', 'rgb(255, 0, 0)') },
+  { page: 'add a webpage box called news, from "map.html", sized 600 by 400', style: 'style news: width: 300px',
+    holds: [css('#news', 'width', '300px'), css('#news', 'height', '200px'), 'document.querySelector("#news > iframe").clientWidth === 300 && document.querySelector("#news > iframe").clientHeight === 200'] },
   { page: 'add a box called panel', style: 'give panel a red border', holds: [css('#panel', 'borderTopWidth', '1px'), css('#panel', 'borderTopStyle', 'solid'), css('#panel', 'borderTopColor', 'rgb(255, 0, 0)')] },
   { page: 'add a paragraph called p saying "x"', style: 'make p bold', holds: css('#p', 'fontWeight', '700') },
   { page: 'add a box called panel', style: 'style panel: background navy, text colour white', holds: [css('#panel', 'backgroundColor', 'rgb(0, 0, 128)'), css('#panel', 'color', 'rgb(255, 255, 255)')] },

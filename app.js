@@ -3856,7 +3856,7 @@
     const w = $('preview').contentWindow;
     if (w) w.postMessage({ intuicodeEdit: on }, '*');
     // (an app's estimate: its parts move in the code, where their numbers are)
-    editSay(on ? (webOn() ? EDIT_HINT : 'Drag a part of the window to move it. <kbd>Alt</kbd> moves the group it\'s in, and the code behind what you point at lights up pink. A part whose numbers are in the code (solid outline) moves there, ready to fine-tune; the rest say how they\'re placed.') : '');
+    editSay(on ? (webOn() ? EDIT_HINT : 'Drag a part of the window to move it, or its corner to resize it. <kbd>Alt</kbd> moves the group it\'s in, and the code behind what you point at lights up pink. A part whose numbers are in the code (solid outline) moves there, ready to fine-tune; the rest say how they\'re placed.') : '');
     measure(); syncScroll(); placeTip();
     if (mode === 'unity') uSync();
   }
@@ -4244,18 +4244,20 @@ ${key}</div>${wins}${notes}</body></html>`;
     const it = guiShown.list[d.line], fail = (html) => { editUndo(); editSay(html, true); };
     if (!it) return fail('That isn\'t a part of the estimate.');
     syncText();
-    // a measured part moves as the code's part it stands for (its numbers, its row and column: the same code)
+    // a measured part moves as the code's part it stands for (its numbers, its row and column: the same code); a resize
+    // (its corner) is its size in the same line
+    const sizing = d.type === 'resize';
     const name = it.node.name || it.node.kind, src = guiShown.measuredView ? it.node.eid != null && guiList(guiShown.code).find(x => x.node.id === it.node.eid) : it;
     if (!src) return fail(`<code>${escHtml(name)}</code>: ${escHtml(it.node.why || 'Nothing in the code places it.')}`);
-    const r = GUI.move(guiShown.files, src.node, d.dx, d.dy, src.parent);
+    const r = sizing ? GUI.resize(guiShown.files, src.node, d.w, d.h) : GUI.move(guiShown.files, src.node, d.dx, d.dy, src.parent);
     if (r.why) return fail(`<code>${escHtml(name)}</code>: ${escHtml(r.why)}`);
     const sec = project.sections.find(s => s.path === r.path), file = guiShown.files.find(f => f.path === r.path);
     if (!sec || !file) return fail(`<code>${escHtml(name)}</code>: its code isn't in the project.`);
     const e = codeEdit(sec, r.line, String(file.code).replace(/\r\n?/g, '\n').split('\n')[r.line], r.text);
     if (e.why) return fail(`<code>${escHtml(name)}</code>: ${escHtml(e.why)}`);
-    const dirs = r.row != null ? `to row ${r.row}, column ${r.column}` : ARR.moved(d.dx, d.dy);
+    const dirs = sizing ? `to ${ARR.sized(r.w, r.h)}` : r.row != null ? `to row ${r.row}, column ${r.column}` : ARR.moved(d.dx, d.dy);
     const was = sec.text;
-    logAs('you', `Moved ${name} ${dirs} in the Preview's estimate (Editor mode).`, () => {
+    logAs('you', `${sizing ? 'Resized' : 'Moved'} ${name} ${dirs} in the Preview's estimate (Editor mode).`, () => {
       if (project.active !== sec.id) openSection(sec.id, e.line);
       typeMove(sec, e);
     });
@@ -4265,21 +4267,24 @@ ${key}</div>${wins}${notes}</body></html>`;
     // read again from the code: is it where it was dropped (or in the cell it was dropped in)? (A measured part: where
     // the code put it before, as read, moved by as much.)
     const was0 = src.node, g = guiEstimate(), now = g && guiList(g.est).find(x => x.node.id === was0.id), at = `${editGo(sec, e.line)}`;
-    const there = now && (r.row != null ? now.node.cell && now.node.cell.r === r.row && now.node.cell.c === r.column
+    const there = now && (sizing ? Math.abs(now.node.w - r.w) <= 1 && Math.abs(now.node.h - r.h) <= 1
+      : r.row != null ? now.node.cell && now.node.cell.r === r.row && now.node.cell.c === r.column
       : Math.abs(now.node.x - (was0.x + Math.round(d.dx))) <= 1 && Math.abs(now.node.y - (was0.y + Math.round(d.dy))) <= 1);
     // the code places it with numbers, relative to its group, so the running app puts it as far from where it measured:
     // the measurement holds for the code as it is now (less the window's picture, which showed it where it was)
     const cur = there && guiShown.measuredView && guiMeasure && r.row == null && guiMeasure.at.get(guiShown.key);
     if (cur) {
-      const ddx = now.node.x - was0.x, ddy = now.node.y - was0.y;
+      // (a size: the numbers are its size, so it's that size where it was; a window, its window's size)
+      const ddx = sizing ? 0 : now.node.x - was0.x, ddy = sizing ? 0 : now.node.y - was0.y;
       const shift = (n) => ({ ...n, x: n.x + ddx, y: n.y + ddy, children: n.children.map(shift) });
-      const carry = (n) => n === it.node ? { ...shift(n), estimate: { ...n.estimate, x: now.node.x, y: now.node.y } } : { ...n, children: n.children.map(carry) };
+      const carry = (n) => n === it.node ? { ...shift(n), ...(sizing ? { w: r.w, h: r.h } : {}), estimate: { ...n.estimate, x: now.node.x, y: now.node.y, w: now.node.w, h: now.node.h } } : { ...n, children: n.children.map(carry) };
       const wi = cur.view.windows.indexOf(it.win);
-      guiMeasure.at.set(g.key, { view: { ...cur.view, windows: cur.view.windows.map(w => w === it.win ? { ...w, root: carry(w.root) } : w) },
+      guiMeasure.at.set(g.key, { view: { ...cur.view, windows: cur.view.windows.map(w => w === it.win ? { ...w, ...(sizing && it.node.kind === 'window' ? { w: r.w, h: r.h } : {}), root: carry(w.root) } : w) },
         pictures: cur.pictures && cur.pictures.map((u, i) => i === wi ? null : u) });
       if (guiMeasure.at.size > 60) guiMeasure.at.delete(guiMeasure.at.keys().next().value);
     }
-    if (there) editSay(`Moved <code>${escHtml(name)}</code> ${dirs}, and the code puts it there. Written in ${at}, ready to fine-tune (<kbd>Ctrl+Z</kbd> there takes it back).`);
+    if (there) editSay(`${sizing ? 'Resized' : 'Moved'} <code>${escHtml(name)}</code> ${dirs}, and the code ${sizing ? 'makes it so' : 'puts it there'}. Written in ${at}, ready to fine-tune (<kbd>Ctrl+Z</kbd> there takes it back).`);
+    else if (sizing) editSay(`Written in ${at}, but read again, the code makes <code>${escHtml(name)}</code> ${now ? ARR.sized(now.node.w, now.node.h) : 'nothing it can show'}, not the size it was dragged to.`, true);
     else editSay(`Written in ${at}, but read again, the code puts <code>${escHtml(name)}</code> ${now ? `at ${now.node.x}, ${now.node.y}` : 'nowhere it can show'}, not where it was dropped.`, true);
     clearTimeout(previewTimer);
     runGui(false);
@@ -4324,10 +4329,7 @@ ${key}</div>${wins}${notes}</body></html>`;
     const est = guiShown && !webOn();   // (the Preview shows an app's estimate)
     if (d.type === 'link' || d.type === 'link-run') { if (est) guiLink(d); else onLink(d); return; }
     if (d.type === 'move') { if (est) moveInGui(d); else moveFromPreview(d); return; }
-    if (d.type === 'resize') {
-      if (est) { if (editing) { editUndo(); editSay('Resizing a part of an app\'s window isn\'t written yet: drag it to move it, or change its size in its code (pointing at it lights the code up).', true); } return; }
-      moveFromPreview(d); return;
-    }
+    if (d.type === 'resize') { if (est) moveInGui(d); else moveFromPreview(d); return; }
     if (d.type === 'edit-at') { editChecked(d); return; }
     if (d.type === 'loaded') { editPageLoaded(); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);

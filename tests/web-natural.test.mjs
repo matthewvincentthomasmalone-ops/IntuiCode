@@ -116,6 +116,34 @@ test('a file on this computer, outside the project, is a warning that says how t
   assert.deepEqual(outside(css('style page: background picture images/sky.png').warns), []);
 });
 
+test('structure: a webpage box holds an embedded page that fills it, the box the shape of its size; read back, it says so', () => {
+  const b = body('add a webpage box called news, from "https://example.com", sized 600 by 400, with tooltip "Today\'s news"');
+  assert.deepEqual(b.errs, []);
+  assert.equal(b.html, '<div id="news" data-webpage-box="600x400">\n  <iframe src="https://example.com" title="Today\'s news"></iframe>\n</div>');
+  // its shape, in the page's head: before Styling's link, so Styling's rules for its name win
+  const page = WEB.compileHtml({ id: 'x', file: 'x', text: 'add a webpage box called news, from "https://example.com", sized 600 by 400' }, shared()).text;
+  assert.match(page, /<style data-webpage-boxes>\n {4}\[data-webpage-box\] \{ display: block; max-width: 100%; \}\n {4}\[data-webpage-box\] > iframe \{ display: block; width: 100%; height: 100%; border: 0; \}\n {4}\[data-webpage-box="600x400"\] \{ width: 600px; aspect-ratio: 3 \/ 2; \}\n {2}<\/style>/);
+  assert.ok(page.indexOf('data-webpage-boxes') < page.indexOf('style.css'), 'before Styling');
+  // its address after "from" without a comma too; no size: 600 by 400, and it says so
+  const d = body('add a webpage box from "https://example.com"');
+  assert.equal(d.html, '<div data-webpage-box="600x400">\n  <iframe src="https://example.com"></iframe>\n</div>');
+  assert.ok(d.notes.some(n => /600 by 400 unless it says ", sized … by …"/.test(n)), d.notes.join(' | '));
+  // no address: it says to give one; nothing goes inside it
+  assert.match(body('add a webpage box called news').errs.join(' '), /Say which page it shows/);
+  assert.match(body('add a webpage box called news, from "https://example.com"\n    add a paragraph "Hi"').errs.join(' '), /can't hold other things/);
+  // the page inside has no line mark of its own: pointing at it is pointing at the box
+  const marked = WEB.compileHtml({ id: 'x', file: 'x', text: 'add a webpage box called news, from "https://example.com"' }, { ...shared(), mark: true }).text;
+  assert.match(marked, /<div id="news" data-ic-line="0" data-webpage-box="600x400">\n {4}<iframe src="https:\/\/example\.com"><\/iframe>/);
+  // read back: the sentence, exactly (Structure's rules in the head are said by the box)
+  for (const s of ['add a webpage box called news, from "https://example.com", sized 640 by 360', 'add a webpage box, from "map.html", sized 600 by 400, with tooltip "A map"']) {
+    const html = WEB.compileHtml({ id: 'x', file: 'x', text: 'page title is "T"\n' + s }, shared()).text;
+    const r = convert('html', html, { pulled: ['style.css', 'script.js'] });   // (the project's own Styling and Mechanics, as the app says)
+    assert.equal(r.exact, true, `${r.reason}\n${r.text}`);
+    assert.ok(r.text.split('\n').includes(s), r.text);
+    assert.equal(r.kept, 0, r.text);
+  }
+});
+
 test('structure: an embedded page (an iframe) is also a webpage or a webpage link, its address from, to or of "…"', () => {
   for (const s of [
     'add an embedded page, from "https://example.com"', 'add embedded page from "https://example.com"', 'add an embedded page of "https://example.com"',

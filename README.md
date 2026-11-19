@@ -328,6 +328,12 @@ the rebuilt page is asked its size: if another style wins (a `max-width`, or the
 the page made it. A word in a line of text can't be resized (its size is its letters'): it says to make it a box first.
 In Editor mode an embedded page doesn't take the pointer into itself, so it can be pointed at, moved and resized.
 
+**A webpage in a box.** `add a webpage box called news, from "https://…", sized 600 by 400` puts another page in a box
+that keeps its shape: the page fills the box, so resizing the box (its corner in Editor mode, or a width in Styling:
+`style news: width: 300px`) resizes the page, its height following. Its shape is a small rule Structure puts in the
+page's head (`[data-webpage-box="600x400"] { width: 600px; aspect-ratio: 3 / 2; }`), before Styling, so Styling's rules
+for its name win. Nothing goes inside the box but the page; read back, it's that sentence again.
+
 **An app's windows, estimated (tkinter and JUCE).** A website shows itself in the Preview; an app's window can't run in a
 browser, so for a project whose code makes windows (Python with tkinter, C++ with JUCE), the Preview draws an estimate of
 them, read from the code, as soon as the project opens: each window at its size, the groups in it (frames, components
@@ -343,8 +349,10 @@ Editor mode works on it as on a page: what you point at lights up its code in pi
 it's made and what it does), and a part whose numbers are in the code (solid) can be dragged: its new numbers are typed
 into its line (`status.place(x=42, y=260)`), Ctrl+Z takes them back, and the estimate is read again to check the code puts
 it there. A grid part moves by cell (`row=1, column=2`); a packed part says it's placed one after another, not at a
-position. Nothing about an estimate is kept: it's read from the code each time it changes. Run still runs the program
-in the terminal.
+position. A part's corner resizes it, the same way: a placed part gets `place(…, width=60, height=30)`, a JUCE part
+`setBounds`' width and height, and the window (its corner, with **Alt** when a part fills it) its `geometry("400x320")`
+or `setSize(400, 320)`; a packed or gridded part says it's the size it asks for. Nothing about an estimate is kept: it's
+read from the code each time it changes. Run still runs the program in the terminal.
 
 **Measure: the app as it really runs (desktop).** An estimate is the code read; **Measure**, beside Editor over the
 Preview, asks the running app. For a tkinter app, IntuaCode runs it for a moment with its window out of sight (see-through

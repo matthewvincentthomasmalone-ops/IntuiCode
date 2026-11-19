@@ -418,7 +418,8 @@ test('editor: in the page, a corner resizes: an embedded page keeps its shape, a
   const browser = await openBrowser();
   try {
     const tab = await browser.tab();
-    const size = () => tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 860, deviceScaleFactor: 1, mobile: false });
+    // (a tall window: the page has a lot on it, all in view)
+    const size = () => tab.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1200, deviceScaleFactor: 1, mobile: false });
     const ready = () => tab.run('(async () => { for (let i = 0; i < 100; i++) { if (document.getElementById("btnEditor") && document.getElementById("ta")) return true; await new Promise(r => setTimeout(r, 100)); } return false; })()');
     await tab.open(ORIGIN + '/', { serve: serveApp });
     await size();
@@ -427,7 +428,7 @@ test('editor: in the page, a corner resizes: an embedded page keeps its shape, a
     // box's look into Styling as the project is kept, then opened again
     await tab.run(`(() => {
       const ta = document.getElementById('ta'), lines = ta.value.split('\\n'), at = lines.findIndex(l => /^add a section called menu/.test(l));
-      lines.splice(at, 0, 'add an embedded page called frame, from "about:blank", sized 300 by 200', 'add a box called panel', '    add a paragraph "Notes"');
+      lines.splice(at, 0, 'add a webpage box called news, from "about:blank", sized 90 by 60', 'add an embedded page called frame, from "about:blank", sized 300 by 200', 'add a box called panel', '    add a paragraph "Notes"');
       ta.value = lines.join('\\n'); ta.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     })()`);
@@ -445,7 +446,7 @@ test('editor: in the page, a corner resizes: an embedded page keeps its shape, a
     const { until, where, resize, undo, file } = driving(tab);
     await until('!document.getElementById("previewWrap").hidden', 'the Preview');
     const lineOf = async (re) => (await file('index.html')).split('\n').findIndex(l => re.test(l));
-    const frameAt = await lineOf(/^add an embedded page called frame/), panelAt = await lineOf(/^add a box called panel/);
+    const frameAt = await lineOf(/^add an embedded page called frame/), panelAt = await lineOf(/^add a box called panel/), newsAt = await lineOf(/^add a webpage box called news/);
     const styleAt = async (re) => (await file('style.css')).split('\n').filter(l => re.test(l));
     const f0 = await where(frameAt);
     assert.deepEqual([f0.w, f0.h], [304, 204], 'sized 300 by 200, and its borders');
@@ -478,7 +479,16 @@ test('editor: in the page, a corner resizes: an embedded page keeps its shape, a
     const p2 = await where(panelAt), inside = (b) => (b.w - 20) / (b.h - 20);
     assert.ok(Math.abs(inside(p2) - inside(p1)) < 0.03, `its shape: ${p1.w} × ${p1.h}, then ${p2.w} × ${p2.h}`);
     assert.match(m.bar, new RegExp(`^Resized panel to ${p2.w} × ${p2.h}, its shape kept`), 'the size shown as it was dragged is the size it is');
+    // a webpage box: the box (the page in it doesn't take the pointer, nor have a line of its own), its shape kept
+    const n0 = await where(newsAt);
+    assert.deepEqual([n0.w, n0.h], [90, 60]);
+    m = await resize(newsAt, 30, 0);
+    assert.equal(m.bad, false, m.bar);
+    assert.match(m.bar, /^Resized news to 120 × 80, its shape kept, and the page shows it so\./);
+    assert.deepEqual(await styleAt(/^style news: width/), ['style news: width: 120px, height: auto, aspect-ratio: 3 / 2']);
     // Ctrl+Z, straight after: the size it had
+    await undo();
+    await until(`!JSON.parse(localStorage.getItem('intuicode.project.v1')).sections.find(s => s.path === 'style.css').text.includes('style news: width')`, 'Ctrl+Z to take the box\'s size back');
     await undo();
     await until(`(JSON.parse(localStorage.getItem('intuicode.project.v1')).sections.find(s => s.path === 'style.css').text.split('\\n').find(l => /^style panel: width/.test(l)) || '') === 'style panel: width: ${p0.w - 320}px, height: ${p0.h + 20}px'`, 'Ctrl+Z to take the size back');
     await tab.run('document.getElementById("btnEditor").click()');

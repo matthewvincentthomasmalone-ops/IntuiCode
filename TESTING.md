@@ -260,6 +260,10 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Drag **See the menu**'s corner: it resizes freely (`style cta: width: …px, height: …px`, after its look); with
       **Shift** held, its shape is kept (`aspect-ratio`). **Ctrl+Z** takes each back. **Esc** mid-resize puts it back.
 - [ ] Add `style frame: at most 200 wide` after it and resize the frame wider: the bar says what size the page made it.
+- [ ] Add `add a webpage box called news, from "https://example.com", sized 600 by 400`: a 600 × 400 box, the page filling
+      it. In Styling, `style news: width: 300px`: the box and the page are 300 × 200. In Editor mode, its corner keeps its
+      shape (`aspect-ratio: 3 / 2`); pointing anywhere on it points at the box. Indent a line under it: it says it can't
+      hold other things.
 
 **An app's windows, estimated**
 - [ ] Import a Python file with a tkinter window (frames packed, an Entry and a Button in a grid, a Label placed with
@@ -268,6 +272,9 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Editor mode: point at the list: its lines light up pink. Drag the label: its line becomes `place(x=…, y=…)` with the
       new numbers, the bar says the code puts it there; Ctrl+Z puts the line back. Drag the Add button past the last
       column: `grid(row=0, column=2)`. Drag the list (packed): it says pack places things one after another.
+- [ ] Editor mode, corners: drag the label's corner: `place(x=12, y=270, width=…, height=…)`, and it's that size. Hold
+      **Alt** over the list and drag the window's corner: `window.geometry("400x320")`. The list's own corner: pack
+      gives it the size it asks for. A JUCE part placed with `setBounds` numbers: its last two change.
 - [ ] Run: the program runs in the terminal, which comes to the front.
 - [ ] Import a JUCE plug-in's editor (.h and .cpp): its window at `setSize`, parts placed by `setBounds` solid, by
       `resized()`'s rectangle steps dashed, the rest dotted with why on hover. A component inside another is drawn inside it.
