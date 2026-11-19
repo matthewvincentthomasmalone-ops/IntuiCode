@@ -101,7 +101,14 @@
     }
     return { pos, kw };
   }
-  const strOf = (s) => { const m = String(s || '').trim().match(/^[rbuf]*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i); return m ? m[1].slice(1, -1).replace(/\\(.)/g, '$1') : null; };
+  // a string's text, its escapes as the language means them ("MIX\nIN": two lines), a raw one's (r'\d') as written
+  const ESC = { n: '\n', t: '\t', r: '\r' };
+  const strOf = (s) => {
+    const m = String(s || '').trim().match(/^([rbuf]*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/i);
+    if (!m) return null;
+    const inner = m[2].slice(1, -1);
+    return /r/i.test(m[1]) ? inner : inner.replace(/\\(.)/g, (_, c) => ESC[c] ?? c);
+  };
 
   /* A number, worked out: digits, + - * / // %, brackets, names whose numbers are known, and a few calls
      (max, min, round, int, jmax, jmin, jlimit, roundToInt). Anything else -> null (not guessed). */
@@ -433,12 +440,32 @@
      file (a .h declares, a .cpp defines). Numbers the code names (constexpr int channelCount = 16) are known too. */
   function readJuce(files) {
     const classes = new Map(), consts = {};
-    const cls = (name) => classes.get(name) || classes.set(name, { name, bases: '', members: new Map(), added: [], size: null, resized: null, does: [], src: [], labels: new Map(), styles: new Map(), content: false }).get(name);
-    // constexpr numbers, in any file (twice: one can be made of another)
-    for (let pass = 0; pass < 2; pass++) {
-      for (const f of files) for (const m of String(f.code).matchAll(/\b(?:static\s+)?(?:inline\s+)?constexpr\s+(?:int|float|double|auto|unsigned|long|(?:std::)?size_t)\s+(\w+)\s*(?:=\s*([^;{}]+)|\{\s*([^;{}]+)\s*\});/g)) {
+    const cls = (name) => classes.get(name) || classes.set(name, { name, bases: '', members: new Map(), added: [], size: null, resized: null, does: [], src: [], labels: new Map(), named: new Map(), styles: new Map(), content: false, bodies: [], viaParam: [] }).get(name);
+    const records = new Map();   // (structs and classes that aren't components: a struct of references to parts, say)
+    const bases = {};   // (each class's first base, by its last name)
+    /* A number the code names, worked out: what num() does, and a comparison (stereoBusCount > 2), a condition's
+       choice (isFec24 ? 4 : 2), true and false (1 and 0). -> a number, or null. */
+    const cval = (src) => {
+      const s = String(src).trim().replace(/\b(?:static_cast|int|float)\s*<[^>]*>/g, '');
+      if (s === 'true') return 1;
+      if (s === 'false') return 0;
+      let m = s.match(/^([^?]+?)\?([^:]+):([\s\S]+)$/);
+      if (m) { const c = cval(m[1]); return c == null ? null : cval(c ? m[2] : m[3]); }
+      m = s.match(/^([^<>=!]+?)\s*(==|!=|>=|<=|>|<)\s*([^<>=!]+)$/);
+      if (m) {
+        const a = cval(m[1]), b = cval(m[3]);
+        if (a == null || b == null) return null;
+        return +{ '==': a === b, '!=': a !== b, '>=': a >= b, '<=': a <= b, '>': a > b, '<': a < b }[m[2]];
+      }
+      if ((m = s.match(/^!\s*([\w:]+)$/))) { const v = cval(m[1]); return v == null ? null : +!v; }
+      return num(s, consts);
+    };
+    // #define EDITION 16, then constexpr numbers and conditions, in any file (a few times over: one can be made of another)
+    for (const f of files) for (const m of String(f.code).matchAll(/^[ \t]*#[ \t]*define[ \t]+(\w+)[ \t]+(-?\d+(?:\.\d+)?)[ \t]*$/gm)) if (consts[m[1]] == null) consts[m[1]] = +m[2];
+    for (let pass = 0; pass < 4; pass++) {
+      for (const f of files) for (const m of String(f.code).matchAll(/\b(?:static\s+)?(?:inline\s+)?constexpr\s+(?:int|float|double|auto|unsigned|long|bool|(?:std::)?size_t)\s+(\w+)\s*(?:=\s*([^;{}]+)|\{\s*([^;{}]+)\s*\});/g)) {
         if (consts[m[1]] != null) continue;
-        const v = num((m[2] || m[3]).replace(/\b(?:static_cast|int|float)\s*<[^>]*>/g, ''), consts);
+        const v = cval(m[2] || m[3]);
         if (v != null) consts[m[1]] = v;
       }
     }
@@ -446,11 +473,17 @@
     for (const f of files) {
       const code = blankComments(String(f.code).replace(/\r\n?/g, '\n'));   // (an apostrophe in a comment isn't a character)
       const lineAt = (i) => code.slice(0, i).split('\n').length - 1;
-      // class Name [final] : public juce::Component … { body }
-      for (const m of code.matchAll(/\b(?:class|struct)\s+(\w+)\s*(?:final\s*)?:\s*([^{;]+)\{/g)) {
-        if (!COMPONENT_BASES.test(m[2])) continue;
+      // class Name [final] : public juce::Component … { body }; another class or struct: its members, if it holds parts
+      for (const m of code.matchAll(/\b(?:class|struct)\s+(\w+)\s*(?:final\s*)?(?::\s*([^{;]+))?\{/g)) {
         const open = m.index + m[0].length - 1, b = bracket(code, open);
         if (!b) continue;
+        // (what it is first: class OptoToggle : public juce::ToggleButton is a ToggleButton)
+        const first = m[2] && m[2].split(',')[0].replace(/\b(?:public|protected|private|virtual)\b/g, '').replace(/<[\s\S]*$/, '').trim().split('::').pop();
+        if (first && /^\w+$/.test(first) && !bases[m[1]]) bases[m[1]] = first;
+        if (!m[2] || !COMPONENT_BASES.test(m[2])) {
+          if (!records.has(m[1])) records.set(m[1], { name: m[1], members: new Map(), f, from: open + 1, text: b.inner, lineAt });
+          continue;
+        }
         const c = cls(m[1]);
         c.bases = m[2]; c.src.push({ path: f.path, line: lineAt(m.index), role: 'made' });
         bodies.push({ c, f, code, from: open + 1, text: b.inner, lineAt });
@@ -482,70 +515,194 @@
         if (code[i] !== '{') continue;
         const b = bracket(code, i);
         if (!b) continue;
-        bodies.push({ owner: m[1], fn: m[2], f, code, from: i + 1, text: b.inner, lineAt, init: initFrom >= 0 ? code.slice(initFrom, initTo) : '' });
+        bodies.push({ owner: m[1], fn: m[2], f, code, from: i + 1, text: b.inner, lineAt, init: initFrom >= 0 ? code.slice(initFrom, initTo) : '', params: params.inner });
       }
       // the window's content: setContentOwned(new Name …) or (content = new Name …)
       for (const m of code.matchAll(/\bnew\s+(?:[\w]+::)*(\w+)\s*[({]/g)) opened.add(m[1]);
     }
+    // An item of a list of parts ({&a, &b[i], &refs.c}) or what's added (*a[i]): its name (a.b for a struct's part),
+    // and whether it's one of several (an array's)
+    const itemOf = (s) => {
+      const m = String(s || '').trim().match(/^[&*]?\s*(?:this->)?(\w+(?:\s*(?:\.|->)\s*\w+)?)\s*((?:\[[\s\S]*\])?)$/);
+      return m && /^[A-Za-z_]/.test(m[1]) && !/^(?:nullptr|this|NULL|true|false)$/.test(m[1]) ? { name: m[1].replace(/\s*(?:\.|->)\s*/, '.'), indexed: !!m[2] } : null;
+    };
+    // where a statement that starts at j ends: a block, if/for/while and what it runs, or up to its ;
+    const stmtEnd = (text, j) => {
+      while (/\s/.test(text[j] || '')) j++;
+      if (text[j] === '{') { const b = bracket(text, j); return b ? b.end : text.length; }
+      const k = text.slice(j, j + 8).match(/^(?:if|for|while)\s*\(/);
+      if (k) { const b = bracket(text, j + k[0].length - 1); return b ? stmtEnd(text, b.end + 1) : text.length; }
+      const s = text.indexOf(';', j);
+      return s < 0 ? text.length : s;
+    };
+    let bodyNo = 0;
     // any of its functions: what it adds (anywhere: loops too), its size, its parts' text and style, what they do
-    const readFn = (c, fn, text, from, f, lineAt, init) => {
-      const at = (i) => lineAt(from + i);
+    const readFn = (c, fn, text, from, f, lineAt, init, params) => {
+      const at = (i) => lineAt(from + i), body = { text, from, f, lineAt, fn, defs: [], loops: [], no: bodyNo++ };
+      c.bodies.push(body);
       for (const a of String(init || '').matchAll(/(\w+)\s*\{\s*(?:\{\s*\}\s*,\s*)?("(?:[^"\\]|\\.)*")/g)) c.labels.set(a[1], strOf(a[2]));
-      // a loop's name stands for what it goes through: for (auto& bus : busStrips) addAndMakeVisible(bus) adds busStrips
-      const through = new Map();
-      for (const m of text.matchAll(/\bfor\s*\(\s*(?:const\s+)?(?:auto|[\w:<>]+)\s*[&*]*\s*(\w+)\s*:\s*(?:this->)?(\w+)\s*\)/g)) through.set(m[1], m[2]);
-      for (const m of text.matchAll(/\badd(AndMakeVisible|ChildComponent)\s*\(\s*([&*]?)\s*(?:this->)?(\w+)(\s*\[[^\]]*\])?/g)) {
-        const name = through.get(m[3]) || m[3];
-        c.added.push({ name, hidden: m[1] === 'ChildComponent', line: at(m.index), path: f.path, indexed: !!m[4] || through.has(m[3]) });
+      // its loops (a list written out, {&a, &b}, is each of them once: unrolled)
+      for (const m of text.matchAll(/\bfor\s*\(/g)) {
+        const h = bracket(text, m.index + m[0].length - 1);
+        if (h) body.loops.push({ from: m.index, to: stmtEnd(text, h.end + 1), unrolled: false });
+      }
+      // (the loop that adds a part, for telling apart parts added in turn; one of several added outside a loop, in a
+      // function other than the constructor, is added a call at a time: addChannel(i) adds lane i's)
+      body.loopAt = (p, several) => {
+        const l = body.loops.filter(x => !x.unrolled && x.from < p && p <= x.to).sort((a, b) => b.from - a.from)[0];
+        return l ? `${f.path}:${from + l.from}` : several && fn !== c.name ? `${f.path}:${fn}()` : null;
+      };
+      // (if constexpr (hasBusAssignKeys) { … }, the condition false: not in this build)
+      const dead = [];
+      for (const m of text.matchAll(/\bif\s+constexpr\s*\(/g)) {
+        const h = bracket(text, m.index + m[0].length - 1);
+        if (h && cval(h.inner) === 0) dead.push([h.end + 1, stmtEnd(text, h.end + 1)]);
+      }
+      /* What a name stands for, where it's said: a loop's (for (auto& b : bands), for (auto* b : {&a, &b})), a
+         reference's (auto& mix = mixRoleButtons[i], auto& b = *list[i]), a list's ({&a, &b}), or a part made there
+         (auto view = std::make_unique<ChannelStripView>(…)). The nearest one before it, as the code says them in turn. */
+      const defAt = (name, pos) => { for (let k = body.defs.length - 1; k >= 0; k--) { const d = body.defs[k]; if (d.name === name && d.at < pos) return d; } return null; };
+      const meaning = body.meaning = (item, pos) => {
+        if (!item) return [];
+        const head = item.name.split('.')[0], d = defAt(head, pos);
+        if (!d) return [{ name: item.name, indexed: item.indexed }];
+        if (d.made) return item.name === head ? [{ made: d.made, local: head, defAt: d.at }] : [];
+        if (item.name !== head) {
+          // (lane.pan, lane a reference to lanes[i]: lanes' pan; a part of anything else: not followed)
+          const one = !d.list && d.to.length === 1 && d.to[0].name && !d.to[0].name.includes('.') ? d.to[0] : null;
+          return one ? [{ name: `${one.name}.${item.name.split('.')[1]}`, indexed: one.indexed || item.indexed }] : [];
+        }
+        return d.list ? d.to : d.to.map(t => ({ ...t, indexed: t.indexed || item.indexed }));
+      };
+      const ev = [];
+      // (a type, then a & or * or a space, then the name: never one word read as two)
+      for (const m of text.matchAll(/\bfor\s*\(\s*(?:const\s+)?(?:auto|[\w:]+(?:\s*<[^;()]*?>)?)(?:\s*[&*]+\s*|\s+)(\w+)\s*:\s*/g)) ev.push({ at: m.index, kind: 'for', name: m[1], src: m.index + m[0].length });
+      for (const m of text.matchAll(/(?<![\w.:>])(?:const\s+)?(?:auto|[\w:]+(?:\s*<[^;()]*?>)?)\s*([&*]+)\s*(\w+)\s*=\s*([^;]+);/g)) ev.push({ at: m.index, kind: 'ref', name: m[2], expr: m[3].trim() });
+      for (const m of text.matchAll(/(?<![\w.:>])(?:auto|[\w:]+(?:\s*<[^;()]*?>)?)(?:\s*\*\s*|\s+)(\w+)\s*=\s*(?:std::make_unique\s*<\s*([\w:]+)\s*>|new\s+([\w:]+))/g)) ev.push({ at: m.index, kind: 'made', name: m[1], type: (m[2] || m[3]).split('::').pop() });
+      // (declared: lane = {&x, &y} fills one, it isn't a list)
+      for (const m of text.matchAll(/(?<=(?:[\w:]|>|\*|&)\s+|[>*&])\b(\w+)\s*(?:\[[^\]]*\])?\s*=?\s*\{(?=\s*&)/g)) {
+        const b = bracket(text, m.index + m[0].length - 1);
+        if (b) ev.push({ at: m.index, kind: 'list', name: m[1], items: splitArgs(b.inner).filter(s => /^&/.test(s.trim())) });
+      }
+      // (and a list of pointers, std::array<juce::Component*, 10> parts{lane.pan, lane.fader}: each of them)
+      for (const m of text.matchAll(/(?:\bstd::(?:array|vector|initializer_list)\s*<\s*(?:const\s+)?[\w:]+\s*\*\s*(?:,[^<>;]*)?>|[\w:]+\s*\*)\s*(\w+)\s*(?:\[[^\]]*\])?\s*=?\s*\{/g)) {
+        const b = bracket(text, m.index + m[0].length - 1);
+        if (b) ev.push({ at: m.index, kind: 'list', name: m[1], items: splitArgs(b.inner) });
+      }
+      for (const e of ev.sort((a, b) => a.at - b.at)) {
+        if (e.kind === 'for') {
+          let to = null, list = false;
+          if (text[e.src] === '{') { const b = bracket(text, e.src); if (b) { to = splitArgs(b.inner).flatMap(s => meaning(itemOf(s), e.at)); list = true; } }
+          else {
+            const r = text.slice(e.src).match(/^\*?\s*(?:this->)?(\w+)\s*\)/), d = r && defAt(r[1], e.at);
+            if (d && d.list) { to = d.to; list = true; } else if (r && !(d && d.made)) to = meaning({ name: r[1], indexed: true }, e.at);
+          }
+          if (to) { body.defs.push({ name: e.name, at: e.at, to, list }); if (list) { const L = body.loops.find(l => l.from === e.at); if (L) L.unrolled = true; } }
+        } else if (e.kind === 'list') body.defs.push({ name: e.name, at: e.at, to: e.items.flatMap(s => meaning(itemOf(s), e.at)), list: true });
+        else if (e.kind === 'made') body.defs.push({ name: e.name, at: e.at, made: e.type });
+        else if (!/^(?:new\b|std::make_unique\b)/.test(e.expr)) {
+          // (owned.add(new T …): one of what it holds)
+          const own = e.expr.match(/^(?:this->)?(\w+)\s*(?:\.|->)\s*(?:add|emplace_back|push_back|emplace)\s*\(/);
+          const to = own ? [{ name: own[1], indexed: true }] : meaning(itemOf(e.expr), e.at);
+          if (to.length) body.defs.push({ name: e.name, at: e.at, to, list: false });
+        }
+      }
+      // what it adds, and to what (drawer.addAndMakeVisible(tab): into its drawer); a part a helper's given
+      // (prepareKnob(juce::Slider& slider, …) { addAndMakeVisible(slider); }) is what each call gives it
+      const paramNames = splitArgs(params || '').map(p => { const m = p.replace(/=[\s\S]*$/, '').trim().match(/[\s&*](\w+)\s*(?:\[[^\]]*\])?$/); return m ? m[1] : null; });
+      for (const m of text.matchAll(/(?:\b(\w+)\s*(?:\.|->)\s*)?\badd(AndMakeVisible|ChildComponent)\s*\(/g)) {
+        const b = bracket(text, m.index + m[0].length - 1);
+        if (!b) continue;
+        const into = m[1] && m[1] !== 'this' ? ((meaning({ name: m[1], indexed: false }, m.index)[0] || {}).name || null) : null;
+        if (into && paramNames.includes(into)) continue;   // (into something it's given: not this class's)
+        if (dead.some(([a, z]) => m.index >= a && m.index <= z)) continue;
+        const hidden = m[2] === 'ChildComponent', line = at(m.index), order = body.no * 1e7 + m.index;
+        for (const x of meaning(itemOf(splitArgs(b.inner)[0]), m.index)) {
+          const loop = body.loopAt(m.index, x.made || x.indexed);
+          if (x.made) { c.added.push({ made: x.made, local: x.local, defAt: x.defAt, body, hidden, line, path: f.path, indexed: true, loop, into, order }); continue; }
+          const p = paramNames.indexOf(x.name);
+          if (p >= 0 && !defAt(x.name, m.index)) { c.viaParam.push({ fn, index: p, hidden, into, indexed: x.indexed }); continue; }
+          c.added.push({ name: x.name, hidden, line, path: f.path, indexed: x.indexed, loop, into, order });
+        }
       }
       if (fn === c.name) for (const m of text.matchAll(/(?:^|[;{}\s])(?:this->)?setSize\s*\(([^;]+)\)\s*;/g)) {
         const a = splitArgs(m[1]); const w = num(a[0], consts), h = num(a[1], consts);
         if (w != null && h != null && !c.size) c.size = { w, h, line: at(m.index + m[0].indexOf('setSize')), path: f.path };
       }
-      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*(setButtonText|setText)\s*\(\s*("(?:[^"\\]|\\.)*")/g)) if (!c.labels.has(m[1])) c.labels.set(m[1], strOf(m[3]));
-      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*setSliderStyle\s*\(([^)]*)\)/g)) c.styles.set(m[1], m[2]);
-      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*(onClick|onValueChange|onChange|onTextChange|onStateChange|addListener)\b/g)) c.does.push({ name: m[1], line: at(m.index), path: f.path });
+      // (said of a reference, mix.setButtonText(…): of the part it is)
+      const named = (n, pos) => meaning({ name: n, indexed: false }, pos).map(x => x.name).filter(Boolean);
+      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*(setButtonText|setText)\s*\(\s*("(?:[^"\\]|\\.)*")/g)) for (const n of named(m[1], m.index)) if (!c.labels.has(n)) c.labels.set(n, strOf(m[3]));
+      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*setName\s*\(\s*("(?:[^"\\]|\\.)*")\s*\)/g)) for (const n of named(m[1], m.index)) if (!c.named.has(n)) c.named.set(n, strOf(m[2]));
+      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*setSliderStyle\s*\(([^)]*)\)/g)) for (const n of named(m[1], m.index)) c.styles.set(n, m[2]);
+      for (const m of text.matchAll(/\b(\w+)(?:\s*\[[^\]]*\])?\s*(?:\.|->)\s*(onClick|onValueChange|onChange|onTextChange|onStateChange|addListener)\b/g)) for (const n of named(m[1], m.index)) c.does.push({ name: n, line: at(m.index), path: f.path });
       if (fn === 'resized') c.resized = { text, from, f, lineAt };
     };
-    for (const b of bodies.filter(b => b.c)) {
-      const { c, text, from, f, lineAt } = b;
-      // members at the class's own level (Type name; Type name { … }; Type name[N];), and the functions written inside it
+    /* members at a class's own level (Type name; Type& name; Type name { … }; Type name[N];), and (onFn) the functions
+       written inside it */
+    const scanMembers = (members, text, from, f, lineAt, onFn) => {
       let depth = 0, cur = '', curAt = 0;
       for (let i = 0; i < text.length; i++) {
         const ch = text[i];
         if (ch === '{') {
           if (depth === 0 && /\)\s*(?:const\s*)?(?:override\s*)?(?:noexcept\s*)?(?:final\s*)?(?::[^;{]*)?$/.test(cur)) {
             const end = bracket(text, i), sig = cur.match(/(~?\w+)\s*\(([^)]*)\)[^(]*$/);
-            if (sig && end) readFn(c, sig[1], end.inner, from + i + 1, f, lineAt, (cur.match(/\)\s*:\s*([^{]*)$/) || [])[1] || '');
+            if (sig && end && onFn) onFn(sig[1], end.inner, from + i + 1, (cur.match(/\)\s*:\s*([^{]*)$/) || [])[1] || '', sig[2]);
             if (end) { i = end.end; cur = ''; continue; }
           }
           depth++;
         } else if (ch === '}') depth--;
         if (depth === 0 && ch === ';') {
           const d = cur.trim().replace(/^(?:(?:private|public|protected)\s*:\s*)+/, '').replace(/^(?:mutable|static|inline|const)\s+/g, '');
-          // Type name[N] { … } = …, other …;  (the type may have <…> in it; several names can share it)
-          const m = d.match(/^([\w:]+(?:\s*<[^;=(){}]*>)?)\s+([A-Za-z_][\s\S]*)$/);
+          // Type name[N] { … } = …, other …;  (the type may have <…> in it; several names can share it; a reference,
+          // juce::Label& title, is the part it's given)
+          const m = d.match(/^([\w:]+(?:\s*<[^;=(){}]*>)?)(?:\s*[&*]+\s*|\s+)([A-Za-z_][\s\S]*)$/);
           const t = m && !/^(?:using|return|typedef|friend|enum|class|struct|template|virtual|operator)$/.test(m[1]) ? memberType(m[1], consts) : null;
           if (t) for (const one of splitArgs(m[2])) {
-            const dm = one.match(/^(\w+)\s*(?:\[\s*([^\]]+)\s*\])?\s*(?:\{\s*(?:\{\s*\}\s*,\s*)?("(?:[^"\\]|\\.)*")?[^}]*\}|=\s*[\s\S]+)?$/);
+            const dm = one.match(/^(\w+)\s*(?:\[\s*([^\]]+)\s*\])?\s*(\{[\s\S]*\}|=\s*[\s\S]+)?$/);
             if (!dm) continue;
             let many = t.many;
             if (dm[2]) { const n = num(dm[2], consts); many = many == null || n == null ? null : many * n; }
-            c.members.set(dm[1], { name: dm[1], type: t.type, many, label: dm[3] ? strOf(dm[3]) : null, line: lineAt(from + curAt), path: f.path });
+            // its text ({"Bypass"}, {{}, "Gain"}), and an array's, each of its own ({{juce::TextButton{"S1"}, …}})
+            const init = dm[3] && dm[3][0] === '{' ? dm[3] : '', first = init.match(/^\{\s*(?:\{\s*\}\s*,\s*)?("(?:[^"\\]|\\.)*")/);
+            const each = many !== 1 ? [...init.matchAll(/\b\w+\s*[{(]\s*("(?:[^"\\]|\\.)*")/g)].map(x => strOf(x[1])) : [];
+            members.set(dm[1], { name: dm[1], type: t.type, many, label: first ? strOf(first[1]) : null, labels: each.length ? each : null, line: lineAt(from + curAt), path: f.path });
           }
           cur = ''; continue;
         }
         if (!cur.trim()) curAt = i;
         if (depth === 0 || ch !== '}') cur += ch;
       }
-    }
-    for (const b of bodies.filter(b => b.owner && classes.has(b.owner))) readFn(classes.get(b.owner), b.fn, b.text, b.from, b.f, b.lineAt, b.init);
+    };
+    for (const b of bodies.filter(b => b.c)) scanMembers(b.c.members, b.text, b.from, b.f, b.lineAt, (fn, text, from, init, params) => readFn(b.c, fn, text, from, b.f, b.lineAt, init, params));
+    for (const r of records.values()) if (!classes.has(r.name)) scanMembers(r.members, r.text, r.from, r.f, r.lineAt, null);
+    for (const b of bodies.filter(b => b.owner && classes.has(b.owner))) readFn(classes.get(b.owner), b.fn, b.text, b.from, b.f, b.lineAt, b.init, b.params);
     for (const c of classes.values()) {
+      // a helper's part: what each of its calls, in any of the class's functions, gives it
+      for (const v of c.viaParam) for (const body of c.bodies) for (const m of body.text.matchAll(new RegExp(`(?<![\\w:.>~])${v.fn}\\s*\\(`, 'g'))) {
+        const b = bracket(body.text, m.index + m[0].length - 1);
+        if (!b) continue;
+        for (const x of body.meaning(itemOf(splitArgs(b.inner)[v.index]), m.index)) if (x.name) {
+          c.added.push({ name: x.name, hidden: v.hidden, line: body.lineAt(body.from + m.index), path: body.f.path, indexed: x.indexed || v.indexed, loop: body.loopAt(m.index, x.indexed || v.indexed), into: v.into, order: body.no * 1e7 + m.index });
+        }
+      }
+      // a part made there: the member it's put in (strips[i] = std::move(view), owned.add(view)), or the class's one
+      // member of its kind
+      for (const a of c.added) if (a.made) {
+        const after = a.body.text.slice(a.defAt), x = a.local;
+        const put = after.match(new RegExp(`\\b(\\w+)\\s*(?:\\[[^\\]]*\\])?\\s*=\\s*std::move\\s*\\(\\s*${x}\\s*\\)`)) || after.match(new RegExp(`\\b(\\w+)\\s*(?:\\.|->)\\s*(?:add|push_back|emplace_back|set)\\s*\\(\\s*(?:std::move\\s*\\(\\s*)?${x}\\b`));
+        const ofKind = [...c.members.values()].filter(mem => mem.type === a.made);
+        a.name = put && c.members.has(put[1]) ? put[1] : ofKind.length === 1 ? ofKind[0].name : null;
+        // (one of several if what holds it is several: strips[16]; a single one, made once)
+        const mem = a.name && c.members.get(a.name);
+        if (mem && mem.many === 1) { a.indexed = false; if (a.loop && a.loop.endsWith('()')) a.loop = null; }
+        delete a.body;
+      }
+      c.added = c.added.filter(a => a.name).sort((a, b) => a.order - b.order);
       for (const [n, l] of c.labels) { const mem = c.members.get(n); if (mem && mem.label == null) mem.label = l; }
       for (const [n, st] of c.styles) { const mem = c.members.get(n); if (mem) { mem.rotary = /Rotary/.test(st); mem.vertical = /Vertical/.test(st) && !mem.rotary; } }
     }
     for (const c of classes.values()) c.content = opened.has(c.name);
-    return { classes, consts };
+    return { classes, consts, records, bases };
   }
 
   /* JUCE's rectangle steps, followed: getLocalBounds(), removeFromTop(n), reduced(n), withSizeKeepingCentre(w, h)…,
@@ -632,8 +789,16 @@
   }
 
   function juceWindows(files) {
-    const { classes, consts } = readJuce(files);
+    const { classes, consts, records, bases } = readJuce(files);
     if (!classes.size) return null;
+    // a member, or a part of a struct one is (controls.trim: ChannelControlRefs' juce::Slider& trim)
+    const memberOf = (c, name) => {
+      if (c.members.has(name)) return c.members.get(name);
+      const [head, part] = name.split('.'), holder = part && c.members.get(head);
+      const rec = holder && (records.get(holder.type) || classes.get(holder.type)), mem = rec && rec.members.get(part);
+      // (as many as its holder is: lanes[16]'s pan, 16)
+      return mem ? { ...mem, name, many: holder.many == null || mem.many == null ? null : holder.many * mem.many } : null;
+    };
     const held = new Set();
     for (const c of classes.values()) for (const mem of c.members.values()) if (classes.has(mem.type) && c.added.some(a => a.name === mem.name)) held.add(mem.type);
     // the windows: what the app opens (new …), an editor or a main component, or one that sets its own size; the
@@ -644,14 +809,23 @@
     const windows = [], notes = [];
     const unshown = free.filter(c => !tops.includes(c) && c.added.length);
     if (unshown.length) notes.push(`Not inside any window read here (they may be made when the program runs): ${unshown.map(c => c.name).join(', ')}.`);
-    const build = (c, W, H, ox, oy, ids, stack) => {
-      const placed = c.resized ? rectSteps(c.resized, W, H, consts) : new Map();
+    // where each part ends up: the last add says (JUCE moves a part that's added again), in a part of this class's
+    // (drawer.addAndMakeVisible(tab)) or in the class itself
+    const whereOf = (c) => {
+      const last = new Map();
+      for (const a of c.added) last.set(a.name, a);
+      const names = new Set(c.added.map(a => a.name));
+      return (a) => { const into = last.get(a.name).into; return into && into !== a.name && names.has(into) ? into : null; };
+    };
+    const build = (c, W, H, ox, oy, ids, stack, inside = null, placed = null, depth = 0) => {
+      placed = placed || (c.resized ? rectSteps(c.resized, W, H, consts) : new Map());
+      const where = whereOf(c);
       const kids = [], seen = new Set();
       let flowX = 8, flowY = 8, rowH = 0;
       for (const add of c.added) {
-        if (seen.has(add.name)) continue;
+        if (seen.has(add.name) || where(add) !== inside) continue;
         seen.add(add.name);
-        const mem = c.members.get(add.name);
+        const mem = memberOf(c, add.name);
         if (!mem) continue;   // (a local name, a loop's variable: made when the program runs)
         const type = mem.type, inner = classes.get(type), many = mem.many !== 1 || add.indexed;
         const p = placed.get(add.name);
@@ -679,11 +853,17 @@
         const src = [{ path: mem.path, line: mem.line, role: 'made' }, { path: add.path, line: add.line, role: 'shown' }];
         if (p) src.push({ path: p.path, line: p.line, role: 'placed' });
         for (const d of c.does) if (d.name === add.name) src.push({ path: d.path, line: d.line, role: 'does' });
-        const node = { id, kind: inner ? 'frame' : (JUCE_KINDS[type] || 'frame'), type, name: add.name, label: mem.label || '', how, many: many ? (mem.many || true) : null,
+        const node = { id, kind: inner ? 'frame' : (JUCE_KINDS[type] || 'frame'), type, name: add.name, label: mem.label || '', how, many: many ? (mem.many > 1 ? mem.many : true) : null,
           x: Math.round(ox + box.x), y: Math.round(oy + box.y), w: Math.round(box.w), h: Math.round(box.h),
           src: src.filter(x => x.path != null), place: p && !many ? (p.how === 'exact' ? 'bounds' : 'rect') : 'none', why, geom: p && !many ? p : null, children: [], hidden: add.hidden };
+        // (for telling it apart in the running app: an array's own texts, its setName, the loop that adds it)
+        if (mem.labels) node.labels = mem.labels;
+        if (c.named.has(add.name)) node.said = c.named.get(add.name);
+        if (add.loop) node.loop = add.loop;
         if (kidsFirst) { const sx = Math.round(ox + box.x), sy = Math.round(oy + box.y); const move = (k) => { k.x += sx; k.y += sy; k.children.forEach(move); }; kidsFirst.forEach(move); node.children = kidsFirst; }
         else if (inner && !stack.includes(inner.name)) node.children = build(inner, box.w, box.h, ox + box.x, oy + box.y, ids, [...stack, inner.name]);
+        // what's added to it here (drawer.addAndMakeVisible(tab)), inside it
+        if (depth < 8 && c.added.some(a => a.name !== add.name && where(a) === add.name)) node.children.push(...build(c, node.w, node.h, node.x, node.y, ids, stack, add.name, placed, depth + 1));
         kids.push(node);
       }
       return kids;
@@ -695,14 +875,14 @@
         why: c.size ? null : 'Its size is set when the program runs (not by setSize here), so it\'s shown at 800 × 600.' };
       windows.push({ title: c.name, toolkit: 'JUCE', path: (c.src[0] || {}).path, w: W, h: H, root: node });
     }
-    return { windows, notes };
+    return { windows, notes, bases };
   }
 
   /* ---------- the estimate ---------- */
 
   const kits = [];   // the other toolkits (lang/gui_kits.js): { name, estimate(files), places, move, resize, KINDS }
   function estimate(files) {
-    const windows = [], notes = [], toolkits = new Set();
+    const windows = [], notes = [], toolkits = new Set(), bases = {};
     for (const f of files.filter(f => /\.pyw?$/i.test(f.path))) {
       const r = readTk(f);
       if (!r) continue;
@@ -714,13 +894,15 @@
     const cpp = files.filter(f => /\.(?:cpp|cc|cxx|h|hpp|hh)$/i.test(f.path));
     if (cpp.some(f => /\bjuce\b|JuceHeader/.test(f.code))) {
       const j = juceWindows(cpp);
-      if (j && j.windows.length) { toolkits.add('JUCE'); windows.push(...j.windows); notes.push(...j.notes); }
+      if (j && j.windows.length) { toolkits.add('JUCE'); windows.push(...j.windows); notes.push(...j.notes); Object.assign(bases, j.bases); }
     }
     for (const k of kits) {
       const r = k.estimate(files);
       if (r && r.windows.length) { toolkits.add(k.name); windows.push(...r.windows); notes.push(...r.notes); }
     }
-    return { toolkits: [...toolkits], windows, notes };
+    // (bases: each class the code makes, what it is first, for telling a part in the running app, an OptoToggle, from
+    // the code's reference to it, a juce::ToggleButton&)
+    return { toolkits: [...toolkits], windows, notes, bases };
   }
 
   function flat(win) {
@@ -847,31 +1029,75 @@
      the same kind, in the same place among its group), so its code lights up, and one the code places with numbers still
      moves (as the code's part it stands for, eid). -> { toolkits, windows, notes, made } or null for something that isn't a report. */
   const shortType = (t) => String(t || '').replace(/<.*$/, '').split('::').pop();
+  const said = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();   // (a button's two lines, "MIX\nIN", read as words)
+  // kinds whose children are the widget's own insides (a slider's text box, an editor's caret), not parts of the program's
+  const LEAF = /^(?:slider|button|check|radio|label|entry|choice|progress|link|keyboard|scrollbar|line)$/;
   function measured(report, est) {
     if (!report || report.intuacode !== 'layout' || !Array.isArray(report.windows)) return null;
     const notes = [], windows = [], ewins = (est && est.windows) || [];
-    const kindOf = (t) => { const s = shortType(t); return TK_KINDS[s] || JUCE_KINDS[s] || kits.map(k => k.KINDS[s] || k.KINDS['Q' + s] || k.KINDS['wx' + s]).find(Boolean) || 'frame'; };
-    // the estimate's children matched to the report's: by the code's name first, then by kind in order
+    const bases = (est && est.bases) || {};
+    // (a type, then what it is first, and so on: OptoToggle, ToggleButton, Button)
+    const chain = (t) => { const out = [shortType(t)]; while (out.length < 8 && bases[out[out.length - 1]] && !out.includes(bases[out[out.length - 1]])) out.push(bases[out[out.length - 1]]); return out; };
+    const kindOf1 = (s) => TK_KINDS[s] || JUCE_KINDS[s] || kits.map(k => k.KINDS[s] || k.KINDS['Q' + s] || k.KINDS['wx' + s]).find(Boolean);
+    const kindOf = (t) => chain(t).map(kindOf1).find(Boolean) || 'frame';
+    /* The estimate's children matched to the report's (all of them, shown or not, so each side's order holds): a wrong
+       link is worse than none (moved, it would change another part's code), so a match is made only where it's sure.
+         1. by the code's name, where the probe knows it (tkinter's, Qt's object names, wx's)
+         2. by what it says: its text, the code's label for it, of the same kind (a JUCE button's name is its text); for
+            a part the code makes several of, any of its labels
+         3. by kind, in order, where the counts agree: the code's parts of that kind stand for exactly as many of the
+            app's (a part made several times, as many as it's made; one whose count isn't known, the rest). Parts the
+            code adds in one loop go in turn (a0 b0 a1 b1), as the loop adds them.
+       Otherwise it's left unlinked, saying it couldn't be told which. */
     const pair = (rkids, ekids) => {
-      const out = new Map(), used = new Set();
+      const out = new Map(), unsure = new Set(), taken = new Map();
+      // (how many more of the app's each of the code's parts can stand for: one, as many as it's made, or any)
+      const room = (e) => (typeof e.many === 'number' ? e.many : e.many ? Infinity : 1) - (taken.get(e) || 0);
+      const link = (r, e) => { out.set(r, e); taken.set(e, (taken.get(e) || 0) + 1); };
       for (const r of rkids) {
-        const e = r.name && ekids.find(k => !used.has(k) && k.name === r.name);
-        if (e) { out.set(r, e); used.add(e); }
+        const e = r.name && ekids.find(k => room(k) > 0 && k.name === r.name);
+        if (e) link(r, e);
       }
-      // by kind, in order; a part the code makes several of (an array, a loop) stands for as many of the app's
+      // (what the app's part says: its text, or else its name, which for JUCE is what setName gave it; the code's: its
+      // text, an array's texts, its setName). All that say one thing go to the one part of the code's that says it,
+      // if it's made as many times as that
+      const saysR = (r) => said(r.text) || said(r.name);
+      const saysE = (e) => [...(e.labels || []), e.label, e.said].map(said).filter(Boolean);
+      // (the app's part as the code knows it: its own type, or what it is first if the code has none of that here; an
+      // OptoToggle the code reaches through a juce::ToggleButton&)
+      const here = new Set(ekids.map(k => shortType(k.type)));
+      const typeOf = (r) => chain(r.type).find(t => here.has(t)) || shortType(r.type);
+      const groups = new Map();
+      for (const r of rkids) {
+        const s = saysR(r);
+        if (out.has(r) || !s) continue;
+        const key = `${typeOf(r)}\u0000${s}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+      }
+      for (const [key, rs] of groups) {
+        const [t, s] = key.split('\u0000'), es = ekids.filter(k => room(k) > 0 && shortType(k.type) === t && saysE(k).includes(s));
+        if (es.length === 1 && rs.length <= room(es[0])) rs.forEach(r => link(r, es[0]));
+      }
       const byType = new Map();
-      for (const r of rkids) if (!out.has(r)) { const t = shortType(r.type); if (!byType.has(t)) byType.set(t, []); byType.get(t).push(r); }
+      for (const r of rkids) if (!out.has(r)) { const t = typeOf(r); if (!byType.has(t)) byType.set(t, []); byType.get(t).push(r); }
       for (const [t, rs] of byType) {
-        const es = ekids.filter(k => !used.has(k) && shortType(k.type) === t);
+        const es = ekids.filter(k => room(k) > 0 && shortType(k.type) === t);
+        if (!es.length) continue;
+        // (a part made any number of times stands for the rest only when it's the code's one part of that kind here)
+        const open = es.filter(e => room(e) === Infinity).length, fixed = es.reduce((n, e) => n + (room(e) === Infinity ? 0 : room(e)), 0);
+        if (open === 0 ? fixed !== rs.length : es.length > 1) { rs.forEach(r => unsure.add(r)); continue; }
+        const count = (e) => room(e) === Infinity ? rs.length - fixed : room(e);
         let i = 0;
-        es.forEach((e, j) => {
-          const after = es.length - j - 1;   // (each of the code's parts after it stands for one at least)
-          const n = typeof e.many === 'number' ? e.many : e.many ? Math.max(1, rs.length - i - after) : 1;
-          for (let k = 0; k < n && i < rs.length; k++) out.set(rs[i++], e);
-          used.add(e);
-        });
+        for (let j = 0; j < es.length;) {
+          // the code's parts one loop adds together, as many of each: in turn (a0 b0 a1 b1)
+          const e = es[j], run = [e], n = count(e);
+          while (e.loop && j + run.length < es.length && es[j + run.length].loop === e.loop && count(es[j + run.length]) === n) run.push(es[j + run.length]);
+          for (let k = 0; k < n; k++) for (const x of run) if (i < rs.length) link(rs[i++], x);
+          j += run.length;
+        }
       }
-      return out;
+      return { out, unsure };
     };
     // each window matched to the estimate's by its title, then by its class (a JUCE window's title is its name; the
     // estimate's, its class), then what's left of each, in order
@@ -881,24 +1107,27 @@
     report.windows.forEach((rw, wi) => {
       if (!rw || !rw.root) return;
       const ew = wins[wi], ids = new Set();
-      const build = (r, e) => {
-        const base = String(r.name || (e && e.name) || shortType(r.type) || 'part').replace(/[^\w-]+/g, '-');
+      const build = (r, e, unsure) => {
+        const base = String((e && e.name) || r.name || shortType(r.type) || 'part').replace(/[^\w-]+/g, '-');
         let id = base;
         for (let k = 2; ids.has(id); k++) id = `${base}-${k}`;
         ids.add(id);
         const exact = e && e.how === 'exact' && e.kind !== 'window';
-        const node = { id, kind: e && e.kind === 'window' ? 'window' : kindOf(r.type), type: shortType(r.type), name: r.name || (e && e.name) || null,
+        const kind = e && e.kind === 'window' ? 'window' : kindOf(r.type);
+        const node = { id, kind, type: shortType(r.type), name: (e && e.name) || r.name || null,
           label: r.text || (e && e.label) || r.name || '', how: 'measured', x: Math.round(+r.x || 0), y: Math.round(+r.y || 0), w: Math.round(+r.w || 0), h: Math.round(+r.h || 0),
           // (moved, it's the code's part it stands for that moves, eid: here its place is the app's)
           src: e ? e.src : [], place: 'none', geom: null, cell: null, many: null, children: [],
           estimate: e ? { x: e.x, y: e.y, w: e.w, h: e.h, how: e.how } : null, eid: e ? e.id : null,
           // (why it can't be moved here: the code's reason, as the estimate gives it)
-          why: !e ? 'The code read here doesn\'t say where it\'s made.' : exact || e.kind === 'window' ? null
+          why: !e ? (unsure ? `The code makes ${shortType(r.type)}s here, but not as many as the app shows, so which one this is can't be told.` : 'The code read here doesn\'t say where it\'s made.')
+            : exact || e.kind === 'window' ? null
             : e.why || `In the code its place is ${e.how === 'rules' ? 'laid out by rules' : 'worked out when it runs'}.` };
-        const kids = (r.children || []).filter(c => c && c.shown !== false), hidden = (r.children || []).filter(c => c && c.shown === false);
-        for (const h of hidden) if (h.name) notes.push(`${h.name} (${shortType(h.type)}) is made but not shown in the running app.`);
-        const matched = pair(kids, e ? e.children : []);
-        node.children = kids.map(c => build(c, matched.get(c) || null));
+        // (a slider's text box, an editor's caret: the widget's own insides, unless the code adds something to it)
+        const all = LEAF.test(kind) && !(e && e.children && e.children.length) ? [] : (r.children || []).filter(Boolean);
+        const { out: matched, unsure: guess } = pair(all, e ? e.children : []);
+        for (const h of all) if (h.shown === false && (h.name || matched.get(h))) notes.push(`${(matched.get(h) && matched.get(h).name) || h.name} (${shortType(h.type)}) is made but not shown in the running app.`);
+        node.children = all.filter(c => c.shown !== false).map(c => build(c, matched.get(c) || null, guess.has(c)));
         return node;
       };
       const root = build(rw.root, ew ? ew.root : null);
@@ -906,7 +1135,7 @@
       windows.push({ title: rw.title || (ew && ew.title) || 'window', toolkit: report.toolkit || (ew && ew.toolkit) || '', w: Math.round(+rw.w || root.w), h: Math.round(+rw.h || root.h), root, picture: rw.picture || null, measured: true });
     });
     if (report.note) notes.push(String(report.note));
-    return { toolkits: [report.toolkit || ''], windows, notes, made: report.made || null, measured: true };
+    return { toolkits: [report.toolkit || ''], windows, notes: [...new Set(notes)], made: report.made || null, measured: true };
   }
   /* The report a probe printed: the JSON between its two marks. -> the report, or null. */
   const MARK = '\u0001INTUACODE-LAYOUT\u0001';

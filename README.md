@@ -374,8 +374,12 @@ and off the screen) and a small probe asks Tk where it put every part, by the pr
 Measure and there's nothing to read yet): run with `INTUACODE_LAYOUT` set, it writes where every component is, and a
 picture of each window, into the project's folder, and Measure reads that. The Preview then draws the window as measured
 (solid green), each part linked to its code as before, until the code changes: then the estimate is back, saying the
-measurement is older. A move in Editor mode is still the code's part moving: a part placed by numbers keeps the
-measurement (the code puts it as far from where it was measured), and Ctrl+Z goes back to the code that was measured.
+measurement is older. A part is linked only where it's sure: by its name, by what it says (a button's text), or by its
+place among the code's parts of its kind when there are just as many. Where the app shows more of a kind than the code
+read makes, those stay unlinked and say so, rather than lighting up the wrong code. Measuring FEC 16's console
+(1,672 components) linked 603 of the 635 parts it shows to their code. A move in Editor mode is still the code's part
+moving: a part placed by numbers keeps the measurement (the code puts it as far from where it was measured), and Ctrl+Z
+goes back to the code that was measured.
 The estimate's sizes for Tk come from this measurement, so they agree within a pixel or two on the computer that measured
 them.
 
