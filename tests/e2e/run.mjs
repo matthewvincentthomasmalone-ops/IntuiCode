@@ -675,7 +675,8 @@ try {
     } finally {
       await wd('POST', `/session/${session}/frame/parent`, {});
     }
-    const bar = await waitFor('the move, checked on the rebuilt page', () => js(() => { const t = document.getElementById('editBar').innerText; return /shows it there|not where it was dropped|isn't checked|can't|couldn't/.test(t) ? t : null; }), 20000);
+    const bar = await waitFor('the move, checked on the rebuilt page', () => js(() => { const t = document.getElementById('editBar').innerText; return /shows it there|not where it was dropped|can't|couldn't/.test(t) ? t : null; }), 30000)
+      .catch(async () => { throw new Error('the move was never checked: ' + await js(() => document.getElementById('editBar').innerText)); });
     if (!/^Moved cta 40 right and 16 down, and the page shows it there\. Written in style\.css line 5/.test(bar)) throw new Error(bar);
     // typed into Styling, in the editor on screen (Unity's line for line, or Split Mode's sentences), which has the keys
     const written = await js(() => {

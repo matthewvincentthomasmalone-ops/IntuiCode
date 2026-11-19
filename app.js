@@ -3220,6 +3220,8 @@
         });
       }
     });
+    // (the page says it's loaded, as well as the frame: a move waiting to be checked isn't left waiting if one is missed)
+    window.addEventListener('load', () => send({ type: 'loaded' }));
     // the page's own handlers, from here on, say when they answer (and which one) while Project Link is on
     const USED = /^(click|dblclick|input|change|submit|keydown|keyup|keypress|pointerdown|pointerup|mousedown|mouseup|touchstart|touchend)$/;
     const realAdd = EventTarget.prototype.addEventListener, realRemove = EventTarget.prototype.removeEventListener, wraps = new WeakMap();
@@ -3748,12 +3750,14 @@
   }
   $('btnEditor').addEventListener('click', () => setEditor(!editing));
   // each page the Preview loads is told it's in Editor mode, and a move waiting to be checked asks the rebuilt page
-  $('preview').addEventListener('load', () => {
+  // (the frame's load, and the page's own word that it's loaded: either one will do, and a second asks again harmlessly)
+  function editPageLoaded() {
     const w = $('preview').contentWindow;
     if (!editing || !w) return;
     w.postMessage({ intuicodeEdit: true }, '*');
     if (editCheck) w.postMessage({ intuicodeWhere: editCheck.line }, '*');
-  });
+  }
+  $('preview').addEventListener('load', editPageLoaded);
 
   function editSay(html, bad) {
     const bar = $('editBar');
@@ -3863,12 +3867,12 @@
     editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
     clearTimeout(previewTimer);
     runWebsite(false);
+    // a page slow to rebuild says so, and its answer still checks the move when it comes
     const c = editCheck;
     c.timer = setTimeout(() => {
       if (editCheck !== c) return;
-      editCheck = null;
-      editSay(`Written in ${editGo(sty, c.at)}, but the page didn't say where <code>${escHtml(name)}</code> is now, so the move isn't checked.`, true);
-    }, 6000);
+      editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the move isn't checked yet.`, true);
+    }, 8000);
   }
   /* The rebuilt page says where the element is: it's where it was dropped, or something else wins. */
   function editChecked(d) {
@@ -3921,6 +3925,7 @@
     if (d.type === 'link' || d.type === 'link-run') { onLink(d); return; }
     if (d.type === 'move') { moveFromPreview(d); return; }
     if (d.type === 'edit-at') { editChecked(d); return; }
+    if (d.type === 'loaded') { editPageLoaded(); return; }
     if (d.type === 'log') tLine(`page: ${d.text}`, d.level === 'error' ? 't-err' : d.level === 'warn' ? 't-sys' : undefined);
     else if (d.type === 'error') {
       let where = '', mech = previewInfo && previewInfo.page.mechanics, at = '';
