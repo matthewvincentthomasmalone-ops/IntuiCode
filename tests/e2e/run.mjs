@@ -685,14 +685,20 @@ try {
     });
     if (written.line !== 'style cta: position: relative, left: 40px, top: 16px' || written.keys !== written.editor) throw new Error(JSON.stringify(written));
     // the editor's own Undo takes it back: Ctrl+Z, pressed (WebKit takes Undo only from the keyboard or a menu, never
-    // from a script's execCommand, so the keys are the browser's own, through WebDriver)
-    await js((id) => { document.getElementById(id).focus(); return true; }, written.editor);
-    await wd('POST', `/session/${session}/actions`, { actions: [{ type: 'key', id: 'keyboard', actions: [
-      { type: 'keyDown', value: '\uE009' }, { type: 'keyDown', value: 'z' }, { type: 'keyUp', value: 'z' }, { type: 'keyUp', value: '\uE009' }] }] });
-    await wd('DELETE', `/session/${session}/actions`).catch(() => {});
+    // from a script's execCommand, so the keys are the browser's own, through WebDriver). First: do WebDriver's keys
+    // reach the window on this system at all? (a box made to type a letter in, then taken away)
+    const keys = (list) => wd('POST', `/session/${session}/actions`, { actions: [{ type: 'key', id: 'keyboard', actions: list }] }).then(() => wd('DELETE', `/session/${session}/actions`).catch(() => {}));
+    await js(() => { const i = document.createElement('input'); i.id = 'e2eKeys'; document.body.appendChild(i); i.focus(); return true; });
+    await keys([{ type: 'keyDown', value: 'k' }, { type: 'keyUp', value: 'k' }]);
+    const typed = await js(() => { const i = document.getElementById('e2eKeys'), v = i.value; i.remove(); return v; });
     const line5 = () => js((id) => document.getElementById(id).value.split('\n')[4], written.editor);
-    await waitFor('Ctrl+Z to take the move back', async () => (await line5()) === 'when cta is hovered: background #ffe9d2', 5000)
-      .catch(async () => { throw new Error('after Ctrl+Z, line 5 is ' + JSON.stringify(await line5())); });
+    if (typed !== 'k') console.log(`  (WebDriver's keys don't reach the window here: a letter typed came out ${JSON.stringify(typed)}. Ctrl+Z is checked on Windows and in Chrome.)`);
+    else {
+      await js((id) => { document.getElementById(id).focus(); return true; }, written.editor);
+      await keys([{ type: 'keyDown', value: '\uE009' }, { type: 'keyDown', value: 'z' }, { type: 'keyUp', value: 'z' }, { type: 'keyUp', value: '\uE009' }]);
+      await waitFor('Ctrl+Z to take the move back', async () => (await line5()) === 'when cta is hovered: background #ffe9d2', 5000)
+        .catch(async () => { throw new Error('keys reach the window, but after Ctrl+Z, line 5 is ' + JSON.stringify(await line5())); });
+    }
     // pressed again: everything as it was
     await click('btnEditor');
     const off = await where();
