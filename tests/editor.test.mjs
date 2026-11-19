@@ -225,6 +225,11 @@ test('editor: in the page, the windows make room, a drag is written in Styling a
     await tab.run('document.getElementById("btnLink").click()');
     assert.equal(await tab.run('document.getElementById("btnLink").getAttribute("aria-pressed")'), 'false');
 
+    // (from here, as on a busy computer: the rest of a rebuild's work, after the frame is given its page, takes 60 ms. The
+    // rebuilt page's own start is when it was given it, so its answer has to count all the same)
+    await tab.run(`(() => { const f = document.getElementById('preview'), d = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'srcdoc');
+      Object.defineProperty(f, 'srcdoc', { configurable: true, get() { return d.get.call(this); }, set(v) { d.set.call(this, v); const t = performance.now(); while (performance.now() - t < 60) {} } });
+      return true; })()`);
     // Editor mode: the code and the page, side by side, half and half; the side, the help and the explanation away
     await tab.run('document.getElementById("btnEditor").click()');
     assert.equal(await tab.run('document.getElementById("btnEditor").getAttribute("aria-pressed")'), 'true');

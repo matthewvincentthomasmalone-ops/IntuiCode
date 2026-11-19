@@ -170,6 +170,7 @@
   }
 
   let project = loadProject();
+  let guiMeasure = null, guiOpened = 0;   // an app's measured windows (Measure): { made, at: code -> { view, pictures } }, the code it measured and the code a move carried it to; guiOpened counts projects opened
   let compiled = null;
   // INTENT.md, checked against the code after every compile (checkIntent): each promise's state, each step's checks,
   // and the parts no step covers. Worked out each time from the code as it is, never kept as done.
@@ -212,6 +213,7 @@
     saveDlg.named = false;   // a browser's Save asks its name once
     codeBase.clear();   // another project: what its lines make is learnt afresh
     runtimeMark = null;
+    guiMeasure = null; guiOpened++;   // (measured of another project, or being measured)
     ta.value = activeSec().text;
     Runner.reset();
     setMode(mode === 'unity' ? 'unity' : 'write');
@@ -3080,7 +3082,10 @@
   const PAGE_STORE_KEY = 'intuicode.pagestorage.v1';
   const previewHelper = () => `(() => {
     if (window.parent === window) return;
-    const send = (m) => parent.postMessage(Object.assign({ intuicode: true, page: location.pathname }, m), '*');
+    // (each page the Preview loads is a page of its own, and says so with every word: the editor tells a rebuilt page
+    // from the one before by it, not by clocks, which two processes don't share exactly)
+    const pageId = Math.random().toString(36).slice(2) + '.' + Date.now().toString(36);
+    const send = (m) => parent.postMessage(Object.assign({ intuicode: true, page: location.pathname, pid: pageId }, m), '*');
     const saved = ${JSON.stringify(store.get(PAGE_STORE_KEY, {})[project.name] || {}).replace(/</g, '\\u003c')};
     const storage = (data, changed) => {
       const has = (k) => Object.prototype.hasOwnProperty.call(data, k);
@@ -3488,6 +3493,8 @@
     $('btnPick').hidden = !showPreview || gui;
     $('btnLink').hidden = !showPreview;
     $('btnEditor').hidden = !shows;
+    $('btnMeasure').hidden = !(gui && showPreview && desk.on);
+    if (!editing && !(gui && showPreview)) $('editBar').hidden = true;   // (what Measure said)
     if (!shows && editing) setEditor(false);
     $('btnClear').hidden = showPreview;
     if (!showPreview) clearLink();
@@ -3811,6 +3818,7 @@
   }
   const editGo = (sec, line) => `<button type="button" class="linklike" data-link-go="${escHtml(sec.id)}" data-link-line="${line}">${escHtml(fileName(sec))} <span class="dim">line ${line + 1}</span></button>`;
   $('editBar').addEventListener('click', (e) => {
+    if (e.target.closest('[data-bar-close]')) { $('editBar').hidden = true; return; }
     const b = e.target.closest('[data-link-go]');
     if (b) openSection(b.dataset.linkGo, +b.dataset.linkLine);
   });
@@ -3909,12 +3917,16 @@
     refreshAll(); save(); autosave();
     if (typed) moveMade(sty, was);
     editSay(`Moving <code>${escHtml(name)}</code> ${dirs}: written in ${editGo(sty, w.line)}. Checking the page…`);
+    // (the time before the rebuild: the rebuilt page's own start is when the frame is given it, inside runWebsite, so
+    // a time taken after it, on a busy computer, is later than the very page it's waiting for)
+    const since = Date.now();
     clearTimeout(previewTimer);
     runWebsite(false);
     // a page slow to rebuild says so, and its answer still checks the move when it comes; the page is asked again every
     // second meanwhile (its load, or its word that it's loaded, can go missing), and only the rebuilt one's answer counts
     const c = editCheck;
-    c.since = Date.now();
+    c.since = since;
+    c.pid = d.pid || null;   // (the page the move was made on: its answers aren't the rebuilt page's)
     c.timer = setTimeout(() => {
       if (editCheck !== c) return;
       editSay(`Written in ${editGo(sty, c.at)}. The page hasn't said where <code>${escHtml(name)}</code> is yet, so the move isn't checked yet.`, true);
@@ -3929,7 +3941,9 @@
   function editChecked(d) {
     const c = editCheck;
     if (!c || d.line !== c.line) return;
-    if (d.born && c.since && d.born < c.since) return;   // (the page from before the move, still showing the drag)
+    // (the page the move was made on, still showing the drag: only a page rebuilt since counts. By its own id; a page
+    // with none, by when it started, against a time taken before the rebuild, 20 ms for two processes' clocks)
+    if (c.pid ? d.pid === c.pid : (d.born && c.since && d.born < c.since - 20)) return;
     editCheck = null;
     clearTimeout(c.timer); clearInterval(c.poll);
     const sty = project.sections.find(s => s.id === c.sec), at = sty ? editGo(sty, c.at) : 'Styling';
@@ -3960,28 +3974,36 @@
     if (guiCache.key !== key) { try { guiCache = { key, est: GUI.estimate(files), files }; } catch (e) { console.error(e); guiCache = { key, est: { windows: [], notes: [] }, files }; } }
     return guiCache.est.windows.length ? guiCache : null;
   }
+  const guiAt = (made) => { const t = made ? new Date(made) : null; return t && !isNaN(t) ? t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now'; };
   const guiOn = () => !!guiEstimate();
+  document.addEventListener('click', (e) => { if (e.target.closest('#btnMeasure')) measureApp(); });
   const guiList = (est) => { const list = []; for (const w of est.windows) for (const { node, parent } of GUI.flat(w)) list.push({ node, parent, win: w }); return list; };
   const escAttr = (s) => escHtml(s).replace(/'/g, '&#39;');
 
   /* The page the Preview shows: each window with its parts as boxes, nested as the code nests them (so Alt moves the
      group a part is in), with IntuaCode's helper (pointing, dragging, Project Link). */
-  function guiPage(est, list) {
+  function guiPage(est, list, extra = {}) {
     const at = new Map(list.map((it, i) => [it.node, i]));
-    const HOW = { exact: 'exact: the code says these numbers', rules: 'laid out by rules: the arrangement is right, the sizes are estimated', sketch: 'a sketch: the program works this out when it runs', window: '' };
+    const HOW = { exact: 'exact: the code says these numbers', rules: 'laid out by rules: the arrangement is right, the sizes are estimated', sketch: 'a sketch: the program works this out when it runs', measured: 'measured in the running app', window: '' };
     const box = (n, px, py) => {
       const round = n.kind === 'slider' && Math.abs(n.w - n.h) < 6 ? ' round' : '';
       const tip = [n.type && n.name ? `${n.type} ${n.name}` : n.type || n.name, HOW[n.how], n.why].filter(Boolean).join(' · ');
       return `<div class="n k-${n.kind} h-${n.how}${n.many ? ' many' : ''}${round}" data-ic-line="${at.get(n)}" id="${escAttr(n.id)}" title="${escAttr(tip)}" style="left:${n.x - px}px;top:${n.y - py}px;width:${Math.max(n.w, 2)}px;height:${Math.max(n.h, 2)}px">`
         + `<span class="t">${escHtml(n.label || n.name || n.kind)}${n.many ? ` <b>×${typeof n.many === 'number' ? n.many : 'n'}</b>` : ''}</span>${n.children.map(c => box(c, n.x, n.y)).join('')}</div>`;
     };
-    const wins = est.windows.map(w => {
+    const wins = est.windows.map((w, wi) => {
+      const pic = extra.pictures && extra.pictures[wi];
       const r = w.root, bottom = Math.max(w.h, ...GUI.flat(w).map(x => x.node.y + x.node.h)), right = Math.max(w.w, ...GUI.flat(w).map(x => x.node.x + x.node.w));
-      return `<section class="win t-${w.toolkit === 'JUCE' ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? ' · the sketch runs past the window' : ''}</span></header>`
-        + `<div class="client" data-ic-line="${at.get(r)}" id="${escAttr(r.id)}" title="${escAttr(r.why || '')}" style="width:${right}px;height:${bottom}px">${r.children.map(c => box(c, 0, 0)).join('')}`
+      return `<section class="win t-${w.toolkit === 'JUCE' ? 'juce' : 'tk'}"><header>${escHtml(w.title)}<span>${w.w} × ${w.h} · ${escHtml(w.toolkit)}${bottom > w.h || right > w.w ? (est.measured ? ' · parts run past the window' : ' · the sketch runs past the window') : ''}</span></header>`
+        + `<div class="client${pic ? ' pic' : ''}" data-ic-line="${at.get(r)}" id="${escAttr(r.id)}" title="${escAttr(r.why || '')}" style="width:${right}px;height:${bottom}px${pic ? `;background-image:url(${pic});background-size:${w.w}px ${w.h}px` : ''}">${r.children.map(c => box(c, 0, 0)).join('')}`
         + `${bottom > w.h ? `<div class="edge" style="top:${w.h}px;width:${right}px"></div>` : ''}${right > w.w ? `<div class="edge v" style="left:${w.w}px;height:${bottom}px"></div>` : ''}</div></section>`;
     }).join('');
     const notes = est.notes.length ? `<ul class="notes">${est.notes.map(n => `<li>${escHtml(n)}</li>`).join('')}</ul>` : '';
+    const top = est.measured
+      ? `<b>Measured in the running app at ${escHtml(guiAt(est.made))}</b> (${escHtml(est.toolkits.join(' and '))}): every part where the app really put it, linked to its code. It shows until the code changes.`
+      : `<b>An estimate of the app's ${est.windows.length > 1 ? 'windows' : 'window'}, read from its code</b> (${escHtml(est.toolkits.join(' and '))}). Fonts and native controls differ when it runs.${extra.stale ? ` The measurement from ${escHtml(guiAt(extra.stale))} is older than the code: Measure again.` : ''}`;
+    const key = est.measured ? '<div class="key"><span><i style="border-color:#7fe0a8"></i>measured: where the running app put it</span></div>'
+      : '<div class="key"><span><i></i>exact: the code says the numbers</span><span><i style="border-style:dashed"></i>laid out by rules (sizes estimated)</span><span><i style="border-style:dotted"></i>a sketch: worked out when it runs</span></div>';
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><script>${previewHelper()}</script><title>Estimate</title><style>
 html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Segoe UI",sans-serif}
 .top{padding:10px 16px 4px;color:#9aa3ad}.top b{color:#e8eaed}.key{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:4px}
@@ -3998,19 +4020,91 @@ html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Se
 .k-entry,.k-text,.k-list,.k-canvas,.k-choice{background:#fff}.t-juce .k-entry,.t-juce .k-text,.t-juce .k-list,.t-juce .k-choice{background:#1a1b1f}
 .k-slider{background:linear-gradient(transparent 44%,rgba(127,127,127,.55) 44%,rgba(127,127,127,.55) 56%,transparent 56%)}.k-slider.round{border-radius:50%;background:radial-gradient(circle,rgba(127,127,127,.35) 55%,transparent 56%)}
 .many{box-shadow:4px 4px 0 -1px rgba(127,127,127,.4),8px 8px 0 -2px rgba(127,127,127,.25)}
+.h-measured{border-color:rgba(60,170,110,.85)!important;border-style:solid}.client.pic{background-repeat:no-repeat}
+.client.pic .n{background:rgba(127,224,168,.06)!important;color:transparent}.client.pic .n:hover{color:inherit}
 .edge{position:absolute;left:0;border-top:2px dashed rgba(240,120,120,.8);pointer-events:none}.edge.v{top:0;border-top:0;border-left:2px dashed rgba(240,120,120,.8)}
 .notes{margin:0 16px 20px;padding-left:18px;color:#d9b38c}.notes li{margin:3px 0}
-</style></head><body><div class="top"><b>An estimate of the app's ${est.windows.length > 1 ? 'windows' : 'window'}, read from its code</b> (${escHtml(est.toolkits.join(' and '))}). Fonts and native controls differ when it runs.
-<div class="key"><span><i></i>exact: the code says the numbers</span><span><i style="border-style:dashed"></i>laid out by rules (sizes estimated)</span><span><i style="border-style:dotted"></i>a sketch: worked out when it runs</span></div></div>${wins}${notes}</body></html>`;
+</style></head><body><div class="top">${top}
+${key}</div>${wins}${notes}</body></html>`;
   }
   function runGui(announce) {
     const g = guiEstimate();
     if (!g) return;
-    guiShown = { ...g, list: guiList(g.est) };
+    const m = guiMeasure && guiMeasure.at.get(g.key), est = m ? m.view : g.est;
+    guiShown = { ...g, est, code: g.est, list: guiList(est), measuredView: !!m };   // (code: the estimate, what a move changes)
     previewInfo = null;
     setFrame('one');
-    showPreviewPage(guiPage(g.est, guiShown.list), announce);
+    showPreviewPage(guiPage(est, guiShown.list, { pictures: m ? m.pictures : null, stale: guiMeasure && !m ? guiMeasure.made : null }), announce);
+    if (guiMeasure && !m && !editing) $('editBar').hidden = true;   // (the page says it's older than the code)
     if (announce) showBottom('preview');
+    $('btnMeasure').hidden = !desk.on || $('previewWrap').hidden;
+  }
+
+  /* Measure: the running app says where its parts are (a probe), and the Preview draws that, linked to the code, until
+     the code changes. tkinter: IntuaCode runs the program for a moment, its window out of sight. JUCE: the app writes
+     its report when it runs with INTUACODE_LAYOUT set (IntuaCodeProbe.h), and Measure reads it from the project's
+     folder; without one, Measure copies the probe and says how. */
+  function measureSay(html, bad) {   // (in the bar over the Preview, Editor mode or not)
+    const bar = $('editBar');
+    bar.hidden = false;
+    bar.classList.toggle('bad', !!bad);
+    bar.innerHTML = `<span class="ed-dot" aria-hidden="true"></span><span>${html}</span>${editing ? '' : '<button type="button" class="linklike ed-close" data-bar-close title="Close this">Close</button>'}`;
+  }
+  async function measureApp() {
+    const g = guiEstimate();
+    if (!g || !GUI) return;
+    if (!desk.on) return measureSay('Measuring runs the app, which the desktop app does. Here, the Preview shows the estimate read from its code.', true);
+    const tk = g.est.toolkits.includes('tkinter'), opened = guiOpened;
+    const btn = $('btnMeasure');
+    btn.disabled = true;
+    try {
+      if (tk) {
+        if (!desk.python) return measureSay('Measuring a tkinter app runs it with Python, and no Python was found on this computer.', true);
+        const py = startSec().lang === 'python' && /\btkinter\b/.test(codeOf(startSec())) ? startSec() : project.sections.find(s => s.lang === 'python' && /\btkinter\b/.test(codeOf(s)));
+        if (!py) return measureSay('No Python file here opens a tkinter window to measure.', true);
+        measureSay(`Running ${escHtml(fileName(py))} for a moment, its window out of sight, to measure it…`);
+        const dir = desk.folder || await invoke('scratch_folder');
+        for (const s of project.sections) await invoke('write_text', { path: join(dir, fileName(s)), content: codeOf(s) });
+        await invoke('write_text', { path: join(dir, '.intuicode/probe_tk.py'), content: GUI.TK_PROBE });
+        const [code, out, err] = await invoke('run_capture', { program: desk.python[0], args: ['-u', join(dir, '.intuicode/probe_tk.py'), fileName(py)], cwd: dir });
+        const report = GUI.reportIn(out);
+        // (ended by the probe, which says where it was: the innermost line of the program's own code)
+        const timedOut = /^Timeout \(/m.test(err || ''), at = timedOut && String(err).split('\n').map(l => /^\s*File "(.+?)", line (\d+)/.exec(l))
+          .find(m => m && !/(^|[\\/])probe_tk\.py$|^<frozen |[\\/]tkinter[\\/]/.test(m[1]));
+        if (!report) return measureSay(timedOut ? `The app didn't open its window within 25 seconds, so it was ended${at ? `; it was at ${escHtml(at[1].split(/[\\/]/).pop())} line ${at[2]}` : ''}.`
+          : `The app didn't say where its parts are${err ? `: ${escHtml(String(err).trim().split('\n').pop())}` : '.'}`, true);
+        if (!report.windows.length) return measureSay(escHtml(report.note || 'The app ran without opening a window.'), true);
+        return measured(report, g, null, opened);
+      }
+      // JUCE (and any app with its own probe): its report in the project's folder
+      let text = null;
+      if (desk.folder) { try { text = await invoke('read_text', { path: join(desk.folder, 'intuacode-layout.json') }); } catch (_) { text = null; } }
+      let report = null;
+      try { report = text ? JSON.parse(text) : null; } catch (_) { report = null; }
+      if (!report || report.intuacode !== 'layout') {
+        await copyText(GUI.JUCE_PROBE, btn, 'Measure');
+        return measureSay(`No measurement yet${desk.folder ? '' : ' (save the project to a folder first: the app writes it there)'}. <b>IntuaCodeProbe.h</b> is copied: add it to the app, call <code>intuacode::probeLayoutSoon();</code> after its window is shown, run it with <code>INTUACODE_LAYOUT=${escHtml(desk.folder ? join(desk.folder, 'intuacode-layout.json') : '…/intuacode-layout.json')}</code>, then press Measure again.`);
+      }
+      // each window's picture, beside the report
+      const pictures = [];
+      for (const w of report.windows || []) {
+        let url = null;
+        if (w && typeof w.picture === 'string' && /^[\w.-]+\.png$/i.test(w.picture)) { try { url = 'data:image/png;base64,' + await invoke('read_bytes', { path: join(desk.folder, w.picture) }); } catch (_) { url = null; } }
+        pictures.push(url);
+      }
+      return measured(report, g, pictures, opened);
+    } catch (e) {
+      measureSay(`Measuring didn't work: ${escHtml(String(e))}`, true);
+    } finally { btn.disabled = false; }
+  }
+  function measured(report, g, pictures, opened) {
+    if (opened !== guiOpened) return;   // (another project opened while it ran)
+    const view = GUI.measured(report, g.est);
+    if (!view || !view.windows.length) return measureSay('The report had no windows in it.', true);
+    guiMeasure = { made: report.made || new Date().toISOString(), at: new Map([[g.key, { view, pictures }]]) };
+    runGui(true);
+    const parts = view.windows.reduce((n, w) => n + GUI.flat(w).length - 1, 0);
+    measureSay(`Measured in the running app at ${guiAt(guiMeasure.made)}: ${parts} part${parts === 1 ? '' : 's'}, each where the app really puts it. It shows until the code changes.`);
   }
   function runPreview(announce) { if (webOn()) runWebsite(announce); else runGui(announce); }
 
@@ -4060,7 +4154,10 @@ html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Se
     const it = guiShown.list[d.line], fail = (html) => { editUndo(); editSay(html, true); };
     if (!it) return fail('That isn\'t a part of the estimate.');
     syncText();
-    const name = it.node.name || it.node.kind, r = GUI.move(guiShown.files, it.node, d.dx, d.dy, it.parent);
+    // a measured part moves as the code's part it stands for (its numbers, its row and column: the same code)
+    const name = it.node.name || it.node.kind, src = guiShown.measuredView ? it.node.eid != null && guiList(guiShown.code).find(x => x.node.id === it.node.eid) : it;
+    if (!src) return fail(`<code>${escHtml(name)}</code>: ${escHtml(it.node.why || 'Nothing in the code places it.')}`);
+    const r = GUI.move(guiShown.files, src.node, d.dx, d.dy, src.parent);
     if (r.why) return fail(`<code>${escHtml(name)}</code>: ${escHtml(r.why)}`);
     const sec = project.sections.find(s => s.path === r.path), file = guiShown.files.find(f => f.path === r.path);
     if (!sec || !file) return fail(`<code>${escHtml(name)}</code>: its code isn't in the project.`);
@@ -4075,10 +4172,23 @@ html,body{margin:0;background:#202227;color:#cfd3da;font:12px/1.45 system-ui,"Se
     typingLine = -1;
     refreshAll(); save(); autosave();
     moveMade(sec, was);   // (Ctrl+Z straight after puts it back)
-    // read again from the code: is it where it was dropped (or in the cell it was dropped in)?
-    const g = guiEstimate(), now = g && guiList(g.est).find(x => x.node.id === it.node.id), at = `${editGo(sec, e.line)}`;
+    // read again from the code: is it where it was dropped (or in the cell it was dropped in)? (A measured part: where
+    // the code put it before, as read, moved by as much.)
+    const was0 = src.node, g = guiEstimate(), now = g && guiList(g.est).find(x => x.node.id === was0.id), at = `${editGo(sec, e.line)}`;
     const there = now && (r.row != null ? now.node.cell && now.node.cell.r === r.row && now.node.cell.c === r.column
-      : Math.abs(now.node.x - (it.node.x + Math.round(d.dx))) <= 1 && Math.abs(now.node.y - (it.node.y + Math.round(d.dy))) <= 1);
+      : Math.abs(now.node.x - (was0.x + Math.round(d.dx))) <= 1 && Math.abs(now.node.y - (was0.y + Math.round(d.dy))) <= 1);
+    // the code places it with numbers, relative to its group, so the running app puts it as far from where it measured:
+    // the measurement holds for the code as it is now (less the window's picture, which showed it where it was)
+    const cur = there && guiShown.measuredView && guiMeasure && r.row == null && guiMeasure.at.get(guiShown.key);
+    if (cur) {
+      const ddx = now.node.x - was0.x, ddy = now.node.y - was0.y;
+      const shift = (n) => ({ ...n, x: n.x + ddx, y: n.y + ddy, children: n.children.map(shift) });
+      const carry = (n) => n === it.node ? { ...shift(n), estimate: { ...n.estimate, x: now.node.x, y: now.node.y } } : { ...n, children: n.children.map(carry) };
+      const wi = cur.view.windows.indexOf(it.win);
+      guiMeasure.at.set(g.key, { view: { ...cur.view, windows: cur.view.windows.map(w => w === it.win ? { ...w, root: carry(w.root) } : w) },
+        pictures: cur.pictures && cur.pictures.map((u, i) => i === wi ? null : u) });
+      if (guiMeasure.at.size > 60) guiMeasure.at.delete(guiMeasure.at.keys().next().value);
+    }
     if (there) editSay(`Moved <code>${escHtml(name)}</code> ${dirs}, and the code puts it there. Written in ${at}, ready to fine-tune (<kbd>Ctrl+Z</kbd> there takes it back).`);
     else editSay(`Written in ${at}, but read again, the code puts <code>${escHtml(name)}</code> ${now ? `at ${now.node.x}, ${now.node.y}` : 'nowhere it can show'}, not where it was dropped.`, true);
     clearTimeout(previewTimer);
