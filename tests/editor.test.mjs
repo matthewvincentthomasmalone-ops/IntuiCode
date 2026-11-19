@@ -186,7 +186,15 @@ function driving(tab) {
     for (let i = 1; i <= 8; i++) await mouse('mouseMoved', x + dx * i / 8, y + dy * i / 8, true, alt);
     await tab.run('document.getElementById("editBar").dataset.was = document.getElementById("editBar").textContent');
     await mouse('mouseReleased', x + dx, y + dy, false, alt);
-    await until('!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was', 'the move to be checked');
+    // (checked on the rebuilt page, which answers once its fonts are in and it's laid out: Chrome without a window does
+    // that for a frame of its own process when it draws it, and a window draws all the time, so here it's asked to while
+    // waiting; a busy computer can take a while)
+    const checked = '!/Checking the page|^Drag anything|checked yet/.test(document.getElementById("editBar").textContent) && document.getElementById("editBar").textContent !== document.getElementById("editBar").dataset.was';
+    for (let i = 0; i < 100 && !(await tab.run(`!!(${checked})`)); i++) {
+      await tab.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 } });
+      await new Promise(r => setTimeout(r, 200));
+    }
+    await until(checked, 'the move to be checked');
     return { at, bar: await tab.run('document.getElementById("editBar").textContent'), bad: await tab.run('document.getElementById("editBar").classList.contains("bad")') };
   };
   // Ctrl+Z, as pressed (where the keys are: the code, after a move)
