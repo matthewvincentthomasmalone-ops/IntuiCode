@@ -190,7 +190,7 @@
     ['menu', 'menu'], ['search', 'search area'], ['fieldset', 'field group'], ['legend', 'legend'], ['a', 'link'], ['button', 'button'], ['label', 'label'],
     ['img', 'picture', 'image', 'photo'], ['input', 'input'], ['select', 'drop-down', 'dropdown'], ['option', 'option'], ['optgroup', 'option group'],
     ['textarea', 'big text box'], ['output', 'output'], ['progress', 'progress bar'], ['meter', 'meter'], ['video', 'video'], ['audio', 'sound player'],
-    ['source', 'media source'], ['track', 'captions track'], ['iframe', 'embedded page'], ['canvas', 'drawing area', 'canvas'], ['br', 'line break'], ['hr', 'line'],
+    ['source', 'media source'], ['track', 'captions track'], ['iframe', 'embedded page', 'webpage link', 'webpage'], ['canvas', 'drawing area', 'canvas'], ['br', 'line break'], ['hr', 'line'],
     ['svg', 'drawing'], ['script', 'script'], ['strong', 'strong text'], ['em', 'emphasised text', 'emphasized text'], ['b', 'bold text'], ['i', 'italic text'],
     ['u', 'underlined text'], ['s', 'struck-out text'], ['small', 'small text'], ['mark', 'highlighted text'], ['sub', 'subscript'], ['sup', 'superscript'],
     ['abbr', 'abbreviation'], ['code', 'code'], ['kbd', 'key'], ['samp', 'sample output'], ['var', 'variable'], ['time', 'time'], ['del', 'deleted text'],
@@ -676,6 +676,9 @@
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(?:called|named)\s+("(?:[^"\\]|\\.)*"|[\w-]+)\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) { const t = strOf(m[2]); if (t == null) inf.errs.push('Put the label\'s text in quotes.'); return el('label', { id: nameOf(m[1]), text: t || '', attrs: m[3] ? { for: toId(m[3]) } : {} }); }
     if ((m = s.match(/^add\s+(?:a\s+)?label\s+(.+?)(?:\s+for\s+([\w-]+))?$/i))) return el('label', { text: strOf(m[1]) ?? m[1], attrs: m[2] ? { for: toId(m[2]) } : {} });
     if ((m = s.match(/^add\s+(?:a\s+)?video(.*?)\s+of\s+("[^"]*")$/i))) return el('video', { id: called(m[1]), attrs: { src: at(strOf(m[2]), 'src'), controls: '' } });
+    // an embedded page (an iframe), with its address said the way a link's or a video's is: from, to or of "…"
+    // (", from "…"" after a comma is the setting, and is how the reader says it)
+    if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(?:embedded page|webpage link|webpage)(.*?)\s+(?:from|to|of)\s+("[^"]*"|'[^']*')$/i)) && !/\S/.test(cut(m[1]))) return el('iframe', { id: called(m[1]), attrs: { src: at(strOf(m[2]), 'src') } });
     if ((m = s.match(/^add\s+(?:a\s+)?(?:drawing area|canvas)(.*?)(?:\s+(\d+)\s*(?:by|x)\s*(\d+))?$/i))) return el('canvas', { id: called(m[1]), attrs: m[2] ? { width: m[2], height: m[3] } : {} });
     if ((m = s.match(/^add\s+(?:a\s+|an\s+)?(?:data\s+)?(?:chart|graph|plot)(.*?)(?:\s+(\d+)\s*(?:by|x)\s*(\d+))?$/i)) && !/\S/.test(cut(m[1]))) {
       note(inf, 'A chart is drawn on a drawing area (`<canvas>`): Mechanics draws its bars and lines with "draw a rectangle …" and "draw a line …", or a chart library draws on it.');
@@ -3250,6 +3253,7 @@
     T('Controls', 'add a hidden value "‹home›" sent as "‹source›"', '<input type="hidden" name="source" value="home">', 'Sent with its form, never shown: something the server needs, not the person filling it in.', ['structure']),
     T('Controls', 'add a file picker called ‹name› for ‹pictures›', '<input type="file" accept="image/*">', 'Or for sounds, videos, text files, or "‹.csv›". "for several pictures" lets people pick more than one. Mechanics: "the file in ‹name›".', ['structure']),
     T('Media', 'add a picture of "‹file.jpg›" described as "‹what it shows›"', '<img src="…" alt="…">', 'The description is read aloud by screen readers.', ['structure']),
+    T('Media', 'add an embedded page, from "‹https://…›", sized ‹600› by ‹400›, with tooltip "‹what it shows›"', '<iframe src="…" width="600" height="400" title="…">', 'Another web page shown inside this one. The tooltip names it for screen readers. Also: add a webpage, add a webpage link.', ['structure']),
     T('Media', 'add a drawing area called ‹game› ‹480› by ‹270›', '<canvas id="game" width="480" height="270">', 'Where a game or a picture is drawn, from Mechanics.', ['structure']),
     T('Media', 'add a link to "‹https://…›" saying "‹text›"', '<a href="…">…</a>', 'An address as people write it works too: google.com is https://google.com, me@example.com is mailto:…, a phone number is tel:….', ['structure']),
     T('Layout', 'add a section called ‹name›', '<section id="name">', 'Indent the things that belong inside it. Also: header, footer, navigation bar, main area, block, card, form, side panel.', ['structure']),
