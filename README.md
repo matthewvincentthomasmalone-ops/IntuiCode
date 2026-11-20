@@ -298,8 +298,11 @@ packs in `lang/kits/`.
 **Full screen:** the corner button on the sentences, the code and the terminal makes that window fill the
 work area; the same button, or Esc, brings the others back.
 
-**More room:** **Hide explanation** (top right of the explanation under the windows) folds it into a slim bar, and the
-chevron in the terminal's header folds the terminal down to that header. Drag the terminal's top edge to
+**More room:** the explanation under the windows starts folded into a slim bar; **Show explanation** opens it and
+**Hide explanation** folds it again. While it's folded, what it suggests for the line you're on shows in **Help**,
+above **Problems** at the bottom of the side: what usually comes next, fixes that work, the closest sentences
+IntuaCode knows, what goes in a ‹blank›, and the tutor's tips, with the same buttons (**Show all** opens the
+explanation). The chevron in the terminal's header folds the terminal down to that header. Drag the terminal's top edge to
 make it taller or shorter (double-click it for the usual size). Run, and a program asking for input, bring
 the terminal back; while it's folded, a dot on its tab says there's something new. IntuaCode remembers how
 you left them.
@@ -405,11 +408,24 @@ names them), and not the look itself, which is dark.
 **Predictive Mode:** the black **Predictive Mode** button on the sentences turns predictions on and off. While
 it's on, the sentence you're typing is predicted the way a terminal predicts a command: the rest of it shows
 after the cursor in dim text, and a list under the line shows other guesses. Guesses come from sentences
-you've written before (in the project's files, and every line you finish with Enter, newest first), then
-the sentences IntuaCode knows (with their blanks), then the names in your program. **→** takes all of
-the dim text, **Ctrl+→** one word, **↑ ↓** choose another, **Tab** or **Enter** use the one picked, and
-**Esc** puts it away. Off, nothing pops up while you type. IntuaCode remembers whether it's on, and the
-history of lines stays in this browser or app (`lang/predict.js`).
+you've written before (in the project's files, and every line you finish with Enter, newest first, but
+never the line you've just written, straight above), then the sentences IntuaCode knows (with their blanks),
+then the names in your program. What usually goes under the line above is guessed first: after a text box, a
+button; after a list, its first item. **→** takes all of the dim text, **Ctrl+→** one word, **↑ ↓** choose
+another, **Tab** or **Enter** use the one picked, and **Esc** puts it away. Off, nothing pops up while you
+type. IntuaCode remembers whether it's on, and the history of lines stays in this browser or app
+(`lang/predict.js`).
+
+**What next:** the help asks about the line you've just written (the cursor's, or the one above after Enter),
+in the explanation, or in **Help** beside Problems while the explanation is folded. While Predictive Mode is on,
+it offers what people usually do next: show a page you linked to inside yours, or open it in a new tab; give
+an embedded page a size and a tooltip; describe a picture; add a button for a text box, the first item of a
+list, a heading for a section; draw on a drawing area every frame (in Mechanics); in Python, show an answer
+back, check a number, go through a list, wait in a forever loop. Always, it says when a line likely won't
+work as written: an embedded page of a site that doesn't let other pages show it (Google, GitHub, YouTube's
+video pages and others) stays blank or says it refused to connect, so it offers a link instead, or the
+site's embed address where there is one (YouTube, Vimeo, Spotify). One click writes the step in its place,
+with its first ‹blank› selected, and **Ctrl+Z** takes it back; **Not now** puts it away.
 
 **Fixes that work:** when a line has a problem, the help under the sentences (and **Problems**), in Split
 Mode and in Unity's green parts, offers a fix made from the line itself: a word spelled the way IntuaCode spells it (`backgrond` → `background`), a name

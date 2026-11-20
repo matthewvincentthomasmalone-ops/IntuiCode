@@ -216,7 +216,25 @@ Tick each one. If something is off, note what you did and what the terminal said
 - [ ] Turn it on (the dot lights): type `set `. The rest of a sentence already in the file shows in dim text after the
       cursor, and the list has it first ("written before"), then `set ‹name› to ‹value›`. **↓**: the dim text follows.
       **Ctrl+→** takes one word, **→** the rest. On a pattern, **→** fills it in and selects its first blank.
-- [ ] Finish a new line with **Enter**, start the same words on another line: it's offered first. Reload: still on.
+- [ ] Finish a new line with **Enter** and start the same words straight under it: it isn't offered (it's the line just
+      written). Start them further down: it's offered first. Reload: still on.
+- [ ] In Structure, write `add a text box called email with hint "Email"` on a page with no button, press Enter, type
+      `add a b`: `add a button called go saying "Go"` is the first guess ("goes with the line above").
+
+**What next (the help, and Help beside Problems)**
+- [ ] New window (or clear site data): the explanation under the windows starts folded, **Show explanation** on its bar.
+- [ ] Split Mode, Structure: write `add an embedded page from "www.google.com"` and press Enter. **Help** shows above
+      Problems: google.com doesn't let other pages show it. **Make it a link**: the line becomes
+      `add a link to "https://www.google.com" saying "google.com"`; **Ctrl+Z** puts the embedded page back.
+- [ ] `add an embedded page from "https://youtu.be/dQw4w9WgXcQ"`: **Use the embed address** gives
+      `https://www.youtube.com/embed/dQw4w9WgXcQ`, and the video shows in the Preview.
+- [ ] Predictive Mode on: `add a list called drinks`, Enter: Help asks for the list's first item. **Add an item** fills the
+      empty line with `add a list item "‹text›"`, ‹text› selected. **Not now** on another step: it goes, and stays gone.
+- [ ] Predictive Mode off: only the "won't show" advice appears, never "What next".
+- [ ] Unity, a green part: the same steps; **Add an item** under the part's last line keeps the new line green.
+- [ ] `add a drawing area called game 480 by 270`, Enter: **Draw on it** opens Mechanics with `every frame` and a circle
+      drawn on game; the Preview shows it.
+- [ ] **Show explanation**: Help beside Problems goes, and the same steps are in the explanation.
 
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under

@@ -391,6 +391,9 @@ try {
       const ta = document.getElementById('ta'), h = () => document.getElementById('editor').getBoundingClientRect().height;
       const say = (t) => { ta.value = t; ta.dispatchEvent(new Event('input', { bubbles: true })); };
       const press = (el) => { el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); document.dispatchEvent(new PointerEvent('pointerup')); };
+      // the explanation starts folded (its suggestions beside Problems): opened first, so folding it makes room
+      const shutFirst = document.getElementById('explainWrap').classList.contains('shut');
+      if (shutFirst) document.getElementById('btnHelpDock').click();
       const before = h();
       document.getElementById('btnHelpDock').click();
       document.getElementById('btnTermDock').click();
@@ -406,7 +409,8 @@ try {
       const menu = document.getElementById('ddMenu'), title = menu.querySelector('.dd-h b').textContent, options = menu.querySelectorAll('[data-o]').length;
       [...menu.querySelectorAll('[data-o]')].find(o => o.textContent.trim().startsWith('1.5')).click();
       const chosen = ta.value, closed = menu.hidden;
-      document.getElementById('btnDropDown').click(); document.getElementById('btnHelpDock').click(); document.getElementById('btnTermDock').click();
+      document.getElementById('btnDropDown').click(); document.getElementById('btnTermDock').click();
+      if (!shutFirst) document.getElementById('btnHelpDock').click();   // the explanation as it was
       return { grew, boxes, nudged, title, options, chosen, closed, back: !document.getElementById('work').classList.contains('term-shut') };
     });
     if (r.grew < 60 || r.boxes !== 2 || !/line-height: 1\.2$/.test(r.nudged) || !/line height/i.test(r.title) || r.options < 4 || !/line-height: 1\.5$/.test(r.chosen) || !r.closed || !r.back) throw new Error(JSON.stringify(r));
