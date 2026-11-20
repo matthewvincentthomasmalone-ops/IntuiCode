@@ -2841,7 +2841,7 @@ Structure → `index.html`. Writer: `lang/web_write.js`.
 |  | `add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›` | `<circle cx cy r fill>` | Also: an ellipse … with radii 20 and 10. Inside a drawing only. |
 |  | `add a rectangle at ‹10›, ‹10› sized ‹80› by ‹40›, with rounded corners ‹6›` | `<rect x y width height rx>` |  |
 |  | `add a line from ‹0›, ‹0› to ‹100›, ‹50›, outlined in ‹navy›, outline ‹2› wide` | `<line x1 y1 x2 y2 stroke stroke-width>` |  |
-|  | `add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›` | `<path d fill="none" stroke>` | The path data stays as written. Also: a polygon through "‹0,0 10,0 5,8›". |
+|  | `add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›` | `<path d fill="none" stroke>` | The shape is pen moves: M x y puts the pen down at x, y, L x y draws a straight line to there, and Z closes the shape. The help offers shapes to start from. Also: a polygon through "‹0,0 10,0 5,8›". |
 |  | `add text "‹label›" at ‹10›, ‹20›` | `<text x y>` | Text drawn in the drawing. |
 |  | `add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›` | `<linearGradient><stop>…` | Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts". |
 |  | `add a set of shapes, outlined in ‹navy›` | `<g stroke>` | Settings on it apply to the shapes indented under it. |

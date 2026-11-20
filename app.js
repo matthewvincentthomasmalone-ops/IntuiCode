@@ -929,23 +929,89 @@
     'a line of code': 'written in the language itself, as it will be in the code',
   };
   const shownExamples = new Set();
-  function fillHtml(text) {
+  /* What the project has, for a ‹blank›'s choices: its names, its files and pictures, and the grid of the
+     drawing the line is in (a shape's numbers count on it). */
+  function blankHave(sec, li, lines) {
+    const names = [];
+    if (compiled && compiled.syms) for (const s of compiled.syms.values()) if (s && s.display && s.kind !== 'module') names.push({ name: s.display.replace(/^group /, ''), kind: s.kind });
+    const files = [...(project.images || []).map(im => 'images/' + im.name), ...project.sections.map(s => s.path)];
+    let grid = null;
+    const ind = (l) => l.match(/^\s*/)[0].length;
+    for (let i = li - 1, top = ind(lines[li] || ''); i >= 0 && top > 0; i--) {
+      if (!lines[i].trim() || ind(lines[i]) >= top) continue;
+      top = ind(lines[i]);
+      if (!/^\s*add\s+(?:a\s+)?drawing\b/i.test(lines[i])) continue;
+      const g = lines[i].match(/\bdrawn on a\s+([\d.]+)\s+by\s+([\d.]+)\s+grid/i) || lines[i].match(/\bsized\s+([\d.]+)\s+by\s+([\d.]+)/i);   // no grid: it counts in pixels
+      if (g) grid = [+g[1], +g[2]];
+      break;
+    }
+    return { names, files, grid };
+  }
+  /* A ‹blank› in a sentence: what goes there (its kit step's "blank:" line when it has one, or what the words
+     around it and in it say: lang/values.js blank), and choices that fit, one click each. One at a time: the one
+     at the cursor (or the line's first), with the line's others named under it. */
+  function fillHtml(text, sec = activeSec(), li = caretLine(), where = 'say', lines = null) {
     if (/^\s*(?:note|comment|teach)\s*:/i.test(text)) return '';
-    return [...new Set(text.match(/‹[^›]*›/g) || [])].map(slot => {
+    const found = [...text.matchAll(/‹[^›]*›/g)];
+    if (!found.length) return '';
+    let col = 0;
+    try { col = where === 'unity' ? uTa.selectionStart - uPosOf(li) : ta.selectionStart - lineStartOf(li); } catch (_) { /* not shown yet */ }
+    const here = found.find(m => col >= m.index && col <= m.index + m[0].length) || found.find(m => m.index >= col) || found[0];
+    const others = [...new Set(found.map(m => m[0]))].filter(s => s !== here[0]);
+    const more = others.length ? `<p class="ex-fill-more">Also to fill in on this line: ${others.map(s => `<span class="ex-slot">${escHtml(s)}</span>`).join(' ')}</p>` : '';
+    return [here[0]].map(slot => {
       const b = blankInfo(slot), gloss = b && KIND_GLOSS[b.kind.toLowerCase()];
+      if (!b && window.IntuiValues && window.IntuiValues.blank) return blankHelpHtml(text, slot, sec, li, where, lines, more);
       const ex = !b || !b.example ? '' : shownExamples.has(slot)
         ? `<p class="ex-fill-ex"><b>One answer that works:</b> <code>${escHtml(b.example)}</code><button type="button" class="btn small" data-put-ex="${escHtml(slot)}">Put it in</button></p>`
         : `<p class="ex-fill-ex"><button type="button" class="btn small" data-show-ex="${escHtml(slot)}">Show an example</button><span class="dim">Have a go first: it's there if you're stuck, or to check yours.</span></p>`;
       return `<div class="ex-fill"><span class="ex-lbl">Fill in · <span class="ex-slot">${escHtml(slot)}</span></span>`
         + (b && b.kind ? `<p><b>What goes here:</b> ${escHtml(b.kind)}${gloss ? ` <span class="dim">(${withCode(gloss)})</span>` : ''}.</p>` : '<p>Replace it with what it describes.</p>')
         + (b && b.hint ? `<p><b>How to work it out:</b> ${withCode(b.hint)}</p>` : '')
-        + ex + '<p class="ex-fill-tip dim"><kbd>Tab</kbd> selects the next ‹blank›, and what you type replaces it, marks and all.</p></div>';
+        + ex + more + '<p class="ex-fill-tip dim"><kbd>Tab</kbd> selects the next ‹blank›, and what you type replaces it, marks and all.</p></div>';
     }).join('');
   }
-  /* In Problems: "Fill in ‹ticks to wait›: a calculation." when its step says what goes there. */
-  function blankSaid(msg) {
+  function blankOf(text, slot, sec, li, lines) {
+    const all = lines || (sec.id === project.active && mode !== 'unity' ? ta.value : mode === 'unity' && UNITY && sec.id === unity.id ? uTa.value : sec.text).split('\n');
+    try { return window.IntuiValues.blank(text, slot, glossLang(sec), blankHave(sec, li, all)); } catch (e) { console.error(e); return null; }
+  }
+  function blankHelpHtml(text, slot, sec, li, where, lines, more = '') {
+    const s = blankOf(text, slot, sec, li, lines);
+    if (!s) return '';
+    const data = (o) => `data-fill-slot="${escHtml(slot)}" data-fill-text="${escHtml(o.text)}" data-fill-line="${li}" data-fill-where="${where}" data-fill-sec="${escHtml(sec.id)}"`;
+    const opts = s.options.slice(0, s.colour ? 16 : 8);
+    const choices = !opts.length ? '' : s.colour
+      ? `<div class="ex-fill-sw">${opts.map(o => `<button type="button" class="ex-fill-swatch" ${data(o)} title="${escHtml(o.text + (o.label ? ' · ' + o.label : ''))}"><span style="background:${escHtml(o.swatch || o.text)}"></span>${escHtml(o.text)}</button>`).join('')}</div>`
+      : `<ul class="ex-fill-opts">${opts.map(o => `<li><button type="button" class="ex-fill-pick" ${data(o)} title="Put this in place of ${escHtml(slot)}"><code>${escHtml(o.text)}</code>${o.label ? `<span>${escHtml(o.label)}</span>` : ''}</button></li>`).join('')}</ul>`;
+    return `<div class="ex-fill"><span class="ex-lbl">Fill in · <span class="ex-slot">${escHtml(slot)}</span></span>`
+      + `<p><b>What goes here:</b> ${escHtml(s.title.charAt(0).toLowerCase() + s.title.slice(1))}. <span class="dim">${withCode(s.about)}</span></p>${choices}${more}`
+      + `<p class="ex-fill-tip dim">${opts.length ? 'Pick one to put it in, or type your own. ' : ''}<kbd>Tab</kbd> selects the next ‹blank›, and what you type replaces it, marks and all.</p></div>`;
+  }
+  /* A choice for a ‹blank›, put in its place as one change (Ctrl+Z takes it back); then the line's next ‹blank›. */
+  function useFill(d) {
+    const li = +d.fillLine, unityLine = d.fillWhere === 'unity';
+    const sec = project.sections.find(s => s.id === d.fillSec) || activeSec();
+    const cur = unityLine ? uLines()[li] : lineOfSec(sec, li);
+    if (cur == null || !cur.includes(d.fillSlot)) return;
+    const next = cur.replace(d.fillSlot, () => d.fillText), what = `Filled in ${d.fillSlot} on line ${li + 1} of ${sec.path}: ${d.fillText}`;
+    const blank = (el, from, to) => { const at = el.value.indexOf('‹', from), end = at >= 0 ? el.value.indexOf('›', at) : -1; return at >= 0 && end > at && end < to ? [at, end + 1] : null; };
+    if (unityLine) {
+      uApplyFix(li, next, what);
+      const b = blank(uTa, uPosOf(li), uPosOf(li) + next.length);
+      if (b) { uTa.setSelectionRange(b[0], b[1]); uTools(); }
+      return;
+    }
+    applyFix(sec.id, li, next, what);
+    const b = blank(ta, lineStartOf(li), lineStartOf(li) + next.length);
+    if (b) { ta.focus(); ta.setSelectionRange(b[0], b[1]); afterCaretMove(); }
+  }
+  /* In Problems: "Fill in ‹ticks to wait›: a calculation." when its step says what goes there, or what the
+     words around it say ("Fill in ‹M 0 0 L 100 50›: the shape the line follows."). */
+  function blankSaid(msg, sec, li, text) {
     const m = msg.match(/^Fill in the (‹[^›]*›) slot\.$/), b = m && blankInfo(m[1]);
-    return b && b.kind ? `Fill in ${m[1]}: ${b.kind}. Click for how to work it out.` : msg;
+    if (b && b.kind) return `Fill in ${m[1]}: ${b.kind}. Click for how to work it out.`;
+    const s = m && sec && text != null && window.IntuiValues && window.IntuiValues.blank ? blankOf(text, m[1], sec, li) : null;
+    return s ? `Fill in ${m[1]}: ${s.title.charAt(0).toLowerCase() + s.title.slice(1)}. Click for ${s.options.length ? 'choices' : 'what goes there'}.` : msg;
   }
   function putExample(slot) {
     const b = blankInfo(slot), li = caretLine(), text = ta.value.split('\n')[li] || '', at = text.indexOf(slot);
@@ -1560,7 +1626,7 @@
         const fixes = text == null ? null : inU ? uFixCache.get(uFixKey(p.i)) || null : fixKnown(p.s, p.i, text);
         const key = p.s.id + ':' + p.i, fix = fixes && fixes.length && !offered.has(key) ? fixes[0] : null;
         if (fix) offered.add(key);
-        return `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(tidyMsg(p.msg, fixes)))}</span></button>`
+        return `<li class="${p.kind}"><button type="button" data-sec="${escHtml(p.s.id)}" data-line="${p.i}"><span class="dot"></span><span><span class="where">${metaOf(p.s).title} · line ${p.i + 1}</span>${withCode(blankSaid(tidyMsg(p.msg, fixes), p.s, p.i, text))}</span></button>`
           + (fix ? `<div class="prob-fix"><button type="button" class="btn small" data-fix-sec="${escHtml(p.s.id)}" data-fix-line="${p.i}" data-fix-where="${inU ? 'unity' : 'say'}" data-fix-text="${escHtml(fix.text)}" title="Checked: the line translates with no errors. ${escHtml(fix.why)}">Fix</button><span class="fx-line">${fixMarked(text, fix.text)}</span></div>` : '')
           + (p.kind === 'warn' ? probPictureHtml(p) : '')
           + '</li>';
@@ -2217,11 +2283,23 @@
     if (f) return f.dataset.fixWhere === 'unity' ? uApplyFix(+f.dataset.fixLine, f.dataset.fixText) : applyFix(f.dataset.fixSec, +f.dataset.fixLine, f.dataset.fixText);
     const b = e.target.closest('button[data-sec]');
     if (!b) return;
-    const blank = /^Fill in ‹/.test(b.textContent.replace(/^.*?line \d+/, ''));
-    if (blank) setDock('help', true);   // how to fill it in is in the help
+    // how to fill it in is in the help: the strip if it's open, or beside Problems while it's minimised
+    const blank = (b.textContent.replace(/^.*?line \d+/, '').match(/^Fill in (‹[^›]*›)/) || [])[1];
     openSection(b.dataset.sec, +b.dataset.line);
-    if (blank) selectNextSlot(true);   // selected: what's typed replaces it
+    if (blank) selectSlot(+b.dataset.line, blank);   // selected: what's typed replaces it
   });
+  /* Select a ‹blank› on a line (the one named, or the line's first): in Unity's pane in Unity, else the sentences. */
+  function selectSlot(li, slot) {
+    if (mode === 'unity' && UNITY) {
+      const line = uLines()[li] || '', at = line.indexOf(slot) >= 0 ? line.indexOf(slot) : line.indexOf('‹'), end = at >= 0 ? line.indexOf('›', at) : -1;
+      if (end > at) { uTa.focus(); uTa.setSelectionRange(uPosOf(li) + at, uPosOf(li) + end + 1); uTools(); renderExplainUnity(); }
+      return;
+    }
+    const line = ta.value.split('\n')[li] || '', at = line.indexOf(slot);
+    if (at < 0) return selectNextSlot(true);
+    ta.setSelectionRange(lineStartOf(li) + at, lineStartOf(li) + at + slot.length);
+    afterCaretMove();
+  }
 
   async function copyText(text, btn, label) {
     try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
@@ -2385,6 +2463,7 @@
     let b;
     if ((b = t('[data-next-how]'))) return useNext(b.dataset);
     if ((b = t('[data-next-not]'))) { nextNot.add(b.dataset.nextNot); return renderExplain(); }
+    if ((b = t('[data-fill-text]'))) return useFill(b.dataset);
     if ((b = t('[data-use-sentence]'))) {
       const { useSentence: pattern, useRole: role, useLine: line, useWhere: where } = b.dataset;
       if (where === 'unity' && !role) return uUseSentence(pattern, +line);
@@ -5500,13 +5579,16 @@ ${key}</div>${wins}${notes}</body></html>`;
       }
       const codeLines = out ? (out.problems.some(p => p.errs.length) ? [] : out.code) : r.original || [];
       const lineErrs = out ? out.problems.filter(p => p.line === li).flatMap(p => p.errs) : [];   // the cursor's line: its fixes
-      box.innerHTML = `<div class="ex-map">
+      // the cursor's line's ‹blanks›: what goes in each, with choices (in place of "Fill in the ‹…› slot.")
+      const fill = fillHtml(text, sec, li, 'unity', lines);
+      if (fill) for (let k = items.length - 1; k >= 0; k--) if (items[k].includes(`Line ${li + 1}: Fill in the ‹`)) items.splice(k, 1);
+      box.innerHTML = `${fill}<div class="ex-map">
           <div class="ex-cell"><span class="ex-lbl">You wrote · line ${li + 1}</span><div class="ex-say">${escHtml(text.trim()) || '<span class="dim">(an empty line)</span>'}</div></div>
           <div class="ex-arrow" aria-hidden="true">→</div>
           <div class="ex-cell"><span class="ex-lbl">${escHtml(label || 'Code')} · ${escHtml(langName(sec.lang))}</span><div class="ex-py">${codeLines.map(l => hlCode(code, l)).join('\n') || '<span class="dim">Nothing yet.</span>'}</div></div>
         </div>
         ${items.length ? `<ul class="ex-notes">${items.slice(0, 5).join('')}</ul>` : ''}
-        ${lineErrs.length ? uFixHtml(li, at, text, lineErrs) : ''}
+        ${lineErrs.length && !(fill && lineErrs.every(e => /^Fill in the ‹[^›]*› slot\.$/.test(e))) ? uFixHtml(li, at, text, lineErrs) : ''}
         ${out && out.problems.some(p => p.line === li && p.errs.some(e => UNKNOWN_LINE.test(e))) ? closeMatchesHtml(sec, text, li, 'unity') : ''}
         ${nextHtml(sec, li, 'unity')}
         ${text.trim() ? shapeHtml(sec, text) : ''}

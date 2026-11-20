@@ -236,6 +236,20 @@ Tick each one. If something is off, note what you did and what the terminal said
       drawn on game; the Preview shows it.
 - [ ] **Show explanation**: Help beside Problems goes, and the same steps are in the explanation.
 
+**Filling in a sentence's ‹blanks›**
+- [ ] Structure: `add a drawing sized 200 by 100, drawn on a 200 by 100 grid`, then indented under it
+      `add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›`. Problems says
+      "Fill in ‹M 0 0 L 100 50›: the shape the line follows" and "Fill in ‹navy›: outline colour".
+- [ ] Click the first: the explanation stays folded, the ‹blank› is selected, and Help beside Problems explains pen
+      moves (M, L, Z) with shapes to pick, sized for the 200 by 100 grid (the triangle is `M 20 90 L 100 10 L 180 90 Z`).
+      Pick **a triangle**: the line has it, ‹navy› is selected and its colours show; pick one. The Preview draws it.
+      **Ctrl+Z** takes each back.
+- [ ] `add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›`: Help shows one ‹blank› at a time (the one
+      at the cursor), naming the line's others under it; the radius offers a speck, a dot, a ball…
+- [ ] The same in Unity, on a green line.
+- [ ] Inside the drawing, `add a path following "M 0 0 L 100 50", outlined in` (no colour): the problem says
+      "outlined in" needs a colour, not that a path must be in a drawing.
+
 **Drop down and images**
 - [ ] Build **To-do list page**, open Styling, press **Drop down**: every number, colour code and CSS word has − ▾ + under
       it. + on a text size goes up by one; hold it. ▾ on a line height lists 1 to 2 with what each is for; choose 1.5.

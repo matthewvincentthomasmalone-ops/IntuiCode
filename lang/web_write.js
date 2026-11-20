@@ -493,7 +493,21 @@
       rest = '';
     }
     if (rest) {
-      const head = ctx.svg || tag === 'svg' ? shapeHead(tag, rest) : null;
+      let head = ctx.svg || tag === 'svg' ? shapeHead(tag, rest) : null;
+      if (!head && ctx.svg) {
+        // a setting after a comma that isn't one ("…, outlined in" with no colour): say which, not that it needs a drawing
+        const commas = [];
+        for (let k = 1; ; k++) { const at = nthTopComma(rest, k); if (at >= rest.length) break; commas.push(at); }
+        const bit = commas.length ? rest.slice(commas[commas.length - 1] + 1).trim() : '';
+        let front = null;
+        for (let k = commas.length - 1; bit && k >= 0 && !front; k--) front = shapeHead(tag, rest.slice(0, commas[k]));
+        if (front && !readAttr(bit, ctx)) {
+          const w = bit.match(/^(outlined in|filled with)$/i);
+          inf.errs.push(w ? `"${w[1]}" needs a colour after it: ${w[1].toLowerCase()} navy, or ${w[1].toLowerCase()} #1a2b3c.`
+            : `I don't understand "${bit}" here. A shape's settings go after commas: filled with ‹colour›, not filled, outlined in ‹colour›, not outlined, outline ‹2› wide.`);
+          head = front;
+        }
+      }
       if (!head) return null;
       attrs = head;
     }
@@ -3324,7 +3338,7 @@
     T('Drawings', 'add a circle at ‹50›, ‹50› with radius ‹40›, filled with ‹gold›', '<circle cx cy r fill>', 'Also: an ellipse … with radii 20 and 10. Inside a drawing only.', ['structure']),
     T('Drawings', 'add a rectangle at ‹10›, ‹10› sized ‹80› by ‹40›, with rounded corners ‹6›', '<rect x y width height rx>', '', ['structure']),
     T('Drawings', 'add a line from ‹0›, ‹0› to ‹100›, ‹50›, outlined in ‹navy›, outline ‹2› wide', '<line x1 y1 x2 y2 stroke stroke-width>', '', ['structure']),
-    T('Drawings', 'add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›', '<path d fill="none" stroke>', 'The path data stays as written. Also: a polygon through "‹0,0 10,0 5,8›".', ['structure']),
+    T('Drawings', 'add a path following "‹M 0 0 L 100 50›", not filled, outlined in ‹navy›', '<path d fill="none" stroke>', 'The shape is pen moves: M x y puts the pen down at x, y, L x y draws a straight line to there, and Z closes the shape. The help offers shapes to start from. Also: a polygon through "‹0,0 10,0 5,8›".', ['structure']),
     T('Drawings', 'add text "‹label›" at ‹10›, ‹20›', '<text x y>', 'Text drawn in the drawing.', ['structure']),
     T('Drawings', 'add a gradient called ‹sky› from ‹#87ceeb› to ‹#ffffff›', '<linearGradient><stop>…', 'Add "through ‹colour› at ‹.5›" for more colours, ", ending ‹0› across and ‹1› down" for its direction; then "filled with the gradient sky". Put it in "add reusable parts".', ['structure']),
     T('Drawings', 'add a set of shapes, outlined in ‹navy›', '<g stroke>', 'Settings on it apply to the shapes indented under it.', ['structure']),
