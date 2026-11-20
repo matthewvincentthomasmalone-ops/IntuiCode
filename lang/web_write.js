@@ -757,7 +757,7 @@
           if (el.id !== v) note(inf, `An id can't have spaces in a page, so ${code(v)} is ${code(el.id)}. Styling and Mechanics can call it ${v.trim()} or ${el.id}.`);
         } else { delete el.attrs[k]; el.attrs[k] = v; }
         if (k === 'type') el.typeSaid = true;
-        if (k === 'alt' && v == null) inf.warns = inf.warns.filter(w => !/described as/.test(w));
+        if (k === 'alt') inf.warns = inf.warns.filter(w => !/described as/.test(w));   // described (", described as …"), or said to have none
       }
       // a webpage box: its address, tooltip and the page's own settings are the page's; its size is the box's
       if (el.webpageBox) {

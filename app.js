@@ -595,7 +595,7 @@
     const text = ta.value.split('\n')[li] || '';
     const box = $('explain');
     if (!r || !text.trim()) {
-      box.innerHTML = `${planBanner(li)}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
+      box.innerHTML = `${planBanner(li)}${r ? nextHtml(sec, li, 'say') : ''}<p class="ex-guide">${withCode(packFor(sec).guide.section || '')}</p>
         <div class="ex-hint"><span>Start from an idea: open <b>Project Templates</b>.</span><span><kbd>Tab</kbd> jumps to the next ‹blank›</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span><kbd>Ctrl</kbd>+<kbd>H</kbd> explains the words in a line or a selection</span><span>Click a line of ${escHtml(tutorSays(sec))} on the right to learn about the code itself.</span></div>`;
       return;
     }
@@ -614,7 +614,7 @@
         <div class="ex-arrow" aria-hidden="true">→</div>
         <div class="ex-cell"><span class="ex-lbl">${escHtml(tutorSays(sec))} · ${escHtml(fileName(sec))} ${pyLines.length ? 'line ' + pyLines.map(i => i + 1).join(', ') : ''}</span><div class="ex-py">${hlCode(secLang(sec), py.split('\n').map(l => l.trimStart()).join('\n'))}</div></div>
       </div>
-      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${!typing && inf.errs.length && !fill ? fixHtml(sec, li, text, inf.errs) : ''}${inf.errs.some(e => UNKNOWN_LINE.test(e)) ? closeMatchesHtml(sec, text, li) : ''}
+      ${items.length ? `<ul class="ex-notes">${items.join('')}</ul>` : ''}${!typing && inf.errs.length && !fill ? fixHtml(sec, li, text, inf.errs) : ''}${inf.errs.some(e => UNKNOWN_LINE.test(e)) ? closeMatchesHtml(sec, text, li) : ''}${li !== typingLine ? nextHtml(sec, li, 'say') : ''}
       ${shapeHtml(sec, text)}${sayTutorHtml(sec, li)}
       <p class="ex-foot">${why}${mineButton(sec, li)}<span><kbd>Ctrl</kbd>+<kbd>H</kbd> the words here, explained</span></p>`;
   }
@@ -627,6 +627,83 @@
       const role = x.other ? (x.t.role || (x.t.sections || [])[0]) : '';
       return `<li><button type="button" class="btn small" data-use-sentence="${escHtml(x.pattern)}" data-use-role="${escHtml(role || '')}" data-use-line="${li}" data-use-where="${where}">${x.other ? `Add to ${escHtml(x.other.replace(/ \(.*\)$/, ''))}` : 'Use'}</button><span class="ex-say">${escHtml(x.pattern).replace(/‹([^›]*)›/g, '<span class="s-slot">‹$1›</span>')}</span></li>`;
     }).join('')}</ul></div>`;
+  }
+
+  /* ---------- What comes next ----------
+   * The line just written (the cursor's, or the one above when the cursor's is empty: Enter was just pressed)
+   * and what usually comes after it (lang/predict.js next, from what the line makes): advice when it likely
+   * won't work as said, such as a site that refuses to be shown in an embedded page, always; the step people
+   * usually take next, such as a button for a text box, while Predictive Mode is on (Predictive Mode guesses
+   * the same lines first as you type them). One click writes it in its place as one change; Not now puts it
+   * away. In the help strip, and beside Problems while the strip is minimised. */
+  const nextNot = new Set();
+  const nextKey = (sec, text, s) => sec.id + '\u0001' + text.trim() + '\u0001' + s.ask;
+  function nextCtx(sec, li, text) {
+    const r = secResult(sec.id), inf = r && r.info[li];
+    const lang = WEB_ROLE[sec.lang] === 'structure' ? 'html' : sec.lang === 'python' ? 'python' : null;
+    if (!lang || !inf || inf.errs.length || !String(text).trim() || /^\s*(?:note|comment|description)\s*:/i.test(text)) return null;
+    if (lineOfSec(sec, li) !== text) return null;   // (Unity's line, not compiled yet)
+    const lines = (sec.id === project.active ? ta.value : sec.text).split('\n');
+    const web = compiled.web || {}, page = compiled.page || {}, els = web.elements || [];
+    const after = lines.slice(li + 1).find(l => l.trim()) || '';
+    return { lang, code: inf.py.map(k => r.lines[k].text).join('\n'), line: text, indent: text.match(/^\s*/)[0],
+      last: !after, nextIndent: after.match(/^\s*/)[0], ids: new Set(Object.keys(web.ids || {})),
+      has: { button: els.some(e => e.tag === 'button'), form: els.some(e => e.tag === 'form') },
+      says: (role, word) => !!(page[role] && new RegExp(`(^|[^\\w-])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\w-]|$)`, 'im').test(page[role].text)),
+      secure: !window.__TAURI__ && location.protocol === 'https:' };
+  }
+  function nextSteps(sec, li, text) {
+    const ctx = PRED && PRED.next && nextCtx(sec, li, text);
+    if (!ctx) return [];
+    let steps = [];
+    try { steps = PRED.next(ctx); } catch (e) { console.error(e); }
+    return steps.filter(s => (s.kind !== 'next' || predictOn()) && !nextNot.has(nextKey(sec, text, s)));
+  }
+  /* What Predictive Mode guesses first on the line after li: what usually goes under it. */
+  function followsFor(sec, li, text) {
+    const ctx = li >= 0 && PRED && PRED.follows && nextCtx(sec, li, text);
+    if (!ctx) return [];
+    try { return PRED.follows(ctx); } catch (e) { console.error(e); return []; }
+  }
+  function nextHtml(sec, li, where) {
+    const lines = where === 'unity' ? uLines() : (sec.id === project.active ? ta.value : sec.text).split('\n');
+    const f = (lines[li] || '').trim() ? li : li - 1;
+    if (f < 0 || (where === 'unity' && uRegionAt(f) < 0)) return '';
+    const text = lines[f] || '', steps = nextSteps(sec, f, text);
+    if (!steps.length) return '';
+    return `<div class="ex-next"><span class="ex-lbl">${steps.some(s => s.kind === 'next') ? 'What next' : 'Help'} · line ${f + 1}</span><ul>${steps.map(s => `<li class="nx-${s.kind}"><span class="nx-ask">${withCode(s.ask)}</span><span class="nx-acts">${s.label && s.text
+      ? `<button type="button" class="btn small" data-next-how="${s.how}" data-next-text="${escHtml(s.text)}" data-next-role="${escHtml(s.role || '')}" data-next-line="${f}" data-next-into="${f !== li ? li : ''}" data-next-sec="${escHtml(sec.id)}" data-next-where="${where}"${s.how === 'file' ? ` title="Adds it at the end of ${escHtml(s.role || '')}"` : ''}>${escHtml(s.label)}</button>` : ''}<button type="button" class="linklike nx-not" data-next-not="${escHtml(nextKey(sec, text, s))}">Not now</button></span></li>`).join('')}</ul></div>`;
+  }
+  /* A next step's button: the line becomes it, or it goes under the line (on the empty line Enter just made,
+     when that's where the cursor was), or at the end of its file. Its first ‹blank› is selected. */
+  function useNext(d) {
+    let li = +d.nextLine;
+    const where = d.nextWhere, text = d.nextText;
+    if (d.nextHow === 'file') {
+      if (where === 'unity') { uCommit(); setMode('write'); }
+      useSentence(text, d.nextRole || null, -1);
+      const at = ta.value.indexOf('‹', ta.value.length - text.length - 1), end = at >= 0 ? ta.value.indexOf('›', at) : -1;
+      if (at >= 0 && end > at) { ta.setSelectionRange(at, end + 1); afterCaretMove(); }
+      return;
+    }
+    const sec = project.sections.find(s => s.id === d.nextSec) || activeSec();
+    const lineAt = (n) => (where === 'unity' ? uLines()[n] : lineOfSec(sec, n));
+    const cur = lineAt(li);
+    if (cur == null) return;
+    let full = d.nextHow === 'after' ? cur + '\n' + text : text;
+    const into = d.nextInto === '' || d.nextInto == null ? -1 : +d.nextInto;
+    if (d.nextHow === 'after' && into === li + 1 && lineAt(into) != null && !lineAt(into).trim()) { li = into; full = text; }
+    const what = `Used IntuaCode's suggestion for line ${li + 1} of ${sec.path}: ${text.trim().split('\n')[0]}`;
+    const blank = (el, from, to) => { const at = el.value.indexOf('‹', from), end = at >= 0 ? el.value.indexOf('›', at) : -1; return at >= 0 && end > at && at < to ? [at, end + 1] : null; };
+    if (where === 'unity') {
+      uApplyFix(li, full, what);
+      const b = blank(uTa, uPosOf(li), uPosOf(li) + full.length);
+      if (b) { uTa.setSelectionRange(b[0], b[1]); uTools(); }
+      return;
+    }
+    applyFix(sec.id, li, full, what);
+    const b = blank(ta, lineStartOf(li), lineStartOf(li) + full.length);
+    if (b) { ta.focus(); ta.setSelectionRange(b[0], b[1]); afterCaretMove(); }
   }
 
   /* ---------- Fixes that work ----------
@@ -766,22 +843,23 @@
     return FIX_WAIT_HTML;
   }
   /* Use a fix in Unity: the line becomes it, as one edit (the green part grows with it), as Use does for a close match. */
-  function uApplyFix(li, text) {
+  function uApplyFix(li, text, what) {
     const start = uPosOf(li), line = uLines()[li];
     if (line == null) return;
     const sec = uSec();
-    logAs('intuacode', `Used IntuaCode's fix for line ${li + 1}${sec ? ` of ${sec.path}` : ''}: ${String(text).trim()}`, () => {
+    logAs('intuacode', what || `Used IntuaCode's fix for line ${li + 1}${sec ? ` of ${sec.path}` : ''}: ${String(text).trim()}`, () => {
       uTa.focus();
       uTa.setSelectionRange(start, start + line.length);
+      uCaret = uRegionAt(li);   // (execCommand fires no beforeinput: lines it adds at a green part's end join it)
       document.execCommand('insertText', false, text);
       uTa.setSelectionRange(start + text.length, start + text.length);
       uTools();
     });
   }
   /* Use a fix: it replaces the line (two lines for a block), as one edit that Undo takes back. */
-  function applyFix(secId, li, text) {
+  function applyFix(secId, li, text, what) {
     const sec = project.sections.find(s => s.id === (secId || project.active));
-    logAs('intuacode', `Used IntuaCode's fix for line ${li + 1}${sec ? ` of ${sec.path}` : ''}: ${String(text).trim()}`, () => {
+    logAs('intuacode', what || `Used IntuaCode's fix for line ${li + 1}${sec ? ` of ${sec.path}` : ''}: ${String(text).trim()}`, () => {
       if (secId && secId !== project.active) openSection(secId, li);
       const lines = ta.value.split('\n');
       if (li < 0 || li >= lines.length) return;
@@ -1618,14 +1696,16 @@
   const predictOn = () => !!(PRED && layout.predict);
   let ghostRest = '';   // what the ghost would add, '' when none shows
 
-  /* Sentences to predict from, for the file's language: the ones entered before, then the project's own. */
+  /* Sentences to predict from, for the file's language: the ones entered before, then the project's own.
+     Never the line just written (the one above): writing it again straight away is rarely what's wanted. */
   function predictLines() {
     const sec = activeSec(), cur = caretLine(), out = (predictMem[sec.lang] || []).slice();
     for (const s of project.sections) {
       if (s.lang !== sec.lang) continue;
       (s.id === sec.id ? ta.value : s.text).split('\n').forEach((l, i) => { if (s.id !== sec.id || i !== cur) out.push(l); });
     }
-    return out.concat(librarySentences(sec.lang));
+    const above = (ta.value.split('\n')[cur - 1] || '').trim().toLowerCase();
+    return out.concat(librarySentences(sec.lang)).filter(l => !above || l.trim().toLowerCase() !== above);
   }
   /* The Library's sentences in a language, for predictions: what its parts say, line by line. */
   const libSentenceCache = new Map();
@@ -1842,7 +1922,11 @@
     let items = [];
 
     if (!/‹/.test(b.text)) {
-      items = PRED.history(typed, predictLines(), 3).map(s => ({ kind: 'history', label: s, py: '', tag: 'written before', ...whole }));
+      // what usually goes under the line above first (a button under a text box), then sentences written before
+      const li = caretLine(), low = lower.trim();
+      items = followsFor(activeSec(), li - 1, ta.value.split('\n')[li - 1] || '').map(s => s.trim()).filter(s => s.toLowerCase().startsWith(low) && s.toLowerCase() !== low)
+        .map(s => ({ kind: /‹/.test(s) ? 'template' : 'history', label: s, py: '', tag: 'goes with the line above', ...whole }));
+      if (low.length >= 2) for (const s of PRED.history(typed, predictLines(), 3)) if (!items.some(it => it.label.toLowerCase() === s.toLowerCase())) items.push({ kind: 'history', label: s, py: '', tag: 'written before', ...whole });
       // the page's own parts: Styling offers what Structure has, Mechanics what can be clicked, and so on
       for (const s of webMatches(activeSec(), typed, 4)) {
         if (!items.some(it => it.label.toLowerCase() === s.toLowerCase())) items.push({ kind: /‹/.test(s) ? 'template' : 'history', label: s, py: '', tag: 'on this page', ...whole });
@@ -2295,9 +2379,12 @@
       ${fresh.length ? `<ul>${fresh.map(c => `<li><b>${withCode(cardOf(c).title)}.</b> ${withCode(cardOf(c).say)}</li>`).join('')}</ul>` : ''}
       ${seen.length ? `<p class="ex-tutor-seen">Also on this line: ${seen.map(c => `<button type="button" class="linklike" data-card="${c}">${withCode(cardOf(c).title)}</button>`).join(' · ')}</p>` : ''}</div>`;
   }
-  $('explain').addEventListener('click', (e) => {
+  /* The help strip's buttons, and the same ones beside Problems while the strip is minimised. */
+  function onHelpClick(e) {
     const t = (sel) => e.target.closest(sel);
     let b;
+    if ((b = t('[data-next-how]'))) return useNext(b.dataset);
+    if ((b = t('[data-next-not]'))) { nextNot.add(b.dataset.nextNot); return renderExplain(); }
     if ((b = t('[data-use-sentence]'))) {
       const { useSentence: pattern, useRole: role, useLine: line, useWhere: where } = b.dataset;
       if (where === 'unity' && !role) return uUseSentence(pattern, +line);
@@ -2320,7 +2407,9 @@
     if (b.dataset.tutor === 'turn') showExercise(src);
     else if (b.dataset.tutor === 'code') writeAsCode(src);
     else if (b.dataset.tutor === 'say') showSayExercise(caretLine());
-  });
+  }
+  $('explain').addEventListener('click', onHelpClick);
+  $('helpSide').addEventListener('click', onHelpClick);
 
   /* Tip balloons, beside the line they're about: a line of the sentences, or a line of the code. */
   document.body.appendChild(tip);   // (fixed to the window, so it can sit by either pane)
@@ -2538,7 +2627,9 @@
   /* ------------------------------------------------------------------ */
 
   const LAYOUT_KEY = 'intuicode.layout.v1';
-  const layout = Object.assign({ help: true, term: true, termRow: 0, webRow: 0, unityRow: 0, editCol: 0, dd: false, predict: false, partsBy: 'type', sideView: 'files' }, store.get(LAYOUT_KEY, {}));
+  const layout = Object.assign({ help: false, term: true, termRow: 0, webRow: 0, unityRow: 0, editCol: 0, dd: false, predict: false, partsBy: 'type', sideView: 'files' }, store.get(LAYOUT_KEY, {}));
+  // the help strip starts minimised, its suggestions beside Problems instead: once, for a window that had it open
+  if (!layout.helpMin) { layout.help = false; layout.helpMin = 1; store.set(LAYOUT_KEY, layout); }
   // Project Link and Predictive Mode take turns: predictions popping up while you click around a running page get in the way
   if (layout.link === undefined) layout.link = !layout.predict;
   if (layout.link && layout.predict) layout.predict = false;
@@ -2548,7 +2639,7 @@
     $('explainWrap').classList.toggle('shut', !layout.help);
     hb.setAttribute('aria-expanded', String(layout.help));
     hb.querySelector('span').textContent = layout.help ? 'Hide explanation' : 'Show explanation';
-    hb.title = layout.help ? 'Hide the explanation under the windows, for more room' : 'Show the explanation: what the line you\'re on says, and what it makes';
+    hb.title = layout.help ? 'Hide the explanation under the windows, for more room (its suggestions show beside Problems)' : 'Show the explanation: what the line you\'re on says, and what it makes';
     work.classList.toggle('term-shut', !layout.term);
     tb.setAttribute('aria-expanded', String(layout.term));
     tb.title = layout.term ? 'Hide the terminal, for more room' : 'Show the terminal';
@@ -2557,8 +2648,19 @@
       if (layout[key]) work.style.setProperty(prop, layout[key] + 'px'); else work.style.removeProperty(prop);
     }
     if (layout.editCol) work.style.setProperty('--edit-col', layout.editCol + 'px'); else work.style.removeProperty('--edit-col');
-    measure(); syncScroll(); placeTip();
+    measure(); syncScroll(); placeTip(); renderHelpSide();
   }
+  /* The help strip minimised: what it suggests for the line you're on (what comes next, fixes that work, the
+     closest sentences, what goes in a ‹blank›, the tutor's tips) shows beside Problems instead, its buttons
+     doing the same. Copied from the strip each time the strip changes, so the two never differ. */
+  const HELP_BITS = '.ex-next, .ex-fix, .ex-close, .ex-fill, .ex-tutor';
+  function renderHelpSide() {
+    const bits = layout.help ? [] : [...$('explain').querySelectorAll(HELP_BITS)].filter(el => !el.parentElement.closest(HELP_BITS));
+    $('helpSide').replaceChildren(...bits.map(el => el.cloneNode(true)));
+    $('helpSideWrap').hidden = !bits.length;
+  }
+  new MutationObserver(renderHelpSide).observe($('explain'), { childList: true, subtree: true, characterData: true });
+  $('btnHelpOpen').addEventListener('click', () => setDock('help', true));
   function setDock(which, open) {
     if (which === 'term' && open) $('tabTerm').classList.remove('unread');
     if (layout[which] === open) return;
@@ -5406,6 +5508,7 @@ ${key}</div>${wins}${notes}</body></html>`;
         ${items.length ? `<ul class="ex-notes">${items.slice(0, 5).join('')}</ul>` : ''}
         ${lineErrs.length ? uFixHtml(li, at, text, lineErrs) : ''}
         ${out && out.problems.some(p => p.line === li && p.errs.some(e => UNKNOWN_LINE.test(e))) ? closeMatchesHtml(sec, text, li, 'unity') : ''}
+        ${nextHtml(sec, li, 'unity')}
         ${text.trim() ? shapeHtml(sec, text) : ''}
         ${out && out.needs.length ? `<p class="ex-guide">It adds at the top: ${out.needs.map(x => `<code>${escHtml(x)}</code>`).join(', ')}</p>` : ''}
         ${uCheckOf(r, lines) ? `<p class="ex-guide u-check-says ${uCheckOf(r, lines)}">${escHtml(uCheckSays(r, lines))}</p>` : ''}
@@ -5413,7 +5516,7 @@ ${key}</div>${wins}${notes}</body></html>`;
       return;
     }
     if (!text.trim() && !selected) {
-      box.innerHTML = `<p class="ex-guide">${withCode(metaOf(sec).purpose)}.</p>
+      box.innerHTML = `${unity.lang ? nextHtml(sec, li, 'unity') : ''}<p class="ex-guide">${withCode(metaOf(sec).purpose)}.</p>
         <div class="ex-hint">${unity.lang ? '<span>Select some code and press <b>Translate to Plain Language Syntax</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>): it\'s said in sentences, right where it is, in green.</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> turns a green part back into code</span>' : `<span>${escHtml(langName(sec.lang))} has no sentences in IntuaCode: change it here as it is, and the help reads it to you.</span>`}<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the program</span><span>Start from an idea: <b>Project Templates</b>, or add parts from the <b>Library</b>.</span><span><b>Interface</b>, <b>Mechanics</b>, <b>Setup</b>, <b>Data</b> and <b>Tests</b>, at the top, show only that kind of part.</span></div>`;
       return;
     }
@@ -5436,13 +5539,17 @@ ${key}</div>${wins}${notes}</body></html>`;
   function uPredictFor(typed, li) {
     const sec = uSec();
     if (!sec || !PRED) return '';
+    // what usually goes under the line above (a green one) first; never the line above itself again
+    const prev = li > 0 && uRegionAt(li - 1) >= 0 ? uLines()[li - 1] : '', above = prev.trim().toLowerCase(), said = typed.toLowerCase();
+    const f = prev ? followsFor(sec, li - 1, prev).map(s => s.trim()).find(s => s.toLowerCase().startsWith(said) && s.toLowerCase() !== said) : null;
+    if (f) return f;
     const lines = (predictMem[sec.lang] || []).slice();
     for (const s of project.sections) {
       if (s.lang !== sec.lang) continue;
       s.text.split('\n').forEach((l, i) => { if (s.id !== sec.id || i !== li) lines.push(l); });
     }
     lines.push(...librarySentences(sec.lang));
-    const h = PRED.history(typed, lines, 1)[0] || webMatches(sec, typed, 1)[0];
+    const h = PRED.history(typed, lines.filter(l => !above || l.trim().toLowerCase() !== above), 1)[0] || webMatches(sec, typed, 1)[0];
     if (h) return h;
     const low = typed.toLowerCase(), t = packFor(sec).templates.find(x => x.pattern.toLowerCase().startsWith(low) && x.pattern.toLowerCase() !== low);
     if (t) return t.pattern;

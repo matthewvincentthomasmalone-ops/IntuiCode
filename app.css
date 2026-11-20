@@ -1485,6 +1485,23 @@ details.pg > summary .count { margin-left: auto; }
 /* Predictive Mode for code: the rest of a word, dim, in the editor's font (so it lines up) */
 .pm-ghost.code-ghost { opacity: .6; }
 /* The closest sentences to a line IntuaCode doesn't recognise */
+/* What comes next: advice for a line that likely won't work as said (honey), and the step usually taken next (rose) */
+.ex-next { margin-top: 8px; padding: 8px 10px; border-radius: 6px; max-width: 110ch; border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); background: color-mix(in srgb, var(--rose) 6%, transparent); }
+.ex-next ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ex-next li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; color: var(--ink-2); line-height: 1.45; }
+.ex-next .nx-ask { flex: 1 1 24ch; min-width: 0; overflow-wrap: anywhere; }
+.ex-next .nx-acts { display: flex; align-items: baseline; gap: 10px; flex: none; }
+.ex-next .nx-not { font-size: 12px; color: var(--ink-3); }
+.ex-next li.nx-tip .nx-ask::before { content: "!"; display: inline-grid; place-items: center; width: 15px; height: 15px; margin-right: 6px; border-radius: 50%; background: var(--warn); color: var(--panel); font: 700 10.5px/1 var(--f-say); vertical-align: 1px; }
+/* The help strip minimised: its suggestions beside Problems, sized for the side */
+.help-side { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 4px; font-size: 12.5px; }
+.help-side > * { margin: 0; max-width: none; padding: 7px 9px; }
+.help-side .ex-lbl { font-size: 10px; }
+.help-side .ex-fix li { grid-template-columns: minmax(0, 1fr); }
+.help-side .ex-close li { flex-wrap: wrap; gap: 4px 8px; }
+.help-side .ex-close .ex-say { white-space: normal; overflow-wrap: anywhere; }
+.help-side .ex-say { font-size: 12.5px; }
+.help-side .ex-tutor ul { max-width: none; }
 .ex-close { margin-top: 8px; }
 .ex-close ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .ex-close li { display: flex; align-items: center; gap: 10px; min-width: 0; }
