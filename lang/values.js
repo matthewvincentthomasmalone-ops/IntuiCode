@@ -155,7 +155,8 @@
       if (lang === 'arduino' && /^A[0-7]$/.test(w) && /(?:\bpin\s+|analogRead\s*\(\s*)$/i.test(before)) { push({ start: at, end, text: w, kind: 'word' }); continue; }
       if (isColourName(low) && !/[-.#$@]/.test(prev)) {
         const spot = css ? !/\b(?:the|shared|main)\s+colou?r\s+$/i.test(before) && !/^\s*[(=]/.test(after)
-          : code === 'js' && ((/\bin\s+$/i.test(before) && /^\s+on\b/i.test(after)) || /^\s*fill\s+\S+\s+with\s+$/i.test(before));
+          : code === 'js' ? (/\bin\s+$/i.test(before) && /^\s+on\b/i.test(after)) || /^\s*fill\s+\S+\s+with\s+$/i.test(before)
+            : code === 'html' && (/\b(?:filled with|outlined in)\s+$/i.test(before) || (/^\s*add\s+(?:a\s+)?(?:linear\s+|radial\s+)?gradient\b/i.test(t) && /\b(?:from|to|through)\s+$/i.test(before)));
         if (spot) { push({ start: at, end, text: w, kind: 'colour' }); continue; }
       }
       if (css) {
@@ -518,6 +519,37 @@
     const s = slot(c, /^\s*add\s+(?:a\s+|an\s+)?(?:drawing area|canvas)(.*?)\s+(\d+)\s*(?:by|x)\s*(\d+)(?:\s+in groups?\s+.+)?\s*$/id);
     if (s && s.g === 2) return S.canvasW;
     if (s && s.g === 3) return S.canvasH(+(c.t.match(/(\d+)\s*(?:by|x)\s*\d+\b/i) || [])[1]);
+    return null;
+  });
+  // HTML: drawings (SVG), whose shapes count on the drawing's grid ("drawn on a 100 by 100 grid")
+  const GX = [[0, 'the left edge'], [10, 'close to the edge'], [25, 'a quarter of the way, on a 100 grid'], [50, 'the middle, on a 100 grid'], [75, 'three quarters of the way, on a 100 grid'], [100, 'the right edge, on a 100 grid'], [200, 'the right edge, on a 200 grid']];
+  const GY = [[0, 'the top edge'], [10, 'close to the edge'], [25, 'a quarter of the way down, on a 100 grid'], [50, 'the middle, on a 100 grid'], [75, 'three quarters of the way down, on a 100 grid'], [100, 'the bottom, on a 100 grid']];
+  const gx = (title, about) => ({ title, step: 1, opts: GX, about: about + ' It counts on the drawing\'s grid, across from the left.' });
+  const gy = (title, about) => ({ title, step: 1, opts: GY, about: about + ' It counts on the drawing\'s grid, down from the top (not up, as in maths).' });
+  const N = '(-?[\\d.]+)';
+  S.svgSize = (w) => ({ title: w ? 'Width on the page' : 'Height on the page', len: true, step: 1, min: 0, about: `How ${w ? 'wide' : 'tall'} the drawing is on the page, in pixels. Its shapes stretch to fit: they count on its grid, not in pixels.`,
+    opts: [[24, 'an icon'], [48, 'a big icon'], [100, 'a small picture'], [200, 'a picture'], [300, ''], [400, 'a big picture'], [600, 'most of a page\'s width']] });
+  S.svgGrid = (w) => ({ title: w ? 'Grid: steps across' : 'Grid: steps down', step: 1, min: 1, about: `How many steps the drawing counts ${w ? 'across' : 'down'}: every shape's position and size count in these steps, whatever size the drawing is on the page. With a grid of 100 they are like percentages.`,
+    opts: [[24, 'an icon\'s grid'], [100, 'easy to work out: like percentages'], [200, ''], [400, ''], [1000, 'fine detail']] });
+  rule((c) => {
+    if (c.code !== 'html' || c.v.kind !== 'number') return null;
+    let s;
+    if ((s = slot(c, new RegExp(`^\\s*add\\s+(?:a\\s+)?drawing\\s+sized\\s+${N}\\s+by\\s+${N}`, 'id')))) return S.svgSize(s.g === 1);
+    if ((s = slot(c, new RegExp(`\\bdrawn on a\\s+${N}\\s+by\\s+${N}\\s+grid`, 'id')))) return S.svgGrid(s.g === 1);
+    if ((s = slot(c, new RegExp(`^\\s*add\\s+(?:a\\s+|an\\s+)?(?:circle|ellipse)\\s+at\\s+${N}\\s*,\\s*${N}\\s+with\\s+radi(?:us|i)\\s+${N}(?:\\s+and\\s+${N})?`, 'id')))) {
+      return [gx('Centre across (x)', 'How far the centre is from the left.'), gy('Centre down (y)', 'How far the centre is from the top.'),
+        { ...S.circleR, about: 'How far the edge is from the centre, on the drawing\'s grid: half the width.' }, { ...S.circleR, title: 'Radius down', about: 'How far the edge is from the centre, up and down.' }][s.g - 1];
+    }
+    if ((s = slot(c, new RegExp(`^\\s*add\\s+(?:a\\s+)?(?:rectangle|square)\\s+at\\s+${N}\\s*,\\s*${N}\\s+sized\\s+${N}\\s+by\\s+${N}`, 'id')))) {
+      return [gx('Left edge (x)', 'Where the rectangle\'s left edge is.'), gy('Top edge (y)', 'Where the rectangle\'s top edge is.'),
+        { ...S.boxW, about: 'How wide the rectangle is, on the drawing\'s grid, going right from its x.' }, { ...S.boxH, about: 'How tall the rectangle is, on the drawing\'s grid, going down from its y.' }][s.g - 1];
+    }
+    if ((s = slot(c, new RegExp(`^\\s*add\\s+(?:a\\s+)?line\\s+from\\s+${N}\\s*,\\s*${N}\\s+to\\s+${N}\\s*,\\s*${N}`, 'id')))) {
+      return [gx('Start across (x)', 'Where the line starts.'), gy('Start down (y)', 'Where the line starts.'), gx('End across (x)', 'Where the line ends.'), gy('End down (y)', 'Where the line ends.')][s.g - 1];
+    }
+    if ((s = slot(c, new RegExp(`^\\s*add\\s+text\\s+"[^"]*"\\s+at\\s+${N}\\s*,\\s*${N}`, 'id')))) return [gx('Across (x)', 'Where the text starts.'), gy('Down (y)', 'Where the line the letters sit on is.')][s.g - 1];
+    if ((s = slot(c, new RegExp(`\\boutline\\s+${N}\\s+wide\\b`, 'id')))) return { ...S.lineWidth, about: 'How thick the outline is, on the drawing\'s grid.' };
+    if ((s = slot(c, new RegExp(`\\bwith rounded corners\\s+${N}`, 'id')))) return { ...S.radius, about: 'How round the corners are: the radius of the curve, on the drawing\'s grid. 0 is square.' };
     return null;
   });
   // JS: drawing sentences
@@ -884,6 +916,9 @@
       if (/^(?:accent|caret|scrollbar)-colou?r$/.test(p)) return plainProp(p);
       if (p === 'fill' || p === 'stroke') return p === 'fill' ? 'Fill colour' : 'Line colour';
     }
+    if (/\boutlined in\s+$/i.test(c.before)) return 'Outline colour';
+    if (/\bfilled with\s+$/i.test(c.before)) return 'Fill colour';
+    if (/\bgradient\b/i.test(c.t) && /\b(?:from|to|through)\s+$/i.test(c.before)) return 'A colour in the gradient';
     if (/\bin\s+$/i.test(c.before) && /^\s+on\b/i.test(c.after)) return 'Colour to draw in';
     if (/^\s*fill\s+\S+\s+with\s+$/i.test(c.before)) return 'Colour to fill with';
     if (c.kw || (call && call.kw)) {
@@ -969,6 +1004,150 @@
     return '#' + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
   }
 
-  const api = { scan, explain, step, toHex };
+  /* ---- ‹blanks›: what goes in one ----
+   * blank(line, slot, lang, have) -> { title, about, options: [{ text, label, swatch? }], colour } for a ‹slot› in a
+   * sentence ("add a path following "‹M 0 0 L 100 50›"", "outlined in ‹navy›", "set ‹name› to ‹value›"), worked out
+   * from the words around it and the words in it, or null when the slot isn't in the line. A slot that holds a value
+   * (‹600›, ‹navy›) is explained as Drop down explains that value where it is; one that says what goes there
+   * (‹name›, ‹condition›, ‹text›) by what those words mean here. `have` is what the project has, for choices:
+   * { names: [{ name, kind }], files: ['pictures/cat.png'], grid: [w, h] (the drawing a shape is in) }, all optional. */
+  // shapes on a 100 by 100 grid (scaled to the drawing's): what a path follows, and a polygon's corners
+  const PATHS = [['M 10 50 L 90 50', 'a straight line across'], ['M 10 90 L 50 10 L 90 90 Z', 'a triangle'], ['M 10 10 L 90 10 L 90 90 L 10 90 Z', 'a square'],
+    ['M 10 80 Q 50 0 90 80', 'an arch: one curve'], ['M 0 50 Q 25 10 50 50 T 100 50', 'a wave'], ['M 10 70 L 30 30 L 50 70 L 70 30 L 90 70', 'a zigzag'],
+    ['M 50 8 L 61 38 L 93 38 L 67 58 L 77 90 L 50 71 L 23 90 L 33 58 L 7 38 L 39 38 Z', 'a star'],
+    ['M 50 30 C 50 10 10 10 10 40 C 10 60 50 80 50 90 C 50 80 90 60 90 40 C 90 10 50 10 50 30 Z', 'a heart']];
+  const POINTS = [['10,90 50,10 90,90', 'a triangle'], ['10,10 90,10 90,90 10,90', 'a square'], ['50,10 90,50 50,90 10,50', 'a diamond'],
+    ['30,10 70,10 90,50 70,90 30,90 10,50', 'a hexagon'], ['50,8 61,38 93,38 67,58 77,90 50,71 23,90 33,58 7,38 39,38', 'a star']];
+  const onGrid = (text, grid) => {
+    if (!grid || (grid[0] === 100 && grid[1] === 100)) return text;
+    let k = 0;
+    return text.replace(/-?\d+(?:\.\d+)?/g, (n) => fmt(Math.round(+n * grid[k++ % 2] / 10) / 10));
+  };
+  const gridSaid = (grid) => (grid ? ` This drawing counts ${fmt(grid[0])} across and ${fmt(grid[1])} down.` : ' A drawing "drawn on a 100 by 100 grid" counts 100 each way.');
+  const KIND_SAID = { list: 'a list', dict: 'a dictionary', function: 'a tool', class: 'a kind of thing', element: 'on the page', group: 'a group', number: 'a number', text: 'text', value: 'a value' };
+  const FILES = { picture: /\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i, sound: /\.(?:mp3|wav|ogg|m4a|aac)$/i, video: /\.(?:mp4|webm|mov|ogv)$/i, data: /\.(?:csv|tsv|json|txt|xml)$/i };
+  const pairs = (list) => list.map(([text, label]) => ({ text: String(text), label: label || '' }));
+  const said = (title, about, options = [], colour = false) => ({ title, about, options, colour });
+
+  function blank(line, slot, lang, have) {
+    line = String(line == null ? '' : line); slot = String(slot || '');
+    const at = line.indexOf(slot);
+    if (at < 0 || !/^‹[^›]*›$/.test(slot)) return null;
+    have = have || {};
+    const inner = slot.slice(1, -1).trim(), low = inner.toLowerCase(), grid = have.grid;
+    const q = line[at - 1], quoted = !!q && /["'`]/.test(q) && line[at + slot.length] === q;
+    const before = line.slice(0, quoted ? at - 1 : at), after = line.slice(at + slot.length + (quoted ? 1 : 0));
+    const names = (kinds) => { const seen = new Set(); return (have.names || []).filter(n => n && n.name && (!kinds || kinds.includes(n.kind)) && !seen.has(n.name) && seen.add(n.name)).slice(0, 10).map(n => ({ text: n.name, label: KIND_SAID[n.kind] || '' })); };
+    // drawings: the shape a path follows, a polygon's corners
+    if (quoted && /\bfollowing\s*$/i.test(before)) {
+      return said('The shape the line follows', 'Pen moves, each a letter and where it goes: M x y lifts the pen and puts it down at x, y; L x y draws a straight line to x, y; Q, C and T curve; Z draws back to the start, closing the shape. x counts across from the left and y down from the top.' + gridSaid(grid),
+        PATHS.map(([t, l]) => ({ text: onGrid(t, grid), label: l })));
+    }
+    if (quoted && /\bthrough\s*$/i.test(before)) {
+      return said('The corners, in order', 'Each corner as across,down (x,y), with a space between corners: the shape joins them in order and closes itself.' + gridSaid(grid), POINTS.map(([t, l]) => ({ text: onGrid(t, grid), label: l })));
+    }
+    // where something comes from: a web address, an address on the server, a file
+    if (/^https?:\/\//i.test(inner)) {
+      const shown = /\b(?:embedded page|webpage box|webpage|from)\s*$/i.test(before) && !/\blink\b/i.test(before);
+      return said('A web address', 'The page\'s full address, as it is in the browser\'s address bar: it starts with https://.'
+        + (shown ? ' Some sites (Google, GitHub, a YouTube watch page) refuse to be shown inside another page: a YouTube video\'s Share, then Embed, gives an address that works.' : ''));
+    }
+    if (quoted && /^\/[\w\-/{}.:]*$/.test(inner)) return said('An address on the server', 'The part of the address after the site\'s name, starting with /: /about, /api/items.');
+    if (quoted && /^\.{1,2}\//.test(inner)) return said('Where the code comes from', 'Another file of the project, from this one: ./ is this file\'s folder, ../ the one above it.');
+    const kind = Object.keys(FILES).find(k => FILES[k].test(inner));
+    if (kind && /^[^\s"]+$/.test(inner)) {
+      const files = (have.files || []).filter(f => FILES[kind].test(f)).slice(0, 10);
+      return said({ picture: 'A picture', sound: 'A sound', video: 'A video', data: 'A data file' }[kind],
+        `The file's name, with its folder if it's in one: ${kind === 'picture' ? 'images/cat.png' : inner}.${kind === 'picture' ? ' A picture on the web works too, by its https:// address.' : ''}${files.length ? '' : ' Add the file to the project first.'}`,
+        files.map(f => ({ text: f, label: 'in this project' })));
+    }
+    // a value, as Drop down explains one in that spot
+    const v = valueIn(line, at, slot, inner, lang);
+    if (v) return v;
+    // words that say what goes there
+    const asNumber = () => valueIn(line, at, slot, '1', lang, true);
+    // a kind of value: "giving back ‹a decimal›", C++'s "make a ‹whole number› called …", "list of ‹4› ‹whole numbers›"
+    const cpp = /^(?:cpp|arduino)$/.test(lang);
+    if ((/^an?\s/i.test(inner) && (cpp || /^(?:ts|tsx)$/.test(lang))) || (cpp && /^(?:whole numbers?|decimals?|text|yes\/no)$/.test(low))) {
+      const many = cpp && /s$/.test(low) && !/^an?\s/.test(low), a = /^an?\s/.test(low) ? 'a ' : '';
+      return said('A kind of value', 'What kind of value it is.', pairs(!cpp
+        ? [['a number', ''], ['text', ''], ['true or false', ''], ['a list of numbers', ''], ['anything', 'any value at all']]
+        : many ? [['whole numbers', '3, -7'], ['decimals', '2.5'], ['text', '"hello"'], ['yes/no values', 'true or false']]
+          : [[a + 'whole number', '3, -7'], [a + 'decimal', '2.5'], ['text', '"hello"'], ['yes/no', 'true or false']]));
+    }
+    // a name, where the words say a value ("for each ‹key›, ‹value› in …", "self.‹value›")
+    if (/\bself\.$/i.test(before) || (/^\s*for each\b/i.test(before) && /^\s*(?:,|in\b)/i.test(after))) return nameBlank('called ', inner, low, lang, names);
+    if (/^(?:colou?r)$/.test(low)) return valueIn(line, at, slot, 'navy', lang) || said('A colour', 'A colour by its name, like navy, or a code like #1a2b3c.', pairs(NAME_PALETTE).map(o => ({ ...o, swatch: toHex(o.text) })), true);
+    if (/^(?:number|amount|a number|whole number|a whole number|decimal|a decimal)$/.test(low)) {
+      const n = asNumber();
+      return n && n.title !== 'A number' ? n : said('A number', /decimal/.test(low) ? 'A number that can have a decimal point, like 2.5.' : /whole/.test(low) ? 'A whole number, like 3 or 10.' : 'A number, like 3 or 0.5, or a name that holds one.', [...names(['number']), ...pairs([[1, ''], [2, ''], [5, ''], [10, ''], [100, '']])]);
+    }
+    if (/^(?:text|label|message|title|question|hint|reply|words|summary|caption)$/.test(low)) {
+      const what = { question: 'The question people are asked', hint: 'Greyed-out words shown until something is typed: an example of what to type', title: 'The words for the title', message: 'The message\'s words' }[low] || 'Your own words: what people will read';
+      return said(low === 'question' ? 'A question' : low === 'hint' ? 'A hint' : 'Words to show', `${what}${quoted ? ', typed between the quotes' : ', in quotes'}. {curly brackets} put a value in: "Score: {score}".`);
+    }
+    if (/^what it (?:shows|does)$/.test(low)) return said('What it is, in a few words', low === 'what it shows' ? 'A few words saying what it shows, read out to people who can\'t see it and shown as its tooltip: "A rat eating cheese".' : 'A few words saying what it does.');
+    if (/^(?:value|values)$/.test(low)) return said('A value', 'What it holds: a number like 10, words in quotes like "hello", or one of your names. A sum works too: score plus 1.', [...names(['value', 'number', 'text', 'list', 'dict']), ...pairs(cpp ? [[0, 'a number to start from']] : [[0, 'a number to start from'], ['""', 'empty text, to fill in later']])]);
+    if (/^(?:condition|test)$/.test(low)) {
+      const nums = names(['number', 'value']).slice(0, 3);
+      return said('A test', 'Something that is either true or false: score is more than 10, name is "Sam", lives is 0. Join tests with and / or.', nums.map(n => ({ text: `${n.text} is more than 0`, label: 'a test on a name you have' })));
+    }
+    if (/^(?:list|items|readings|notes|dictionary)$/.test(low)) return said(low === 'dictionary' ? 'A dictionary' : 'A list', `One of your ${low === 'dictionary' ? 'dictionaries' : 'lists'}, by its name.`, names(low === 'dictionary' ? ['dict'] : ['list']));
+    if (low === 'inputs') return said('What it\'s given', 'The values it takes in, separated by commas: when it is defined, the names it calls them (price, amount); when it is run, the values themselves (10, 2). Leave it out if it takes none.');
+    if (/^(?:code|c\+\+ code)$/.test(low)) return said('A line of code', 'Written in the language itself, exactly as it will be in the code.');
+    if (low === 'styles') return said('Styles', 'Styles separated by commas, said as in Styling.', pairs([['background navy, text colour white', 'dark, with white text'], ['rounded corners 8, shadow', 'a card'], ['text size 24', 'bigger text'], ['border 1 solid lightgrey', 'a fine border']]));
+    if (low === 'pictures') return said('What kind of file', 'What people can pick: the file picker shows only these.', pairs([['pictures', 'photos and images'], ['several pictures', 'more than one at once'], ['sounds', ''], ['videos', ''], ['text files', '']]));
+    if (low === 'bold') return said('How it looks', 'A look for the text, or a colour.', pairs([['bold', 'heavier letters'], ['italic', 'sloping letters'], ['underlined', ''], ['centred', 'in the middle'], ['hidden', 'not shown'], ['navy', 'a colour']]));
+    if (BORDER_STYLES.includes(low) && (lang === 'css' || /\b(?:border|outline)\b/i.test(before))) return said(BORDER_WORDS.title, BORDER_WORDS.about, pairs(BORDER_WORDS.list));
+    if (low === 'module') return said('A module', 'Python\'s ready-made tools, by the module\'s name.', pairs([['random', 'random numbers and picks'], ['math', 'square roots, pi, rounding'], ['time', 'waiting, the clock'], ['datetime', 'dates and times'], ['json', 'saving data as text'], ['csv', 'spreadsheet files'], ['os', 'files and folders']]));
+    if (low === 'cmath') return said('A library', 'Ready-made code to bring in, by its name.', pairs(lang === 'arduino' ? [['Servo.h', 'servo motors'], ['Wire.h', 'I2C: sensors and screens on two wires'], ['SPI.h', 'SPI: fast parts like SD cards'], ['LiquidCrystal.h', 'text screens']] : [['cmath', 'maths: sqrt, pow, sin'], ['string', 'text'], ['vector', 'lists that grow'], ['algorithm', 'sorting and searching'], ['iostream', 'printing and reading']]));
+    if (low === 'errortype') return said('A kind of error', 'Which problem it is, by Python\'s name for it.', pairs([['ValueError', 'a value of the right kind but wrong: int("hi")'], ['TypeError', 'the wrong kind: "a" + 1'], ['KeyError', 'a key a dictionary doesn\'t have'], ['IndexError', 'a position past the end of a list'], ['ZeroDivisionError', 'dividing by zero'], ['FileNotFoundError', 'a file that isn\'t there'], ['Exception', 'any problem at all']]));
+    if (low === 'std::invalid_argument') return said('A kind of error', 'Which problem it is, by C++\'s name for it.', pairs([['std::invalid_argument', 'a value it can\'t use'], ['std::out_of_range', 'a position past the end'], ['std::runtime_error', 'something went wrong while running']]));
+    if (inner === 'GET') return said('What kind of request', 'What the request asks the server to do.', pairs([['GET', 'read: a page or data'], ['POST', 'send: a form, something new'], ['PUT', 'replace something'], ['DELETE', 'remove something']]));
+    if (/^[A-Za-z_][\w.:]*$/.test(inner) || /^(?:text name|decimal [a-z]|whole number [a-z])$/.test(low)) return nameBlank(before, inner, low, lang, names);
+    return said('What it describes', `The words in ${slot} say what goes there: put that in its place, marks and all.`);
+  }
+
+  /* A slot that holds a value as it would be written (or, with `stand`, one put there to ask what the spot is). */
+  function valueIn(line, at, slot, inner, lang, stand) {
+    // the other slots as their examples say, so the sentence reads whole ("at ‹50›, ‹50› with radius ‹40›")
+    const plain = (s) => s.replace(/‹([^›]*)›/g, '$1');
+    const head = plain(line.slice(0, at)), filled = head + inner + plain(line.slice(at + slot.length));
+    at = head.length;
+    const end = at + inner.length;
+    let v = scan(filled, lang).find(x => x.start === at && x.end === end) || null;
+    if (!v) {
+      const n = inner.match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))([a-z%]*)$/i);
+      if (HEX.test(inner)) v = { start: at, end, text: inner, kind: 'hex' };
+      else if (isColourName(inner.toLowerCase())) v = { start: at, end, text: inner, kind: 'colour' };
+      else if (n && UNITS.has(n[2].toLowerCase())) v = { start: at, end, text: inner, kind: 'number', num: parseFloat(n[1]), unit: n[2] };
+    }
+    if (!v || (v.kind === 'word' && stand)) return null;
+    const e = explain(filled, v, lang);
+    if (!e || (v.kind === 'word' && !e.options.length)) return null;
+    return { title: e.title, about: e.about, options: e.options.map(o => ({ text: o.text, label: o.label || '', ...(o.swatch ? { swatch: o.swatch } : {}) })), colour: !!e.colour };
+  }
+
+  /* A name: one being made here (called ‹game›, define ‹add›, for each ‹item›), or one the project already has. */
+  const NEW_NAME = /(?:\b(?:called|named|constant|keep|let|define|declare|class|structure|component|type|shape|as|each|count|counting with|new)\s*|\(\s*)$/i;
+  function nameBlank(before, inner, low, lang, names) {
+    const generic = /^(?:name|class|element|group|text name|decimal [a-z]|whole number [a-z])$/i.test(inner);
+    if (NEW_NAME.test(before) && !/\bnew\s*$/i.test(before)) {
+      return said('A name you choose', 'A name for it: a word or a few, no quotes. Other lines use the name to mean it.' + (generic ? '' : ` The example calls it ${inner}.`),
+        generic ? [] : [{ text: inner, label: 'as in the example' }]);
+    }
+    const web = /^(?:html|css|js)$/.test(lang);
+    const kinds = /^(?:tool|handler)$/.test(low) || /\b(?:run|result of|using|call)\s*$/i.test(before) ? ['function']
+      : /\bnew\s*$/i.test(before) || /^class$/.test(low) ? ['class']
+        : low === 'group' ? ['group'] : web ? ['element', 'group'] : ['value', 'number', 'text', 'list', 'dict'];
+    const have = names(kinds);
+    const setting = /^\s*set\s*$/i.test(before);
+    return said(kinds[0] === 'function' ? 'One of your tools' : kinds[0] === 'class' ? 'A kind of thing' : web ? 'Something on the page' : 'A name',
+      setting ? 'The name to set: one you have changes it, a new one makes it.'
+        : `${web ? 'The name it was given where it was made (add a box called ‹name›), or its text in quotes.' : 'The name of something the program already has.'}${have.length ? '' : ' Nothing has one yet: make it first.'}`,
+      have.length ? have : generic ? [] : [{ text: inner, label: 'as in the example' }]);
+  }
+
+  const api = { scan, explain, step, toHex, blank };
   if (typeof window !== 'undefined') window.IntuiValues = api;
 })();

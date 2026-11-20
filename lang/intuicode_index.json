@@ -1573,7 +1573,7 @@
           "folders": [
             "structure"
           ],
-          "tip": "The path data stays as written. Also: a polygon through \"‹0,0 10,0 5,8›\"."
+          "tip": "The shape is pen moves: M x y puts the pen down at x, y, L x y draws a straight line to there, and Z closes the shape. The help offers shapes to start from. Also: a polygon through \"‹0,0 10,0 5,8›\"."
         },
         {
           "topic": "Drawings",

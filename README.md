@@ -286,6 +286,16 @@ already has, and, behind **Show an example**, an answer that works, with **Put i
 ‹blank›; Problems lists the ones left, and clicking one selects it. Kit authors write these as `blank:` lines
 (see `lang/kits/README.md`); the tests fill every ‹blank› with its answer and check the project works.
 
+The ‹blanks› in the sentence shapes themselves (from the Index, CodeParts or Predictive Mode) say what goes there
+too, worked out from the words around them: `add a path following "‹M 0 0 L 100 50›"` explains a path's pen moves
+and offers shapes that fit the drawing's grid (a line, a triangle, a wave, a star…), `outlined in ‹navy›` offers
+colours, `wait ‹number› seconds` the usual waits, `run ‹tool›` the program's own tools, `add a picture of
+"‹file.jpg›"` the project's pictures. One click puts a choice in as one change (**Ctrl+Z** takes it back) and selects
+the line's next ‹blank›. Problems names what each one needs ("Fill in ‹navy›: outline colour"), and clicking it
+selects that ‹blank›, with its help in the explanation or, while that's folded, beside Problems. The choices are
+`lang/values.js` `blank()`, the same knowledge as Drop down; the tests put every choice for every slot of every
+sentence shape in its place and check it translates.
+
 **Change this kit** (in planning, or from a kit in Project Templates) opens it as a form: its title, kind, where it
 runs and what it's made of; its steps, which you can reorder, remove, mark as always included or ticked at
 first, edit, add from any other kit, or write from scratch, with a Walk/Hallway/Horizon switch and its
